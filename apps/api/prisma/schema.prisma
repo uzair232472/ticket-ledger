@@ -1,0 +1,384 @@
+// TicketLedger Prisma Schema
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CUSTOMER
+  ORGANIZER
+  GATE_STAFF
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  FROZEN
+  BLACKLISTED
+}
+
+enum CompanyStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum EventType {
+  CRICKET_MATCH
+  FOOTBALL_MATCH
+  KABADDI
+  BOXING
+  MUSIC_CONCERT
+  MUSIC_FESTIVAL
+}
+
+enum EventStatus {
+  DRAFT
+  PRELAUNCH_ANALYSIS
+  PUBLISHED
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum SeatStatus {
+  AVAILABLE
+  LOCKED
+  SOLD
+  BLOCKED
+}
+
+enum OrderStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+enum PaymentMethod {
+  STRIPE
+  JAZZCASH
+  EASYPAISA
+  MOCK
+}
+
+enum TicketStatus {
+  ACTIVE
+  SCANNED
+  TRANSFERRED
+  RESOLD
+  CANCELLED
+}
+
+enum GateScanResult {
+  VALID_FIRST_SCAN
+  ALREADY_SCANNED
+  INVALID_SCAN
+}
+
+enum ResaleStatus {
+  ACTIVE
+  SOLD
+  CANCELLED
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  phone         String?        @unique
+  passwordHash  String
+  name          String
+  role          Role           @default(CUSTOMER)
+  status        AccountStatus  @default(ACTIVE)
+  walletAddress String?        @unique
+  otpCode       String?
+  otpExpiresAt  DateTime?
+  isVerified         Boolean        @default(false)
+  city               String?        @default("Lahore")
+  emailNotifications Boolean        @default(true)
+  pushNotifications  Boolean        @default(true)
+  smsNotifications   Boolean        @default(false)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  company        Company?
+  orders         Order[]
+  tickets        Ticket[]
+  scansPerformed GateScan[]
+  behaviorEvents BehaviorEvent[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  resaleListings ResaleListing[] @relation("SellerListings")
+  transfersSent      TicketTransferHistory[] @relation("TransfersSent")
+  transfersReceived  TicketTransferHistory[] @relation("TransfersReceived")
+  waitlistEntries    Waitlist[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model Company {
+  id              String        @id @default(uuid())
+  userId          String        @unique
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName     String
+  ownerName       String
+  phone           String
+  email           String
+  city            String
+  ntnCnic         String
+  documentUrl     String
+  status          CompanyStatus @default(PENDING)
+  rejectionReason String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  events Event[]
+
+  @@index([status])
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  description String
+  type        EventType
+  status      EventStatus @default(DRAFT)
+  date        DateTime
+  time        String
+  city        String
+  venue       String
+  bannerUrl   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tiers          TicketTier[]
+  seats          Seat[]
+  orders         Order[]
+  tickets        Ticket[]
+  behaviorEvents BehaviorEvent[]
+  waitlist       Waitlist[]
+
+  @@index([city])
+  @@index([type])
+  @@index([status])
+}
+
+model TicketTier {
+  id                String   @id @default(uuid())
+  eventId           String
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name              String
+  price             Decimal  @db.Decimal(10, 2)
+  totalQuantity     Int
+  availableQuantity Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  seats Seat[]
+
+  @@index([eventId])
+}
+
+model Seat {
+  id             String     @id @default(uuid())
+  eventId        String
+  event          Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tierId         String
+  tier           TicketTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  section        String
+  row            String
+  seatNumber     String
+  status         SeatStatus @default(AVAILABLE)
+  lockedUntil    DateTime?
+  lockedByUserId String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  ticket Ticket?
+
+  @@unique([eventId, section, row, seatNumber])
+  @@index([eventId, status])
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  eventId       String
+  event         Event         @relation(fields: [eventId], references: [id])
+  totalAmount   Decimal       @db.Decimal(10, 2)
+  status        OrderStatus   @default(PENDING)
+  paymentMethod PaymentMethod @default(MOCK)
+  paymentTxId   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  tickets Ticket[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Ticket {
+  id              String        @id @default(uuid())
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  eventId         String
+  event           Event         @relation(fields: [eventId], references: [id])
+  seatId          String        @unique
+  seat            Seat          @relation(fields: [seatId], references: [id])
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  price           Decimal       @db.Decimal(10, 2)
+  status          TicketStatus  @default(ACTIVE)
+  
+  // Blockchain metadata
+  tokenId         Int?
+  txHash          String?
+  contractAddress String?
+  ownerWallet     String?
+  
+  // Dynamic secure QR metadata
+  qrNonce         String        @default(uuid())
+  qrIssuedAt      DateTime      @default(now())
+  qrSignature     String?
+  qrVersion       Int           @default(1)
+  pdfUrl          String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  scans          GateScan[]
+  resaleListings ResaleListing[]
+  transferHistory TicketTransferHistory[]
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([status])
+}
+
+model ResaleListing {
+  id             String       @id @default(uuid())
+  ticketId       String
+  ticket         Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sellerId       String
+  seller         User         @relation("SellerListings", fields: [sellerId], references: [id])
+  buyerId        String?
+  originalPrice  Decimal      @db.Decimal(10, 2)
+  resalePrice    Decimal      @db.Decimal(10, 2)
+  maxResalePrice Decimal      @db.Decimal(10, 2) // enforced <= 1.10 * originalPrice
+  status         ResaleStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status])
+  @@index([ticketId])
+}
+
+model GateScan {
+  id         String         @id @default(uuid())
+  ticketId   String
+  ticket     Ticket         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  staffId    String
+  staff      User           @relation(fields: [staffId], references: [id])
+  scanTime   DateTime       @default(now())
+  result     GateScanResult
+  gateNumber String?
+  notes      String?
+
+  @@index([ticketId])
+  @@index([staffId])
+}
+
+model BehaviorEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  sessionId String
+  action    String   // event_view, seat_selected, checkout_started, etc.
+  eventId   String?
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([userId])
+}
+
+enum TransferType {
+  DIRECT_TRANSFER
+  P2P_RESALE
+}
+
+model TicketTransferHistory {
+  id           String        @id @default(uuid())
+  ticketId     String
+  ticket       Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromUserId   String
+  fromUser     User          @relation("TransfersSent", fields: [fromUserId], references: [id])
+  toUserId     String
+  toUser       User          @relation("TransfersReceived", fields: [toUserId], references: [id])
+  transferType TransferType  @default(DIRECT_TRANSFER)
+  price        Decimal?      @db.Decimal(10, 2)
+  oldNonce     String?
+  newNonce     String?
+  txHash       String?
+  createdAt    DateTime      @default(now())
+
+  @@index([ticketId])
+  @@index([fromUserId])
+  @@index([toUserId])
+}
+
+model Waitlist {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
+}
