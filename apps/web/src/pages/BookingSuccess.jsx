@@ -16,12 +16,14 @@ import {
   Sparkles
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function BookingSuccess() {
-  const { id: orderId } = useParams();
+  const params = useParams();
+  const orderId = params.orderId || params.id;
   const location = useLocation();
   const { token } = useAuth();
+  const authToken = token || localStorage.getItem('tl_token');
 
   const [order, setOrder] = useState(location.state?.order || null);
   const [receipt, setReceipt] = useState(location.state?.receipt || null);
@@ -34,7 +36,7 @@ export default function BookingSuccess() {
         try {
           setLoading(true);
           const res = await axios.get(`${API_BASE_URL}/api/bookings/${orderId}`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${authToken}` },
           });
           if (res.data.success) {
             setOrder(res.data.data.order);

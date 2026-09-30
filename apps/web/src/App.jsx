@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -414,8 +414,10 @@ export default function App() {
               <Route path="/events" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Events /></div>} />
               <Route path="/events/:id" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><EventDetails /></div>} />
               <Route path="/events/:id/seats" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SeatMap /></div>} />
-              <Route path="/events/:id/checkout" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div>} />
-              <Route path="/booking-success/:orderId" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div>} />
+              <Route path="/events/:id/checkout" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div></ProtectedRoute>} />
+              <Route path="/checkout" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div></ProtectedRoute>} />
+              <Route path="/booking-success/:orderId" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div></ProtectedRoute>} />
+              <Route path="/bookings/:orderId/confirmation" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div></ProtectedRoute>} />
               <Route path="/resale" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResaleMarketplace /></div></ProtectedRoute>} />
               <Route path="/login" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Login /></div>} />
               <Route path="/signup" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Signup /></div>} />
@@ -439,10 +441,16 @@ export default function App() {
               <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SuperAdminDashboard /></div></ProtectedRoute>} />
               <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminCompanies /></div></ProtectedRoute>} />
               <Route path="/admin/fraud-watchlist" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminFraudWatchlist /></div></ProtectedRoute>} />
-              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
+              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
+              <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
               <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BehaviorProfile /></div></ProtectedRoute>} />
-              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
-              <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
+              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
+
+              {/* Safe catch-all fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
           <Footer />

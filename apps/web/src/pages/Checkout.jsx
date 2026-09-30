@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -19,15 +19,18 @@ import {
   Info
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function Checkout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const params = useParams();
   const { user, token } = useAuth();
+  const authToken = token || localStorage.getItem('tl_token');
 
   const checkoutState = location.state || {};
-  const { eventId, event, seats = [], totalPrice = 0 } = checkoutState;
+  const eventId = checkoutState.eventId || params.id;
+  const { event, seats = [], totalPrice = 0 } = checkoutState;
 
   const [paymentMethod, setPaymentMethod] = useState('MOCK'); // 'STRIPE', 'JAZZCASH', 'EASYPAISA', 'MOCK'
   const [phoneNumber, setPhoneNumber] = useState(user?.phone || '03001234567');
@@ -51,13 +54,23 @@ export default function Checkout() {
         <p className="text-xs text-slate-500">
           Your seat lock may have expired or you have not chosen any seats yet.
         </p>
-        <Link
-          to="/events"
-          className="btn-eventfrog text-xs px-5 py-2.5 shadow-sm inline-flex items-center gap-2"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Browse Available Events</span>
-        </Link>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          {eventId && (
+            <Link
+              to={`/events/${eventId}/seats`}
+              className="btn-eventfrog text-xs px-5 py-2.5 shadow-sm inline-flex items-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Seat Map</span>
+            </Link>
+          )}
+          <Link
+            to="/events"
+            className="px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold inline-flex items-center gap-2 transition"
+          >
+            <span>Browse Events</span>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -68,7 +81,7 @@ export default function Checkout() {
     setError(null);
 
     try {
-      const authHeaders = { Authorization: `Bearer ${token}` };
+      const authHeaders = { Authorization: `Bearer ${authToken}` };
 
       // Step 1: Initiate Booking (Creates Pending Order & holds inventory)
       const initiateRes = await axios.post(
