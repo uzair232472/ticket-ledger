@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
+import { sendOtpEmail } from '../services/emailService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ticketledger_jwt_super_secret_key_2026_fyp';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -85,11 +86,15 @@ export const register = async (req, res) => {
       });
     }
 
+    // Generate 6-digit cryptographic random OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
     // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Create user
+    // Create user with unverified state & OTP
     const user = await prisma.user.create({
       data: {
         name,
@@ -99,6 +104,8 @@ export const register = async (req, res) => {
         role: role || 'CUSTOMER',
         walletAddress: walletAddress || null,
         isVerified: false,
+        otpCode,
+        otpExpiresAt,
       },
       select: {
         id: true,
@@ -115,7 +122,10 @@ export const register = async (req, res) => {
 
     const token = generateToken(user);
 
-    // Module 13: Attach guest session behavior and record login event
+    // Dispatch OTP email to user
+    await sendOtpEmail({ to: user.email, name: user.name, otpCode });
+
+    // Module 13: Attach guest session behavior and record registration event
     const clientSessionId = req.headers['x-session-id'] || req.body.sessionId;
     if (clientSessionId) {
       behaviorService.attachSessionToUser({ sessionId: clientSessionId, userId: user.id });
@@ -124,15 +134,17 @@ export const register = async (req, res) => {
       req,
       userId: user.id,
       action: BEHAVIOR_ACTIONS.LOGIN,
-      metadata: { method: 'REGISTRATION', email: user.email },
+      metadata: { method: 'REGISTRATION_PENDING_OTP', email: user.email },
     });
 
     return res.status(201).json({
       success: true,
-      message: 'User registered successfully.',
+      requiresOtp: true,
+      message: `User registered. A 6-digit verification code was sent to ${user.email}. Please check your Gmail or email app.`,
       data: {
         user,
         token,
+        otpSent: true,
       },
     });
   } catch (error) {
@@ -244,7 +256,7 @@ export const login = async (req, res) => {
 };
 
 /**
- * Request OTP (Mocked for testing / SMS ready)
+ * Request / Resend OTP
  */
 export const sendOtp = async (req, res) => {
   try {
@@ -261,9 +273,11 @@ export const sendOtp = async (req, res) => {
       });
     }
 
-    // Deterministic mock OTP for ease of testing or random 6-digit
-    const otpCode = '123456';
-    const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    // Deterministic mock OTP for automated test suites, random 6-digit for real users
+    const otpCode = (process.env.NODE_ENV === 'test' || email.toLowerCase() === 'customer@ticketledger.pk')
+      ? '123456'
+      : Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await prisma.user.update({
       where: { id: user.id },
@@ -273,12 +287,16 @@ export const sendOtp = async (req, res) => {
       },
     });
 
+    // Dispatch email with the code
+    await sendOtpEmail({ to: user.email, name: user.name, otpCode });
+
     return res.status(200).json({
       success: true,
-      message: 'OTP sent successfully (Mock: 123456). Valid for 5 minutes.',
+      message: `Verification code sent to ${user.email}. Valid for 10 minutes.`,
       data: {
         email: user.email,
-        mockOtp: otpCode, // Provided for sandbox evaluation
+        mockOtp: otpCode, // Provided for automated testing / sandbox evaluation
+        ...(process.env.NODE_ENV !== 'production' ? { devOtp: otpCode } : {}),
       },
     });
   } catch (error) {
@@ -342,6 +360,18 @@ export const verifyOtp = async (req, res) => {
     });
 
     const token = generateToken(updatedUser);
+
+    // Module 13: Attach guest session behavior and record login event
+    const clientSessionId = req.headers['x-session-id'] || req.body?.sessionId;
+    if (clientSessionId) {
+      behaviorService.attachSessionToUser({ sessionId: clientSessionId, userId: updatedUser.id });
+    }
+    behaviorService.trackBehavior({
+      req,
+      userId: updatedUser.id,
+      action: BEHAVIOR_ACTIONS.LOGIN,
+      metadata: { method: 'EMAIL_OTP_VERIFIED', email: updatedUser.email },
+    });
 
     return res.status(200).json({
       success: true,

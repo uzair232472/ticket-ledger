@@ -1,38 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
-  Ticket, 
   Search, 
   MapPin, 
-  Calendar, 
   Clock, 
-  Tag, 
-  Filter, 
-  RefreshCw,
+  ChevronRight,
+  SlidersHorizontal,
+  RotateCcw,
   Sparkles,
-  ArrowRight,
-  Building2
+  Heart
 } from 'lucide-react';
 import api, { trackClientBehavior } from '../utils/api';
+import { getEventVisual } from '../utils/eventMedia';
 
-const EVENT_TYPE_LABELS = {
-  CRICKET_MATCH: '🏏 Cricket Match',
-  FOOTBALL_MATCH: '⚽ Football Match',
-  KABADDI: '🤼 Kabaddi Match',
-  BOXING: '🥊 Boxing Match',
-  MUSIC_CONCERT: '🎵 Music Concert',
-  MUSIC_FESTIVAL: '🎪 Music Festival',
-};
+const CATEGORY_OPTIONS = [
+  { id: '', label: 'All Categories' },
+  { id: 'CRICKET_MATCH', label: '🏏 PSL Cricket Match' },
+  { id: 'MUSIC_CONCERT', label: '🎵 Live Concerts' },
+  { id: 'MUSIC_FESTIVAL', label: '🎪 Music Festivals' },
+  { id: 'KABADDI', label: '🤼 Kabaddi Clash' },
+  { id: 'FOOTBALL_MATCH', label: '⚽ Football Match' },
+  { id: 'BOXING', label: '🥊 Boxing Match' },
+];
 
 export default function Events() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [favorites, setFavorites] = useState({});
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [type, setType] = useState('');
-  const [city, setCity] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
+  // Filters initialized from URL query parameters (if navigated from Dashboard or Navbar)
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [type, setType] = useState(searchParams.get('type') || '');
+  const [city, setCity] = useState(searchParams.get('city') || '');
+  const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
+
+  // Synchronize when URL searchParams change
+  useEffect(() => {
+    const qSearch = searchParams.get('search') || '';
+    const qType = searchParams.get('type') || '';
+    const qCity = searchParams.get('city') || '';
+    const qMaxPrice = searchParams.get('maxPrice') || '';
+    setSearch(qSearch);
+    setType(qType);
+    setCity(qCity);
+    setMaxPrice(qMaxPrice);
+  }, [searchParams]);
 
   const loadEvents = async () => {
     try {
@@ -60,10 +73,11 @@ export default function Events() {
 
   useEffect(() => {
     loadEvents();
-  }, [type, city, maxPrice]);
+  }, [type, city, maxPrice, search]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    setSearchParams({ search, type, city, maxPrice });
     loadEvents();
   };
 
@@ -72,203 +86,220 @@ export default function Events() {
     setType('');
     setCity('');
     setMaxPrice('');
+    setSearchParams({});
+  };
+
+  const toggleFavorite = (eventId, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFavorites(prev => ({ ...prev, [eventId]: !prev[eventId] }));
   };
 
   return (
-    <div className="space-y-8">
-      {/* Header Banner */}
-      <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950/40 p-6 sm:p-8 border border-slate-800 shadow-xl">
-        <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-3">
-            <Ticket className="w-3.5 h-3.5" /> Module 5: Event Discovery & Tiers
+    <div className="space-y-8 pb-16">
+      
+      {/* Top Banner */}
+      <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+        <div className="space-y-2 max-w-2xl">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-[#16a34a] text-xs font-bold">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Official Event Lineup</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            Discover Live Sports & Concerts in Pakistan
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
+            Discover Events & Book Tickets
           </h1>
-          <p className="text-xs sm:text-sm text-slate-300 mt-2 leading-relaxed">
-            Browse authentic Pakistan Super League cricket, circle kabaddi clashes, and mega live music festivals. Every ticket is cryptographically backed by Polygon ERC721 smart contracts.
+          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+            Browse upcoming sports matches, music concerts, festivals, and cultural events with verified smart contract seating and 100% entry guarantee.
           </p>
         </div>
+
+        <Link
+          to="/company"
+          className="btn-eventfrog text-xs whitespace-nowrap px-5 py-3 shadow"
+        >
+          <span>Host an Event</span>
+        </Link>
       </div>
 
       {/* Multi-Criteria Filter Bar */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4">
-        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-sm space-y-4">
+        <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs">
+          
+          {/* Keyword Search */}
+          <div className="md:col-span-4 relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by event title, venue, or artist..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+              placeholder="Search event, artist, or venue..."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#22c55e] transition"
             />
           </div>
-          <button
-            type="submit"
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition shadow-md shadow-emerald-600/20"
-          >
-            Search
-          </button>
-        </form>
 
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
-          {/* Event Type Filter */}
-          <div>
-            <label className="block text-[11px] text-slate-400 font-medium mb-1">Event Type</label>
+          {/* Category */}
+          <div className="md:col-span-3">
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e]"
             >
-              <option value="">All Types (Cricket, Concerts, etc.)</option>
-              <option value="CRICKET_MATCH">🏏 Cricket Match (PSL)</option>
-              <option value="MUSIC_CONCERT">🎵 Music Concert</option>
-              <option value="MUSIC_FESTIVAL">🎪 Music Festival</option>
-              <option value="KABADDI">🤼 Kabaddi Clash</option>
-              <option value="FOOTBALL_MATCH">⚽ Football Match</option>
-              <option value="BOXING">🥊 Boxing</option>
+              {CATEGORY_OPTIONS.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
             </select>
           </div>
 
-          {/* Pakistani City Filter */}
-          <div>
-            <label className="block text-[11px] text-slate-400 font-medium mb-1">City in Pakistan</label>
+          {/* City */}
+          <div className="md:col-span-3">
             <select
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e]"
             >
-              <option value="">All Cities</option>
+              <option value="">All Cities in Pakistan</option>
               <option value="Lahore">Lahore (Gaddafi Stadium / Alhamra)</option>
-              <option value="Karachi">Karachi (National Stadium / Arts Council)</option>
+              <option value="Karachi">Karachi (National Arena)</option>
               <option value="Islamabad">Islamabad / Rawalpindi</option>
               <option value="Faisalabad">Faisalabad</option>
               <option value="Multan">Multan</option>
-              <option value="Peshawar">Peshawar</option>
-              <option value="Quetta">Quetta</option>
             </select>
           </div>
 
-          {/* Price Class Filter */}
-          <div>
-            <label className="block text-[11px] text-slate-400 font-medium mb-1">Max Ticket Price (PKR)</label>
-            <select
-              value={maxPrice}
-              onChange={(e) => setMaxPrice(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
-            >
-              <option value="">Any Price</option>
-              <option value="2000">Under Rs. 2,000</option>
-              <option value="5000">Under Rs. 5,000</option>
-              <option value="10000">Under Rs. 10,000</option>
-            </select>
-          </div>
-
-          {/* Reset Filters */}
-          <div className="flex items-end">
+          {/* Filter & Reset Buttons */}
+          <div className="md:col-span-2 flex gap-2">
             <button
-              type="button"
-              onClick={handleResetFilters}
-              className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
+              type="submit"
+              className="flex-1 btn-eventfrog text-xs py-2"
             >
-              Reset Filters
+              Filter
             </button>
+            {(search || type || city || maxPrice) && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
+                title="Reset Filters"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
           </div>
-        </div>
+        </form>
       </div>
 
-      {/* Events Grid */}
+      {/* Event Cards Grid */}
       {loading ? (
-        <div className="p-16 text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-500 mx-auto"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <div key={n} className="h-80 rounded-2xl bg-white border border-slate-200 animate-pulse" />
+          ))}
         </div>
       ) : events.length === 0 ? (
-        <div className="p-16 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-2xl space-y-2">
-          <p>No events found matching your filter criteria.</p>
+        <div className="p-16 text-center bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
+          <SlidersHorizontal className="w-8 h-8 text-slate-400 mx-auto" />
+          <div className="text-base font-bold text-slate-900">No events found</div>
+          <p className="text-xs text-slate-500 max-w-sm mx-auto">
+            Try adjusting your search criteria or resetting filters to see upcoming fixtures.
+          </p>
           <button
             onClick={handleResetFilters}
-            className="text-emerald-400 hover:underline font-semibold"
+            className="btn-eventfrog text-xs mt-2"
           >
-            Clear all filters
+            Reset All Filters
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events.map((event) => (
-            <div
-              key={event.id}
-              className="rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition overflow-hidden flex flex-col justify-between shadow-lg group"
-            >
-              <div>
-                {/* Event Banner */}
-                <div className="relative h-48 overflow-hidden bg-slate-950">
-                  <img
-                    src={event.bannerUrl}
-                    alt={event.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent"></div>
+          {events.map((event, idx) => {
+            const visual = getEventVisual(event, idx);
+            const dateObj = new Date(event.date);
+            const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+            const dayNum = dateObj.getDate();
+            const isFav = favorites[event.id];
 
-                  <span className="absolute top-3 left-3 text-[11px] font-bold px-2.5 py-1 rounded-full bg-slate-950/80 text-emerald-400 border border-emerald-500/30 backdrop-blur">
-                    {EVENT_TYPE_LABELS[event.type] || event.type}
-                  </span>
+            return (
+              <div 
+                key={event.id}
+                className="ec-card overflow-hidden flex flex-col justify-between group"
+              >
+                <div>
+                  {/* Image with Category Badge & Heart */}
+                  <div className="relative h-48 overflow-hidden bg-slate-100">
+                    <img
+                      src={visual.image}
+                      alt={event.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
 
-                  <span className="absolute bottom-3 left-3 text-xs font-bold text-white flex items-center gap-1.5 drop-shadow">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                    {event.city}, Pakistan
-                  </span>
-                </div>
+                    <span className="absolute top-3 left-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-900/80 text-white backdrop-blur-md">
+                      {visual.badge}
+                    </span>
 
-                {/* Content */}
-                <div className="p-5 space-y-3">
-                  <h3 className="font-bold text-white text-base leading-snug group-hover:text-emerald-400 transition">
-                    {event.name}
-                  </h3>
+                    <button
+                      onClick={(e) => toggleFavorite(event.id, e)}
+                      className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 hover:bg-white text-rose-500 flex items-center justify-center transition shadow-sm"
+                      title="Save Event"
+                    >
+                      <Heart className={`w-4 h-4 ${isFav ? 'fill-rose-500 text-rose-500' : 'text-slate-600'}`} />
+                    </button>
+                  </div>
 
-                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">
-                    {event.description}
-                  </p>
-
-                  <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs text-slate-300">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                      <span>{new Date(event.date).toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                      <span>•</span>
-                      <Clock className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                      <span>{event.time}</span>
+                  {/* Card Body */}
+                  <div className="p-5 flex items-start gap-4">
+                    {/* Eventfrog-Style Date Stamp */}
+                    <div className="ec-date-badge flex-shrink-0">
+                      <span className="ec-date-month">{monthStr}</span>
+                      <span className="ec-date-day">{dayNum}</span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-slate-400 text-[11px]">
-                      <Building2 className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                      <span className="truncate">{event.venue}</span>
+                    {/* Details */}
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <h3 className="font-bold text-base text-[#212b36] group-hover:text-[#16a34a] transition line-clamp-1">
+                        {event.name}
+                      </h3>
+
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>{dateObj.toLocaleDateString('en-US', { weekday: 'short' })}, {event.time} PKT</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <span className="truncate">{event.venue}, {event.city}</span>
+                      </div>
+
+                      <p className="text-xs text-slate-500 line-clamp-2 pt-1 leading-relaxed">
+                        {event.description}
+                      </p>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Card Footer: Pricing & Action */}
-              <div className="p-5 pt-0">
-                <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">
+                {/* Footer with Price & Green Get Tickets CTA */}
+                <div className="p-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-2">
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase font-semibold">Starting from</span>
-                    <div className="text-base font-extrabold text-emerald-400">
-                      Rs. {Number(event.pricing?.minPrice).toLocaleString()}
-                    </div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">From</span>
+                    <span className="font-extrabold text-slate-900 text-sm">
+                      PKR {Number(event.pricing?.minPrice || 1500).toLocaleString()}
+                    </span>
                   </div>
 
                   <Link
                     to={`/events/${event.id}`}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition shadow-md shadow-emerald-600/20"
+                    className="btn-eventfrog text-xs py-2 px-4"
                   >
-                    View Details <ArrowRight className="w-3.5 h-3.5" />
+                    <span>Get Tickets</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
+
     </div>
   );
 }

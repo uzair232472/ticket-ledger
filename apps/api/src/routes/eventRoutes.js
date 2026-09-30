@@ -5,7 +5,10 @@ import {
   getEvents, 
   getEventById, 
   getOrganizerEvents, 
-  updateEventStatus 
+  updateEventStatus,
+  getPreLaunchDemandForecast,
+  updateEventPricing,
+  publishEventWithPricing
 } from '../controllers/eventController.js';
 import {
   joinEventWaitlist,
@@ -50,6 +53,28 @@ router.patch(
   '/:id/status',
   authenticateJWT,
   updateEventStatus
+);
+
+// Module 17: Pre-Launch Demand Forecast & Pricing Adjustments
+router.get(
+  '/:id/prelaunch-forecast',
+  authenticateJWT,
+  requireRole(['ORGANIZER', 'SUPER_ADMIN']),
+  getPreLaunchDemandForecast
+);
+
+router.put(
+  '/:id/pricing',
+  authenticateJWT,
+  requireRole(['ORGANIZER', 'SUPER_ADMIN']),
+  updateEventPricing
+);
+
+router.post(
+  '/:id/publish',
+  authenticateJWT,
+  requireRole(['ORGANIZER', 'SUPER_ADMIN']),
+  publishEventWithPricing
 );
 
 export default router;

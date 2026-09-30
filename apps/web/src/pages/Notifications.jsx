@@ -171,17 +171,17 @@ export default function Notifications() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-              <Bell className="w-6 h-6 text-emerald-400" />
+    <div className="space-y-6 max-w-5xl mx-auto text-slate-800">
+      {/* Top Banner */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-[#16a34a] flex items-center justify-center font-bold">
+              <Bell className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Notification Center</h1>
-              <p className="text-sm text-slate-400">
+              <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Notification Center</h1>
+              <p className="text-xs sm:text-sm text-slate-500">
                 Multi-channel notifications via In-App, Nodemailer Email, FCM Push, and Real-Time WebSockets
               </p>
             </div>
@@ -192,16 +192,16 @@ export default function Notifications() {
           {unreadCount > 0 && (
             <button
               onClick={handleMarkAllRead}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 border border-slate-200 transition"
             >
-              <CheckCheck className="w-4 h-4 text-emerald-400" />
+              <CheckCheck className="w-4 h-4 text-[#16a34a]" />
               <span>Mark All Read</span>
             </button>
           )}
 
           <button
             onClick={fetchNotifications}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition"
+            className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-200 transition"
             title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -211,59 +211,59 @@ export default function Notifications() {
 
       {/* Multi-Channel Protocol Architecture Badges */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-emerald-100 text-[#16a34a]">
             <Bell className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-400">Database Feed</div>
-            <div className="text-sm font-bold text-white">In-App Alerts</div>
-            <div className="text-[10px] text-emerald-400">Prisma Persistent Storage</div>
+            <div className="text-xs text-slate-400 font-medium">Database Feed</div>
+            <div className="text-sm font-bold text-slate-900">In-App Alerts</div>
+            <div className="text-[10px] text-emerald-700 font-semibold">Prisma Persistent Storage</div>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-blue-100 text-blue-600">
             <Mail className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-400">Email Gateway</div>
-            <div className="text-sm font-bold text-white">Nodemailer HTML</div>
-            <div className="text-[10px] text-blue-400">Styled Dark Theme Receipts</div>
+            <div className="text-xs text-slate-400 font-medium">Email Gateway</div>
+            <div className="text-sm font-bold text-slate-900">Nodemailer HTML</div>
+            <div className="text-[10px] text-blue-700 font-semibold">Clean Branded Receipts</div>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-amber-100 text-amber-600">
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-400">Push Notifications</div>
-            <div className="text-sm font-bold text-white">Firebase FCM</div>
-            <div className="text-[10px] text-amber-400">Mobile & Device Tokens</div>
+            <div className="text-xs text-slate-400 font-medium">Push Notifications</div>
+            <div className="text-sm font-bold text-slate-900">Firebase FCM</div>
+            <div className="text-[10px] text-amber-700 font-semibold">Mobile & Device Tokens</div>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-purple-100 text-purple-600">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-slate-400">Real-Time Channel</div>
-            <div className="text-sm font-bold text-white">Socket.io</div>
-            <div className="text-[10px] text-purple-400">Targeted User Rooms</div>
+            <div className="text-xs text-slate-400 font-medium">Real-Time Channel</div>
+            <div className="text-sm font-bold text-slate-900">Socket.io</div>
+            <div className="text-[10px] text-purple-700 font-semibold">Targeted User Rooms</div>
           </div>
         </div>
       </div>
 
       {/* Simulator Section (Module 12 Demonstration) */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-950 border border-emerald-500/30 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+      <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2">
           <div>
-            <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
-              <Send className="w-4 h-4" /> Multi-Channel Notification Simulator
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <Send className="w-4 h-4 text-[#16a34a]" /> Multi-Channel Notification Simulator
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               Simulate any of the 9 required FYP notification events across In-app, Nodemailer, FCM, and Socket.io
             </p>
           </div>
@@ -272,17 +272,17 @@ export default function Notifications() {
               href={`http://localhost:5000/api/notifications/preview-email?type=${selectedType}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition shadow-sm"
               title="Open full rendered Nodemailer HTML email in browser"
             >
-              <Mail className="w-3.5 h-3.5 text-blue-400" />
+              <Mail className="w-3.5 h-3.5 text-blue-600" />
               <span>Preview HTML Email</span>
             </a>
 
             <button
               onClick={handleSimulateNotification}
               disabled={simulating}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+              className="btn-eventfrog text-xs px-4 py-2 shadow-sm disabled:opacity-50"
             >
               {simulating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               <span>Dispatch Test Notification</span>
@@ -295,10 +295,10 @@ export default function Notifications() {
             <button
               key={t.value}
               onClick={() => setSelectedType(t.value)}
-              className={`p-2.5 rounded-xl border text-left text-xs transition ${
+              className={`p-3 rounded-2xl border text-left text-xs transition ${
                 selectedType === t.value
-                  ? 'bg-emerald-950/60 border-emerald-500 text-white font-semibold shadow-sm'
-                  : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                  ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold shadow-sm'
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <t.icon className={`w-3.5 h-3.5 mb-1.5 ${t.color}`} />
@@ -309,7 +309,7 @@ export default function Notifications() {
 
         {simFeedback && (
           <div className={`mt-3 p-3 rounded-xl text-xs font-semibold ${
-            simFeedback.success ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800' : 'bg-rose-950/60 text-rose-300 border border-rose-800'
+            simFeedback.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
           }`}>
             {simFeedback.message}
           </div>
@@ -317,7 +317,7 @@ export default function Notifications() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         {[
           { id: 'ALL', label: `All (${total})` },
           { id: 'UNREAD', label: `Unread (${unreadCount})` },
@@ -328,10 +328,10 @@ export default function Notifications() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
               activeTab === tab.id
-                ? 'bg-emerald-600 text-slate-950 shadow-md shadow-emerald-600/20'
-                : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                ? 'btn-eventfrog text-xs'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
             }`}
           >
             {tab.label}
@@ -343,14 +343,14 @@ export default function Notifications() {
       <div className="space-y-3">
         {loading ? (
           <div className="py-16 text-center text-slate-500">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-slate-600" />
+            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-[#22c55e]" />
             <p className="text-sm">Loading notification feed...</p>
           </div>
         ) : filteredNotifications.length === 0 ? (
-          <div className="py-16 text-center bg-slate-900/50 rounded-2xl border border-slate-800/80">
-            <Bell className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-white">No notifications in this view</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+          <div className="py-16 text-center bg-white rounded-3xl border border-slate-200 shadow-sm">
+            <Bell className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-slate-900">No notifications in this view</h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
               You are all caught up! Use the test dispatcher above to simulate notifications.
             </p>
           </div>
@@ -360,31 +360,31 @@ export default function Notifications() {
               key={item.id}
               className={`p-4 rounded-2xl border transition flex items-start gap-4 ${
                 !item.isRead
-                  ? 'bg-slate-900/90 border-emerald-500/30 shadow-lg shadow-emerald-950/20'
-                  : 'bg-slate-900/40 border-slate-800/80 opacity-80'
+                  ? 'bg-white border-2 border-emerald-500/50 shadow-sm'
+                  : 'bg-white border border-slate-200 shadow-sm opacity-90'
               }`}
             >
-              <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700/60 shrink-0 mt-0.5">
+              <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 shrink-0 mt-0.5">
                 {getIcon(item.type)}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-white">{item.title}</span>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                    <span className="text-sm font-bold text-slate-900">{item.title}</span>
+                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-semibold">
                       {item.type.replace(/_/g, ' ')}
                     </span>
                     {!item.isRead && (
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                     )}
                   </div>
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className="text-xs text-slate-400 font-mono">
                     {new Date(item.createdAt).toLocaleString()}
                   </span>
                 </div>
 
-                <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
+                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
                   {item.message}
                 </p>
               </div>
@@ -394,7 +394,7 @@ export default function Notifications() {
                   <button
                     onClick={() => handleMarkAsRead(item.id)}
                     title="Mark read"
-                    className="p-2 rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition"
+                    className="p-2 rounded-xl text-slate-400 hover:text-[#16a34a] hover:bg-slate-50 transition"
                   >
                     <Check className="w-4 h-4" />
                   </button>
@@ -402,7 +402,7 @@ export default function Notifications() {
                 <button
                   onClick={() => handleDelete(item.id)}
                   title="Delete"
-                  className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-slate-50 transition"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

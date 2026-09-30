@@ -321,15 +321,18 @@ export default function SeatMap() {
 
   if (error || !eventData) {
     return (
-      <div className="max-w-xl mx-auto p-6 rounded-2xl bg-rose-950/20 border border-rose-800/40 text-center">
-        <AlertTriangle className="w-10 h-10 text-rose-500 mx-auto mb-3" />
-        <h2 className="text-lg font-bold text-white mb-2">Seating Plan Unavailable</h2>
-        <p className="text-xs text-rose-300 mb-6">{error || 'Event not found.'}</p>
+      <div className="max-w-xl mx-auto p-8 rounded-3xl bg-white border border-slate-200 shadow-sm text-center space-y-4">
+        <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto text-rose-500">
+          <AlertTriangle className="w-7 h-7" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Seating Plan Unavailable</h2>
+        <p className="text-xs text-slate-500">{error || 'Event not found.'}</p>
         <Link
           to="/events"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition"
+          className="btn-eventfrog text-xs px-5 py-2.5 shadow-sm inline-flex items-center gap-2"
         >
-          <ArrowLeft className="w-4 h-4" /> Return to Events
+          <ArrowLeft className="w-4 h-4" />
+          <span>Return to Events</span>
         </Link>
       </div>
     );
@@ -338,47 +341,47 @@ export default function SeatMap() {
   const currentSectionData = sections[activeSection] || null;
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 py-4 pb-16 text-slate-800">
       {/* Top Header / Breadcrumb */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <Link
             to={`/events/${eventId}`}
-            className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition mb-2 font-medium"
+            className="inline-flex items-center gap-1.5 text-xs text-[#16a34a] hover:text-[#15803d] transition mb-2 font-bold"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back to Event Details
           </Link>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-black text-white tracking-tight">{eventData.name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">{eventData.name}</h1>
             {socketConnected && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Live Sync
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live Sync
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 mt-1">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-1">
             <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-slate-500" /> {eventData.venue}, {eventData.city}
+              <MapPin className="w-3.5 h-3.5 text-emerald-600" /> {eventData.venue}, {eventData.city}
             </span>
             <span className="flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" /> {new Date(eventData.date).toLocaleDateString()}
+              <Calendar className="w-3.5 h-3.5 text-slate-400" /> {new Date(eventData.date).toLocaleDateString()}
             </span>
           </div>
         </div>
 
         {/* 10-Minute Lock Timer Banner */}
         {myLockedSeats.length > 0 && (
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200">
-            <Clock className="w-6 h-6 text-amber-400 animate-pulse" />
+          <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950">
+            <Clock className="w-6 h-6 text-amber-600 animate-pulse" />
             <div>
-              <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">
+              <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">
                 Holding Reservation
               </div>
-              <div className="text-xl font-black font-mono text-white">
+              <div className="text-xl font-black font-mono text-amber-950">
                 {formatTimer(timeLeft)}
               </div>
             </div>
-            <div className="text-[10px] text-amber-300/80 max-w-[130px] leading-tight">
+            <div className="text-[10px] text-amber-800 max-w-[130px] leading-tight">
               Atomic Redis Lock expires in 10 minutes.
             </div>
           </div>
@@ -390,13 +393,13 @@ export default function SeatMap() {
         {/* Left Column (8 cols): Stadium Map */}
         <div className="lg:col-span-8 space-y-6">
           {/* Pitch / Stage Visual Orientation Banner */}
-          <div className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-950 via-teal-900 to-emerald-950 border border-emerald-700/50 flex flex-col items-center justify-center text-center shadow-lg shadow-emerald-950/50">
-            <div className="text-xs font-black tracking-widest text-emerald-300 uppercase flex items-center gap-2">
+          <div className="w-full py-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex flex-col items-center justify-center text-center shadow-sm">
+            <div className="text-xs font-black tracking-widest text-emerald-900 uppercase flex items-center gap-2">
               <span>🏏</span>
               <span>GROUND PITCH / STAGE DIRECTION</span>
               <span>🎸</span>
             </div>
-            <div className="text-[10px] text-emerald-400/80 font-mono mt-0.5">
+            <div className="text-[10px] text-emerald-700 font-mono mt-0.5">
               All seats face towards this boundary line
             </div>
           </div>
@@ -412,8 +415,8 @@ export default function SeatMap() {
                   onClick={() => setActiveSection(secName)}
                   className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
                     isSelected
-                      ? 'bg-emerald-600 text-slate-950 border-emerald-500 shadow-md shadow-emerald-600/30'
-                      : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border-slate-800'
+                      ? 'bg-[#22c55e] text-white border-[#16a34a] shadow-sm'
+                      : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-200'
                   }`}
                 >
                   <div className="flex items-center gap-1.5">
@@ -428,19 +431,19 @@ export default function SeatMap() {
           </div>
 
           {/* Seating Grid Canvas */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl overflow-x-auto">
+          <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm overflow-x-auto">
             {currentSectionData ? (
               <div className="min-w-[550px] space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div>
-                    <h3 className="text-sm font-bold text-white">
+                    <h3 className="text-sm font-bold text-slate-900">
                       Section: {currentSectionData.sectionName}
                     </h3>
-                    <p className="text-[11px] text-emerald-400">
+                    <p className="text-[11px] text-emerald-700 font-medium">
                       Tier: {currentSectionData.tierName} • Rs. {Number(currentSectionData.tierPrice).toLocaleString()} per seat
                     </p>
                   </div>
-                  <div className="text-xs text-slate-400">
+                  <div className="text-xs text-slate-500">
                     Click seat to reserve (10m lock)
                   </div>
                 </div>
@@ -466,20 +469,20 @@ export default function SeatMap() {
                             const isAvailable = seat.status === 'AVAILABLE';
 
                             // Determine seat styling
-                            let seatClass = 'bg-emerald-950/80 text-emerald-400 border-emerald-600/70 hover:bg-emerald-500 hover:text-slate-950 hover:scale-110 cursor-pointer';
+                            let seatClass = 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-[#22c55e] hover:text-white hover:border-[#16a34a] hover:scale-110 cursor-pointer';
                             let tooltip = `Row ${seat.row} - Seat ${seat.seatNumber} (Available)`;
 
                             if (isMine) {
-                              seatClass = 'bg-cyan-500 text-slate-950 border-cyan-300 ring-2 ring-cyan-400 animate-pulse font-black cursor-pointer shadow-lg shadow-cyan-500/40';
+                              seatClass = 'bg-[#16a34a] text-white border-[#15803d] ring-2 ring-emerald-400 font-black cursor-pointer shadow-md shadow-emerald-500/30 scale-105';
                               tooltip = `Row ${seat.row} - Seat ${seat.seatNumber} (Locked by You)`;
                             } else if (isSold) {
-                              seatClass = 'bg-rose-950/40 text-rose-500 border-rose-900/60 opacity-60 cursor-not-allowed';
+                              seatClass = 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-50';
                               tooltip = `Row ${seat.row} - Seat ${seat.seatNumber} (Sold NFT)`;
                             } else if (isLockedOther) {
-                              seatClass = 'bg-amber-950/60 text-amber-400 border-amber-600/60 cursor-not-allowed animate-pulse';
+                              seatClass = 'bg-amber-50 text-amber-800 border-amber-300 cursor-not-allowed animate-pulse';
                               tooltip = `Row ${seat.row} - Seat ${seat.seatNumber} (Locked by someone else)`;
                             } else if (isBlocked) {
-                              seatClass = 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed';
+                              seatClass = 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed';
                               tooltip = `Row ${seat.row} - Seat ${seat.seatNumber} (Blocked)`;
                             }
 
@@ -489,7 +492,7 @@ export default function SeatMap() {
                                 disabled={actionLoading || isSold || isLockedOther || isBlocked}
                                 onClick={() => handleSeatClick(seat)}
                                 title={tooltip}
-                                className={`w-9 h-9 rounded-lg border text-xs font-bold flex flex-col items-center justify-center transition-all duration-150 select-none ${seatClass}`}
+                                className={`w-9 h-9 rounded-xl border text-xs font-bold flex flex-col items-center justify-center transition-all duration-150 select-none ${seatClass}`}
                               >
                                 <span>{seat.seatNumber}</span>
                               </button>
@@ -501,30 +504,30 @@ export default function SeatMap() {
                 </div>
               </div>
             ) : (
-              <p className="text-slate-400 text-xs text-center py-8">Select a section above to view seats.</p>
+              <p className="text-slate-500 text-xs text-center py-8">Select a section above to view seats.</p>
             )}
           </div>
 
           {/* Color Legend */}
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-wrap items-center justify-between gap-4 text-xs">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-emerald-950 border border-emerald-600"></div>
-              <span className="text-slate-300">Available</span>
+              <div className="w-4 h-4 rounded-lg bg-emerald-50 border border-emerald-400"></div>
+              <span className="text-slate-700">Available</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-cyan-500 border border-cyan-300 ring-2 ring-cyan-400"></div>
-              <span className="text-slate-200 font-semibold">Selected by You</span>
+              <div className="w-4 h-4 rounded-lg bg-[#16a34a] border border-[#15803d]"></div>
+              <span className="text-slate-900 font-semibold">Selected by You</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-amber-950 border border-amber-500"></div>
-              <span className="text-slate-300">Locked (10m TTL)</span>
+              <div className="w-4 h-4 rounded-lg bg-amber-50 border border-amber-400"></div>
+              <span className="text-slate-700">Locked (10m TTL)</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-rose-950 border border-rose-800 opacity-60"></div>
-              <span className="text-slate-400">Sold (NFT Minted)</span>
+              <div className="w-4 h-4 rounded-lg bg-slate-100 border border-slate-300"></div>
+              <span className="text-slate-500">Sold (NFT Minted)</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-slate-800 border border-slate-700"></div>
+              <div className="w-4 h-4 rounded-lg bg-slate-200 border border-slate-300"></div>
               <span className="text-slate-400">Blocked</span>
             </div>
           </div>
@@ -533,14 +536,14 @@ export default function SeatMap() {
         {/* Right Column (4 cols): Summary & Selected Seats Drawer */}
         <div className="lg:col-span-4 space-y-6">
           {/* Reservation Summary Card */}
-          <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-emerald-400" />
+          <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-[#16a34a]" />
                 Selected Seats ({myLockedSeats.length})
               </h2>
               {myLockedSeats.length > 0 && (
-                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/80 px-2 py-0.5 rounded">
+                <span className="text-[10px] font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold">
                   Lock Active
                 </span>
               )}
@@ -549,8 +552,8 @@ export default function SeatMap() {
             {/* List of User's Locked Seats */}
             {myLockedSeats.length === 0 ? (
               <div className="text-center py-6 space-y-2">
-                <Ticket className="w-8 h-8 text-slate-600 mx-auto" />
-                <p className="text-xs text-slate-400">No seats selected yet.</p>
+                <Ticket className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs text-slate-600 font-semibold">No seats selected yet.</p>
                 <p className="text-[11px] text-slate-500">
                   Click on any green seat from the map to lock it for 10 minutes.
                 </p>
@@ -560,24 +563,24 @@ export default function SeatMap() {
                 {myLockedSeats.map((seat) => (
                   <div
                     key={seat.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
+                    className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
                   >
                     <div>
-                      <div className="font-bold text-white">
+                      <div className="font-bold text-slate-900">
                         {seat.section} • Row {seat.row}, Seat {seat.seatNumber}
                       </div>
-                      <div className="text-[10px] text-emerald-400">
+                      <div className="text-[10px] text-emerald-700 font-medium">
                         {seat.tier?.name || 'Standard'}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="font-mono font-bold text-white">
+                      <div className="font-mono font-bold text-slate-900">
                         Rs. {Number(seat.tier?.price || 0).toLocaleString()}
                       </div>
                       <button
                         onClick={() => handleSeatClick(seat)}
                         title="Remove seat"
-                        className="text-slate-500 hover:text-rose-400 transition"
+                        className="text-slate-400 hover:text-rose-500 transition font-bold"
                       >
                         ✕
                       </button>
@@ -589,18 +592,18 @@ export default function SeatMap() {
 
             {/* Price Calculations */}
             {myLockedSeats.length > 0 && (
-              <div className="pt-3 border-t border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-400">
+              <div className="pt-3 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-600">
                   <span>Subtotal ({myLockedSeats.length} seats)</span>
-                  <span className="font-mono text-white">Rs. {totalPrice.toLocaleString()}</span>
+                  <span className="font-mono font-bold text-slate-900">Rs. {totalPrice.toLocaleString()}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-400">
+                <div className="flex items-center justify-between text-xs text-slate-600">
                   <span>Gas & Blockchain Verification</span>
-                  <span className="font-mono text-emerald-400">Free (Sponsored)</span>
+                  <span className="font-mono text-emerald-700 font-semibold">Free (Sponsored)</span>
                 </div>
-                <div className="flex items-center justify-between text-sm font-bold text-white pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between text-sm font-bold text-slate-900 pt-2 border-t border-slate-100">
                   <span>Total Amount</span>
-                  <span className="font-mono text-emerald-400 text-lg">
+                  <span className="font-mono text-slate-900 text-lg font-black">
                     Rs. {totalPrice.toLocaleString()}
                   </span>
                 </div>
@@ -617,7 +620,7 @@ export default function SeatMap() {
                       },
                     });
                   }}
-                  className="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2"
+                  className="w-full mt-4 btn-eventfrog text-xs py-3 shadow-sm"
                 >
                   <span>Proceed to Checkout</span>
                   <ChevronRight className="w-4 h-4 font-bold" />
@@ -626,12 +629,12 @@ export default function SeatMap() {
             )}
 
             {/* Redis & Anti-Scalping Note */}
-            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1 text-[11px] text-slate-400">
-              <div className="font-semibold text-slate-300 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-1 text-[11px] text-emerald-950">
+              <div className="font-semibold text-emerald-900 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#16a34a]" />
                 Anti-Scalping Architecture
               </div>
-              <p className="text-[10px] leading-relaxed">
+              <p className="text-[10px] leading-relaxed text-emerald-800">
                 Seats are secured with atomic Redis locks with 10-minute TTL. Bot collisions are blocked at microsecond precision to guarantee fair ticket distribution.
               </p>
             </div>
@@ -639,26 +642,26 @@ export default function SeatMap() {
 
           {/* Stadium Capacity Stats */}
           {summary && (
-            <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-              <h3 className="text-xs font-bold text-white flex items-center gap-1.5">
+            <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+              <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-slate-400" /> Venue Capacity Breakdown
               </h3>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                   <div className="text-[10px] text-slate-500">Available</div>
-                  <div className="text-sm font-bold text-emerald-400">{summary.available}</div>
+                  <div className="text-sm font-bold text-emerald-700">{summary.available}</div>
                 </div>
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                   <div className="text-[10px] text-slate-500">Locked (TTL)</div>
-                  <div className="text-sm font-bold text-amber-400">{summary.locked}</div>
+                  <div className="text-sm font-bold text-amber-700">{summary.locked}</div>
                 </div>
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                   <div className="text-[10px] text-slate-500">Sold (NFTs)</div>
-                  <div className="text-sm font-bold text-rose-400">{summary.sold}</div>
+                  <div className="text-sm font-bold text-rose-700">{summary.sold}</div>
                 </div>
-                <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                   <div className="text-[10px] text-slate-500">Total Capacity</div>
-                  <div className="text-sm font-bold text-white">{summary.total}</div>
+                  <div className="text-sm font-bold text-slate-900">{summary.total}</div>
                 </div>
               </div>
             </div>

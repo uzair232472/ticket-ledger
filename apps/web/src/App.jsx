@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -24,361 +24,430 @@ import DemandForecast from './pages/DemandForecast';
 import Notifications from './pages/Notifications';
 import NotificationBell from './components/NotificationBell';
 import BehaviorProfile from './pages/BehaviorProfile';
+import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
+import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import OrganizerDashboard from './pages/OrganizerDashboard';
 import { 
-  Ticket, 
   User, 
   LogOut, 
   ShieldCheck, 
-  Building2,
-  Calendar,
-  PlusCircle,
-  Layers,
-  Sparkles,
-  ShoppingBag,
+  PlusCircle, 
+  ShoppingBag, 
+  QrCode, 
+  TrendingUp, 
+  ChevronDown,
+  Scan,
+  Search,
   Tag,
-  QrCode,
-  Bot,
-  TrendingUp,
-  Activity
+  Sparkles,
+  CalendarPlus,
+  Ticket,
+  Settings
 } from 'lucide-react';
+import logoImg from './assets/ticketledger-logo.png';
 
 function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [organizerMenu, setOrganizerMenu] = useState(false);
+  const [adminMenu, setAdminMenu] = useState(false);
+  const [userMenu, setUserMenu] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleLogout = () => {
+    setUserMenu(false);
     logout();
     navigate('/login');
   };
 
+  const handleHeaderSearch = (e) => {
+    e.preventDefault();
+    if (searchTerm.trim()) {
+      navigate(`/events?search=${encodeURIComponent(searchTerm.trim())}`);
+    } else {
+      navigate('/events');
+    }
+  };
+
+  const isActive = (path) => location.pathname === path;
+
   return (
-    <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand */}
-        <div className="flex items-center space-x-6">
-          <Link to="/" className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Ticket className="w-6 h-6 text-slate-950 font-bold" />
-            </div>
-            <div>
-              <span className="font-bold text-xl tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">
-                TicketLedger
-              </span>
-              <span className="ml-2 text-[10px] uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60 font-semibold">
-                Phase 2 FYP
-              </span>
-            </div>
+    <header className="sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
+        
+        {/* Left: Brand Logo & Integrated Header Search (matching Eventfrog in Image 3) */}
+        <div className="flex items-center gap-5 sm:gap-7">
+          <Link to="/" className="flex items-center flex-shrink-0">
+            <img 
+              src={logoImg} 
+              alt="TicketLedger" 
+              className="h-8 sm:h-9 w-auto object-contain" 
+            />
           </Link>
 
-          {/* Primary Nav */}
-          <nav className="hidden md:flex items-center space-x-1">
-            <Link
-              to="/events"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition"
-            >
-              <Calendar className="w-3.5 h-3.5 text-emerald-400" /> Browse Events
-            </Link>
-
-            <Link
-              to="/resale"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 hover:text-white hover:bg-emerald-950/40 transition border border-emerald-800/40"
-            >
-              <Tag className="w-3.5 h-3.5 text-emerald-400" /> Resale Market
-              <span className="text-[9px] bg-emerald-900/80 text-emerald-300 px-1 py-0.5 rounded font-bold">110% CAP</span>
-            </Link>
-
-            {isAuthenticated && (
-              <>
-                <Link
-                  to="/my-bookings"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition"
-                >
-                  <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" /> My Bookings
-                </Link>
-                <Link
-                  to="/my-nfts"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white hover:bg-purple-950/40 transition border border-purple-800/40"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-400" /> NFT Tickets
-                </Link>
-                <Link
-                  to="/wallet"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 hover:text-white hover:bg-emerald-950/50 transition border border-emerald-800/60 shadow-sm"
-                >
-                  <QrCode className="w-3.5 h-3.5 text-emerald-400" /> Digital QR Wallet
-                </Link>
-              </>
-            )}
-
-            {isAuthenticated && (user.role === 'ORGANIZER' || user.role === 'SUPER_ADMIN') && (
-              <Link
-                to="/organizer/create-event"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-400 hover:bg-emerald-950/40 transition"
-              >
-                <PlusCircle className="w-3.5 h-3.5" /> Host Event
-              </Link>
-            )}
-
-            <Link
-              to="/demand-forecast"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-purple-300 hover:text-white hover:bg-purple-950/40 transition border border-purple-800/40"
-            >
-              <TrendingUp className="w-3.5 h-3.5 text-purple-400" /> AI Demand Forecast
-            </Link>
-
-            {isAuthenticated && (user.role === 'GATE_STAFF' || user.role === 'SUPER_ADMIN' || user.role === 'ORGANIZER') && (
-              <Link
-                to="/scanner"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-300 hover:text-white hover:bg-amber-950/40 transition border border-amber-800/50 shadow-sm"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" /> Turnstile Scanner
-              </Link>
-            )}
-          </nav>
+          {/* Eventfrog Signature Pill Search Bar */}
+          <form onSubmit={handleHeaderSearch} className="hidden md:flex items-center relative w-56 lg:w-72">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Event, Artist, Location..."
+              className="w-full bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-300/80 focus:border-[#45b549] rounded-full pl-4 pr-9 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none transition shadow-sm"
+            />
+            <button type="submit" className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+              <Search className="w-3.5 h-3.5" />
+            </button>
+          </form>
         </div>
 
-        {/* User / Auth navigation */}
-        <div className="flex items-center space-x-3">
-          {isAuthenticated ? (
-            <div className="flex items-center space-x-3">
-              {/* Role-specific Links */}
-              {(user.role === 'ORGANIZER' || user.role === 'SUPER_ADMIN') && (
+        {/* Center: Main Navigation */}
+        <nav className="hidden lg:flex items-center space-x-1 text-xs font-semibold text-slate-700">
+          <Link
+            to="/events"
+            className={`px-3 py-2 rounded-lg transition ${
+              isActive('/events')
+                ? 'text-[#16a34a] font-bold'
+                : 'hover:text-[#16a34a]'
+            }`}
+          >
+            Find events
+          </Link>
+
+          {/* Organise Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => { setOrganizerMenu(!organizerMenu); setAdminMenu(false); setUserMenu(false); }}
+              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg hover:text-[#16a34a] transition"
+            >
+              <span>Organise</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+
+            {organizerMenu && (
+              <div 
+                className="absolute left-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-50 animate-in fade-in duration-150"
+                onClick={() => setOrganizerMenu(false)}
+              >
                 <Link
-                  to="/company"
-                  className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-950/40 hover:bg-teal-900/60 text-teal-300 border border-teal-800/60 transition"
+                  to="/organizer/dashboard"
+                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 text-slate-800 text-xs font-semibold"
                 >
-                  <Building2 className="w-3.5 h-3.5" /> Company Verification
+                  <TrendingUp className="w-4 h-4 text-emerald-600" />
+                  <span>Organizer Dashboard</span>
                 </Link>
-              )}
+                <Link
+                  to="/organizer/create-event"
+                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 text-slate-800 text-xs font-semibold"
+                >
+                  <PlusCircle className="w-4 h-4 text-emerald-600" />
+                  <span>Publish New Event</span>
+                </Link>
+                <Link
+                  to="/scanner"
+                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 text-slate-800 text-xs font-semibold"
+                >
+                  <Scan className="w-4 h-4 text-emerald-600" />
+                  <span>Gate Scanner App</span>
+                </Link>
+              </div>
+            )}
+          </div>
 
-              {user.role === 'SUPER_ADMIN' && (
-                <>
-                  <Link
-                    to="/admin/fraud-detection"
-                    className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/80 transition"
-                  >
-                    <Bot className="w-3.5 h-3.5 text-rose-400" /> AI Bot Watchlist
-                  </Link>
-                  <Link
-                    to="/admin/companies"
-                    className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 transition"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5" /> Admin Approvals
-                  </Link>
-                </>
-              )}
-
-              <NotificationBell />
-
+          {/* Customer Contextual Navigation */}
+          {isAuthenticated && user?.role === 'CUSTOMER' && (
+            <>
               <Link
-                to="/profile/behavior"
-                className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 transition"
-                title="View user behavioral telemetry and ML intent/fraud scores"
+                to="/resale"
+                className={`px-3 py-2 rounded-lg transition ${
+                  isActive('/resale') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                }`}
               >
-                <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Behavior Telemetry</span>
+                Fan Resale
               </Link>
-
               <Link
-                to="/profile"
-                className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-800 text-slate-200 border border-slate-700/80 transition"
+                to="/wallet"
+                className={`px-3 py-2 rounded-lg transition ${
+                  isActive('/wallet') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                }`}
               >
-                <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold">
-                  {user.name?.charAt(0) || 'U'}
-                </div>
-                <div className="text-left hidden sm:block">
-                  <div className="text-xs font-bold text-white leading-none">
-                    {user.name}
-                  </div>
-                  <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
-                    {user.role} {user.walletAddress ? '• 0x...' + user.walletAddress.substring(38) : ''}
-                  </div>
-                </div>
+                My Passes
               </Link>
+              <Link
+                to="/my-nfts"
+                className={`px-3 py-2 rounded-lg transition ${
+                  isActive('/my-nfts') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                }`}
+              >
+                NFT Tickets
+              </Link>
+              <Link
+                to="/my-bookings"
+                className={`px-3 py-2 rounded-lg transition ${
+                  isActive('/my-bookings') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                }`}
+              >
+                Orders
+              </Link>
+            </>
+          )}
 
+          {/* Gate Staff Contextual Navigation */}
+          {isAuthenticated && user?.role === 'GATE_STAFF' && (
+            <Link
+              to="/scanner"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold"
+            >
+              <Scan className="w-3.5 h-3.5" />
+              <span>Turnstile Scanner</span>
+            </Link>
+          )}
+        </nav>
+
+        {/* Right: "Create event" CTA Button & User Account */}
+        <div className="flex items-center gap-3">
+          
+          {/* Admin Governance Shortcut */}
+          {isAuthenticated && user?.role === 'SUPER_ADMIN' && (
+            <div className="relative">
               <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition border border-slate-700"
+                type="button"
+                onClick={() => { setAdminMenu(!adminMenu); setOrganizerMenu(false); setUserMenu(false); }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-[#008459] hover:bg-[#00704c] text-white transition shadow-sm"
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Logout</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-white" />
+                <span>Admin</span>
+                <ChevronDown className="w-3 h-3" />
               </button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <Link
-                to="/login"
-                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/signup"
-                className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-slate-950 transition shadow-md shadow-emerald-600/20"
-              >
-                Create Account
-              </Link>
+
+              {adminMenu && (
+                <div 
+                  className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-50"
+                  onClick={() => setAdminMenu(false)}
+                >
+                  <Link to="/admin/dashboard" className="block px-3 py-2 rounded-lg text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                    Governance Dashboard
+                  </Link>
+                  <Link to="/admin/companies" className="block px-3 py-2 rounded-lg text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                    Organizer Verification
+                  </Link>
+                  <Link to="/admin/fraud-watchlist" className="block px-3 py-2 rounded-lg text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                    Anti-Scalp Watchlist
+                  </Link>
+                  <Link to="/admin/demand-forecast" className="block px-3 py-2 rounded-lg text-xs font-semibold text-slate-800 hover:bg-slate-50">
+                    Demand Forecast
+                  </Link>
+                </div>
+              )}
             </div>
           )}
+
+          {/* Create Event Button (Eventfrog style) */}
+          <Link
+            to={isAuthenticated && (user?.role === 'ORGANIZER' || user?.role === 'SUPER_ADMIN') ? "/organizer/create-event" : "/company"}
+            className="hidden sm:inline-flex items-center justify-center px-4 py-2 rounded-lg border border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-900 font-bold text-xs shadow-sm transition"
+          >
+            Create event
+          </Link>
+
+          {/* Notification Bell */}
+          {isAuthenticated && <NotificationBell />}
+
+          {/* User Account / Profile */}
+          {isAuthenticated ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => { setUserMenu(!userMenu); setOrganizerMenu(false); setAdminMenu(false); }}
+                className="flex items-center gap-2.5 p-1 rounded-full hover:bg-slate-50 transition"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#60b5c7] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                  {user?.name ? user.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'U'}
+                </div>
+                <div className="text-left hidden md:block">
+                  <div className="text-xs font-bold text-slate-900 leading-tight">{user?.name}</div>
+                  <div className="text-[10px] text-slate-500 leading-tight truncate max-w-[130px]">{user?.email}</div>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {userMenu && (
+                <div 
+                  className="absolute right-0 mt-2 w-52 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in duration-150"
+                  onClick={() => setUserMenu(false)}
+                >
+                  <Link
+                    to={isAuthenticated && (user?.role === 'ORGANIZER' || user?.role === 'SUPER_ADMIN') ? "/organizer/create-event" : "/company"}
+                    className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition"
+                  >
+                    <CalendarPlus className="w-4 h-4 text-slate-700" />
+                    <span>Create event</span>
+                  </Link>
+
+                  <Link
+                    to="/wallet"
+                    className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition"
+                  >
+                    <Ticket className="w-4 h-4 text-slate-700" />
+                    <span>My tickets</span>
+                  </Link>
+
+                  <Link
+                    to="/profile"
+                    className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition"
+                  >
+                    <Settings className="w-4 h-4 text-slate-700" />
+                    <span>Settings</span>
+                  </Link>
+
+                  <div className="border-t border-slate-100 my-1.5" />
+
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition text-left"
+                  >
+                    <LogOut className="w-4 h-4 text-slate-700" />
+                    <span>Log out</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 px-2 py-1.5 transition"
+            >
+              <User className="w-4 h-4 text-slate-600" />
+              <span>Log in</span>
+            </Link>
+          )}
+
         </div>
+
       </div>
     </header>
   );
 }
 
-function Layout({ children }) {
+function Footer() {
+  const { user, isAuthenticated } = useAuth();
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between">
-      <div>
-        <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {children}
-        </main>
-      </div>
-
-      <footer className="border-t border-slate-800 bg-slate-900/60 py-4 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <div>
-            TicketLedger 🇵🇰 — Blockchain Event Ticketing for Pakistani Sports & Concerts
+    <footer className="bg-white border-t border-slate-200 mt-20 pt-14 pb-10 text-xs text-slate-600">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
+          <div className="space-y-3">
+            <img src={logoImg} alt="TicketLedger" className="h-8 w-auto object-contain" />
+            <p className="text-slate-500 leading-relaxed text-xs">
+              Official verified ticketing platform for live sports, concerts, and stadium festivals. Powered by smart contracts with guaranteed fair pricing.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-purple-400 font-medium">Module 8 Complete: Polygon Amoy Smart Contract & ERC721 NFT Minting Active</span>
+
+          <div className="space-y-3">
+            <h4 className="font-bold text-slate-900 text-sm tracking-tight">For Ticket Buyers</h4>
+            <ul className="space-y-2 text-slate-600">
+              <li><Link to="/events" className="hover:text-[#16a34a] transition">Discover Live Events</Link></li>
+              <li><Link to="/wallet" className="hover:text-[#16a34a] transition">My Digital Passes</Link></li>
+              <li><Link to="/my-bookings" className="hover:text-[#16a34a] transition">Order History & Receipts</Link></li>
+              {isAuthenticated && user?.role === 'CUSTOMER' && (
+                <li><Link to="/resale" className="hover:text-[#16a34a] transition">Fan Resale Marketplace (110% Cap)</Link></li>
+              )}
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-bold text-slate-900 text-sm tracking-tight">For Event Organizers</h4>
+            <ul className="space-y-2 text-slate-600">
+              <li><Link to="/company" className="hover:text-[#16a34a] transition">Host an Event</Link></li>
+              <li><Link to="/organizer/dashboard" className="hover:text-[#16a34a] transition">Organizer Hub & Analytics</Link></li>
+              <li><Link to="/scanner" className="hover:text-[#16a34a] transition">Gate Scanner Terminal</Link></li>
+              <li><Link to="/organizer/create-event" className="hover:text-[#16a34a] transition">Tier Pricing & Venue Mapping</Link></li>
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="font-bold text-slate-900 text-sm tracking-tight">Trust & Security</h4>
+            <ul className="space-y-2 text-slate-600">
+              <li><span className="font-semibold text-slate-700">Polygon Amoy:</span> ERC-721 Smart Contracts</li>
+              <li><span className="font-semibold text-slate-700">Anti-Scalp Protection:</span> 110% Resale Cap</li>
+              <li><span className="font-semibold text-slate-700">Dynamic Gate Pass:</span> 15-Second Rotating QR</li>
+              <li><span className="font-semibold text-slate-700">Payment Methods:</span> EasyPaisa, JazzCash & Cards</li>
+            </ul>
           </div>
         </div>
-      </footer>
-    </div>
+
+        <div className="pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+          <div>
+            © 2026 TicketLedger. All rights reserved.
+          </div>
+          <div className="flex items-center gap-4">
+            <Link to="/events" className="hover:text-slate-600">Events</Link>
+            <span>•</span>
+            <Link to="/company" className="hover:text-slate-600">Organizers</Link>
+            <span>•</span>
+            <Link to="/scanner" className="hover:text-slate-600">Turnstiles</Link>
+            {isAuthenticated && user?.role === 'CUSTOMER' && (
+              <>
+                <span>•</span>
+                <Link to="/resale" className="hover:text-slate-600">Resale</Link>
+              </>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </footer>
   );
 }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/events" element={<Events />} />
-            <Route path="/events/:id" element={<EventDetails />} />
-            <Route path="/events/:id/seats" element={<SeatMap />} />
-            <Route
-              path="/checkout"
-              element={
-                <ProtectedRoute>
-                  <Checkout />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/bookings/:id/confirmation"
-              element={
-                <ProtectedRoute>
-                  <BookingSuccess />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/my-bookings"
-              element={
-                <ProtectedRoute>
-                  <MyBookings />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/my-nfts"
-              element={
-                <ProtectedRoute>
-                  <MyNFTTickets />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wallet"
-              element={
-                <ProtectedRoute>
-                  <DigitalWallet />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/notifications"
-              element={
-                <ProtectedRoute>
-                  <Notifications />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/resale" element={<ResaleMarketplace />} />
-            <Route
-              path="/scanner"
-              element={
-                <ProtectedRoute allowedRoles={['GATE_STAFF', 'SUPER_ADMIN', 'ORGANIZER']}>
-                  <GateScanner />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <Profile />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profile/behavior"
-              element={
-                <ProtectedRoute>
-                  <BehaviorProfile />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/behavior"
-              element={
-                <ProtectedRoute>
-                  <BehaviorProfile />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/company"
-              element={
-                <ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']}>
-                  <CompanyRegistration />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/companies"
-              element={
-                <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
-                  <AdminCompanies />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/organizer/create-event"
-              element={
-                <ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']}>
-                  <CreateEvent />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/demand-forecast" element={<DemandForecast />} />
-            <Route
-              path="/admin/fraud-detection"
-              element={
-                <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
-                  <AdminFraudWatchlist />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
+          <Navbar />
+          <main className="flex-1 w-full">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/events" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Events /></div>} />
+              <Route path="/events/:id" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><EventDetails /></div>} />
+              <Route path="/events/:id/seats" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SeatMap /></div>} />
+              <Route path="/events/:id/checkout" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div>} />
+              <Route path="/booking-success/:orderId" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div>} />
+              <Route path="/resale" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResaleMarketplace /></div></ProtectedRoute>} />
+              <Route path="/login" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Login /></div>} />
+              <Route path="/signup" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Signup /></div>} />
+              <Route path="/company" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CompanyRegistration /></div>} />
+
+              {/* Protected Customer Routes */}
+              <Route path="/wallet" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DigitalWallet /></div></ProtectedRoute>} />
+              <Route path="/my-bookings" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyBookings /></div></ProtectedRoute>} />
+              <Route path="/my-nfts" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyNFTTickets /></div></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Profile /></div></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Notifications /></div></ProtectedRoute>} />
+
+              {/* Protected Gate Staff Scanner */}
+              <Route path="/scanner" element={<ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><GateScanner /></div></ProtectedRoute>} />
+
+              {/* Protected Organizer Studio */}
+              <Route path="/organizer/dashboard" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><OrganizerDashboard /></div></ProtectedRoute>} />
+              <Route path="/organizer/create-event" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CreateEvent /></div></ProtectedRoute>} />
+
+              {/* Protected Super Admin Governance */}
+              <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SuperAdminDashboard /></div></ProtectedRoute>} />
+              <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminCompanies /></div></ProtectedRoute>} />
+              <Route path="/admin/fraud-watchlist" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminFraudWatchlist /></div></ProtectedRoute>} />
+              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
+              <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BehaviorProfile /></div></ProtectedRoute>} />
+              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

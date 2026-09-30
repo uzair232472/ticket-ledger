@@ -124,32 +124,32 @@ export default function CompanyRegistration() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 pb-16 text-slate-800">
       {/* Header */}
-      <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950/40 p-6 sm:p-8 border border-slate-800 shadow-xl">
+      <div className="rounded-3xl bg-white p-6 sm:p-8 border border-slate-200/90 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[#16a34a] border border-emerald-200 flex items-center justify-center font-bold shadow-sm">
               <Building2 className="w-7 h-7" />
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl font-bold text-white tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
                   Organizer Company Registration
                 </h1>
                 {company && (
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase ${
                     company.status === 'APPROVED' 
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
                       : company.status === 'PENDING'
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                      : 'bg-rose-50 text-rose-800 border border-rose-200'
                   }`}>
                     {company.status}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs sm:text-sm text-slate-500">
                 Verify your organization via NTN or CNIC to publish sports matches and concerts on TicketLedger.
               </p>
             </div>
@@ -157,64 +157,64 @@ export default function CompanyRegistration() {
 
           <button
             onClick={loadCompany}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 w-fit"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 shadow-sm transition w-fit"
           >
-            <RefreshCw className="w-3.5 h-3.5" /> Refresh Status
+            <RefreshCw className="w-3.5 h-3.5 text-[#16a34a]" /> Refresh Status
           </button>
         </div>
       </div>
 
       {/* Feedback Alert */}
       {message.text && (
-        <div className={`p-4 rounded-xl text-xs flex items-center gap-2 border ${
+        <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 border ${
           message.type === 'success' 
-            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-            : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+            : 'bg-rose-50 border-rose-200 text-rose-800'
         }`}>
-          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[#16a34a]" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />}
           <span>{message.text}</span>
         </div>
       )}
 
       {/* STATUS BANNER CARDS */}
       {company?.status === 'APPROVED' && (
-        <div className="p-6 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 text-xs space-y-2">
-          <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-            <CheckCircle2 className="w-5 h-5" /> Company Verified & Approved by Administration
+        <div className="p-6 sm:p-8 rounded-3xl bg-emerald-50 border border-emerald-200 text-xs space-y-2 shadow-sm">
+          <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
+            <CheckCircle2 className="w-5 h-5 text-[#16a34a]" /> Company Verified & Approved by Administration
           </div>
-          <p className="text-slate-300">
+          <p className="text-slate-700">
             "{company.companyName}" is officially authorized to create events, configure seating plans, and mint NFT tickets.
           </p>
-          <div className="pt-2 text-slate-400 text-[11px] flex gap-4">
-            <span>Reviewed by: <strong className="text-slate-200">{company.reviewedBy}</strong></span>
-            <span>Approved on: <strong className="text-slate-200">{new Date(company.reviewedAt).toLocaleDateString()}</strong></span>
+          <div className="pt-2 text-slate-500 text-[11px] flex gap-4">
+            <span>Reviewed by: <strong className="text-slate-800">{company.reviewedBy}</strong></span>
+            <span>Approved on: <strong className="text-slate-800">{new Date(company.reviewedAt).toLocaleDateString()}</strong></span>
           </div>
         </div>
       )}
 
       {company?.status === 'PENDING' && (
-        <div className="p-6 rounded-2xl bg-amber-950/30 border border-amber-500/40 text-xs space-y-2">
-          <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
-            <Clock className="w-5 h-5" /> Application Under Review
+        <div className="p-6 sm:p-8 rounded-3xl bg-amber-50 border border-amber-200 text-xs space-y-2 shadow-sm">
+          <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
+            <Clock className="w-5 h-5 text-amber-600" /> Application Under Review
           </div>
-          <p className="text-slate-300">
-            Your verification documents for <strong className="text-white">{company.companyName}</strong> have been submitted. Super Admin is reviewing your NTN/CNIC credentials.
+          <p className="text-slate-700">
+            Your verification documents for <strong className="text-slate-900">{company.companyName}</strong> have been submitted. Super Admin is reviewing your NTN/CNIC credentials.
           </p>
-          <p className="text-[11px] text-amber-300/80">
+          <p className="text-[11px] text-amber-800 font-medium">
             ⚠️ Note: As required by TicketLedger governance, organizers cannot publish live events until company approval is granted.
           </p>
         </div>
       )}
 
       {company?.status === 'REJECTED' && (
-        <div className="p-6 rounded-2xl bg-rose-950/30 border border-rose-500/40 text-xs space-y-2">
-          <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
-            <AlertCircle className="w-5 h-5" /> Verification Rejected
+        <div className="p-6 sm:p-8 rounded-3xl bg-rose-50 border border-rose-200 text-xs space-y-2 shadow-sm">
+          <div className="flex items-center gap-2 text-rose-900 font-bold text-sm">
+            <AlertCircle className="w-5 h-5 text-rose-500" /> Verification Rejected
           </div>
-          <p className="text-slate-300">
-            Reason: <strong className="text-rose-300">{company.rejectionReason}</strong>
+          <p className="text-slate-700">
+            Reason: <strong className="text-rose-800">{company.rejectionReason}</strong>
           </p>
-          <p className="text-slate-400 text-[11px]">
+          <p className="text-slate-500 text-[11px]">
             Please correct the issues noted above and re-submit your registration below.
           </p>
         </div>
@@ -222,18 +222,18 @@ export default function CompanyRegistration() {
 
       {/* REGISTRATION FORM */}
       {(company?.status !== 'APPROVED') && (
-        <div className="p-6 sm:p-8 rounded-2xl bg-slate-900 border border-slate-800">
-          <h2 className="text-base font-bold text-white mb-6 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-emerald-400" />
+        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
+          <h2 className="text-base font-bold text-slate-900 mb-6 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-[#16a34a]" />
             {company ? 'Update & Re-Submit Registration' : 'Company Credentials & Document Submission'}
           </h2>
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Company / Organization Name</label>
+                <label className="block text-slate-700 font-semibold mb-1">Company / Organization Name</label>
                 <div className="relative">
-                  <Building2 className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     name="companyName"
@@ -241,15 +241,15 @@ export default function CompanyRegistration() {
                     value={formData.companyName}
                     onChange={handleChange}
                     placeholder="e.g. PCB Events Management Lahore"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Owner / Authorized Representative</label>
+                <label className="block text-slate-700 font-semibold mb-1">Owner / Authorized Representative</label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     name="ownerName"
@@ -257,7 +257,7 @@ export default function CompanyRegistration() {
                     value={formData.ownerName}
                     onChange={handleChange}
                     placeholder="e.g. Tariq Mehmood"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
                   />
                 </div>
               </div>
@@ -265,9 +265,9 @@ export default function CompanyRegistration() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Official Email</label>
+                <label className="block text-slate-700 font-semibold mb-1">Official Email</label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="email"
                     name="email"
@@ -275,15 +275,15 @@ export default function CompanyRegistration() {
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="contact@company.pk"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Phone Number (Pakistan)</label>
+                <label className="block text-slate-700 font-semibold mb-1">Phone Number (Pakistan)</label>
                 <div className="relative">
-                  <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     name="phone"
@@ -291,7 +291,7 @@ export default function CompanyRegistration() {
                     value={formData.phone}
                     onChange={handleChange}
                     placeholder="+92 300 1234567"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
                   />
                 </div>
               </div>
@@ -299,14 +299,14 @@ export default function CompanyRegistration() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Headquarters City</label>
+                <label className="block text-slate-700 font-semibold mb-1">Headquarters City</label>
                 <div className="relative">
-                  <MapPin className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <select
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
                   >
                     <option value="Lahore">Lahore</option>
                     <option value="Karachi">Karachi</option>
@@ -321,9 +321,9 @@ export default function CompanyRegistration() {
               </div>
 
               <div>
-                <label className="block text-slate-300 font-medium mb-1">NTN (National Tax No.) or CNIC</label>
+                <label className="block text-slate-700 font-semibold mb-1">NTN (National Tax No.) or CNIC</label>
                 <div className="relative">
-                  <CreditCard className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  <CreditCard className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="text"
                     name="ntnCnic"
@@ -331,7 +331,7 @@ export default function CompanyRegistration() {
                     value={formData.ntnCnic}
                     onChange={handleChange}
                     placeholder="e.g. 1234567-8 or 35201-1234567-1"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white focus:outline-none focus:border-emerald-500 text-xs"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
                   />
                 </div>
               </div>
@@ -339,34 +339,34 @@ export default function CompanyRegistration() {
 
             {/* Document Upload Area (Cloudinary Abstraction) */}
             <div className="pt-2">
-              <label className="block text-slate-300 font-medium mb-2">
+              <label className="block text-slate-700 font-semibold mb-2">
                 Verification Document (NTN Certificate, FBR Registration, or CNIC Scan)
               </label>
               
-              <div className="p-4 rounded-xl border border-dashed border-slate-800 bg-slate-950 text-center hover:border-slate-700 transition">
-                <UploadCloud className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                <div className="text-xs text-slate-300 font-medium">
+              <div className="p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center hover:border-slate-300 transition">
+                <UploadCloud className="w-8 h-8 text-[#16a34a] mx-auto mb-2" />
+                <div className="text-xs text-slate-700 font-medium">
                   {documentFile ? documentFile.name : 'Choose a PDF, PNG, or JPG file (Max 10MB)'}
                 </div>
-                <div className="text-[10px] text-slate-500 mt-1">
+                <div className="text-[10px] text-slate-400 mt-1">
                   Stored securely using Cloudinary document abstraction
                 </div>
                 <input
                   type="file"
                   accept=".pdf,image/png,image/jpeg"
                   onChange={(e) => setDocumentFile(e.target.files[0])}
-                  className="mt-3 text-xs text-slate-400 file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-slate-950 hover:file:bg-emerald-500 cursor-pointer"
+                  className="mt-3 text-xs text-slate-500 file:mr-3 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#16a34a] file:text-white hover:file:bg-[#15803d] cursor-pointer"
                 />
               </div>
 
               {company?.documentUrl && (
-                <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+                <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
                   <span>Current document on file:</span>
                   <a
                     href={company.documentUrl.startsWith('http') ? company.documentUrl : `${API_URL}${company.documentUrl}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-emerald-400 hover:underline flex items-center gap-1 font-mono"
+                    className="text-[#16a34a] hover:underline flex items-center gap-1 font-mono font-semibold"
                   >
                     View Document <ExternalLink className="w-3 h-3" />
                   </a>
@@ -377,7 +377,7 @@ export default function CompanyRegistration() {
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold transition shadow-lg shadow-emerald-600/20 disabled:opacity-50 mt-4"
+              className="btn-eventfrog inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold shadow-sm transition disabled:opacity-50 mt-4"
             >
               <Send className="w-4 h-4" />
               {submitting ? 'Submitting Registration...' : 'Submit for Super Admin Verification'}

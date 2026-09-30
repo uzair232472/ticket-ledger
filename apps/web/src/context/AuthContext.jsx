@@ -69,9 +69,15 @@ export function AuthProvider({ children }) {
       throw new Error(data.message || 'Registration failed');
     }
 
-    localStorage.setItem('tl_token', data.data.token);
-    setToken(data.data.token);
-    setUser(data.data.user);
+    if (data.requiresOtp) {
+      return data;
+    }
+
+    if (data.data?.token) {
+      localStorage.setItem('tl_token', data.data.token);
+      setToken(data.data.token);
+      setUser(data.data.user);
+    }
     return data.data;
   };
 

@@ -126,27 +126,27 @@ export default function GateScanner() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="space-y-8 pb-16 text-slate-800">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" /> Stadium Gate Control System
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                <ShieldCheck className="w-3 h-3 text-[#16a34a]" /> Stadium Gate Control System
               </span>
               <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
-                offlineMode ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-teal-950 text-teal-300 border border-teal-800'
+                offlineMode ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-teal-50 text-teal-800 border border-teal-200'
               }`}>
-                {offlineMode ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+                {offlineMode ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3 text-emerald-600" />}
                 {offlineMode ? 'Offline HMAC Verification Mode' : 'Online Real-Time Sync'}
               </span>
             </div>
-            <h1 className="text-3xl font-black text-white tracking-tight mt-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
               Gate Staff Turnstile Scanner
             </h1>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
               Verifies rotating dynamic QR codes, prevents screenshot fraud, strictly rejects double-entry, and audits check-in timestamps.
             </p>
           </div>
@@ -154,11 +154,11 @@ export default function GateScanner() {
           {/* Controls: Gate selector & Offline toggle */}
           <div className="flex flex-wrap items-center gap-3">
             <div>
-              <label className="text-[10px] text-slate-400 block font-semibold">Active Turnstile Gate</label>
+              <label className="text-[10px] text-slate-500 block font-semibold mb-1">Active Turnstile Gate</label>
               <select
                 value={gateNumber}
                 onChange={(e) => setGateNumber(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-[#22c55e] font-semibold"
               >
                 <option value="Gate 1 - Main Pavilion">Gate 1 - Main Pavilion</option>
                 <option value="Gate 2 - VIP Enclosure">Gate 2 - VIP Enclosure</option>
@@ -169,17 +169,17 @@ export default function GateScanner() {
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-400 block font-semibold">Verification Mode</label>
+              <label className="text-[10px] text-slate-500 block font-semibold mb-1">Verification Mode</label>
               <button
                 type="button"
                 onClick={() => setOfflineMode(!offlineMode)}
                 className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition ${
                   offlineMode
-                    ? 'bg-amber-950/60 border-amber-600 text-amber-300'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                    ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm'
                 }`}
               >
-                {offlineMode ? <WifiOff className="w-3.5 h-3.5 text-amber-400" /> : <Wifi className="w-3.5 h-3.5 text-emerald-400" />}
+                {offlineMode ? <WifiOff className="w-3.5 h-3.5 text-amber-600" /> : <Wifi className="w-3.5 h-3.5 text-emerald-600" />}
                 <span>{offlineMode ? 'Simulate Offline' : 'Online Server'}</span>
               </button>
             </div>
@@ -188,27 +188,27 @@ export default function GateScanner() {
 
         {/* Live Turnstile Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-1">
             <div className="text-[10px] text-slate-500 uppercase font-bold">Total Scans Audited</div>
-            <div className="text-2xl font-black text-white font-mono">{scannerStats.total}</div>
+            <div className="text-2xl font-black text-slate-900 font-mono">{scannerStats.total}</div>
           </div>
-          <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-800/40 space-y-1">
-            <div className="text-[10px] text-emerald-400 uppercase font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> Admitted Attendees
+          <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm space-y-1">
+            <div className="text-[10px] text-emerald-800 uppercase font-bold flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#16a34a]" /> Admitted Attendees
             </div>
-            <div className="text-2xl font-black text-emerald-400 font-mono">{scannerStats.valid}</div>
+            <div className="text-2xl font-black text-emerald-800 font-mono">{scannerStats.valid}</div>
           </div>
-          <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-800/40 space-y-1">
-            <div className="text-[10px] text-amber-400 uppercase font-bold flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" /> Double-Entries Blocked
+          <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm space-y-1">
+            <div className="text-[10px] text-amber-800 uppercase font-bold flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Double-Entries Blocked
             </div>
-            <div className="text-2xl font-black text-amber-400 font-mono">{scannerStats.doubleEntryBlocked}</div>
+            <div className="text-2xl font-black text-amber-800 font-mono">{scannerStats.doubleEntryBlocked}</div>
           </div>
-          <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-800/40 space-y-1">
-            <div className="text-[10px] text-rose-400 uppercase font-bold flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5" /> Counterfeit / Expired
+          <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200 shadow-sm space-y-1">
+            <div className="text-[10px] text-rose-800 uppercase font-bold flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-rose-600" /> Counterfeit / Expired
             </div>
-            <div className="text-2xl font-black text-rose-400 font-mono">{scannerStats.rejected}</div>
+            <div className="text-2xl font-black text-rose-800 font-mono">{scannerStats.rejected}</div>
           </div>
         </div>
 
@@ -216,23 +216,23 @@ export default function GateScanner() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* Scanner Input & Camera Simulator (5 cols) */}
-          <div className="lg:col-span-5 rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="lg:col-span-5 rounded-3xl bg-white border border-slate-200/90 p-6 space-y-5 shadow-sm">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#16a34a] flex items-center justify-center font-bold">
                   <QrCode className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-white text-sm">Turnstile QR Scanner Input</h3>
+                <h3 className="font-bold text-slate-900 text-sm">Turnstile QR Scanner Input</h3>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono">{gateNumber}</span>
+              <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded-full">{gateNumber}</span>
             </div>
 
             {/* Simulated Camera Target */}
-            <div className="relative h-44 rounded-2xl bg-slate-950 border-2 border-dashed border-slate-800 flex flex-col items-center justify-center p-4 text-center overflow-hidden">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-950/40 border border-emerald-700/60 flex items-center justify-center text-emerald-400 animate-pulse mb-2">
+            <div className="relative h-44 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center p-4 text-center overflow-hidden">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[#16a34a] animate-pulse mb-2">
                 <Camera className="w-8 h-8" />
               </div>
-              <div className="text-xs font-semibold text-slate-300">Optical Camera Scanner Ready</div>
+              <div className="text-xs font-semibold text-slate-800">Optical Camera Scanner Ready</div>
               <div className="text-[10px] text-slate-500 mt-0.5">
                 Paste raw QR JSON payload or use test presets below
               </div>
@@ -240,16 +240,16 @@ export default function GateScanner() {
 
             {/* Input Box */}
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-300 flex justify-between">
+              <label className="text-xs font-semibold text-slate-700 flex justify-between">
                 <span>Scan / Paste Ticket Payload</span>
-                <span className="text-[10px] text-slate-500 font-mono">JSON Format</span>
+                <span className="text-[10px] text-slate-400 font-mono">JSON Format</span>
               </label>
               <textarea
                 rows={4}
                 value={rawPayloadInput}
                 onChange={(e) => setRawPayloadInput(e.target.value)}
                 placeholder='Paste raw dynamic QR payload e.g. {"ticketId": "...", "nonce": "...", "signature": "..."}'
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#22c55e]"
               />
             </div>
 
@@ -258,7 +258,7 @@ export default function GateScanner() {
               type="button"
               disabled={scanning || !rawPayloadInput.trim()}
               onClick={() => handleProcessScan()}
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 disabled:opacity-40 text-slate-950 font-black text-xs transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+              className="w-full py-3.5 btn-eventfrog disabled:opacity-40 text-xs shadow-sm flex items-center justify-center gap-2"
             >
               {scanning ? (
                 <>
@@ -277,21 +277,21 @@ export default function GateScanner() {
           {/* Turnstile Visual Feedback Screen (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             {lastScanResult ? (
-              <div className={`rounded-3xl border p-6 sm:p-8 space-y-6 shadow-2xl transition-all ${
+              <div className={`rounded-3xl border p-6 sm:p-8 space-y-6 shadow-sm transition-all ${
                 lastScanResult.valid
-                  ? 'bg-emerald-950/40 border-emerald-500/80 shadow-emerald-950/50'
+                  ? 'bg-emerald-50 border-emerald-300'
                   : lastScanResult.result === 'ALREADY_SCANNED'
-                  ? 'bg-amber-950/40 border-amber-500/80 shadow-amber-950/50'
-                  : 'bg-rose-950/40 border-rose-500/80 shadow-rose-950/50'
+                  ? 'bg-amber-50 border-amber-300'
+                  : 'bg-rose-50 border-rose-300'
               }`}>
                 {/* Result Title Banner */}
                 <div className="flex items-center gap-3">
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
                     lastScanResult.valid
-                      ? 'bg-emerald-500 text-slate-950'
+                      ? 'bg-[#16a34a] text-white shadow-sm'
                       : lastScanResult.result === 'ALREADY_SCANNED'
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'bg-rose-500 text-slate-950'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-rose-500 text-white shadow-sm'
                   }`}>
                     {lastScanResult.valid ? (
                       <CheckCircle2 className="w-8 h-8" />
@@ -301,60 +301,62 @@ export default function GateScanner() {
                   </div>
                   <div>
                     <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                      lastScanResult.valid ? 'text-emerald-400' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-400' : 'text-rose-400'
+                      lastScanResult.valid ? 'text-emerald-800' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-800' : 'text-rose-800'
                     }`}>
                       Turnstile Decision • {lastScanResult.scannedAt}
                     </span>
-                    <h2 className="text-2xl font-black text-white">
+                    <h2 className={`text-2xl font-black ${
+                      lastScanResult.valid ? 'text-emerald-900' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-900' : 'text-rose-900'
+                    }`}>
                       {lastScanResult.valid ? 'ACCESS GRANTED' : 'ACCESS DENIED'}
                     </h2>
                   </div>
                 </div>
 
                 {/* Explanation text */}
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-1">
-                  <div className="font-bold text-white text-sm">{lastScanResult.message}</div>
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 text-xs space-y-1 shadow-sm">
+                  <div className="font-bold text-slate-900 text-sm">{lastScanResult.message}</div>
                   {lastScanResult.reason && (
-                    <div className="text-[11px] font-mono text-slate-400">
-                      Reason code: <strong className="text-slate-200">{lastScanResult.reason}</strong>
+                    <div className="text-[11px] font-mono text-slate-500">
+                      Reason code: <strong className="text-slate-800">{lastScanResult.reason}</strong>
                     </div>
                   )}
                 </div>
 
                 {/* Attendee & Seat Info (if valid or already scanned) */}
                 {lastScanResult.ticket && (
-                  <div className="p-5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-4">
-                    <div className="flex justify-between items-start border-b border-slate-800 pb-3">
+                  <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-4 shadow-sm">
+                    <div className="flex justify-between items-start border-b border-slate-100 pb-3">
                       <div>
-                        <div className="text-[10px] text-slate-500 uppercase font-semibold">Attendee Name</div>
-                        <div className="font-bold text-white text-base">
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Attendee Name</div>
+                        <div className="font-bold text-slate-900 text-base">
                           {lastScanResult.ticket.attendee?.name || lastScanResult.ticket.attendee || 'Admitted Fan'}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-[10px] text-slate-500 uppercase font-semibold">Gate Allocation</div>
-                        <div className="font-mono text-emerald-400 font-bold text-xs">
+                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Gate Allocation</div>
+                        <div className="font-mono text-[#16a34a] font-bold text-xs">
                           {gateNumber}
                         </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="text-[10px] text-slate-500">Tier</div>
-                        <div className="font-bold text-white text-xs truncate">
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="text-[10px] text-slate-400">Tier</div>
+                        <div className="font-bold text-slate-800 text-xs truncate">
                           {lastScanResult.ticket.seat?.tierName || 'Standard'}
                         </div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="text-[10px] text-slate-500">Row</div>
-                        <div className="font-bold text-sky-400 font-mono text-sm">
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="text-[10px] text-slate-400">Row</div>
+                        <div className="font-bold text-sky-700 font-mono text-sm">
                           {lastScanResult.ticket.seat?.row || 'GA'}
                         </div>
                       </div>
-                      <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="text-[10px] text-slate-500">Seat #</div>
-                        <div className="font-bold text-emerald-400 font-mono text-sm">
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                        <div className="text-[10px] text-slate-400">Seat #</div>
+                        <div className="font-bold text-[#16a34a] font-mono text-sm">
                           #{lastScanResult.ticket.seat?.seatNumber || '1'}
                         </div>
                       </div>
@@ -363,72 +365,72 @@ export default function GateScanner() {
                 )}
               </div>
             ) : (
-              <div className="rounded-3xl bg-slate-900/60 border border-slate-800 p-8 text-center space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 mx-auto">
+              <div className="rounded-3xl bg-white border border-slate-200/90 p-8 text-center space-y-3 shadow-sm">
+                <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto">
                   <ShieldCheck className="w-7 h-7" />
                 </div>
-                <h3 className="text-base font-bold text-white">Awaiting Attendee Gate Pass</h3>
-                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                <h3 className="text-base font-bold text-slate-900">Awaiting Attendee Gate Pass</h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
                   When a QR pass is scanned, the result, seat allocation, and attendee credentials will appear on this screen with instant turnstile verification.
                 </p>
               </div>
             )}
 
             {/* Recent Scans Table */}
-            <div className="rounded-3xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-400" /> Recent Turnstile Scans Feed
+            <div className="rounded-3xl bg-white border border-slate-200/90 p-6 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-[#16a34a]" /> Recent Turnstile Scans Feed
                 </h3>
                 <button
                   type="button"
                   onClick={fetchRecentScans}
-                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition"
+                  className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 transition"
                 >
                   <RefreshCw className="w-3.5 h-3.5" /> Refresh
                 </button>
               </div>
 
               {loadingRecent ? (
-                <div className="text-center py-6 text-xs text-slate-500">Loading audit feed...</div>
+                <div className="text-center py-6 text-xs text-slate-400">Loading audit feed...</div>
               ) : recentScans.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-500">No scans recorded yet this session.</div>
+                <div className="text-center py-6 text-xs text-slate-400">No scans recorded yet this session.</div>
               ) : (
                 <div className="space-y-2 overflow-x-auto">
                   {recentScans.slice(0, 6).map((scan) => (
                     <div
                       key={scan.id}
-                      className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 flex items-center justify-between gap-3 text-xs"
+                      className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs hover:bg-slate-100 transition"
                     >
                       <div className="flex items-center gap-2.5">
                         <span className={`w-2 h-2 rounded-full ${
                           scan.result === 'VALID_FIRST_SCAN'
-                            ? 'bg-emerald-400'
+                            ? 'bg-emerald-500'
                             : scan.result === 'ALREADY_SCANNED'
-                            ? 'bg-amber-400'
-                            : 'bg-rose-400'
+                            ? 'bg-amber-500'
+                            : 'bg-rose-500'
                         }`} />
                         <div>
-                          <div className="font-bold text-white">
+                          <div className="font-bold text-slate-900">
                             {scan.ticket?.user?.name || 'Attendee'} • {scan.ticket?.seat?.tier?.name} Row {scan.ticket?.seat?.row} #{scan.ticket?.seat?.seatNumber}
                           </div>
-                          <div className="text-[10px] text-slate-400 truncate max-w-[240px]">
+                          <div className="text-[10px] text-slate-500 truncate max-w-[240px]">
                             {scan.ticket?.event?.name} • {scan.gateNumber || 'Gate 1'}
                           </div>
                         </div>
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
                           scan.result === 'VALID_FIRST_SCAN'
-                            ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                             : scan.result === 'ALREADY_SCANNED'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                            : 'bg-rose-950 text-rose-300 border border-rose-800'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-rose-50 text-rose-800 border border-rose-200'
                         }`}>
                           {scan.result}
                         </span>
-                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                           {new Date(scan.scanTime).toLocaleTimeString()}
                         </div>
                       </div>

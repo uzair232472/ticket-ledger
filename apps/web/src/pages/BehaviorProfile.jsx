@@ -27,39 +27,39 @@ import {
 } from 'lucide-react';
 
 const ACTION_ICONS = {
-  event_view: <Eye className="w-4 h-4 text-emerald-400" />,
-  category_view: <Layers className="w-4 h-4 text-teal-400" />,
-  seat_selected: <CheckSquare className="w-4 h-4 text-emerald-300" />,
-  seat_locked: <Clock className="w-4 h-4 text-amber-400" />,
-  checkout_started: <ShoppingCart className="w-4 h-4 text-blue-400" />,
-  checkout_abandoned: <Clock className="w-4 h-4 text-rose-400" />,
-  payment_completed: <CreditCard className="w-4 h-4 text-emerald-400" />,
-  payment_failed: <AlertTriangle className="w-4 h-4 text-rose-400" />,
-  ticket_purchased: <Ticket className="w-4 h-4 text-emerald-300" />,
-  ticket_transferred: <ArrowRightLeft className="w-4 h-4 text-blue-400" />,
-  resale_viewed: <Eye className="w-4 h-4 text-teal-400" />,
-  resale_attempted: <TrendingUp className="w-4 h-4 text-amber-400" />,
-  gate_checked_in: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
-  wallet_connected: <Sparkles className="w-4 h-4 text-purple-400" />,
-  login: <User className="w-4 h-4 text-slate-300" />,
+  event_view: <Eye className="w-4 h-4 text-[#008459]" />,
+  category_view: <Layers className="w-4 h-4 text-teal-600" />,
+  seat_selected: <CheckSquare className="w-4 h-4 text-[#008459]" />,
+  seat_locked: <Clock className="w-4 h-4 text-amber-600" />,
+  checkout_started: <ShoppingCart className="w-4 h-4 text-blue-600" />,
+  checkout_abandoned: <Clock className="w-4 h-4 text-rose-600" />,
+  payment_completed: <CreditCard className="w-4 h-4 text-[#008459]" />,
+  payment_failed: <AlertTriangle className="w-4 h-4 text-rose-600" />,
+  ticket_purchased: <Ticket className="w-4 h-4 text-[#008459]" />,
+  ticket_transferred: <ArrowRightLeft className="w-4 h-4 text-blue-600" />,
+  resale_viewed: <Eye className="w-4 h-4 text-teal-600" />,
+  resale_attempted: <TrendingUp className="w-4 h-4 text-amber-600" />,
+  gate_checked_in: <ShieldCheck className="w-4 h-4 text-[#008459]" />,
+  wallet_connected: <Sparkles className="w-4 h-4 text-purple-600" />,
+  login: <User className="w-4 h-4 text-slate-600" />,
 };
 
 const ACTION_BADGES = {
-  event_view: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60',
-  category_view: 'bg-teal-950/60 text-teal-300 border-teal-800/60',
-  seat_selected: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60',
-  seat_locked: 'bg-amber-950/60 text-amber-300 border-amber-800/60',
-  checkout_started: 'bg-blue-950/60 text-blue-300 border-blue-800/60',
-  checkout_abandoned: 'bg-rose-950/60 text-rose-300 border-rose-800/60',
-  payment_completed: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60',
-  payment_failed: 'bg-rose-950/60 text-rose-300 border-rose-800/60',
-  ticket_purchased: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60',
-  ticket_transferred: 'bg-blue-950/60 text-blue-300 border-blue-800/60',
-  resale_viewed: 'bg-teal-950/60 text-teal-300 border-teal-800/60',
-  resale_attempted: 'bg-amber-950/60 text-amber-300 border-amber-800/60',
-  gate_checked_in: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60',
-  wallet_connected: 'bg-purple-950/60 text-purple-300 border-purple-800/60',
-  login: 'bg-slate-800 text-slate-300 border-slate-700',
+  event_view: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  category_view: 'bg-teal-50 text-teal-800 border-teal-200',
+  seat_selected: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  seat_locked: 'bg-amber-50 text-amber-800 border-amber-200',
+  checkout_started: 'bg-blue-50 text-blue-800 border-blue-200',
+  checkout_abandoned: 'bg-rose-50 text-rose-800 border-rose-200',
+  payment_completed: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  payment_failed: 'bg-rose-50 text-rose-800 border-rose-200',
+  ticket_purchased: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  ticket_transferred: 'bg-blue-50 text-blue-800 border-blue-200',
+  resale_viewed: 'bg-teal-50 text-teal-800 border-teal-200',
+  resale_attempted: 'bg-amber-50 text-amber-800 border-amber-200',
+  gate_checked_in: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  wallet_connected: 'bg-purple-50 text-purple-800 border-purple-200',
+  login: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 const formatTimeAgo = (dateStr) => {
@@ -127,22 +127,22 @@ export default function BehaviorProfile() {
   });
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-6xl mx-auto">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+      <div className="rounded-3xl bg-white p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-slate-950 font-bold shadow-lg shadow-emerald-600/20">
+            <div className="w-12 h-12 rounded-2xl bg-[#e6f4ea] text-[#008459] flex items-center justify-center font-bold shadow-sm">
               <Activity className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-black text-white tracking-tight">User Behavioral Profile</h1>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60 font-semibold">
-                  Module 13 ML Telemetry
+                <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">User Behavioral Profile</h1>
+                <span className="text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  ML Telemetry Engine
                 </span>
               </div>
-              <p className="text-sm text-slate-400">
+              <p className="text-xs text-slate-500 mt-1 font-medium">
                 Action-level behavioral tracking, session conversion provenance, and machine learning diagnostic metrics
               </p>
             </div>
@@ -152,112 +152,112 @@ export default function BehaviorProfile() {
         <div className="flex items-center gap-3">
           <button
             onClick={fetchProfile}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition shadow-sm"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#008459]' : ''}`} />
             <span>Refresh Telemetry</span>
           </button>
         </div>
       </div>
 
       {loading && !profile ? (
-        <div className="py-24 text-center text-slate-500">
-          <RefreshCw className="w-10 h-10 animate-spin mx-auto mb-3 text-emerald-500" />
-          <p className="text-sm">Synthesizing behavioral session profile...</p>
+        <div className="py-24 text-center text-slate-500 bg-white rounded-3xl border border-slate-200/90 shadow-sm">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3 text-[#008459]" />
+          <p className="text-xs font-medium">Synthesizing behavioral session profile...</p>
         </div>
       ) : (
         <>
           {/* AI Diagnostic Score Gauges */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Purchase Intent Gauge */}
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 border border-emerald-500/30 shadow-2xl relative overflow-hidden">
+            <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                     Gradient Boosting Intent Model
                   </span>
-                  <h3 className="text-lg font-bold text-white mt-0.5">Purchase Intent Score</h3>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <h3 className="text-base font-extrabold text-[#212b36] mt-2">Purchase Intent Score</h3>
+                  <p className="text-xs text-slate-500 mt-1 font-medium">
                     Evaluates session views, dwell time, and checkout interactions to estimate likelihood of booking.
                   </p>
                 </div>
-                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-                  <TrendingUp className="w-6 h-6" />
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-[#008459] flex items-center justify-center shrink-0">
+                  <TrendingUp className="w-5 h-5" />
                 </div>
               </div>
 
-              <div className="mt-6 flex items-baseline gap-3">
-                <span className="text-4xl font-black text-white">
+              <div className="mt-4 flex items-baseline gap-3">
+                <span className="text-4xl font-extrabold text-[#212b36]">
                   {profile?.scores?.purchaseIntent?.score ?? 75}
                 </span>
                 <span className="text-xs font-mono text-slate-400">/ 100</span>
-                <span className={`text-xs font-bold uppercase px-2.5 py-1 rounded-full border ${
+                <span className={`text-[10px] font-bold uppercase px-3 py-1 rounded-full border ${
                   profile?.scores?.purchaseIntent?.tier === 'HIGH'
-                    ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
-                    : 'bg-amber-950/60 text-amber-400 border-amber-800'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
                 }`}>
                   {profile?.scores?.purchaseIntent?.tier || 'HIGH'} INTENT
                 </span>
               </div>
 
               {/* Progress bar */}
-              <div className="mt-3 w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div className="mt-2 w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-teal-400 to-emerald-500 h-full rounded-full transition-all duration-500"
+                  className="bg-[#008459] h-full rounded-full transition-all duration-500"
                   style={{ width: `${Math.min(100, Math.max(5, profile?.scores?.purchaseIntent?.score ?? 75))}%` }}
                 ></div>
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-medium">
                 <span>{profile?.scores?.purchaseIntent?.description || 'Highly Engaged Attendee'}</span>
                 <span>Active Telemetry Engine</span>
               </div>
             </div>
 
             {/* AI Anti-Scalping Fraud Score Gauge */}
-            <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 shadow-2xl relative overflow-hidden">
+            <div className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden space-y-3">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-teal-400 font-bold">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
                     Random Forest Fraud Classifier
                   </span>
-                  <h3 className="text-lg font-bold text-white mt-0.5">AI Scalper / Bot Risk Score</h3>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <h3 className="text-base font-extrabold text-[#212b36] mt-2">AI Scalper / Bot Risk Score</h3>
+                  <p className="text-xs text-slate-500 mt-1 font-medium">
                     Continuous analysis of checkout velocity, click frequency, and automated seat hoarding patterns.
                   </p>
                 </div>
-                <div className="p-3 rounded-2xl bg-teal-500/10 border border-teal-500/30 text-teal-400">
-                  <Bot className="w-6 h-6" />
+                <div className="w-10 h-10 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+                  <Bot className="w-5 h-5" />
                 </div>
               </div>
 
-              <div className="mt-6 flex items-baseline gap-3">
-                <span className="text-4xl font-black text-white">
+              <div className="mt-4 flex items-baseline gap-3">
+                <span className="text-4xl font-extrabold text-[#212b36]">
                   {profile?.scores?.fraudRisk?.score ?? 12}
                 </span>
                 <span className="text-xs font-mono text-slate-400">/ 100</span>
-                <span className={`text-xs font-bold uppercase px-2.5 py-1 rounded-full border ${
+                <span className={`text-[10px] font-bold uppercase px-3 py-1 rounded-full border ${
                   profile?.scores?.fraudRisk?.level === 'LOW'
-                    ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
-                    : 'bg-rose-950/60 text-rose-400 border-rose-800'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border-rose-200'
                 }`}>
                   {profile?.scores?.fraudRisk?.level || 'LOW'} RISK
                 </span>
               </div>
 
               {/* Progress bar */}
-              <div className="mt-3 w-full bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div className="mt-2 w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
                     (profile?.scores?.fraudRisk?.score ?? 12) > 50
-                      ? 'bg-gradient-to-r from-amber-500 to-rose-500'
-                      : 'bg-gradient-to-r from-teal-500 to-emerald-400'
+                      ? 'bg-rose-500'
+                      : 'bg-[#008459]'
                   }`}
                   style={{ width: `${Math.min(100, Math.max(5, profile?.scores?.fraudRisk?.score ?? 12))}%` }}
                 ></div>
               </div>
 
-              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-medium">
                 <span>{profile?.scores?.fraudRisk?.description || 'Verified Human Behavior'}</span>
                 <span>Protected by TicketLedger AI</span>
               </div>
@@ -265,29 +265,29 @@ export default function BehaviorProfile() {
           </div>
 
           {/* 8 Required KPI Behavioral Action Counters */}
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-emerald-400" />
+          <div className="space-y-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-[#008459]" />
               <span>Behavioral Action Summary (Lifetime)</span>
             </h2>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
               {[
-                { label: 'Events Viewed', value: profile?.stats?.eventsViewed ?? 0, icon: Eye, color: 'text-emerald-400' },
-                { label: 'Seats Selected', value: profile?.stats?.seatsSelected ?? 0, icon: CheckSquare, color: 'text-teal-400' },
-                { label: 'Checkouts Started', value: profile?.stats?.checkoutsStarted ?? 0, icon: ShoppingCart, color: 'text-blue-400' },
-                { label: 'Checkouts Abandoned', value: profile?.stats?.abandonedCheckouts ?? 0, icon: Clock, color: 'text-rose-400' },
-                { label: 'Payments Completed', value: profile?.stats?.paymentsCompleted ?? 0, icon: CreditCard, color: 'text-emerald-400' },
-                { label: 'Tickets Purchased', value: profile?.stats?.ticketsPurchased ?? 0, icon: Ticket, color: 'text-emerald-300' },
-                { label: 'Transfers & Resales', value: (profile?.stats?.transfersSent ?? 0) + (profile?.stats?.resalesAttempted ?? 0), icon: ArrowRightLeft, color: 'text-amber-400' },
-                { label: 'Gate Check-Ins', value: profile?.stats?.gateCheckIns ?? 0, icon: ShieldCheck, color: 'text-purple-400' },
+                { label: 'Events Viewed', value: profile?.stats?.eventsViewed ?? 0, icon: Eye, color: 'text-[#008459]' },
+                { label: 'Seats Selected', value: profile?.stats?.seatsSelected ?? 0, icon: CheckSquare, color: 'text-teal-600' },
+                { label: 'Checkouts Started', value: profile?.stats?.checkoutsStarted ?? 0, icon: ShoppingCart, color: 'text-blue-600' },
+                { label: 'Abandoned Carts', value: profile?.stats?.abandonedCheckouts ?? 0, icon: Clock, color: 'text-rose-600' },
+                { label: 'Payments Done', value: profile?.stats?.paymentsCompleted ?? 0, icon: CreditCard, color: 'text-[#008459]' },
+                { label: 'Tickets Bought', value: profile?.stats?.ticketsPurchased ?? 0, icon: Ticket, color: 'text-[#008459]' },
+                { label: 'Transfers/Resales', value: (profile?.stats?.transfersSent ?? 0) + (profile?.stats?.resalesAttempted ?? 0), icon: ArrowRightLeft, color: 'text-amber-600' },
+                { label: 'Gate Check-Ins', value: profile?.stats?.gateCheckIns ?? 0, icon: ShieldCheck, color: 'text-purple-600' },
               ].map((kpi, idx) => (
-                <div key={idx} className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+                <div key={idx} className="p-4 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-slate-400 truncate">{kpi.label}</span>
+                    <span className="text-[11px] font-bold text-slate-500 truncate">{kpi.label}</span>
                     <kpi.icon className={`w-3.5 h-3.5 shrink-0 ${kpi.color}`} />
                   </div>
-                  <div className="text-2xl font-black text-white mt-2">
+                  <div className="text-2xl font-extrabold text-[#212b36]">
                     {kpi.value}
                   </div>
                 </div>
@@ -296,21 +296,21 @@ export default function BehaviorProfile() {
           </div>
 
           {/* Quick Simulator Bar */}
-          <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="p-4 sm:p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+              <div className="text-xs font-bold text-[#008459] flex items-center gap-1.5">
                 <Send className="w-3.5 h-3.5" /> Client Telemetry Test Tool
               </div>
-              <div className="text-xs text-slate-400 mt-0.5">
+              <div className="text-xs text-slate-500 mt-0.5 font-medium">
                 Dispatch any behavioral action into the tracking pipeline to test timeline updates
               </div>
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
               <select
                 value={selectedSimAction}
                 onChange={(e) => setSelectedSimAction(e.target.value)}
-                className="bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+                className="bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#008459]/20 font-semibold"
               >
                 <option value="event_view">event_view</option>
                 <option value="category_view">category_view</option>
@@ -332,7 +332,7 @@ export default function BehaviorProfile() {
               <button
                 onClick={handleSimulate}
                 disabled={simulatingAction}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-bold transition disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#008459] hover:bg-[#00704c] text-white text-xs font-bold transition disabled:opacity-50 shadow-sm"
               >
                 {simulatingAction ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                 <span>Log Action</span>
@@ -342,10 +342,10 @@ export default function BehaviorProfile() {
 
           {/* Action Timeline */}
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white">Chronological Action Timeline</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+                <h3 className="text-base font-extrabold text-[#212b36]">Chronological Action Timeline</h3>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono font-bold">
                   {filteredTimeline.length} events
                 </span>
               </div>
@@ -362,10 +362,10 @@ export default function BehaviorProfile() {
                   <button
                     key={tab.id}
                     onClick={() => setFilterAction(tab.id)}
-                    className={`px-3 py-1 rounded-lg font-medium transition ${
+                    className={`px-3.5 py-1.5 rounded-full font-bold transition border ${
                       filterAction === tab.id
-                        ? 'bg-emerald-600 text-slate-950 font-bold'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                        ? 'bg-[#008459] text-white border-[#008459] shadow-sm'
+                        : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
                     }`}
                   >
                     {tab.label}
@@ -375,55 +375,55 @@ export default function BehaviorProfile() {
             </div>
 
             {filteredTimeline.length === 0 ? (
-              <div className="py-16 text-center bg-slate-900/50 rounded-2xl border border-slate-800">
-                <Activity className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-                <h4 className="text-sm font-bold text-white">No actions in this view</h4>
+              <div className="py-16 text-center bg-white rounded-3xl border border-slate-200/90 shadow-sm">
+                <Activity className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <h4 className="text-sm font-bold text-[#212b36]">No actions in this view</h4>
                 <p className="text-xs text-slate-400 mt-1">Actions are logged automatically during navigation.</p>
               </div>
             ) : (
-              <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
+              <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
                 {filteredTimeline.map((item) => {
                   const isExpanded = expandedTimelineId === item.id;
-                  const badgeClass = ACTION_BADGES[item.action] || 'bg-slate-800 text-slate-300 border-slate-700';
+                  const badgeClass = ACTION_BADGES[item.action] || 'bg-slate-100 text-slate-700 border-slate-200';
 
                   return (
                     <div
                       key={item.id}
-                      className="relative p-4 rounded-2xl bg-slate-900/80 border border-slate-800/80 hover:border-slate-700 transition"
+                      className="relative p-4 rounded-3xl bg-white border border-slate-200/90 hover:border-slate-300 transition shadow-sm"
                     >
                       {/* Timeline dot */}
-                      <div className="absolute -left-[29px] top-5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-slate-950"></div>
+                      <div className="absolute -left-[27px] top-5 w-3 h-3 rounded-full bg-[#008459] border-2 border-white shadow-sm"></div>
 
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <div className="p-1.5 rounded-lg bg-slate-800 border border-slate-700 shrink-0">
-                            {ACTION_ICONS[item.action] || <Activity className="w-4 h-4 text-slate-400" />}
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 shrink-0">
+                            {ACTION_ICONS[item.action] || <Activity className="w-4 h-4 text-slate-500" />}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-xs uppercase font-mono px-2 py-0.5 rounded-md border font-bold ${badgeClass}`}>
+                              <span className={`text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full border font-bold ${badgeClass}`}>
                                 {item.action.replace(/_/g, ' ')}
                               </span>
                               {item.eventTitle && (
-                                <span className="text-xs font-semibold text-white">
+                                <span className="text-xs font-bold text-[#212b36]">
                                   {item.eventTitle}
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
                               Session: {item.sessionId}
                             </div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="text-xs text-slate-400 font-mono">
+                          <span className="text-xs text-slate-400 font-mono font-medium">
                             {formatTimeAgo(item.createdAt)}
                           </span>
                           {item.metadata && Object.keys(item.metadata).length > 0 && (
                             <button
                               onClick={() => setExpandedTimelineId(isExpanded ? null : item.id)}
-                              className="text-slate-400 hover:text-white p-1 rounded transition"
+                              className="text-slate-400 hover:text-slate-700 p-1 rounded transition"
                               title="Toggle metadata payload"
                             >
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -434,7 +434,7 @@ export default function BehaviorProfile() {
 
                       {/* Expandable Metadata JSON Drawer */}
                       {isExpanded && item.metadata && (
-                        <div className="mt-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] font-mono text-emerald-300 overflow-x-auto">
+                        <div className="mt-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] font-mono text-slate-700 overflow-x-auto">
                           <pre>{JSON.stringify(item.metadata, null, 2)}</pre>
                         </div>
                       )}

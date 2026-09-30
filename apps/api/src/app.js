@@ -15,6 +15,8 @@ import gateRoutes from './routes/gateRoutes.js';
 import mlRoutes from './routes/mlRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import behaviorRoutes from './routes/behaviorRoutes.js';
+import intentAnalyticsRoutes from './routes/intentAnalyticsRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 dotenv.config();
 
@@ -63,6 +65,9 @@ app.use('/api/gate', gateRoutes);
 app.use('/api/ml', mlRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/behavior', behaviorRoutes);
+app.use('/api/analytics', intentAnalyticsRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/organizer', adminRoutes);
 
 // Root welcome endpoint
 app.get('/', (req, res) => {

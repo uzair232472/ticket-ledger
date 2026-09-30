@@ -10,8 +10,13 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
+    "seed": "node prisma/seed.js",
     "test": "node --test"
   },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+
   "dependencies": {
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^2.4.3",

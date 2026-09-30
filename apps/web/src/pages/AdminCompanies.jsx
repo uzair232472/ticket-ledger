@@ -153,17 +153,17 @@ export default function AdminCompanies() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
-      <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-emerald-950/40 p-6 sm:p-8 border border-slate-800 shadow-xl">
+      <div className="rounded-3xl bg-white p-6 sm:p-8 border border-slate-200/90 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-rose-500/20">
+            <div className="w-14 h-14 rounded-2xl bg-[#e6f4ea] text-[#008459] flex items-center justify-center font-bold shadow-sm">
               <ShieldCheck className="w-7 h-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">
-                Super Admin Company Approvals
+              <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">
+                Company Approvals & Licensing
               </h1>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500 mt-1">
                 Verify Pakistani event organizer credentials, NTN/CNIC tax documents, and manage approval status.
               </p>
             </div>
@@ -171,7 +171,7 @@ export default function AdminCompanies() {
 
           <button
             onClick={loadCompanies}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 w-fit"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition border border-slate-200 w-fit"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh List
           </button>
@@ -180,22 +180,22 @@ export default function AdminCompanies() {
 
       {/* Feedback Banner */}
       {message.text && (
-        <div className={`p-4 rounded-xl text-xs flex items-center gap-2 border ${
+        <div className={`p-4 rounded-2xl text-xs flex items-center gap-2.5 border font-medium ${
           message.type === 'success' 
-            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' 
-            : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+            : 'bg-rose-50 border-rose-200 text-rose-800'
         }`}>
-          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />}
           <span>{message.text}</span>
         </div>
       )}
 
       {/* Filter Tabs */}
-      <div className="flex border-b border-slate-800 gap-2 text-xs font-semibold overflow-x-auto pb-1">
+      <div className="flex items-center gap-2 text-xs font-bold overflow-x-auto pb-1">
         <button
           onClick={() => setFilter('ALL')}
-          className={`py-2 px-3 rounded-lg transition ${
-            filter === 'ALL' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+          className={`py-2 px-4 rounded-full transition border ${
+            filter === 'ALL' ? 'bg-[#008459] text-white border-[#008459] shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
           }`}
         >
           All Companies ({counts.all})
@@ -203,8 +203,8 @@ export default function AdminCompanies() {
 
         <button
           onClick={() => setFilter('PENDING')}
-          className={`py-2 px-3 rounded-lg transition flex items-center gap-1.5 ${
-            filter === 'PENDING' ? 'bg-amber-950/60 text-amber-300 border border-amber-600/40 font-bold' : 'text-amber-400 hover:text-amber-300'
+          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${
+            filter === 'PENDING' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-amber-700 hover:bg-amber-50 border-amber-200'
           }`}
         >
           <Clock className="w-3.5 h-3.5" /> Pending Review ({counts.pending})
@@ -212,8 +212,8 @@ export default function AdminCompanies() {
 
         <button
           onClick={() => setFilter('APPROVED')}
-          className={`py-2 px-3 rounded-lg transition flex items-center gap-1.5 ${
-            filter === 'APPROVED' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-600/40 font-bold' : 'text-emerald-400 hover:text-emerald-300'
+          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${
+            filter === 'APPROVED' ? 'bg-[#008459] text-white border-[#008459] shadow-sm' : 'bg-white text-emerald-700 hover:bg-emerald-50 border-emerald-200'
           }`}
         >
           <CheckCircle2 className="w-3.5 h-3.5" /> Approved ({counts.approved})
@@ -221,8 +221,8 @@ export default function AdminCompanies() {
 
         <button
           onClick={() => setFilter('REJECTED')}
-          className={`py-2 px-3 rounded-lg transition flex items-center gap-1.5 ${
-            filter === 'REJECTED' ? 'bg-rose-950/60 text-rose-300 border border-rose-600/40 font-bold' : 'text-rose-400 hover:text-rose-300'
+          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${
+            filter === 'REJECTED' ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-white text-rose-700 hover:bg-rose-50 border-rose-200'
           }`}
         >
           <XCircle className="w-3.5 h-3.5" /> Rejected ({counts.rejected})
@@ -230,8 +230,8 @@ export default function AdminCompanies() {
 
         <button
           onClick={() => setFilter('SUSPENDED')}
-          className={`py-2 px-3 rounded-lg transition ${
-            filter === 'SUSPENDED' ? 'bg-slate-800 text-slate-300' : 'text-slate-500 hover:text-slate-300'
+          className={`py-2 px-4 rounded-full transition border ${
+            filter === 'SUSPENDED' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
           }`}
         >
           Suspended ({counts.suspended})
@@ -240,11 +240,12 @@ export default function AdminCompanies() {
 
       {/* Companies List */}
       {loading ? (
-        <div className="p-12 text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-500 mx-auto"></div>
+        <div className="p-16 text-center bg-white rounded-3xl border border-slate-200/90 shadow-sm">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#008459] mx-auto"></div>
+          <p className="text-xs text-slate-500 font-medium mt-3">Loading organizer companies...</p>
         </div>
       ) : companies.length === 0 ? (
-        <div className="p-12 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-2xl">
+        <div className="p-16 text-center text-xs text-slate-500 border border-dashed border-slate-300 rounded-3xl bg-white shadow-sm">
           No company registrations found matching the "{filter}" filter.
         </div>
       ) : (
@@ -252,71 +253,71 @@ export default function AdminCompanies() {
           {companies.map((c) => (
             <div
               key={c.id}
-              className="p-6 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+              className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 hover:border-slate-300 transition flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-sm hover:shadow-md"
             >
-              <div className="space-y-3 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-bold text-white tracking-tight">
+              <div className="space-y-3.5 flex-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="text-base font-extrabold text-[#212b36] tracking-tight">
                     {c.companyName}
                   </h3>
 
-                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
+                  <span className={`text-[10px] px-3 py-0.5 rounded-full font-bold uppercase border ${
                     c.status === 'APPROVED' 
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
                       : c.status === 'PENDING'
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
                       : c.status === 'REJECTED'
-                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                      : 'bg-slate-800 text-slate-400'
+                      ? 'bg-rose-50 text-rose-800 border-rose-200'
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
                   }`}>
                     {c.status}
                   </span>
 
-                  <span className="text-[10px] text-slate-500">
+                  <span className="text-[11px] text-slate-400 font-medium">
                     Registered: {new Date(c.createdAt).toLocaleDateString()}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs text-slate-300">
-                  <div className="flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Owner: <strong>{c.ownerName}</strong></span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <User className="w-3.5 h-3.5 text-[#008459]" />
+                    <span>Owner: <strong className="text-slate-900">{c.ownerName}</strong></span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{c.email}</span>
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-3.5 h-3.5 text-[#008459]" />
+                    <span className="truncate">{c.email}</span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-[#008459]" />
                     <span>{c.phone}</span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>City: <strong>{c.city}</strong></span>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-[#008459]" />
+                    <span>City: <strong className="text-slate-900">{c.city}</strong></span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>NTN / CNIC: <strong className="font-mono text-emerald-300">{c.ntnCnic}</strong></span>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-3.5 h-3.5 text-[#008459]" />
+                    <span>NTN / CNIC: <strong className="font-mono text-slate-900">{c.ntnCnic}</strong></span>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <a
                       href={c.documentUrl.startsWith('http') ? c.documentUrl : `${API_URL}${c.documentUrl}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-emerald-400 hover:underline font-semibold"
+                      className="inline-flex items-center gap-1 text-[#008459] hover:underline font-bold"
                     >
-                      Inspect Document <ExternalLink className="w-3.5 h-3.5" />
+                      Inspect Legal Document <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   </div>
                 </div>
 
                 {c.rejectionReason && (
-                  <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-900/60 text-xs text-rose-300">
+                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 font-medium">
                     <strong>Rejection Reason:</strong> {c.rejectionReason}
                   </div>
                 )}
@@ -328,7 +329,7 @@ export default function AdminCompanies() {
                   <button
                     onClick={() => handleApprove(c.id, c.companyName)}
                     disabled={actionLoading === c.id}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full bg-[#008459] hover:bg-[#00704c] text-white font-bold text-xs transition shadow-sm disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" /> Approve
                   </button>
@@ -338,7 +339,7 @@ export default function AdminCompanies() {
                   <button
                     onClick={() => setRejectModal({ open: true, companyId: c.id, companyName: c.companyName, reason: '' })}
                     disabled={actionLoading === c.id}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 font-semibold text-xs border border-rose-800/60 transition disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition disabled:opacity-50"
                   >
                     <XCircle className="w-3.5 h-3.5" /> Reject
                   </button>
@@ -348,7 +349,7 @@ export default function AdminCompanies() {
                   <button
                     onClick={() => handleSuspend(c.id, c.companyName)}
                     disabled={actionLoading === c.id}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200 transition disabled:opacity-50"
                   >
                     <Ban className="w-3.5 h-3.5" /> Suspend
                   </button>
@@ -361,15 +362,17 @@ export default function AdminCompanies() {
 
       {/* REJECTION REASON MODAL */}
       {rejectModal.open && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <XCircle className="w-5 h-5 text-rose-400" />
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-4 shadow-2xl">
+            <h3 className="text-base font-extrabold text-[#212b36] flex items-center gap-2">
+              <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                <XCircle className="w-4 h-4" />
+              </span>
               Reject Company Registration
             </h3>
 
-            <p className="text-xs text-slate-400">
-              Provide a clear reason for rejecting <strong className="text-white">"{rejectModal.companyName}"</strong>. The organizer will receive this feedback:
+            <p className="text-xs text-slate-500">
+              Provide a clear reason for rejecting <strong className="text-slate-900">"{rejectModal.companyName}"</strong>. The organizer will receive this feedback:
             </p>
 
             <form onSubmit={submitRejection} className="space-y-4 text-xs">
@@ -379,21 +382,21 @@ export default function AdminCompanies() {
                 value={rejectModal.reason}
                 onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
                 placeholder="e.g. NTN number does not match FBR record, or CNIC scan is unclear."
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-white focus:outline-none focus:border-rose-500 text-xs"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 text-xs"
               />
 
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setRejectModal({ open: false, companyId: null, companyName: '', reason: '' })}
-                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  className="px-5 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionLoading === rejectModal.companyId || !rejectModal.reason.trim()}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition shadow-sm disabled:opacity-50"
                 >
                   Confirm Rejection
                 </button>
