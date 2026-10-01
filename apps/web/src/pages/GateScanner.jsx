@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   ShieldCheck,
@@ -23,10 +24,14 @@ import {
   Sparkles
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
 export default function GateScanner() {
   const { user, token } = useAuth();
+  // Event chosen on the Select Event screen (/staff/events); the API only admits tickets for assigned events
+  const [searchParams] = useSearchParams();
+  const eventId = searchParams.get('eventId');
+  const [activeEvent, setActiveEvent] = useState(null);
 
   const [gateNumber, setGateNumber] = useState('Gate 1 - Main Pavilion');
   const [offlineMode, setOfflineMode] = useState(false);
@@ -46,7 +51,8 @@ export default function GateScanner() {
   const fetchRecentScans = async () => {
     setLoadingRecent(true);
     try {
-      const res = await fetch(`${API_BASE}/gate/recent-scans?limit=15`, {
+      const eventQuery = eventId ? `&eventId=${encodeURIComponent(eventId)}` : '';
+      const res = await fetch(`${API_BASE}/gate/recent-scans?limit=15${eventQuery}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -70,7 +76,18 @@ export default function GateScanner() {
     if (token) {
       fetchRecentScans();
     }
-  }, [token]);
+  }, [token, eventId]);
+
+  useEffect(() => {
+    if (!token || !eventId) {
+      setActiveEvent(null);
+      return;
+    }
+    fetch(`${API_BASE}/staff/my-events`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json())
+      .then((data) => setActiveEvent(data.data?.events?.find((e) => e.id === eventId) || null))
+      .catch(() => setActiveEvent(null));
+  }, [token, eventId]);
 
   const handleProcessScan = async (payloadToScan) => {
     const payload = payloadToScan || rawPayloadInput.trim();
@@ -128,7 +145,22 @@ export default function GateScanner() {
   return (
     <div className="space-y-8 pb-16 text-slate-800">
       <div className="max-w-7xl mx-auto space-y-8">
-        
+
+        {/* Event being scanned (gate staff pick it on /staff/events) */}
+        {(eventId || user?.role === 'GATE_STAFF') && (
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Scanning for</div>
+              <div className="font-bold text-slate-900 truncate">
+                {activeEvent ? activeEvent.name : eventId ? 'Loading event…' : 'No event selected'}
+              </div>
+            </div>
+            <Link to="/staff/events" className="font-bold text-[#16a34a] hover:underline flex-shrink-0">
+              {eventId ? 'Change event' : 'Select event'}
+            </Link>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -136,9 +168,8 @@ export default function GateScanner() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-[#16a34a]" /> Stadium Gate Control System
               </span>
-              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
-                offlineMode ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-teal-50 text-teal-800 border border-teal-200'
-              }`}>
+              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${offlineMode ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-teal-50 text-teal-800 border border-teal-200'
+                }`}>
                 {offlineMode ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3 text-emerald-600" />}
                 {offlineMode ? 'Offline HMAC Verification Mode' : 'Online Real-Time Sync'}
               </span>
@@ -173,11 +204,10 @@ export default function GateScanner() {
               <button
                 type="button"
                 onClick={() => setOfflineMode(!offlineMode)}
-                className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition ${
-                  offlineMode
-                    ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm'
-                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm'
-                }`}
+                className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition ${offlineMode
+                  ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm'
+                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm'
+                  }`}
               >
                 {offlineMode ? <WifiOff className="w-3.5 h-3.5 text-amber-600" /> : <Wifi className="w-3.5 h-3.5 text-emerald-600" />}
                 <span>{offlineMode ? 'Simulate Offline' : 'Online Server'}</span>
@@ -214,7 +244,7 @@ export default function GateScanner() {
 
         {/* Main Scanner Section */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
+
           {/* Scanner Input & Camera Simulator (5 cols) */}
           <div className="lg:col-span-5 rounded-3xl bg-white border border-slate-200/90 p-6 space-y-5 shadow-sm">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -277,22 +307,20 @@ export default function GateScanner() {
           {/* Turnstile Visual Feedback Screen (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             {lastScanResult ? (
-              <div className={`rounded-3xl border p-6 sm:p-8 space-y-6 shadow-sm transition-all ${
-                lastScanResult.valid
-                  ? 'bg-emerald-50 border-emerald-300'
-                  : lastScanResult.result === 'ALREADY_SCANNED'
+              <div className={`rounded-3xl border p-6 sm:p-8 space-y-6 shadow-sm transition-all ${lastScanResult.valid
+                ? 'bg-emerald-50 border-emerald-300'
+                : lastScanResult.result === 'ALREADY_SCANNED'
                   ? 'bg-amber-50 border-amber-300'
                   : 'bg-rose-50 border-rose-300'
-              }`}>
+                }`}>
                 {/* Result Title Banner */}
                 <div className="flex items-center gap-3">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${
-                    lastScanResult.valid
-                      ? 'bg-[#16a34a] text-white shadow-sm'
-                      : lastScanResult.result === 'ALREADY_SCANNED'
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${lastScanResult.valid
+                    ? 'bg-[#16a34a] text-white shadow-sm'
+                    : lastScanResult.result === 'ALREADY_SCANNED'
                       ? 'bg-amber-500 text-white shadow-sm'
                       : 'bg-rose-500 text-white shadow-sm'
-                  }`}>
+                    }`}>
                     {lastScanResult.valid ? (
                       <CheckCircle2 className="w-8 h-8" />
                     ) : (
@@ -300,14 +328,12 @@ export default function GateScanner() {
                     )}
                   </div>
                   <div>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                      lastScanResult.valid ? 'text-emerald-800' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-800' : 'text-rose-800'
-                    }`}>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${lastScanResult.valid ? 'text-emerald-800' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-800' : 'text-rose-800'
+                      }`}>
                       Turnstile Decision • {lastScanResult.scannedAt}
                     </span>
-                    <h2 className={`text-2xl font-black ${
-                      lastScanResult.valid ? 'text-emerald-900' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-900' : 'text-rose-900'
-                    }`}>
+                    <h2 className={`text-2xl font-black ${lastScanResult.valid ? 'text-emerald-900' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-900' : 'text-rose-900'
+                      }`}>
                       {lastScanResult.valid ? 'ACCESS GRANTED' : 'ACCESS DENIED'}
                     </h2>
                   </div>
@@ -403,13 +429,12 @@ export default function GateScanner() {
                       className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs hover:bg-slate-100 transition"
                     >
                       <div className="flex items-center gap-2.5">
-                        <span className={`w-2 h-2 rounded-full ${
-                          scan.result === 'VALID_FIRST_SCAN'
-                            ? 'bg-emerald-500'
-                            : scan.result === 'ALREADY_SCANNED'
+                        <span className={`w-2 h-2 rounded-full ${scan.result === 'VALID_FIRST_SCAN'
+                          ? 'bg-emerald-500'
+                          : scan.result === 'ALREADY_SCANNED'
                             ? 'bg-amber-500'
                             : 'bg-rose-500'
-                        }`} />
+                          }`} />
                         <div>
                           <div className="font-bold text-slate-900">
                             {scan.ticket?.user?.name || 'Attendee'} • {scan.ticket?.seat?.tier?.name} Row {scan.ticket?.seat?.row} #{scan.ticket?.seat?.seatNumber}
@@ -421,13 +446,12 @@ export default function GateScanner() {
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
-                          scan.result === 'VALID_FIRST_SCAN'
-                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                            : scan.result === 'ALREADY_SCANNED'
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${scan.result === 'VALID_FIRST_SCAN'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : scan.result === 'ALREADY_SCANNED'
                             ? 'bg-amber-50 text-amber-800 border border-amber-200'
                             : 'bg-rose-50 text-rose-800 border border-rose-200'
-                        }`}>
+                          }`}>
                           {scan.result}
                         </span>
                         <div className="text-[10px] text-slate-400 font-mono mt-0.5">

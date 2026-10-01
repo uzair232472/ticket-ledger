@@ -7,6 +7,7 @@ import {
   ROTATION_WINDOW_SECONDS,
 } from '../services/qrTicketService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
+import { getScopedEventIds } from '../services/accessService.js';
 
 /**
  * 1. Process Gate Turnstile Scan (Dynamic QR Verification & Double-Entry Block)
@@ -27,6 +28,7 @@ export const scanTicket = async (req, res) => {
     const result = await processGateScan({
       payload,
       staffId,
+      allowedEventIds: await getScopedEventIds(req.user),
       gateNumber: gateNumber || 'Gate 1 - Turnstile A',
       offlineMode: Boolean(offlineMode),
     });
@@ -115,8 +117,15 @@ export const getRecentScans = async (req, res) => {
     if (req.user.role === 'GATE_STAFF') {
       whereClause.staffId = staffId;
     }
+    // Organizers see scans for their own events only; Super Admins see everything
+    const scopedIds = await getScopedEventIds(req.user);
+    if (eventId && scopedIds && !scopedIds.includes(eventId)) {
+      return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
+    }
     if (eventId) {
       whereClause.ticket = { eventId };
+    } else if (scopedIds) {
+      whereClause.ticket = { eventId: { in: scopedIds } };
     }
 
     const scans = await prisma.gateScan.findMany({
@@ -153,6 +162,11 @@ export const getRecentScans = async (req, res) => {
 export const getEventGateStats = async (req, res) => {
   try {
     const { eventId } = req.params;
+
+    const scopedIds = await getScopedEventIds(req.user);
+    if (scopedIds && !scopedIds.includes(eventId)) {
+      return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
+    }
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },

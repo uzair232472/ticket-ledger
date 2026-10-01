@@ -4,19 +4,32 @@ dotenv.config();
 
 let transporter = null;
 let lastSentEmail = null;
+// True when no real SMTP server is configured and mail goes to nodemailer's in-memory JSON transport
+let isDevTransport = false;
+
+const MAIL_FROM = () =>
+  process.env.MAIL_FROM || process.env.FROM_EMAIL || process.env.EMAIL_FROM || '"TicketLedger" <support@ticketledger.pk>';
+const FRONTEND_URL = () => (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim().replace(/\/$/, '');
+
+// Codes and links are printed only when they could not have reached a real inbox, and never in production
+const logForLocalDev = (line) => {
+  if (process.env.NODE_ENV !== 'production') console.log(line);
+};
 
 // Initialize Nodemailer Transporter
 export const getTransporter = () => {
   if (transporter) return transporter;
 
-  const isRealHost = process.env.SMTP_HOST && 
-                     !process.env.SMTP_HOST.includes('mock') && 
-                     !process.env.SMTP_HOST.includes('mailtrap.io');
-  const isRealUser = process.env.SMTP_USER && 
-                     process.env.SMTP_USER !== 'mock_user' && 
+  // Automated tests never send real mail: test signups use made-up addresses, and the bounces
+  // exhaust the sender's daily quota (Gmail answers "550 5.4.5 Daily user sending limit exceeded").
+  const isTestRun = process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT);
+  // Mailtrap / Ethereal sandboxes are real SMTP servers that keep mail in a fake inbox, so they are used as-is
+  const isRealHost = process.env.SMTP_HOST && !process.env.SMTP_HOST.includes('mock');
+  const isRealUser = process.env.SMTP_USER &&
+                     process.env.SMTP_USER !== 'mock_user' &&
                      !process.env.SMTP_USER.includes('mock');
 
-  if (isRealHost && isRealUser) {
+  if (isRealHost && isRealUser && !isTestRun) {
     if (process.env.SMTP_HOST.includes('gmail')) {
       transporter = nodemailer.createTransport({
         service: 'gmail',
@@ -38,6 +51,7 @@ export const getTransporter = () => {
     }
   } else {
     // Development / Test transporter - in-memory JSON transport that works offline
+    isDevTransport = true;
     transporter = nodemailer.createTransport({
       jsonTransport: true,
     });
@@ -148,9 +162,27 @@ export const getLastSentEmail = () => lastSentEmail;
 /**
  * Send an OTP Verification email with a high-visibility 6-digit code
  */
-export const sendOtpEmail = async ({ to, name, otpCode }) => {
+const OTP_EMAIL_COPY = {
+  VERIFY_EMAIL: {
+    badge: 'Verification Required',
+    title: 'Verify Your Email Address',
+    intro: 'Thank you for registering on TicketLedger. Please use the one-time verification code below to activate your account and verify your email.',
+    subject: (code) => `🔐 ${code} is your TicketLedger Verification Code`,
+    text: (code) => `Your TicketLedger verification code is: ${code}. It expires in 10 minutes.`,
+  },
+  RESET_PASSWORD: {
+    badge: 'Password Reset',
+    title: 'Reset Your Password',
+    intro: 'We received a request to reset your TicketLedger password. Use the one-time code below to choose a new password.',
+    subject: (code) => `🔑 ${code} is your TicketLedger password reset code`,
+    text: (code) => `Your TicketLedger password reset code is: ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
+  },
+};
+
+export const sendOtpEmail = async ({ to, name, otpCode, purpose = 'VERIFY_EMAIL' }) => {
   const mailTransporter = getTransporter();
   const userName = name || 'User';
+  const copy = OTP_EMAIL_COPY[purpose] || OTP_EMAIL_COPY.VERIFY_EMAIL;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -180,11 +212,11 @@ export const sendOtpEmail = async ({ to, name, otpCode }) => {
           <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Cryptographic Ticketing & Anti-Scalping Protocol</div>
         </div>
         <div class="content">
-          <span class="badge">Verification Required</span>
-          <div class="title">Verify Your Email Address</div>
+          <span class="badge">${copy.badge}</span>
+          <div class="title">${copy.title}</div>
           <div class="message">
             Hello <strong>${userName}</strong>,<br>
-            Thank you for registering on TicketLedger. Please use the one-time verification code below to activate your account and verify your email.
+            ${copy.intro}
           </div>
 
           <div class="otp-box">
@@ -206,21 +238,23 @@ export const sendOtpEmail = async ({ to, name, otpCode }) => {
   `;
 
   const mailOptions = {
-    from: process.env.FROM_EMAIL || process.env.EMAIL_FROM || '"TicketLedger" <support@ticketledger.pk>',
+    from: MAIL_FROM(),
     to,
-    subject: `🔐 ${otpCode} is your TicketLedger Verification Code`,
-    text: `Your TicketLedger verification code is: ${otpCode}. It expires in 10 minutes.`,
+    subject: copy.subject(otpCode),
+    text: copy.text(otpCode),
     html: htmlContent,
   };
 
   try {
     const info = await mailTransporter.sendMail(mailOptions);
-    console.log(`[EMAIL DISPATCH] Sent OTP to ${to} (MessageId: ${info.messageId || 'local'})`);
+    console.log(`[EMAIL DISPATCH] Sent ${purpose} OTP to ${to} (MessageId: ${info.messageId || 'local'})`);
+    if (isDevTransport) logForLocalDev(`[LOCAL DEV OTP] ${purpose} code for ${to} is: ${otpCode}`);
 
     lastSentEmail = {
       to,
       subject: mailOptions.subject,
       type: 'EMAIL_OTP_VERIFICATION',
+      purpose,
       otpCode,
       messageId: info.messageId || 'msg_' + Math.random().toString(36).substring(7),
       timestamp: new Date().toISOString(),
@@ -233,12 +267,13 @@ export const sendOtpEmail = async ({ to, name, otpCode }) => {
     };
   } catch (error) {
     console.warn(`[EMAIL WARNING] Failed to send email via SMTP: ${error.message}.`);
-    console.log(`[LOCAL DEV OTP] Code for ${to} is: ${otpCode}`);
+    logForLocalDev(`[LOCAL DEV OTP] ${purpose} code for ${to} is: ${otpCode}`);
 
     lastSentEmail = {
       to,
       subject: mailOptions.subject,
       type: 'EMAIL_OTP_VERIFICATION',
+      purpose,
       otpCode,
       messageId: 'dev_mock_' + Date.now(),
       timestamp: new Date().toISOString(),
@@ -253,8 +288,67 @@ export const sendOtpEmail = async ({ to, name, otpCode }) => {
   }
 };
 
+/**
+ * Send a gate staff invite link. SMTP failures are logged and reported, never thrown.
+ */
+export const sendStaffInviteEmail = async ({ to, inviteToken, eventName, companyName, inviterName }) => {
+  const inviteUrl = `${FRONTEND_URL()}/invite/${inviteToken}`;
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background:#f8fafc; color:#0f172a; margin:0; padding:24px;">
+      <div style="max-width:560px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden;">
+        <div style="background:#065f46; padding:24px; text-align:center; color:#ffffff; font-size:22px; font-weight:900;">🎟️ TicketLedger</div>
+        <div style="padding:28px 24px;">
+          <div style="font-size:20px; font-weight:800; margin-bottom:8px;">You're invited to join the gate team</div>
+          <p style="font-size:14px; color:#475569; line-height:1.6;">
+            ${inviterName ? `<strong>${inviterName}</strong> has invited you` : 'You have been invited'} to work as gate staff
+            for <strong>${eventName}</strong>${companyName ? ` (${companyName})` : ''} on TicketLedger.
+            Set your password to activate your account and start scanning tickets.
+          </p>
+          <div style="text-align:center; margin:28px 0;">
+            <a href="${inviteUrl}" style="display:inline-block; padding:12px 24px; background:#16a34a; color:#ffffff; font-weight:bold; font-size:14px; text-decoration:none; border-radius:10px;">Accept invite</a>
+          </div>
+          <p style="font-size:12px; color:#64748b;">This link works once and expires in 72 hours. If you weren't expecting it, you can ignore this email.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const mailOptions = {
+    from: MAIL_FROM(),
+    to,
+    subject: `You're invited to scan tickets for ${eventName}`,
+    text: `You have been invited to work as gate staff for ${eventName} on TicketLedger. Accept the invite (valid 72 hours, single use): ${inviteUrl}`,
+    html,
+  };
+
+  lastSentEmail = {
+    to,
+    subject: mailOptions.subject,
+    type: 'STAFF_INVITE',
+    inviteToken,
+    inviteUrl,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const info = await getTransporter().sendMail(mailOptions);
+    console.log(`[EMAIL DISPATCH] Sent staff invite to ${to} (MessageId: ${info.messageId || 'local'})`);
+    if (isDevTransport) logForLocalDev(`[LOCAL DEV INVITE] Invite link for ${to}: ${inviteUrl}`);
+    return { success: true };
+  } catch (error) {
+    console.warn(`[EMAIL WARNING] Failed to send staff invite via SMTP: ${error.message}.`);
+    logForLocalDev(`[LOCAL DEV INVITE] Invite link for ${to}: ${inviteUrl}`);
+    return { success: false, fallback: true };
+  }
+};
+
 export default {
   getTransporter,
+  sendStaffInviteEmail,
   sendEmailNotification,
   sendOtpEmail,
   generateEmailHTML,

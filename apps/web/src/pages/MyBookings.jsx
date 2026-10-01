@@ -14,7 +14,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function MyBookings() {
   const { token } = useAuth();
@@ -138,11 +138,10 @@ export default function MyBookings() {
                       Rs. {Number(order.totalAmount).toLocaleString()}
                     </div>
                     <span
-                      className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                        isConfirmed
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          : 'bg-amber-50 text-amber-800 border border-amber-200'
-                      }`}
+                      className={`inline-block mt-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${isConfirmed
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
                     >
                       {order.status} • {order.paymentMethod}
                     </span>

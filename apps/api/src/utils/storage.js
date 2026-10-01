@@ -24,9 +24,11 @@ if (isCloudinaryConfigured) {
  *
  * @param {Object} file - Multer file object or file metadata with buffer/path
  * @param {string} folder - Destination subfolder (e.g. 'company_docs', 'banners')
+ * @param {Object} [options]
+ * @param {string} [options.extension] - Extension to store under (e.g. from the sniffed image type) instead of the client filename's
  * @returns {Promise<{ url: string, publicId: string, provider: string }>}
  */
-export const uploadFile = async (file, folder = 'company_docs') => {
+export const uploadFile = async (file, folder = 'company_docs', options = {}) => {
   if (!file) {
     throw new Error('No file provided for upload.');
   }
@@ -66,7 +68,7 @@ export const uploadFile = async (file, folder = 'company_docs') => {
     fs.mkdirSync(uploadsDir, { recursive: true });
   }
 
-  const extension = path.extname(file.originalname || '') || '.pdf';
+  const extension = options.extension || path.extname(file.originalname || '') || '.pdf';
   const filename = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}${extension}`;
   const targetPath = path.join(uploadsDir, filename);
 

@@ -27,7 +27,7 @@ import {
   ShoppingBag
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function MyNFTTickets() {
   const { token, user } = useAuth();
@@ -588,11 +588,10 @@ export default function MyNFTTickets() {
                   <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
                     <span>Set Resale Price (PKR)</span>
                     {Number(resalePriceInput) > 0 && (
-                      <span className={`text-[11px] font-bold ${
-                        Number(resalePriceInput) > selectedTicketForResale.resalePriceCap
-                          ? 'text-rose-600'
-                          : 'text-[#16a34a]'
-                      }`}>
+                      <span className={`text-[11px] font-bold ${Number(resalePriceInput) > selectedTicketForResale.resalePriceCap
+                        ? 'text-rose-600'
+                        : 'text-[#16a34a]'
+                        }`}>
                         {Number(resalePriceInput) > selectedTicketForResale.resalePriceCap
                           ? '❌ Exceeds 110% Cap'
                           : `✓ Compliant (+${Math.round(((Number(resalePriceInput) - Number(selectedTicketForResale.price)) / Number(selectedTicketForResale.price)) * 100)}% markup)`}

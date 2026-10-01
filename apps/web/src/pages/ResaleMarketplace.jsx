@@ -23,10 +23,10 @@ import {
   Percent
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
 export default function ResaleMarketplace() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, token, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const [listings, setListings] = useState([]);
@@ -85,7 +85,6 @@ export default function ResaleMarketplace() {
     setPurchaseError('');
 
     try {
-      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/resale/buy/${selectedListing.id}`, {
         method: 'POST',
         headers: {
@@ -113,7 +112,7 @@ export default function ResaleMarketplace() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 py-4 pb-16 text-slate-800">
       <div className="space-y-8">
-        
+
         {/* Anti-Scalping Hero Banner */}
         <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-10 shadow-sm">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -126,7 +125,7 @@ export default function ResaleMarketplace() {
                 Verified Secondary Fan Exchange
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-                Buy and resell authentic event tickets directly with fellow fans. All listings are bounded by an 
+                Buy and resell authentic event tickets directly with fellow fans. All listings are bounded by an
                 <strong className="text-emerald-800 font-bold"> immutable 110% price ceiling</strong> enforced by our Polygon smart contracts, preventing predatory black-market markups and ticket botting.
               </p>
               <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-slate-600">
@@ -412,7 +411,7 @@ export default function ResaleMarketplace() {
       {selectedListing && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-3xl bg-white border border-slate-200 p-6 sm:p-8 space-y-6 shadow-2xl relative">
-            
+
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <span className="text-[10px] font-bold uppercase text-emerald-800 tracking-wider flex items-center gap-1">
@@ -525,11 +524,10 @@ export default function ResaleMarketplace() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('TEST_INSTANT')}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${
-                        paymentMethod === 'TEST_INSTANT'
-                          ? 'bg-emerald-50 border-[#22c55e] text-emerald-900 shadow-sm'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${paymentMethod === 'TEST_INSTANT'
+                        ? 'bg-emerald-50 border-[#22c55e] text-emerald-900 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
                     >
                       <CreditCard className="w-4 h-4 text-[#16a34a]" />
                       <span>1-Click Test</span>
@@ -537,11 +535,10 @@ export default function ResaleMarketplace() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('JAZZCASH')}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${
-                        paymentMethod === 'JAZZCASH'
-                          ? 'bg-red-50 border-red-400 text-red-900 shadow-sm'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${paymentMethod === 'JAZZCASH'
+                        ? 'bg-red-50 border-red-400 text-red-900 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
                     >
                       <span className="font-bold text-red-600 text-sm">JC</span>
                       <span>JazzCash</span>
@@ -549,11 +546,10 @@ export default function ResaleMarketplace() {
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('EASYPAISA')}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${
-                        paymentMethod === 'EASYPAISA'
-                          ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
-                      }`}
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${paymentMethod === 'EASYPAISA'
+                        ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
                     >
                       <span className="font-bold text-emerald-600 text-sm">EP</span>
                       <span>EasyPaisa</span>

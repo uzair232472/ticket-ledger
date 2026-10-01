@@ -11,6 +11,7 @@
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "seed": "node prisma/seed.js",
+    "create-admin": "node scripts/create-super-admin.mjs",
     "test": "node --test"
   },
   "prisma": {

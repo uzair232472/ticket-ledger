@@ -1,27 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  Building2, 
-  Ticket, 
-  Plus, 
-  Trash2, 
-  UploadCloud, 
-  AlertCircle, 
-  CheckCircle2, 
+import api from '../utils/api';
+import { getEventVisual } from '../utils/eventMedia';
+import ImageField, { emptyImageValue, imageValueSrc } from '../components/event-form/ImageField';
+import GalleryField, { galleryItemsFromSaved } from '../components/event-form/GalleryField';
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Building2,
+  Ticket,
+  Plus,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
   ArrowLeft,
   Sparkles,
-  Send
+  Send,
+  Save,
+  Image as ImageIcon
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+const CITIES = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar', 'Quetta'];
+
+const emptyImages = (event) => ({
+  banner: emptyImageValue(event?.bannerUrl || null),
+  cardImage: emptyImageValue(event?.cardImageUrl || null),
+  galleryWide: emptyImageValue(event?.galleryWideUrl || null),
+});
+
+/** Create a new event, or (at /organizer/events/:id/edit) edit an existing event's details and images. */
 export default function CreateEvent() {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { id: editId } = useParams();
+  const isEdit = Boolean(editId);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -41,7 +57,11 @@ export default function CreateEvent() {
     bannerUrl: '',
   });
 
-  const [bannerFile, setBannerFile] = useState(null);
+  // Organizer images: nothing is uploaded until the form is saved, so cancelling leaves the event as it was
+  const [images, setImages] = useState(() => emptyImages(null));
+  const [gallery, setGallery] = useState([]);
+  const [savedGallery, setSavedGallery] = useState([]);
+  const [loadError, setLoadError] = useState('');
 
   // Dynamic ticket tiers
   const [tiers, setTiers] = useState([
@@ -72,6 +92,45 @@ export default function CreateEvent() {
       checkCompanyStatus();
     }
   }, [token]);
+
+  // Edit mode: load the saved event (ownership is checked by the API)
+  useEffect(() => {
+    if (!isEdit || !token) return undefined;
+    let alive = true;
+    api
+      .get(`/events/${editId}/manage`)
+      .then((res) => {
+        if (!alive) return;
+        const ev = res.data.data.event;
+        setEventData({
+          name: ev.name,
+          description: ev.description,
+          type: ev.type,
+          date: new Date(ev.date).toISOString().slice(0, 10),
+          time: ev.time,
+          city: ev.city,
+          venue: ev.venue,
+          status: ev.status,
+          bannerUrl: ev.bannerUrl || '',
+        });
+        setTiers(ev.tiers.map((t) => ({ name: t.name, price: Number(t.price), totalQuantity: t.totalQuantity })));
+        setImages(emptyImages(ev));
+        const saved = galleryItemsFromSaved(ev.galleryImages);
+        setGallery(saved);
+        setSavedGallery(saved);
+      })
+      .catch((err) => alive && setLoadError(err.response?.data?.message || 'Could not load this event.'));
+    return () => {
+      alive = false;
+    };
+  }, [isEdit, editId, token]);
+
+  const setImage = (field) => (value) => setImages((prev) => ({ ...prev, [field]: value }));
+
+  // What the event page falls back to when a field is empty (same logic as the attendee pages)
+  const artwork = getEventVisual({ type: eventData.type, name: eventData.name }, 0).bannerImage;
+  const bannerSrc = imageValueSrc(images.banner);
+  const bannerFallbackLabel = bannerSrc ? 'the Event Banner' : 'the category artwork shown here';
 
   const handleAddTier = () => {
     setTiers([...tiers, { name: '', price: 2000, totalQuantity: 100 }]);
@@ -105,6 +164,11 @@ export default function CreateEvent() {
       }
     }
 
+    if (isEdit) {
+      await saveEdits();
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('name', eventData.name);
@@ -117,11 +181,10 @@ export default function CreateEvent() {
       formData.append('status', eventData.status);
       formData.append('tiers', JSON.stringify(tiers));
 
-      if (bannerFile) {
-        formData.append('banner', bannerFile);
-      } else if (eventData.bannerUrl) {
-        formData.append('bannerUrl', eventData.bannerUrl);
-      }
+      if (images.banner.file) formData.append('banner', images.banner.file);
+      if (images.cardImage.file) formData.append('cardImage', images.cardImage.file);
+      if (images.galleryWide.file) formData.append('galleryWide', images.galleryWide.file);
+      gallery.forEach((item) => formData.append('galleryImages', item.file));
 
       const res = await fetch(`${API_URL}/api/events`, {
         method: 'POST',
@@ -135,7 +198,8 @@ export default function CreateEvent() {
       if (eventData.status === 'PRELAUNCH_ANALYSIS') {
         navigate(`/demand-forecast?eventId=${data.data.event.id}`);
       } else {
-        navigate(`/events/${data.data.event.id}`);
+        // Step 2 of setup: design the venue plan attendees will book from
+        navigate(`/organizer/events/${data.data.event.id}/venue?setup=1`);
       }
     } catch (err) {
       setError(err.message);
@@ -144,7 +208,47 @@ export default function CreateEvent() {
     }
   };
 
-  if (loading) {
+  // Details and images in one request; the API swaps images only after every upload succeeds
+  async function saveEdits() {
+    try {
+      const formData = new FormData();
+      ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
+      Object.entries(images).forEach(([field, value]) => {
+        if (value.file) formData.append(field, value.file);
+        else if (value.removed) formData.append(`${field}Action`, 'remove');
+      });
+      let upload = 0;
+      const order = gallery.map((item) => {
+        if (item.id) return { id: item.id };
+        formData.append('galleryImages', item.file);
+        return { upload: upload++ };
+      });
+      formData.append('galleryOrder', JSON.stringify(order));
+
+      await api.put(`/events/${editId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      navigate(`/events/${editId}`);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Failed to save changes');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (isEdit && loadError) {
+    return (
+      <div className="max-w-2xl mx-auto my-12 p-8 bg-white border border-rose-200 rounded-3xl text-center space-y-4 shadow-sm">
+        <AlertCircle className="w-6 h-6 text-rose-500 mx-auto" />
+        <h2 className="text-xl font-bold text-slate-900">Can’t edit this event</h2>
+        <p className="text-xs text-slate-500">{loadError}</p>
+        <Link to="/organizer/dashboard" className="btn-eventfrog inline-flex items-center gap-1.5 px-5 py-2.5 text-xs shadow-sm">
+          <ArrowLeft className="w-4 h-4" /> Back to dashboard
+        </Link>
+      </div>
+    );
+  }
+
+  if (loading || (isEdit && !eventData.name)) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-500"></div>
@@ -181,16 +285,18 @@ export default function CreateEvent() {
       {/* Header */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm">
         <Link
-          to="/events"
+          to={isEdit ? `/events/${editId}` : '/events'}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#16a34a] transition mb-3"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Events
+          <ArrowLeft className="w-4 h-4" /> {isEdit ? 'Back to event page' : 'Back to Events'}
         </Link>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight flex items-center gap-2">
-          <Ticket className="w-6 h-6 text-[#16a34a]" /> Host a New Event
+          <Ticket className="w-6 h-6 text-[#16a34a]" /> {isEdit ? 'Edit Event' : 'Host a New Event'}
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          Publish a sports match or music concert with tiered ticket pricing.
+          {isEdit
+            ? 'Update the details and images attendees see. Nothing changes until you save.'
+            : 'Publish a sports match or music concert with tiered ticket pricing.'}
         </p>
       </div>
 
@@ -234,6 +340,11 @@ export default function CreateEvent() {
                 <option value="KABADDI">🤼 Kabaddi Match</option>
                 <option value="FOOTBALL_MATCH">⚽ Football Match</option>
                 <option value="BOXING">🥊 Boxing Match</option>
+                <option value="HOCKEY_MATCH">🏑 Hockey Match</option>
+                <option value="QAWWALI">🪘 Qawwali Night</option>
+                <option value="THEATRE">🎭 Theatre</option>
+                <option value="CONFERENCE">🎤 Conference</option>
+                <option value="GENERAL_ADMISSION">🎟️ General Admission</option>
               </select>
             </div>
 
@@ -244,14 +355,9 @@ export default function CreateEvent() {
                 onChange={(e) => setEventData({ ...eventData, city: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
               >
-                <option value="Lahore">Lahore</option>
-                <option value="Karachi">Karachi</option>
-                <option value="Islamabad">Islamabad</option>
-                <option value="Rawalpindi">Rawalpindi</option>
-                <option value="Faisalabad">Faisalabad</option>
-                <option value="Multan">Multan</option>
-                <option value="Peshawar">Peshawar</option>
-                <option value="Quetta">Quetta</option>
+                {(CITIES.includes(eventData.city) ? CITIES : [eventData.city, ...CITIES]).map((city) => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -305,29 +411,49 @@ export default function CreateEvent() {
             />
           </div>
 
-          {/* Banner Upload */}
-          <div>
-            <label className="block text-slate-700 font-semibold mb-1">Event Banner Image</label>
-            <div className="p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center">
-              <UploadCloud className="w-6 h-6 text-[#16a34a] mx-auto mb-1" />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setBannerFile(e.target.files[0])}
-                className="text-xs text-slate-500 file:mr-3 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#16a34a] file:text-white hover:file:bg-[#15803d] cursor-pointer"
-              />
-              <span className="block text-[10px] text-slate-400 mt-1">
-                Optional: Cloudinary upload or leave empty for automatic sports banner
-              </span>
-            </div>
-          </div>
         </div>
 
-        {/* Section 2: Ticket Tiers & Pricing */}
+        {/* Section 2: Event Images */}
+        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
+          <div className="border-b border-slate-100 pb-2">
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <ImageIcon className="w-4 h-4 text-[#16a34a]" /> 2. Event Images
+            </h2>
+            <p className="text-[10px] text-slate-500">
+              Previews show how each image is cropped on the event pages. Images that don’t match a ratio can be cropped here.
+            </p>
+          </div>
+
+          <ImageField kind="banner" value={images.banner} onChange={setImage('banner')} fallbackSrc={artwork} fallbackLabel="the category artwork shown here" />
+          <ImageField kind="card" value={images.cardImage} onChange={setImage('cardImage')} fallbackSrc={bannerSrc || artwork} fallbackLabel={bannerFallbackLabel} />
+          <ImageField kind="galleryWide" value={images.galleryWide} onChange={setImage('galleryWide')} fallbackSrc={bannerSrc || artwork} fallbackLabel={bannerFallbackLabel} />
+          <GalleryField items={gallery} onChange={setGallery} savedItems={savedGallery} />
+        </div>
+
+        {/* Section 3: Ticket Tiers & Pricing (set at creation; price changes go through the forecast tools) */}
+        {isEdit ? (
+          <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+            <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">3. Ticket Tiers</h2>
+            <ul className="divide-y divide-slate-100">
+              {tiers.map((tier) => (
+                <li key={tier.name} className="py-2 flex justify-between gap-4">
+                  <span className="font-semibold text-slate-700">{tier.name}</span>
+                  <span className="font-mono text-slate-500">PKR {tier.price.toLocaleString()} · {tier.totalQuantity} seats</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-[10px] text-slate-500">
+              Seats, sections and tier quantities are set in{' '}
+              <Link to={`/organizer/events/${editId}/venue`} className="text-[#16a34a] font-semibold hover:underline">Venue &amp; Seating</Link>.{' '}
+              Tiers aren’t edited here. Adjust prices from the{' '}
+              <Link to={`/demand-forecast?eventId=${editId}`} className="text-[#16a34a] font-semibold hover:underline">Pre-Launch Demand Forecast</Link>.
+            </p>
+          </div>
+        ) : (
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <div>
-              <h2 className="text-sm font-bold text-slate-900">2. Ticket Tiers & Capacity</h2>
+              <h2 className="text-sm font-bold text-slate-900">3. Ticket Tiers & Capacity</h2>
               <p className="text-[10px] text-slate-500">Configure ticket categories and original face value prices.</p>
             </div>
 
@@ -396,7 +522,26 @@ export default function CreateEvent() {
             ))}
           </div>
         </div>
+        )}
 
+        {isEdit ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Link
+              to={`/events/${editId}`}
+              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 shadow-sm transition flex items-center justify-center gap-2"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-3.5 btn-eventfrog text-xs shadow-sm flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              <Save className="w-4 h-4" />
+              {submitting ? 'Saving changes…' : 'Save Changes'}
+            </button>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <button
             type="submit"
@@ -418,6 +563,7 @@ export default function CreateEvent() {
             {submitting ? 'Creating Event...' : 'Publish Directly Without Forecast'}
           </button>
         </div>
+        )}
       </form>
     </div>
   );

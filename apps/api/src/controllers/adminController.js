@@ -36,7 +36,7 @@ export const updateUserStatus = async (req, res) => {
     const { id } = req.params;
     const { status, reason } = req.body;
     if (!status) {
-      return res.status(400).json({ success: false, message: 'Status is required (ACTIVE, FROZEN, BLACKLISTED)' });
+      return res.status(400).json({ success: false, message: 'Status is required (ACTIVE, SUSPENDED, BANNED, DEACTIVATED)' });
     }
 
     const result = await adminService.updateUserStatus({
