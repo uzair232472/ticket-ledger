@@ -1,7 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import prisma from './src/config/prisma.js';
 
 const BASE_URL = 'http://localhost:5000/api';
+
+// Registration no longer returns a session; mark the email verified directly, then log in
+async function registerVerifiedCustomer(details) {
+  const regRes = await fetch(`${BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(details),
+  });
+  assert.equal(regRes.status, 201);
+  await prisma.user.update({ where: { email: details.email.toLowerCase() }, data: { isVerified: true } });
+
+  const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: details.email, password: details.password }),
+  });
+  assert.equal(loginRes.status, 200);
+  return (await loginRes.json()).data;
+}
 
 test('MODULE 9 - P2P Resale Marketplace & Anti-Scalping Rules Tests', async (t) => {
   let sellerToken = null;
@@ -31,20 +51,13 @@ test('MODULE 9 - P2P Resale Marketplace & Anti-Scalping Rules Tests', async (t) 
   // 2. Authenticate Buyer (Customer 2)
   await t.test('2. Authenticate Buyer (Customer 2)', async () => {
     const buyerEmail = `buyer_${Date.now()}@ticketledger.pk`;
-    const res = await fetch(`${BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Usman Buyer',
-        email: buyerEmail,
-        password: 'Password@123',
-        role: 'CUSTOMER',
-      }),
+    const data = await registerVerifiedCustomer({
+      name: 'Usman Buyer',
+      email: buyerEmail,
+      password: 'Password@123',
     });
-    const data = await res.json();
-    assert.equal(res.status, 201);
-    buyerToken = data.data.token;
-    buyerId = data.data.user.id;
+    buyerToken = data.token;
+    buyerId = data.user.id;
     assert.notEqual(sellerId, buyerId);
   });
 

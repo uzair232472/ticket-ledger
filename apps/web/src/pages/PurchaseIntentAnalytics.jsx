@@ -462,11 +462,10 @@ export default function PurchaseIntentAnalytics() {
                           <button
                             onClick={() => handleSendReminder(prospect.userId, 'EVENT_REMINDER')}
                             disabled={isSent || isSending}
-                            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition shadow-sm border ${
-                              isSent
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-slate-100 hover:bg-[#008459] text-slate-700 hover:text-white border-slate-200'
-                            }`}
+                            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition shadow-sm border ${isSent
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-slate-100 hover:bg-[#008459] text-slate-700 hover:text-white border-slate-200'
+                              }`}
                           >
                             {isSent ? (
                               <>
@@ -578,11 +577,10 @@ export default function PurchaseIntentAnalytics() {
                           <button
                             onClick={() => handleSendReminder(abandoned.userId, 'ABANDONED_CHECKOUT_REMINDER')}
                             disabled={isSent || isSending}
-                            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition shadow-sm border ${
-                              isSent
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500'
-                            }`}
+                            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition shadow-sm border ${isSent
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500'
+                              }`}
                           >
                             {isSent ? (
                               <>

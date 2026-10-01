@@ -1,226 +1,207 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useLocation, Link } from 'react-router-dom';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
-import {
-  CheckCircle2,
-  Ticket,
-  Calendar,
-  MapPin,
-  ShieldCheck,
-  ArrowRight,
-  Download,
-  Share2,
-  RefreshCw,
-  QrCode,
-  Sparkles
-} from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowRight, Calendar, Check, Clock, MapPin, QrCode, RefreshCw } from 'lucide-react';
+import api from '../utils/api';
+import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
+import { formatPkr } from '../components/venue/venueTheme';
+import { formatEventDate, formatEventTime } from '../utils/eventTime';
 
-const API_BASE_URL = 'http://localhost:5000';
+const POLL_MS = 3000;
+const POLL_LIMIT_MS = 3 * 60 * 1000;
 
+const seatFacts = (seat) => {
+  if (!seat) return [['Seat', '—']];
+  if (seat.kind === 'GA_SLOT') return [['Section', seat.section], ['Entry', 'General'], ['No.', seat.seatNumber]];
+  if (seat.kind === 'TABLE_SEAT') return [['Section', seat.section], ['Table', seat.row], ['Seat', seat.seatNumber]];
+  return [['Section', seat.section], ['Row', seat.row], ['Seat', seat.seatNumber]];
+};
+
+/**
+ * Order status and confirmation. The order is always re-read from the server: success and issued tickets
+ * are shown only for a SUCCESSFUL order; a PENDING order shows a pending state (and is re-checked) and a
+ * FAILED one explains that no tickets were issued.
+ */
 export default function BookingSuccess() {
   const { id: orderId } = useParams();
   const location = useLocation();
-  const { token } = useAuth();
+  const [order, setOrder] = useState(location.state?.order?.status === 'SUCCESSFUL' ? location.state.order : null);
+  const [status, setStatus] = useState('loading'); // loading | ready | error
+  const [error, setError] = useState('');
+  const [checking, setChecking] = useState(false);
+  const started = useRef(Date.now());
+  const receipt = location.state?.receipt;
+  const eventId = order?.eventId || location.state?.eventId;
 
-  const [order, setOrder] = useState(location.state?.order || null);
-  const [receipt, setReceipt] = useState(location.state?.receipt || null);
-  const [loading, setLoading] = useState(!order);
-  const [error, setError] = useState(null);
+  const fetchOrder = useCallback(async () => {
+    setChecking(true);
+    try {
+      const { data } = await api.get(`/bookings/${orderId}`);
+      setOrder(data.data.order);
+      setStatus('ready');
+    } catch (e) {
+      setError(e.response?.status === 404 ? 'We couldn’t find this order.' : e.response?.data?.message || 'We couldn’t load this order. Check your connection and try again.');
+      setStatus((s) => (s === 'ready' ? s : 'error'));
+    } finally {
+      setChecking(false);
+    }
+  }, [orderId]);
 
   useEffect(() => {
-    if (!order && orderId) {
-      const fetchOrder = async () => {
-        try {
-          setLoading(true);
-          const res = await axios.get(`${API_BASE_URL}/api/bookings/${orderId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.data.success) {
-            setOrder(res.data.data.order);
-          }
-        } catch (err) {
-          console.error('Error fetching order receipt:', err);
-          setError('Failed to load order receipt details.');
-        } finally {
-          setLoading(false);
-        }
-      };
+    fetchOrder();
+  }, [fetchOrder]);
 
+  // Pending payments: keep checking for a while, then let the customer check manually
+  const pending = order?.status === 'PENDING';
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (!pending) return undefined;
+    const id = setInterval(() => {
+      if (Date.now() - started.current > POLL_LIMIT_MS) {
+        setGaveUp(true);
+        clearInterval(id);
+        return;
+      }
       fetchOrder();
-    }
-  }, [orderId, order, token]);
+    }, POLL_MS);
+    return () => clearInterval(id);
+  }, [pending, fetchOrder]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <RefreshCw className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
-        <p className="text-slate-400 text-sm">Loading confirmed booking receipt...</p>
+  const head = (title, step = 'confirmation') => (
+    <header className="tl-bk-head tl-bk-rise">
+      <div>
+        <p className="tl-bk-kicker">Order {orderId ? `#${orderId.slice(0, 8).toUpperCase()}` : ''}</p>
+        <h1 className="tl-bk-title">{title}</h1>
       </div>
+      <BookingSteps current={step} />
+    </header>
+  );
+
+  if (status === 'loading' && !order) {
+    return (
+      <BookingShell>
+        {head('Checking your order')}
+        <section className="tl-bk-panel tl-co-status is-pending" aria-busy="true">
+          <span className="tl-co-status-icon" aria-hidden="true"><Clock className="w-6 h-6" /></span>
+          <p role="status">Getting the latest status of your order…</p>
+          <div className="tl-co-progress" aria-hidden="true" />
+        </section>
+      </BookingShell>
     );
   }
 
-  if (error || !order) {
+  if (status === 'error' && !order) {
     return (
-      <div className="max-w-md mx-auto py-16 text-center space-y-4">
-        <div className="text-rose-400 font-bold">{error || 'Booking not found'}</div>
-        <Link
-          to="/events"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition"
-        >
-          Return to Events
-        </Link>
-      </div>
+      <BookingShell>
+        {head('Order unavailable')}
+        <section className="tl-bk-panel tl-co-status is-error" role="alert">
+          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
+          <p>{error}</p>
+          <div className="tl-co-actions">
+            <button type="button" className="tl-bk-btn" onClick={fetchOrder} disabled={checking}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try again</button>
+            <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost">My orders</Link>
+          </div>
+        </section>
+      </BookingShell>
     );
   }
 
   const { event, tickets = [] } = order;
+  const time = formatEventTime(event?.time);
+  const eventMeta = event && (
+    <p className="tl-bk-meta">
+      <span><MapPin className="w-4 h-4" aria-hidden="true" /> {event.venue}, {event.city}</span>
+      {event.date && <span><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</span>}
+    </p>
+  );
+
+  if (order.status === 'PENDING') {
+    return (
+      <BookingShell>
+        {head('Payment pending', 'checkout')}
+        <section className="tl-bk-panel tl-co-status is-pending" aria-labelledby="pending-title">
+          <span className="tl-co-status-icon" aria-hidden="true"><Clock className="w-6 h-6" /></span>
+          <h2 id="pending-title" className="tl-co-status-title">Waiting for payment confirmation</h2>
+          <p role="status" aria-live="polite">
+            We haven’t received confirmation for your {formatPkr(order.totalAmount)} {order.paymentMethod} payment for {event?.name} yet. Your seats stay reserved while it’s pending. Please don’t pay again.
+            {gaveUp ? ' This is taking longer than usual — check again in a moment.' : ' This page updates automatically.'}
+          </p>
+          {!gaveUp && <div className="tl-co-progress" aria-hidden="true" />}
+          <div className="tl-co-actions">
+            <button type="button" className="tl-bk-btn" onClick={fetchOrder} disabled={checking} aria-busy={checking}>
+              <RefreshCw className="w-4 h-4" aria-hidden="true" /> {checking ? 'Checking…' : 'Check status'}
+            </button>
+            {eventId && <Link to={`/events/${eventId}/checkout`} className="tl-bk-btn tl-bk-btn--ghost">Back to checkout</Link>}
+            <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost">My orders</Link>
+          </div>
+          <p className="tl-bk-muted">No tickets are issued until the payment is confirmed.</p>
+        </section>
+      </BookingShell>
+    );
+  }
+
+  if (order.status !== 'SUCCESSFUL') {
+    return (
+      <BookingShell>
+        {head('Order not completed', 'checkout')}
+        <section className="tl-bk-panel tl-co-status is-error" aria-labelledby="failed-title">
+          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
+          <h2 id="failed-title" className="tl-co-status-title">No tickets were issued</h2>
+          <p>
+            This order for {event?.name} was cancelled or its reservation expired before payment was confirmed, so the seats were released and nothing was charged for it.
+          </p>
+          <div className="tl-co-actions">
+            {eventId && <Link to={`/events/${eventId}/seats`} className="tl-bk-btn">Choose seats again</Link>}
+            <Link to="/events" className="tl-bk-btn tl-bk-btn--ghost">Explore events</Link>
+          </div>
+        </section>
+      </BookingShell>
+    );
+  }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 py-4 pb-16 text-slate-800">
-      {/* Celebration Header */}
-      <div className="text-center space-y-3">
-        <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-[#16a34a] flex items-center justify-center mx-auto shadow-sm">
-          <CheckCircle2 className="w-10 h-10 font-black" />
+    <BookingShell>
+      {head('You’re going')}
+
+      <section className="tl-bk-panel tl-co-status is-ok tl-bk-rise" aria-labelledby="ok-title">
+        <span className="tl-co-status-icon" aria-hidden="true"><Check className="w-6 h-6" /></span>
+        <h2 id="ok-title" className="tl-co-status-title">{event?.name}</h2>
+        {eventMeta}
+        <p>Payment confirmed and {tickets.length} ticket{tickets.length === 1 ? '' : 's'} issued to your account. Show the rotating QR code from your ticket wallet at the gate.</p>
+        <div className="tl-co-actions">
+          <Link to="/wallet" className="tl-bk-btn"><QrCode className="w-4 h-4" aria-hidden="true" /> Open ticket wallet</Link>
+          <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost">My orders <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">Booking Confirmed!</h1>
-        <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-          Your payment was successful and your seats have been permanently secured. Your tickets are ready for gate validation.
-        </p>
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-mono text-slate-700">
-          Order Reference: #{order.id.substring(0, 8).toUpperCase()}
-        </div>
-      </div>
+      </section>
 
-      {/* Main Ticket Receipt Card */}
-      <div className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-6">
-        {/* Event Header */}
-        <div className="pb-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              {event?.type?.replace('_', ' ') || 'Event Pass'}
-            </span>
-            <h2 className="text-xl font-bold text-slate-900 mt-2">{event?.name}</h2>
-            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mt-1">
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600" /> {event?.venue}, {event?.city}
-              </span>
-              <span className="flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />{' '}
-                {new Date(event?.date).toLocaleDateString()} • {event?.time}
-              </span>
-            </div>
-          </div>
+      <section className="tl-bk-panel tl-bk-rise" aria-labelledby="tickets-title">
+        <h2 id="tickets-title" className="tl-bk-h2">Issued tickets <small>{tickets.length}</small></h2>
+        <ul className="tl-co-tickets">
+          {tickets.map((t, i) => (
+            <li key={t.id} className="tl-co-ticket">
+              <p className="tl-vb-group-name">{t.seat?.tier?.name || 'Ticket'} <span>{formatPkr(t.price)}</span></p>
+              <dl className="tl-co-ticket-facts">
+                {seatFacts(t.seat).map(([k, v]) => (
+                  <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+                ))}
+              </dl>
+              <p className="tl-co-ticket-foot">
+                <span>Ticket {i + 1} of {tickets.length}</span>
+                <span>{t.tokenId != null ? `NFT #${t.tokenId}` : t.status}</span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-          <div className="text-right">
-            <div className="text-[11px] text-slate-500">Total Paid</div>
-            <div className="text-2xl font-black text-slate-900 font-mono">
-              Rs. {Number(order.totalAmount).toLocaleString()}
-            </div>
-            <div className="text-[10px] text-emerald-700 font-semibold uppercase">
-              {order.paymentMethod} Payment Verified
-            </div>
-          </div>
-        </div>
-
-        {/* Issued Seat Passes */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
-            <Ticket className="w-4 h-4 text-[#16a34a]" /> Issued Seats ({tickets.length})
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {tickets.map((t, idx) => (
-              <div
-                key={t.id}
-                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between"
-              >
-                <div>
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">
-                    Ticket #{idx + 1} • {t.seat?.tier?.name || 'Tier Pass'}
-                  </div>
-                  <div className="text-base font-bold text-slate-900 mt-0.5">
-                    Section {t.seat?.section}
-                  </div>
-                  <div className="text-xs font-mono text-emerald-700 font-semibold">
-                    Row {t.seat?.row} — Seat {t.seat?.seatNumber}
-                  </div>
-                </div>
-
-                <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-[#16a34a] shadow-sm">
-                  <QrCode className="w-5 h-5 text-[#16a34a]" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Transaction Metadata */}
-        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div>
-            <div className="text-[10px] text-slate-500">Transaction ID</div>
-            <div className="font-mono text-slate-800 font-semibold truncate">
-              {order.paymentTxId || 'TX_APPROVED'}
-            </div>
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-500">Payment Gateway</div>
-            <div className="font-semibold text-slate-800">{order.paymentMethod}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-500">Booking Status</div>
-            <div className="font-bold text-emerald-700">{order.status}</div>
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-500">Date & Time</div>
-            <div className="text-slate-800">
-              {new Date(order.createdAt).toLocaleDateString()}
-            </div>
-          </div>
-        </div>
-
-        {/* Blockchain Notice */}
-        <div className="p-4 rounded-2xl bg-purple-50 border border-purple-200 text-xs flex items-start gap-3">
-          <Sparkles className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <div className="font-bold text-purple-950 flex items-center gap-1.5">
-              <span>Polygon Amoy ERC721 NFT Tickets Minted</span>
-              <span className="text-[10px] bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 rounded font-mono">
-                ChainId 80002
-              </span>
-            </div>
-            <p className="text-[11px] text-purple-900 leading-relaxed">
-              Your tickets are cryptographically minted on the Polygon Amoy testnet. Each pass contains an on-chain anti-scalping resale price ceiling (max 110%) and immutable seat coordinates.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <Link
-          to="/wallet"
-          className="w-full sm:w-auto btn-eventfrog text-xs px-5 py-3 shadow-sm flex items-center justify-center gap-2"
-        >
-          <QrCode className="w-4 h-4" />
-          <span>Open Digital Pass & QR Wallet</span>
-        </Link>
-
-        <Link
-          to="/my-bookings"
-          className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-2 shadow-sm"
-        >
-          <span>View in My Bookings</span>
-          <ArrowRight className="w-4 h-4 text-emerald-600" />
-        </Link>
-
-        <Link
-          to="/events"
-          className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center justify-center gap-2"
-        >
-          <span>Browse More Events</span>
-        </Link>
-      </div>
-    </div>
+      <section className="tl-bk-panel tl-bk-rise" aria-labelledby="receipt-title">
+        <h2 id="receipt-title" className="tl-bk-h2">Receipt</h2>
+        <dl className="tl-co-meta">
+          <div><dt>Total paid</dt><dd>{formatPkr(order.totalAmount)}</dd></div>
+          <div><dt>Payment</dt><dd>{order.paymentMethod}</dd></div>
+          <div><dt>Transaction</dt><dd className="tl-co-mono">{order.paymentTxId || receipt?.transactionId || '—'}</dd></div>
+          <div><dt>Ordered</dt><dd>{new Date(order.createdAt).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })}</dd></div>
+        </dl>
+      </section>
+    </BookingShell>
   );
 }

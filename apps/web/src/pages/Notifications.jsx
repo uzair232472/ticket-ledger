@@ -269,7 +269,7 @@ export default function Notifications() {
           </div>
           <div className="flex items-center gap-2">
             <a
-              href={`http://localhost:5000/api/notifications/preview-email?type=${selectedType}`}
+              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/notifications/preview-email?type=${selectedType}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition shadow-sm"
@@ -295,11 +295,10 @@ export default function Notifications() {
             <button
               key={t.value}
               onClick={() => setSelectedType(t.value)}
-              className={`p-3 rounded-2xl border text-left text-xs transition ${
-                selectedType === t.value
-                  ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold shadow-sm'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
+              className={`p-3 rounded-2xl border text-left text-xs transition ${selectedType === t.value
+                ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold shadow-sm'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
             >
               <t.icon className={`w-3.5 h-3.5 mb-1.5 ${t.color}`} />
               <div className="truncate text-[11px]">{t.label}</div>
@@ -308,9 +307,8 @@ export default function Notifications() {
         </div>
 
         {simFeedback && (
-          <div className={`mt-3 p-3 rounded-xl text-xs font-semibold ${
-            simFeedback.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}>
+          <div className={`mt-3 p-3 rounded-xl text-xs font-semibold ${simFeedback.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+            }`}>
             {simFeedback.message}
           </div>
         )}
@@ -328,11 +326,10 @@ export default function Notifications() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
-              activeTab === tab.id
-                ? 'btn-eventfrog text-xs'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
-            }`}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${activeTab === tab.id
+              ? 'btn-eventfrog text-xs'
+              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
+              }`}
           >
             {tab.label}
           </button>
@@ -358,11 +355,10 @@ export default function Notifications() {
           filteredNotifications.map((item) => (
             <div
               key={item.id}
-              className={`p-4 rounded-2xl border transition flex items-start gap-4 ${
-                !item.isRead
-                  ? 'bg-white border-2 border-emerald-500/50 shadow-sm'
-                  : 'bg-white border border-slate-200 shadow-sm opacity-90'
-              }`}
+              className={`p-4 rounded-2xl border transition flex items-start gap-4 ${!item.isRead
+                ? 'bg-white border-2 border-emerald-500/50 shadow-sm'
+                : 'bg-white border border-slate-200 shadow-sm opacity-90'
+                }`}
             >
               <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 shrink-0 mt-0.5">
                 {getIcon(item.type)}

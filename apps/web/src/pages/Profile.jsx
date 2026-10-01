@@ -1,20 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  User, 
-  Wallet, 
-  Bell, 
-  History, 
-  ShieldCheck, 
-  Building2, 
-  Scan, 
-  Ticket, 
-  CheckCircle2, 
-  AlertCircle, 
-  ExternalLink, 
-  Unlink, 
-  Save, 
+import {
+  User,
+  Wallet,
+  Bell,
+  History,
+  ShieldCheck,
+  Building2,
+  Scan,
+  Ticket,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  Unlink,
+  Save,
   RefreshCw,
   Globe,
   Smartphone,
@@ -43,11 +43,11 @@ const POLYGON_AMOY_CHAIN_ID = '0x13882'; // 80002 in hex
 
 export default function Profile() {
   const { token, user: authUser } = useAuth();
-  
+
   // Navigation tabs matching Eventfrog structure
-  const [activeTab, setActiveTab] = useState('my-data'); 
+  const [activeTab, setActiveTab] = useState('my-data');
   // 'my-data' | 'security' | 'notifications' | 'intent' | 'preferred-website' | 'api-keys' | 'privacy' | 'overview'
-  
+
   const [myTicketsExpanded, setMyTicketsExpanded] = useState(true);
   const [settingsExpanded, setSettingsExpanded] = useState(true);
 
@@ -98,7 +98,7 @@ export default function Profile() {
         const p = data.data.profile;
         setProfile(p);
         setStats(data.data.stats || {});
-        
+
         // Split name into first and last name for Eventfrog format
         const nameParts = (p.name || '').trim().split(' ');
         setFirstName(nameParts[0] || '');
@@ -187,7 +187,7 @@ export default function Profile() {
     try {
       const res = await fetch(`${API_URL}/api/users/profile`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
@@ -350,7 +350,7 @@ export default function Profile() {
 
   return (
     <div className="max-w-7xl mx-auto py-4 text-slate-800 space-y-6">
-      
+
       {/* Top Breadcrumb (Eventfrog style) */}
       <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
         <button onClick={() => setActiveTab('overview')} className="hover:text-slate-900 transition">
@@ -362,19 +362,18 @@ export default function Profile() {
 
       {/* Main Split Layout: Left Sidebar + Right Content */}
       <div className="flex flex-col md:flex-row gap-8 items-start">
-        
+
         {/* Left Navigation Sidebar (Eventfrog Style) */}
         <aside className="w-full md:w-60 shrink-0 space-y-5 select-none">
-          
+
           {/* OVERVIEW */}
           <div>
             <button
               onClick={() => { setActiveTab('overview'); setMessage({ text: '', type: '' }); }}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-xs uppercase font-extrabold tracking-wider transition rounded-xl ${
-                activeTab === 'overview'
-                  ? 'bg-slate-100 text-[#008459]'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
+              className={`w-full flex items-center gap-3 px-3 py-2 text-xs uppercase font-extrabold tracking-wider transition rounded-xl ${activeTab === 'overview'
+                ? 'bg-slate-100 text-[#008459]'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
             >
               <LayoutGrid className="w-4 h-4 text-slate-500" />
               <span>OVERVIEW</span>
@@ -382,7 +381,7 @@ export default function Profile() {
           </div>
 
           <div className="border-t border-slate-200/80 pt-4 space-y-4">
-            
+
             {/* MY TICKETS Section */}
             <div>
               <button
@@ -433,77 +432,70 @@ export default function Profile() {
                 <div className="mt-1 pl-10 space-y-1">
                   <button
                     onClick={() => { setActiveTab('my-data'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'my-data'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'my-data'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     My data
                   </button>
 
                   <button
                     onClick={() => { setActiveTab('security'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'security'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'security'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     Security
                   </button>
 
                   <button
                     onClick={() => { setActiveTab('notifications'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'notifications'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'notifications'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     Notifications
                   </button>
 
                   <button
                     onClick={() => { setActiveTab('intent'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'intent'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'intent'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     AI Intent & Telemetry
                   </button>
 
                   <button
                     onClick={() => { setActiveTab('preferred-website'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'preferred-website'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'preferred-website'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     Preferred Website
                   </button>
 
                   <button
                     onClick={() => { setActiveTab('api-keys'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'api-keys'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'api-keys'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     API keys
                   </button>
 
                   <button
                     onClick={() => { setActiveTab('privacy'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${
-                      activeTab === 'privacy'
-                        ? 'text-[#008459] font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'privacy'
+                      ? 'text-[#008459] font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                      }`}
                   >
                     Privacy
                   </button>
@@ -516,14 +508,13 @@ export default function Profile() {
 
         {/* Right Main Content Area */}
         <main className="flex-1 w-full space-y-6">
-          
+
           {/* Feedback Banner */}
           {message.text && (
-            <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 border font-medium ${
-              message.type === 'success' 
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                : 'bg-rose-50 border-rose-200 text-rose-800'
-            }`}>
+            <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 border font-medium ${message.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}>
               {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[#008459]" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />}
               <span>{message.text}</span>
             </div>
@@ -548,14 +539,14 @@ export default function Profile() {
 
               {/* Form Container */}
               <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-6">
-                
+
                 {/* Profile picture dropzone */}
                 <div className="space-y-3">
                   <label className="block text-xs font-bold text-slate-800">
                     Profile picture
                   </label>
 
-                  <div 
+                  <div
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
@@ -564,19 +555,19 @@ export default function Profile() {
                     }}
                     className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-[#008459] bg-slate-50/50 hover:bg-slate-50 transition cursor-pointer group"
                   >
-                    <input 
-                      type="file" 
-                      ref={fileInputRef} 
-                      className="hidden" 
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      className="hidden"
                       accept="image/*"
                       onChange={(e) => handleAvatarFile(e.target.files?.[0])}
                     />
 
                     {avatarUrl ? (
                       <div className="flex flex-col items-center gap-2">
-                        <img 
-                          src={avatarUrl} 
-                          alt="Avatar Preview" 
+                        <img
+                          src={avatarUrl}
+                          alt="Avatar Preview"
                           className="w-16 h-16 rounded-full object-cover border-2 border-[#008459] shadow-sm"
                         />
                         <span className="text-xs font-bold text-[#008459] hover:underline">Change image</span>
@@ -613,7 +604,7 @@ export default function Profile() {
                 </div>
 
                 <form onSubmit={handleUpdateProfile} className="space-y-5 text-xs">
-                  
+
                   {/* Salutation* */}
                   <div className="space-y-2">
                     <label className="block font-bold text-slate-800">
@@ -1070,11 +1061,10 @@ export default function Profile() {
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] uppercase font-bold text-slate-400">AI Intent</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            intentLevel === 'HIGH' 
-                              ? 'bg-emerald-100 text-emerald-800' 
-                              : 'bg-teal-100 text-teal-800'
-                          }`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${intentLevel === 'HIGH'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-teal-100 text-teal-800'
+                            }`}>
                             {intentLevel}
                           </span>
                         </div>
@@ -1082,7 +1072,7 @@ export default function Profile() {
                           {intentScore} <span className="text-xs text-slate-400 font-normal">/ 100</span>
                         </div>
                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="bg-[#008459] h-full rounded-full transition-all"
                             style={{ width: `${Math.min(100, Math.max(10, intentScore))}%` }}
                           />
@@ -1138,9 +1128,9 @@ export default function Profile() {
                           <div className="flex items-center gap-2.5">
                             <div className="w-7 h-7 rounded-lg bg-slate-100 text-[#008459] flex items-center justify-center font-bold shrink-0">
                               {item.action?.includes('seat') ? <Layers className="w-3.5 h-3.5" /> :
-                               item.action?.includes('checkout') ? <ShoppingCart className="w-3.5 h-3.5" /> :
-                               item.action?.includes('view') ? <Eye className="w-3.5 h-3.5" /> :
-                               <Activity className="w-3.5 h-3.5" />}
+                                item.action?.includes('checkout') ? <ShoppingCart className="w-3.5 h-3.5" /> :
+                                  item.action?.includes('view') ? <Eye className="w-3.5 h-3.5" /> :
+                                    <Activity className="w-3.5 h-3.5" />}
                             </div>
                             <div>
                               <div className="font-bold text-slate-900 text-xs">
@@ -1342,7 +1332,7 @@ export default function Profile() {
               <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-3">
                 <h3 className="font-extrabold text-[#212b36] text-base">Quick Actions</h3>
                 <div className="flex flex-wrap gap-2.5 text-xs font-bold">
-                  <button 
+                  <button
                     onClick={() => setActiveTab('my-data')}
                     className="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 transition"
                   >

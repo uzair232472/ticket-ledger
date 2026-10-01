@@ -6,6 +6,7 @@ import paymentService from '../services/paymentService.js';
 import nftService from '../services/nftService.js';
 import mlService from '../services/mlService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
+import { expireStaleHolds } from '../services/venueService.js';
 
 // Schemas
 const initiateBookingSchema = z.object({
@@ -106,6 +107,9 @@ export const initiateBooking = async (req, res) => {
       }
     }
 
+    // Free lapsed holds and checkouts first so their seats can't block (or be double-sold to) anyone
+    await expireStaleHolds(eventId);
+
     // Verify all requested seats
     const seats = await prisma.seat.findMany({
       where: {
@@ -159,6 +163,31 @@ export const initiateBooking = async (req, res) => {
       }
     }
 
+    // Whole-table seats are sold together: every seat at the table must be in this booking
+    const tableKeys = [...new Set(seats.filter((s) => s.wholeTable).map((s) => s.tableKey))];
+    for (const tableKey of tableKeys) {
+      const tableSeatIds = await prisma.seat.findMany({ where: { eventId, tableKey }, select: { id: true } });
+      if (tableSeatIds.some((t) => !seatIds.includes(t.id))) {
+        return res.status(400).json({ success: false, message: 'A whole table must be booked together. Please hold the full table again.' });
+      }
+    }
+
+    // Seats already in a checkout: another customer's checkout wins; this customer's own earlier,
+    // unpaid checkout is replaced by this one
+    const existingTickets = await prisma.ticket.findMany({
+      where: { seatId: { in: seatIds } },
+      include: { order: { include: { tickets: { include: { seat: true } } } } },
+    });
+    for (const ticket of existingTickets) {
+      if (ticket.order.status === 'SUCCESSFUL') {
+        return res.status(409).json({ success: false, message: 'One of these seats has already been sold.' });
+      }
+      if (ticket.order.status === 'PENDING' && ticket.order.userId !== userId) {
+        return res.status(409).json({ success: false, message: 'One of these seats is in another customer’s checkout.' });
+      }
+    }
+    const supersededOrders = [...new Map(existingTickets.map((t) => [t.order.id, t.order])).values()];
+
     // Calculate total price
     const totalAmount = seats.reduce((sum, seat) => sum + Number(seat.tier.price), 0);
 
@@ -170,6 +199,21 @@ export const initiateBooking = async (req, res) => {
 
     // Execute atomic creation in PostgreSQL
     const order = await prisma.$transaction(async (tx) => {
+      // 0. Retire this customer's earlier unpaid checkout(s) for these seats and restore their counts
+      for (const old of supersededOrders) {
+        const flipped = old.status === 'PENDING'
+          ? await tx.order.updateMany({ where: { id: old.id, status: 'PENDING' }, data: { status: 'FAILED' } })
+          : { count: 0 };
+        await tx.ticket.deleteMany({ where: { orderId: old.id } });
+        if (flipped.count) {
+          const restore = {};
+          for (const t of old.tickets) restore[t.seat.tierId] = (restore[t.seat.tierId] || 0) + 1;
+          for (const [tierId, count] of Object.entries(restore)) {
+            await tx.ticketTier.update({ where: { id: tierId }, data: { availableQuantity: { increment: count } } });
+          }
+        }
+      }
+
       // 1. Create Pending Order
       const newOrder = await tx.order.create({
         data: {
@@ -181,15 +225,8 @@ export const initiateBooking = async (req, res) => {
         },
       });
 
-      // 2. Create placeholder tickets for each seat
+      // 2. Create placeholder tickets for each seat (one ticket per seat is enforced by the database)
       for (const seat of seats) {
-        await tx.ticket.deleteMany({
-          where: {
-            seatId: seat.id,
-            order: { status: { in: ['PENDING', 'FAILED'] } },
-          },
-        });
-
         await tx.ticket.create({
           data: {
             orderId: newOrder.id,
@@ -276,6 +313,9 @@ export const initiateBooking = async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ success: false, message: error.errors[0]?.message });
     }
+    if (error.code === 'P2002') {
+      return res.status(409).json({ success: false, message: 'One of these seats was just taken by another checkout. Please choose again.' });
+    }
     console.error('Error initiating booking:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -357,13 +397,15 @@ export const confirmBooking = async (req, res) => {
 
     // Atomic transaction: mark order SUCCESSFUL, seats SOLD, release Redis locks
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      // 1. Update Order status
-      const completedOrder = await tx.order.update({
+      // 1. Move the order out of PENDING exactly once. If a parallel confirmation or the hold expiry
+      //    got there first, this request changes nothing.
+      const transition = await tx.order.updateMany({
+        where: { id: orderId, status: 'PENDING' },
+        data: { status: 'SUCCESSFUL', paymentTxId: verification.transactionId },
+      });
+      if (!transition.count) return null;
+      const completedOrder = await tx.order.findUnique({
         where: { id: orderId },
-        data: {
-          status: 'SUCCESSFUL',
-          paymentTxId: verification.transactionId,
-        },
         include: {
           event: true,
           tickets: {
@@ -417,6 +459,17 @@ export const confirmBooking = async (req, res) => {
       return completedOrder;
     });
 
+    if (!updatedOrder) {
+      const current = await prisma.order.findUnique({ where: { id: orderId }, include: { event: true, tickets: { include: { seat: { include: { tier: true } } } } } });
+      if (current?.status === 'SUCCESSFUL') {
+        return res.status(200).json({ success: true, message: 'Order has already been confirmed.', data: { order: current } });
+      }
+      return res.status(409).json({
+        success: false,
+        message: 'Your seat reservation expired before payment was confirmed, so the seats were released. Please select your seats again.',
+      });
+    }
+
     // 5. Release Redis locks and broadcast Socket.io seat update
     const io = getIO();
     for (const ticket of order.tickets) {
@@ -426,6 +479,8 @@ export const confirmBooking = async (req, res) => {
         io.emit('seat:status_change', {
           eventId: order.eventId,
           seatId: ticket.seatId,
+          key: ticket.seat.layoutKey,
+          sectionKey: ticket.seat.sectionKey,
           section: ticket.seat.section,
           row: ticket.seat.row,
           seatNumber: ticket.seat.seatNumber,
@@ -534,15 +589,13 @@ export const cancelBooking = async (req, res) => {
     }
 
     // Revert inventory and seat statuses
-    await prisma.$transaction(async (tx) => {
-      // 1. Delete placeholder tickets to release unique seatId constraint
-      await tx.ticket.deleteMany({ where: { orderId } });
+    const cancelled = await prisma.$transaction(async (tx) => {
+      // 1. Mark order failed, only if it is still pending
+      const flipped = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING' }, data: { status: 'FAILED' } });
+      if (!flipped.count) return false;
 
-      // 2. Mark order failed
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: 'FAILED' },
-      });
+      // 2. Delete placeholder tickets to release unique seatId constraint
+      await tx.ticket.deleteMany({ where: { orderId } });
 
       // 2. Count seats per tier to restore inventory
       const tierCounts = {};
@@ -567,7 +620,15 @@ export const cancelBooking = async (req, res) => {
           data: { availableQuantity: { increment: count } },
         });
       }
+      return true;
     });
+
+    if (!cancelled) {
+      const current = await prisma.order.findUnique({ where: { id: orderId } });
+      return current?.status === 'SUCCESSFUL'
+        ? res.status(400).json({ success: false, message: 'Confirmed bookings cannot be cancelled via this endpoint.' })
+        : res.status(200).json({ success: true, message: 'Order is already cancelled.' });
+    }
 
     // Release Redis locks and broadcast Socket.io
     const io = getIO();
@@ -578,6 +639,8 @@ export const cancelBooking = async (req, res) => {
         io.emit('seat:status_change', {
           eventId: order.eventId,
           seatId: ticket.seatId,
+          key: ticket.seat.layoutKey,
+          sectionKey: ticket.seat.sectionKey,
           section: ticket.seat.section,
           row: ticket.seat.row,
           seatNumber: ticket.seat.seatNumber,

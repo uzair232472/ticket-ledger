@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import prisma from './src/config/prisma.js';
 
 const BASE_URL = 'http://localhost:5000/api';
 
@@ -60,14 +61,21 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
         password: 'Password@123',
         name: 'Bilal Khan',
         phone: randomPhone,
-        role: 'CUSTOMER',
       }),
     });
-    const regData = await regRes.json();
     assert.equal(regRes.status, 201);
-    assert.ok(regData.data.token);
-    customerBToken = regData.data.token;
-    customerBUser = regData.data.user;
+
+    // Registration no longer returns a session; mark the email verified directly, then log in
+    await prisma.user.update({ where: { email: uniqueEmail }, data: { isVerified: true } });
+    const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: uniqueEmail, password: 'Password@123' }),
+    });
+    const loginData = await loginRes.json();
+    assert.equal(loginRes.status, 200);
+    customerBToken = loginData.data.token;
+    customerBUser = loginData.data.user;
   });
 
   // 4. Customer A identifies active tickets and cancels any active listing on it to ensure clean slate
@@ -94,7 +102,7 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
     const data = await res.json();
     assert.equal(res.status, 200);
     assert.ok(data.data.tickets.length >= 1, 'Customer A should have at least 1 ticket');
-    
+
     // Pick an active ticket
     const activeTickets = data.data.tickets.filter((tk) => tk.status === 'ACTIVE');
     assert.ok(activeTickets.length >= 1, 'Customer A should have at least 1 active ticket');
@@ -186,7 +194,7 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
     assert.equal(res.status, 200);
     assert.equal(data.success, true);
     assert.equal(data.data.ticket.userId, customerBUser.id);
-    
+
     // Nonce must have changed to invalidate seller's QR pass
     assert.notEqual(data.data.ticket.qrNonce, oldTicketNonce);
     testTicketB = data.data.ticket;

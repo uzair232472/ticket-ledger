@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
-import { uploadFile } from '../utils/storage.js';
+import { MediaValidationError, uploadEventImages } from '../services/eventMediaService.js';
+import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
+import { canManageEvent } from '../utils/eventAccess.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import mlService from '../services/mlService.js';
 
@@ -21,6 +23,11 @@ const createEventSchema = z.object({
     'BOXING',
     'MUSIC_CONCERT',
     'MUSIC_FESTIVAL',
+    'HOCKEY_MATCH',
+    'QAWWALI',
+    'THEATRE',
+    'CONFERENCE',
+    'GENERAL_ADMISSION',
   ]),
   date: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid date format'),
   time: z.string().min(1, 'Event time is required'),
@@ -34,8 +41,25 @@ const createEventSchema = z.object({
     'COMPLETED',
     'CANCELLED',
   ]).optional().default('PUBLISHED'),
-  bannerUrl: z.string().optional(),
+  // Only stored image references (absolute http(s) or root-relative paths), never blob:/data: preview URLs
+  bannerUrl: z.string().regex(/^(https?:\/\/|\/)/, 'Banner URL must be an http(s) URL or a site path').optional(),
 });
+
+// Editable event details (status, tiers and pricing keep their own endpoints)
+const updateEventDetailsSchema = createEventSchema
+  .pick({ name: true, description: true, type: true, date: true, time: true, city: true, venue: true })
+  .partial();
+
+const SINGLE_IMAGE_FIELDS = [
+  { field: 'banner', column: 'bannerUrl', kind: 'banner' },
+  { field: 'cardImage', column: 'cardImageUrl', kind: 'card' },
+  { field: 'galleryWide', column: 'galleryWideUrl', kind: 'galleryWide' },
+];
+
+const galleryOrderSchema = z
+  .array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ upload: z.number().int().min(0) }).strict()]))
+  .max(EVENT_IMAGE_SPECS.gallery.maxCount, `Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
+
 
 /**
  * Organizer creates an event with ticket tiers
@@ -65,19 +89,27 @@ export const createEvent = async (req, res) => {
     const validatedTiers = z.array(ticketTierSchema).parse(rawTiers);
     const validatedData = createEventSchema.parse(req.body);
 
-    // Handle banner upload
-    let bannerUrl = validatedData.bannerUrl;
-    if (req.file) {
-      const uploadRes = await uploadFile(req.file, 'event_banners');
-      bannerUrl = uploadRes.url;
+    // Organizer images (validated from their bytes, all optional). With no banner the web app shows the
+    // category artwork, so nothing is stored for it.
+    const files = req.files || {};
+    const galleryFiles = files.galleryImages || [];
+    if (galleryFiles.length > EVENT_IMAGE_SPECS.gallery.maxCount) {
+      throw new MediaValidationError(`Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
     }
+    const single = (field, kind) => (files[field]?.[0] ? [{ file: files[field][0], kind, field }] : []);
+    const uploads = [
+      ...single('banner', 'banner'),
+      ...single('cardImage', 'card'),
+      ...single('galleryWide', 'galleryWide'),
+      ...galleryFiles.map((file) => ({ file, kind: 'gallery', field: 'galleryImages' })),
+    ];
+    const urls = await uploadEventImages(uploads);
+    const uploaded = (field) => urls.filter((_, i) => uploads[i].field === field);
 
-    if (!bannerUrl) {
-      // Default Pakistani event banner placeholder
-      bannerUrl = validatedData.type.includes('CRICKET')
-        ? 'https://images.unsplash.com/photo-1531415074868-036b1c57e3b0?auto=format&fit=crop&w=1200&q=80'
-        : 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80';
-    }
+    const bannerUrl = uploaded('banner')[0] || validatedData.bannerUrl || null;
+    const cardImageUrl = uploaded('cardImage')[0] || null;
+    const galleryWideUrl = uploaded('galleryWide')[0] || null;
+    const galleryUrls = uploaded('galleryImages');
 
     // Atomic transaction: create event + ticket tiers
     const createdEvent = await prisma.$transaction(async (tx) => {
@@ -93,6 +125,11 @@ export const createEvent = async (req, res) => {
           city: validatedData.city,
           venue: validatedData.venue,
           bannerUrl,
+          cardImageUrl,
+          galleryWideUrl,
+          galleryImages: {
+            create: galleryUrls.map((url, position) => ({ url, position })),
+          },
         },
       });
 
@@ -126,6 +163,7 @@ export const createEvent = async (req, res) => {
         where: { id: event.id },
         include: {
           tiers: true,
+          galleryImages: { orderBy: { position: 'asc' } },
           company: {
             select: { id: true, companyName: true, city: true },
           },
@@ -145,6 +183,9 @@ export const createEvent = async (req, res) => {
         message: error.errors[0]?.message || 'Validation error',
         errors: error.errors,
       });
+    }
+    if (error instanceof MediaValidationError) {
+      return res.status(400).json({ success: false, message: error.message });
     }
     console.error('Error creating event:', error);
     return res.status(500).json({
@@ -271,6 +312,10 @@ export const getEventById = async (req, res) => {
       include: {
         tiers: {
           orderBy: { price: 'asc' },
+        },
+        galleryImages: {
+          orderBy: { position: 'asc' },
+          select: { id: true, url: true, position: true },
         },
         company: {
           select: {
@@ -690,6 +735,168 @@ export const publishEventWithPricing = async (req, res) => {
       message: 'Failed to publish event',
       error: error.message,
     });
+  }
+};
+
+/**
+ * Organizer loads an event for editing (no view tracking, any status)
+ */
+export const getEventForEdit = async (req, res) => {
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id: req.params.id },
+      include: {
+        tiers: { orderBy: { price: 'asc' } },
+        galleryImages: { orderBy: { position: 'asc' }, select: { id: true, url: true, position: true } },
+      },
+    });
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+    if (!(await canManageEvent(req.user, event))) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
+    }
+    return res.status(200).json({ success: true, data: { event } });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to load event', error: error.message });
+  }
+};
+
+/**
+ * Organizer updates event details and media in one save.
+ *
+ * Multipart body:
+ * - Detail fields (name, description, type, date, time, city, venue); omitted fields are unchanged.
+ * - banner / cardImage / galleryWide: a new file replaces the image; `<field>Action=remove` clears it;
+ *   otherwise the saved image is kept.
+ * - galleryImages: new files; galleryOrder: JSON list of { id } (saved image) or { upload: n } (nth new
+ *   file) giving the final order. Saved images left out are removed. Without galleryOrder, new files
+ *   are appended and the existing gallery is unchanged.
+ *
+ * New files are validated and uploaded before anything is written; the event changes in a single
+ * transaction, and previous files are left in storage, so a failed save never breaks the live page.
+ */
+export const updateEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const event = await prisma.event.findUnique({
+      where: { id },
+      include: { galleryImages: { orderBy: { position: 'asc' } } },
+    });
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+    if (!(await canManageEvent(req.user, event, { requireApproved: true }))) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
+    }
+
+    const detailKeys = Object.keys(updateEventDetailsSchema.shape).filter((k) => req.body[k] !== undefined);
+    const details = updateEventDetailsSchema.parse(Object.fromEntries(detailKeys.map((k) => [k, req.body[k]])));
+
+    const files = req.files || {};
+    const uploads = [];
+    const singleChanges = {};
+    for (const { field, column, kind } of SINGLE_IMAGE_FIELDS) {
+      const file = files[field]?.[0];
+      const action = req.body[`${field}Action`] || 'keep';
+      if (!['keep', 'remove', 'replace'].includes(action)) {
+        throw new MediaValidationError(`${EVENT_IMAGE_SPECS[kind].label}: unknown action "${action}".`);
+      }
+      if (file) {
+        uploads.push({ file, kind, field });
+      } else if (action === 'replace') {
+        throw new MediaValidationError(`${EVENT_IMAGE_SPECS[kind].label}: choose a new image to replace the current one.`);
+      } else if (action === 'remove') {
+        singleChanges[column] = null;
+      }
+    }
+
+    // Gallery: final ordered list of saved ids and new uploads
+    const galleryFiles = files.galleryImages || [];
+    let galleryPlan = null;
+    if (req.body.galleryOrder !== undefined) {
+      let rawOrder;
+      try {
+        rawOrder = JSON.parse(req.body.galleryOrder);
+      } catch {
+        throw new MediaValidationError('Invalid gallery order.');
+      }
+      galleryPlan = galleryOrderSchema.parse(rawOrder);
+      const savedIds = new Set(event.galleryImages.map((img) => img.id));
+      const seenIds = new Set();
+      const seenUploads = new Set();
+      for (const item of galleryPlan) {
+        if ('id' in item) {
+          if (!savedIds.has(item.id) || seenIds.has(item.id)) throw new MediaValidationError('Gallery order refers to an unknown image.');
+          seenIds.add(item.id);
+        } else {
+          if (item.upload >= galleryFiles.length || seenUploads.has(item.upload)) throw new MediaValidationError('Gallery order refers to a missing upload.');
+          seenUploads.add(item.upload);
+        }
+      }
+      if (seenUploads.size !== galleryFiles.length) throw new MediaValidationError('Every new gallery image needs a position.');
+    } else if (galleryFiles.length) {
+      galleryPlan = [...event.galleryImages.map((img) => ({ id: img.id })), ...galleryFiles.map((_, upload) => ({ upload }))];
+      if (galleryPlan.length > EVENT_IMAGE_SPECS.gallery.maxCount) {
+        throw new MediaValidationError(`Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
+      }
+    }
+    galleryFiles.forEach((file) => uploads.push({ file, kind: 'gallery', field: 'galleryImages' }));
+
+    const urls = await uploadEventImages(uploads);
+    const galleryUploadUrls = [];
+    uploads.forEach((u, i) => {
+      if (u.field === 'galleryImages') galleryUploadUrls.push(urls[i]);
+      else singleChanges[SINGLE_IMAGE_FIELDS.find((f) => f.field === u.field).column] = urls[i];
+    });
+
+    const data = { ...details, ...singleChanges };
+    if (details.date) data.date = new Date(details.date);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.event.update({ where: { id }, data });
+
+      if (galleryPlan) {
+        const keptIds = galleryPlan.filter((item) => 'id' in item).map((item) => item.id);
+        await tx.eventGalleryImage.deleteMany({ where: { eventId: id, id: { notIn: keptIds } } });
+        for (const [position, item] of galleryPlan.entries()) {
+          if ('id' in item) {
+            await tx.eventGalleryImage.update({ where: { id: item.id }, data: { position } });
+          } else {
+            await tx.eventGalleryImage.create({ data: { eventId: id, url: galleryUploadUrls[item.upload], position } });
+          }
+        }
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'EVENT_UPDATED',
+          targetType: 'Event',
+          targetId: id,
+          details: { fields: Object.keys(data), galleryCount: galleryPlan ? galleryPlan.length : event.galleryImages.length },
+        },
+      });
+
+      return tx.event.findUnique({
+        where: { id },
+        include: {
+          tiers: { orderBy: { price: 'asc' } },
+          galleryImages: { orderBy: { position: 'asc' }, select: { id: true, url: true, position: true } },
+        },
+      });
+    });
+
+    return res.status(200).json({ success: true, message: 'Event updated successfully.', data: { event: updated } });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Validation error', errors: error.errors });
+    }
+    if (error instanceof MediaValidationError) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error('Error updating event:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update event', error: error.message });
   }
 };
 

@@ -60,7 +60,7 @@ export const checkFraudRisk = async (telemetry = {}) => {
     throw new Error(`ML service returned status ${res.status}`);
   } catch (error) {
     console.warn(`[ML Service] Warning: Python ML service unreachable at ${ML_SERVICE_URL}. Using defensive heuristic fallback.`);
-    
+
     const isBotSpeed = Number(checkoutDurationSeconds) < 2.5;
     const isHighClick = Number(clicksPerMinute) > 150;
     const isSniping = Number(rapidSeatAttempts) >= 6;
@@ -97,6 +97,16 @@ export const checkFraudRisk = async (telemetry = {}) => {
 /**
  * 2. Pre-Launch AI Demand Forecasting (Module 15: POST /forecast/demand)
  */
+// The demand and intent models were trained on the original six categories; newer ones use the closest
+const ML_EVENT_TYPE = {
+  HOCKEY_MATCH: 'FOOTBALL_MATCH',
+  QAWWALI: 'MUSIC_CONCERT',
+  THEATRE: 'MUSIC_CONCERT',
+  CONFERENCE: 'MUSIC_CONCERT',
+  GENERAL_ADMISSION: 'MUSIC_FESTIVAL',
+};
+const mlEventType = (type) => ML_EVENT_TYPE[type] || type;
+
 export const forecastEventDemand = async (eventParams = {}) => {
   const {
     eventType = 'CRICKET_MATCH',
@@ -113,7 +123,7 @@ export const forecastEventDemand = async (eventParams = {}) => {
   } = eventParams;
 
   const payload = {
-    event_type: eventType,
+    event_type: mlEventType(eventType),
     city,
     marketing_tier: marketingTier,
     venue_capacity: Number(venueCapacity),
@@ -189,7 +199,7 @@ export const scorePurchaseIntent = async (sessionParams = {}) => {
     checkout_abandoned: Number(checkoutAbandoned),
     ticket_price: Number(ticketPrice),
     city,
-    event_type: eventType,
+    event_type: mlEventType(eventType),
     previous_purchases: Number(previousPurchases),
   };
 

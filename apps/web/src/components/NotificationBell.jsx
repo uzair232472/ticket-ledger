@@ -3,18 +3,18 @@ import { useNavigate, Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Bell, 
-  Check, 
-  CheckCheck, 
-  Ticket, 
-  CreditCard, 
-  Sparkles, 
-  Clock, 
-  ArrowRightLeft, 
-  Tag, 
-  ShieldCheck, 
-  AlertTriangle, 
+import {
+  Bell,
+  Check,
+  CheckCheck,
+  Ticket,
+  CreditCard,
+  Sparkles,
+  Clock,
+  ArrowRightLeft,
+  Tag,
+  ShieldCheck,
+  AlertTriangle,
   ShoppingCart,
   XCircle,
   ExternalLink
@@ -84,7 +84,7 @@ export default function NotificationBell() {
     fetchNotifications();
 
     // Socket.io Real-Time Connection
-    const socket = io('http://localhost:5000', {
+    const socket = io(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000', {
       transports: ['websocket', 'polling'],
     });
 
@@ -242,9 +242,8 @@ export default function NotificationBell() {
                 <div
                   key={item.id}
                   onClick={() => handleNotificationClick(item)}
-                  className={`p-3.5 hover:bg-slate-800/60 cursor-pointer transition flex items-start gap-3 ${
-                    !item.isRead ? 'bg-slate-800/30' : ''
-                  }`}
+                  className={`p-3.5 hover:bg-slate-800/60 cursor-pointer transition flex items-start gap-3 ${!item.isRead ? 'bg-slate-800/30' : ''
+                    }`}
                 >
                   <div className="p-2 rounded-lg bg-slate-800 border border-slate-700/60 shrink-0 mt-0.5">
                     {getNotificationIcon(item.type)}

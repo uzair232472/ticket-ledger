@@ -8,8 +8,11 @@ import {
   updateEventStatus,
   getPreLaunchDemandForecast,
   updateEventPricing,
-  publishEventWithPricing
+  publishEventWithPricing,
+  getEventForEdit,
+  updateEvent
 } from '../controllers/eventController.js';
+import { EVENT_IMAGE_SPECS, LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
 import {
   joinEventWaitlist,
   getEventWaitlistStatus,
@@ -21,8 +24,31 @@ const router = express.Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB banner limit
+  // Per-placement size, type and dimension checks run in eventMediaService from the file bytes
+  limits: { fileSize: LARGEST_IMAGE_BYTES },
 });
+
+const EVENT_MEDIA_FIELDS = [
+  { name: 'banner', maxCount: 1 },
+  { name: 'cardImage', maxCount: 1 },
+  { name: 'galleryWide', maxCount: 1 },
+  { name: 'galleryImages', maxCount: EVENT_IMAGE_SPECS.gallery.maxCount },
+];
+
+// Multer errors (oversized file, too many files, unknown field) become 400s with a readable message
+const MULTER_MESSAGES = {
+  LIMIT_FILE_SIZE: `An image is larger than ${LARGEST_IMAGE_BYTES / (1024 * 1024)} MB.`,
+  LIMIT_FILE_COUNT: 'Too many images in one upload.',
+  LIMIT_UNEXPECTED_FILE: `Too many images, or an unknown image field. Scrolling Gallery Images allows up to ${EVENT_IMAGE_SPECS.gallery.maxCount}.`,
+};
+const eventMediaUpload = (req, res, next) =>
+  upload.fields(EVENT_MEDIA_FIELDS)(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ success: false, message: MULTER_MESSAGES[err.code] || err.message });
+    }
+    return next(err);
+  });
 
 // Public discovery endpoints with optional authentication to attribute user views
 router.get('/', optionalAuth, getEvents);
@@ -38,8 +64,24 @@ router.post(
   authenticateJWT,
   requireRole('ORGANIZER', 'SUPER_ADMIN'),
   requireApprovedOrganizer,
-  upload.single('banner'),
+  eventMediaUpload,
   createEvent
+);
+
+// Edit event details and media (owning organizer or Super Admin; checked in the controller)
+router.get(
+  '/:id/manage',
+  authenticateJWT,
+  requireRole('ORGANIZER', 'SUPER_ADMIN'),
+  getEventForEdit
+);
+
+router.put(
+  '/:id',
+  authenticateJWT,
+  requireRole('ORGANIZER', 'SUPER_ADMIN'),
+  eventMediaUpload,
+  updateEvent
 );
 
 router.get(

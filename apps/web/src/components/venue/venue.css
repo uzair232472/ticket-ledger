@@ -1,0 +1,144 @@
+/*
+ * Venue map (organizer editor, attendee preview and booking). Scoped to .tl-vm / .tl-vb / .tl-ve and
+ * built on the site's Eventfrog tokens (index.css): Plus Jakarta Sans, --ef-green*, slate borders.
+ */
+
+.tl-vm {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  background: #f4f7f5;
+  background-image: radial-gradient(rgba(33, 43, 54, 0.06) 1px, transparent 1px);
+  background-size: 18px 18px;
+  border-radius: 20px;
+  overflow: hidden;
+  touch-action: none;
+}
+.tl-vm-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.tl-vm-svg.is-panning { cursor: grabbing; }
+.tl-vm-svg :focus { outline: none; }
+
+.tl-vm-site { fill: #fbfcfb; stroke: #e2e8f0; stroke-width: 1.5; }
+.tl-vm-concourse path { fill: none; stroke: #e6ece8; stroke-width: 16; stroke-linejoin: round; }
+.tl-vm-feature-label { text-anchor: middle; dominant-baseline: middle; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+
+/* ---------- Sections ---------- */
+.tl-vm-shape {
+  fill: color-mix(in srgb, var(--tier) 16%, #ffffff);
+  stroke: color-mix(in srgb, var(--tier) 70%, #ffffff);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  cursor: pointer;
+  transition: fill 0.25s ease, stroke 0.25s ease, stroke-width 0.25s ease, opacity 0.45s ease;
+}
+.tl-vm-section.is-upper .tl-vm-shape { stroke-dasharray: 5 3; }
+.tl-vm-section.no-tier .tl-vm-shape { fill: #f1f5f9; stroke: #94a3b8; stroke-dasharray: 4 3; }
+.tl-vm-section:hover .tl-vm-shape,
+.tl-vm-shape:focus-visible {
+  fill: color-mix(in srgb, var(--tier) 30%, #ffffff);
+  stroke: var(--tier);
+  stroke-width: 2.4;
+}
+.tl-vm-shape:focus-visible { stroke: #212b36; stroke-width: 3; }
+.tl-vm-section.is-focus .tl-vm-shape { fill: #ffffff; stroke: var(--tier); stroke-width: 2.6; cursor: default; }
+.tl-vm-section.is-soldout .tl-vm-shape { fill: #f1f5f9; stroke: #94a3b8; }
+.tl-vm-section.is-unavailable .tl-vm-shape { fill: #f8fafc; stroke: #cbd5e1; }
+.tl-vm-hatch { pointer-events: none; opacity: 0.85; }
+.tl-vm-label { pointer-events: none; }
+.tl-vm-name { text-anchor: middle; dominant-baseline: middle; font-weight: 700; fill: #212b36; letter-spacing: -0.01em; paint-order: stroke; stroke: rgba(255, 255, 255, 0.85); stroke-width: 3px; stroke-linejoin: round; }
+.tl-vm-sub { text-anchor: middle; dominant-baseline: middle; font-weight: 600; fill: #637381; font-family: 'JetBrains Mono', monospace; paint-order: stroke; stroke: rgba(255, 255, 255, 0.85); stroke-width: 2.5px; }
+.tl-vm-section.is-soldout .tl-vm-name, .tl-vm-section.is-soldout .tl-vm-sub { fill: #64748b; }
+
+/* Focus: the chosen section is lifted out, the rest of the venue fades back */
+.tl-vm-svg.is-dimmed .tl-vm-section:not(.is-focus) .tl-vm-shape { opacity: 0.18; }
+.tl-vm-svg.is-dimmed .tl-vm-section:not(.is-focus) .tl-vm-label,
+.tl-vm-svg.is-dimmed .tl-vm-section:not(.is-focus) .tl-vm-hatch { opacity: 0.15; transition: opacity 0.45s ease; }
+.tl-vm-svg.is-dimmed .tl-vm-feature, .tl-vm-svg.is-dimmed .tl-vm-concourse { opacity: 0.35; transition: opacity 0.45s ease; }
+
+/* ---------- Seats ---------- */
+.tl-vm-detail { animation: tl-vm-reveal 0.5s ease both; }
+@keyframes tl-vm-reveal { from { opacity: 0; } to { opacity: 1; } }
+.tl-vm-rowlabel text { text-anchor: middle; dominant-baseline: middle; fill: #637381; font-weight: 700; font-family: 'JetBrains Mono', monospace; pointer-events: none; }
+.tl-vm-seat circle { fill: #ffffff; stroke: var(--tier); stroke-width: 0.9; transition: fill 0.15s ease, stroke-width 0.15s ease; }
+.tl-vm-seat .tl-vm-sym { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 0.9; pointer-events: none; }
+.tl-vm-seatnum { text-anchor: middle; dominant-baseline: central; fill: #212b36; font-weight: 700; pointer-events: none; }
+.is-book .tl-vm-seat.is-available, .is-blocking .tl-vm-seat { cursor: pointer; }
+.is-book .tl-vm-seat.is-available:hover circle { fill: color-mix(in srgb, var(--tier) 22%, #ffffff); stroke-width: 1.6; }
+.tl-vm-seat:focus-visible circle { stroke: #212b36; stroke-width: 2; }
+.tl-vm-seat.is-mine circle { fill: #16a34a; stroke: #15803d; }
+.tl-vm-seat.is-mine .tl-vm-sym { stroke: #ffffff; stroke-width: 1.1; }
+.is-book .tl-vm-seat.is-mine { cursor: pointer; }
+.tl-vm-seat.is-pending circle { fill: #ffffff; stroke: #16a34a; stroke-dasharray: 1.4 1; animation: tl-vm-spin 1s linear infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes tl-vm-spin { to { transform: rotate(360deg); } }
+.tl-vm-seat.is-held circle { fill: #fef3c7; stroke: #d97706; }
+.tl-vm-seat.is-held .tl-vm-sym { stroke: #b45309; }
+.tl-vm-seat.is-sold circle { fill: #e2e8f0; stroke: #94a3b8; }
+.tl-vm-seat.is-sold .tl-vm-sym { stroke: #64748b; }
+.tl-vm-seat.is-blocked circle { fill: #f8fafc; stroke: #cbd5e1; stroke-dasharray: 1 0.8; }
+.tl-vm-seat.is-blocked .tl-vm-sym { stroke: #94a3b8; }
+.tl-vm-seat.is-protected circle { fill: #ecfdf5; stroke: #15803d; }
+.tl-vm-seat.is-protected .tl-vm-sym { stroke: #15803d; }
+
+.tl-vm-table circle { fill: color-mix(in srgb, var(--tier) 12%, #ffffff); stroke: var(--tier); stroke-width: 1.2; }
+.tl-vm-table text { text-anchor: middle; dominant-baseline: central; fill: #212b36; font-weight: 700; pointer-events: none; }
+.tl-vm-table[role='button'] { cursor: pointer; }
+.tl-vm-table[role='button']:hover circle { fill: color-mix(in srgb, var(--tier) 30%, #ffffff); stroke-width: 2; }
+.tl-vm-table:focus-visible circle { stroke: #212b36; stroke-width: 2.4; }
+.tl-vm-table.is-mine circle { fill: #16a34a; stroke: #15803d; }
+.tl-vm-table.is-mine text { fill: #fff; }
+.tl-vm-table.is-pending circle { stroke-dasharray: 3 2; }
+.tl-vm-table.is-held circle { fill: #fef3c7; stroke: #d97706; }
+.tl-vm-table.is-sold circle, .tl-vm-table.is-blocked circle { fill: #e2e8f0; stroke: #94a3b8; }
+.tl-vm-table.is-sold text { fill: #64748b; text-decoration: line-through; }
+
+/* ---------- Editor handles ---------- */
+.tl-ve-handle { fill: #ffffff; stroke: #16a34a; stroke-width: 1.5; cursor: grab; }
+.tl-ve-handle:hover { fill: #dcfce7; }
+.tl-ve-handle.is-rotate { fill: #16a34a; stroke: #ffffff; }
+.tl-ve-handle.is-add { fill: #f0fdf4; stroke-dasharray: 2 1.5; cursor: copy; }
+.tl-ve-guide { fill: none; stroke: #16a34a; stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
+.tl-ve-draw { fill: rgba(34, 197, 94, 0.12); stroke: #16a34a; stroke-width: 1.5; stroke-dasharray: 5 3; pointer-events: none; }
+.tl-vm-section.is-issue .tl-vm-shape { stroke: #e11d48; stroke-width: 2; }
+
+/* ---------- Map chrome (shared) ---------- */
+.tl-vm-controls { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+.tl-vm-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 40px; min-height: 40px; padding: 0 10px;
+  border-radius: 12px; border: 1px solid #e2e8f0; background: rgba(255, 255, 255, 0.96);
+  color: #212b36; font-size: 12px; font-weight: 700; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.tl-vm-btn:hover { background: #f0fdf4; border-color: #bbf7d0; }
+.tl-vm-btn:focus-visible { outline: 2px solid #16a34a; outline-offset: 2px; }
+.tl-vm-btn:disabled { opacity: 0.45; }
+.tl-vm-tip {
+  position: absolute; z-index: 3; pointer-events: none; min-width: 170px; max-width: 240px;
+  padding: 10px 12px; border-radius: 14px; background: #ffffff; border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.35); font-size: 12px; color: #212b36;
+  transform: translate(-50%, calc(-100% - 14px)); transition: opacity 0.15s ease;
+}
+.tl-vm-tip-name { font-weight: 800; font-size: 13px; }
+.tl-vm-tip-row { display: flex; justify-content: space-between; gap: 12px; color: #637381; margin-top: 3px; }
+.tl-vm-tip-row strong { color: #212b36; }
+.tl-vm-hint { position: absolute; left: 12px; bottom: 12px; z-index: 2; font-size: 11px; color: #637381; background: rgba(255, 255, 255, 0.9); border: 1px solid #e2e8f0; border-radius: 999px; padding: 4px 10px; }
+.tl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Legend chips: colour + symbol + word */
+.tl-vm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: #637381; }
+.tl-vm-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tl-vm-legend svg { width: 16px; height: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-vm-shape, .tl-vm-seat circle, .tl-vm-detail { transition: none; animation: none; }
+  .tl-vm-seat.is-pending circle { animation: none; }
+}
