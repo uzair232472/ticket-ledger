@@ -198,7 +198,7 @@ test('MODULE 20 - TicketLedger Final Master Verification Suite (All 20 Modules)'
   // Test 8: Verify Fraud-like User & ML Anti-Scalp Watchlist
   // -------------------------------------------------------------
   await t.test('8. Verify Scalper Bot Ring User is FROZEN and Flagged by ML', async () => {
-    const res = await fetch(`${BASE_URL}/admin/users?status=FROZEN`, {
+    const res = await fetch(`${BASE_URL}/admin/users?status=SUSPENDED`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const data = await res.json();
@@ -206,7 +206,7 @@ test('MODULE 20 - TicketLedger Final Master Verification Suite (All 20 Modules)'
 
     const botUser = data.data.users.find((u) => u.email === 'scalper.bot@proxyfarm.com');
     assert.ok(botUser, 'Bot user must be present in frozen users');
-    assert.equal(botUser.status, 'FROZEN');
+    assert.equal(botUser.status, 'SUSPENDED');
 
     // Verify Fraud Alerts
     const alertsRes = await fetch(`${BASE_URL}/admin/fraud-alerts?limit=10`, {

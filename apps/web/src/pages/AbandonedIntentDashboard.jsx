@@ -586,41 +586,37 @@ export default function AbandonedIntentDashboard() {
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-1 flex-wrap">
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                              item.hasViewed
-                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
-                            }`}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${item.hasViewed
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                              }`}
                           >
                             1. VIEW
                           </span>
                           <span className="text-slate-400">&rarr;</span>
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                              item.hasSelectedSeat
-                                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
-                            }`}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${item.hasSelectedSeat
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                              }`}
                           >
                             2. SEAT
                           </span>
                           <span className="text-slate-400">&rarr;</span>
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                              item.hasStartedCheckout
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
-                            }`}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${item.hasStartedCheckout
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                              }`}
                           >
                             3. CHECKOUT
                           </span>
                           <span className="text-slate-400">&rarr;</span>
                           <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                              item.hasAbandonedCheckout
-                                ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                : 'bg-slate-100 text-slate-400 border-slate-200'
-                            }`}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${item.hasAbandonedCheckout
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-slate-100 text-slate-400 border-slate-200'
+                              }`}
                           >
                             4. ABANDONED
                           </span>

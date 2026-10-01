@@ -1,372 +1,524 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  Building2, 
-  ShieldCheck, 
-  Ticket, 
-  ArrowLeft, 
-  CheckCircle2, 
-  Sparkles, 
-  Info, 
-  ChevronRight, 
-  Bell, 
-  Users, 
-  Check 
-} from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useNavigationType, useParams } from 'react-router-dom';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { CustomEase } from 'gsap/CustomEase';
+import { ArrowLeft, ArrowRight, Bell, Check, RefreshCw } from 'lucide-react';
 import api, { trackClientBehavior } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import { getEventVisual } from '../utils/eventMedia';
+import { EVENT_TIMEZONE_LABEL, eventDayEnd, formatEventDate, formatEventTime } from '../utils/eventTime';
+import HomeHeader from '../components/home/HomeHeader';
+import SiteFooter from '../components/home/SiteFooter';
+import EventTile from '../components/events/EventTile';
+import PixelLoader from '../components/events/PixelLoader';
+import EventGallery from '../components/event-detail/EventGallery';
+import { categoryName } from '../components/home/homeData';
+import logoImg from '../assets/ticketledger-logo.png';
+import '../components/home/home.css';
+import '../components/events/events.css';
+import '../components/event-detail/detail.css';
 
+gsap.registerPlugin(ScrollTrigger, CustomEase);
+// The reference's "verticalEase" (same curve as its Explore transitions)
+const VERTICAL_EASE = CustomEase.create('tlVertical', '0.625,0.05,0,1');
+
+const RETURN_KEY = 'tl-explore-return'; // written by Explore when a tile is opened
+const LOW_AVAILABILITY = 50;
+const LOADER_MS = 1400; // PixelLoader duration; content rises as it clears
+const RELATED_COUNT = 3;
+
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const formatPkr = (value) => `PKR ${Number(value).toLocaleString('en-PK')}`;
+
+/** What a visitor can do with this event right now, from its status, date and the API's tier counts. */
+function getSaleState(event) {
+  const tiers = event.tiers || [];
+  const available = tiers.reduce((n, t) => n + Math.max(0, Number(t.availableQuantity) || 0), 0);
+  if (event.status === 'CANCELLED') return { key: 'cancelled', label: 'Cancelled', note: 'This event has been cancelled. Tickets are no longer on sale.' };
+  if (event.status === 'COMPLETED' || eventDayEnd(event.date) < Date.now()) return { key: 'ended', label: 'Event ended', note: 'This event has already taken place.' };
+  if (event.status === 'PAUSED') return { key: 'paused', label: 'Sales paused', note: 'The organizer has paused ticket sales. Check back later.' };
+  if (event.status !== 'PUBLISHED') return { key: 'unpublished', label: 'Not on sale yet', note: 'Tickets for this event are not on sale yet.' };
+  if (!tiers.length || !event._count?.seats) return { key: 'unavailable', label: 'Tickets coming soon', note: 'Seating for this event has not been released for online booking yet.' };
+  if (available === 0) return { key: 'soldout', label: 'Sold out', note: 'Every ticket has been sold.' };
+  return { key: 'onsale', label: available <= LOW_AVAILABILITY ? `Only ${available} left` : 'On sale', available };
+}
+
+// Cheapest ticket still available (falls back to the cheapest overall when everything is sold)
+function getStartingPrice(tiers = []) {
+  const prices = (list) => list.map((t) => Number(t.price)).filter((p) => Number.isFinite(p));
+  const open = prices(tiers.filter((t) => t.availableQuantity > 0));
+  const all = open.length ? open : prices(tiers);
+  if (!all.length) return null;
+  const min = Math.min(...all);
+  return min === 0 ? 'Free' : formatPkr(min);
+}
+
+// Same category first, then same city, then soonest; upcoming published events only
+function pickRelated(events, current) {
+  const now = Date.now();
+  const score = (e) => (e.type === current.type ? 2 : 0) + (e.city === current.city ? 1 : 0);
+  return events
+    .filter((e) => e.id !== current.id && eventDayEnd(e.date) >= now)
+    .sort((a, b) => score(b) - score(a) || new Date(a.date) - new Date(b.date))
+    .slice(0, RELATED_COUNT);
+}
+
+/** Remount per event so every request, timer and animation starts fresh when the ID changes. */
 export default function EventDetails() {
   const { id } = useParams();
-  const { token } = useAuth();
+  return <EventDetailsPage key={id} id={id} />;
+}
+
+function Row({ label, id, children }) {
+  const headingId = `tl-dt-${label.toLowerCase().replace(/\W+/g, '-')}`;
+  return (
+    <section id={id} className="tl-dt-row" aria-labelledby={headingId}>
+      <h2 id={headingId} className="tl-dt-label">{label}</h2>
+      <div className="tl-dt-content">{children}</div>
+    </section>
+  );
+}
+
+function EventDetailsPage({ id }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const { isAuthenticated } = useAuth();
+
+  const rootRef = useRef(null);
+  const pageRef = useRef(null);
+  const mountedAt = useRef(Date.now());
+
   const [event, setEvent] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState('loading'); // loading | ready | notfound | error
+  const [attempt, setAttempt] = useState(0);
+  const [related, setRelated] = useState([]);
+  const [resale, setResale] = useState(null);
+  const [waitlist, setWaitlist] = useState({ on: false, count: null, busy: false, message: '' });
+  const [favorites, setFavorites] = useState({});
 
-  // Waitlist state
-  const [onWaitlist, setOnWaitlist] = useState(false);
-  const [waitlistCount, setWaitlistCount] = useState(0);
-  const [waitlistLoading, setWaitlistLoading] = useState(false);
-  const [waitlistMessage, setWaitlistMessage] = useState('');
+  // Back to Explore: step back through history when we came from it (Explore then restores its
+  // filters, batch and scroll position); otherwise open it with the last filters used.
+  const exploreDepth = Number(location.state?.exploreDepth) || 0;
+  const backHref = useMemo(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(RETURN_KEY) || 'null');
+      return saved?.query ? `/events?${saved.query}` : '/events';
+    } catch {
+      return '/events';
+    }
+  }, []);
+  const onBack = (e) => {
+    if (exploreDepth > 0) {
+      e.preventDefault();
+      navigate(-exploreDepth);
+    }
+  };
+  const relatedLinkState = exploreDepth > 0 ? { exploreDepth: exploreDepth + 1 } : undefined;
+  const toCategories = useCallback(() => navigate('/events'), [navigate]);
 
+  // A new event page starts at the top (back/forward keeps the browser's position)
+  useLayoutEffect(() => {
+    if (navigationType !== 'POP') window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [navigationType]);
+
+  // Event. Responses for a request that is no longer current are ignored.
   useEffect(() => {
-    async function loadEvent() {
-      try {
-        setLoading(true);
-        const res = await api.get(`/events/${id}`);
-        if (res.data.success) {
-          const loadedEvent = res.data.data.event;
-          setEvent(loadedEvent);
-
-          trackClientBehavior('event_view', id, {
-            eventName: loadedEvent.name,
-            category: loadedEvent.type,
-            city: loadedEvent.city,
-          });
-        } else {
-          setError(res.data.message || 'Event not found');
+    let alive = true;
+    setStatus('loading');
+    api
+      .get(`/events/${id}`)
+      .then((res) => {
+        if (!alive) return;
+        const loaded = res.data?.data?.event;
+        if (!loaded) {
+          setStatus('notfound');
+          return;
         }
-      } catch (err) {
-        setError(err.response?.data?.message || err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
+        setEvent(loaded);
+        setStatus('ready');
+        trackClientBehavior('event_view', id, { eventName: loaded.name, category: loaded.type, city: loaded.city });
+      })
+      .catch((err) => {
+        if (alive) setStatus(err.response?.status === 404 ? 'notfound' : 'error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [id, attempt]);
 
-    if (id) {
-      loadEvent();
-    }
-  }, [id]);
+  const sale = useMemo(() => (event ? getSaleState(event) : null), [event]);
 
+  // Related events (excluding this one)
   useEffect(() => {
-    async function checkWaitlistStatus() {
-      if (!token || !id) return;
-      try {
-        const res = await api.get(`/events/${id}/waitlist`);
-        if (res.data?.success) {
-          setOnWaitlist(res.data.data?.onWaitlist || false);
-          setWaitlistCount(res.data.data?.totalWaitlistCount || 0);
-        }
-      } catch (err) {
-        console.error('Error fetching waitlist status:', err);
-      }
-    }
+    if (!event) return undefined;
+    let alive = true;
+    api
+      .get('/events')
+      .then((res) => alive && setRelated(pickRelated(res.data?.data?.events || [], event)))
+      .catch(() => alive && setRelated([]));
+    return () => {
+      alive = false;
+    };
+  }, [event]);
 
-    checkWaitlistStatus();
-  }, [id, token]);
+  // Waitlist and resale only matter once an event is sold out
+  const soldOut = sale?.key === 'soldout';
+  useEffect(() => {
+    if (!soldOut || !isAuthenticated) return undefined;
+    let alive = true;
+    api
+      .get(`/events/${id}/waitlist`)
+      .then((res) => alive && setWaitlist((w) => ({ ...w, on: Boolean(res.data?.data?.onWaitlist), count: res.data?.data?.totalWaitlistCount ?? null })))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [id, soldOut, isAuthenticated]);
+  useEffect(() => {
+    if (!soldOut) return undefined;
+    let alive = true;
+    api
+      .get(`/resale/market?eventId=${encodeURIComponent(id)}`)
+      .then((res) => {
+        if (!alive) return;
+        const listings = res.data?.data?.listings || [];
+        setResale(listings.length ? { count: listings.length, from: Math.min(...listings.map((l) => Number(l.resalePrice))) } : null);
+      })
+      .catch(() => alive && setResale(null));
+    return () => {
+      alive = false;
+    };
+  }, [id, soldOut]);
 
-  const handleJoinWaitlist = async () => {
-    if (!token) {
-      alert('Please sign in to join the resale waitlist.');
-      return;
-    }
-
-    setWaitlistLoading(true);
-    setWaitlistMessage('');
-
+  const joinWaitlist = async () => {
+    if (waitlist.busy || waitlist.on) return; // no duplicate submissions
+    setWaitlist((w) => ({ ...w, busy: true, message: '' }));
     try {
       const res = await api.post(`/events/${id}/waitlist`);
-      if (res.data?.success) {
-        setOnWaitlist(true);
-        setWaitlistCount(res.data.data?.totalWaitlistCount || waitlistCount + 1);
-        setWaitlistMessage(res.data.message || 'You have joined the resale waitlist!');
-      } else {
-        setWaitlistMessage(res.data?.message || 'Could not join waitlist');
-      }
+      setWaitlist({ on: true, busy: false, count: res.data?.data?.totalWaitlistCount ?? null, message: 'You’re on the waitlist. We’ll notify you when a resale ticket is listed.' });
     } catch (err) {
-      setWaitlistMessage(err.response?.data?.message || err.message);
-    } finally {
-      setWaitlistLoading(false);
+      setWaitlist((w) => ({ ...w, busy: false, message: err.response?.data?.message || 'Could not join the waitlist. Please try again.' }));
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-9 w-9 border-t-2 border-b-2 border-[#22c55e]"></div>
-      </div>
-    );
-  }
+  // Tab title
+  useEffect(() => {
+    if (!event) return undefined;
+    const previous = document.title;
+    document.title = `${event.name} · TicketLedger`;
+    return () => {
+      document.title = previous;
+    };
+  }, [event]);
 
-  if (error || !event) {
-    return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-white border border-slate-200 rounded-3xl text-center space-y-4 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-900">Event Not Found</h2>
-        <p className="text-xs text-slate-500">{error || 'This event does not exist or has concluded.'}</p>
-        <Link
-          to="/events"
-          className="btn-eventfrog text-xs"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Discover
+  // Footer: the header logo steps aside and the footer lettering rises in (as on Explore)
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const header = root.querySelector('[data-home-header]');
+    const ctx = gsap.context(() => {
+      ScrollTrigger.create({
+        trigger: '.tl-footer',
+        start: 'top 80px',
+        onToggle: (self) => {
+          header.dataset.atFooter = String(self.isActive);
+        },
+      });
+      if (!reducedMotion()) {
+        gsap.fromTo(
+          '.tl-footer-wordmark',
+          { yPercent: 30, opacity: 0 },
+          { yPercent: 0, opacity: 1, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: '.tl-footer', start: 'top 70%', toggleActions: 'play none none reverse' } }
+        );
+      }
+    }, root);
+    return () => {
+      ctx.revert();
+      delete header.dataset.atFooter;
+    };
+  }, []);
+
+  // Page entrance (content rises as the loader clears) and the hero image parallax
+  useLayoutEffect(() => {
+    if (status !== 'ready') return undefined;
+    const ctx = gsap.context(() => {
+      if (!reducedMotion()) {
+        const delay = Math.max(0, mountedAt.current + LOADER_MS - 450 - Date.now()) / 1000;
+        gsap.from('.tl-dt-main', { y: 56, duration: 1.2, delay, ease: VERTICAL_EASE, clearProps: 'transform', onComplete: () => ScrollTrigger.refresh() });
+      }
+      // Desktop only, like the reference: the photo drifts down at half the scroll speed
+      gsap.matchMedia().add('(min-width: 768px) and (prefers-reduced-motion: no-preference)', () => {
+        gsap.to('.tl-dt-hero-img', { yPercent: 50, ease: 'none', scrollTrigger: { trigger: '.tl-dt-hero', start: 'top top', end: 'bottom top', scrub: true } });
+      });
+    }, rootRef);
+    ScrollTrigger.refresh();
+    return () => ctx.revert();
+  }, [status]);
+
+  // Related tiles wipe up from the bottom in sequence when the grid enters view
+  useLayoutEffect(() => {
+    if (!related.length || reducedMotion()) return undefined;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(
+        '.tl-dt-related-item',
+        { clipPath: 'inset(100% 0% 0% 0%)' },
+        {
+          clipPath: 'inset(0% 0% 0% 0%)',
+          duration: 1.2,
+          ease: VERTICAL_EASE,
+          stagger: 0.1,
+          scrollTrigger: { trigger: '.tl-dt-related-grid', start: 'top 85%', toggleActions: 'play none none reverse' },
+        }
+      );
+    }, rootRef);
+    ScrollTrigger.refresh();
+    return () => ctx.revert();
+  }, [related]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => ScrollTrigger.refresh());
+  }, [resale, waitlist.on]);
+
+  const visual = event ? getEventVisual(event, 0) : null;
+  const heroImage = visual?.bannerImage?.includes('images.unsplash.com') ? visual.bannerImage.replace(/w=\d+/, 'w=2000') : visual?.bannerImage;
+  const startingPrice = event ? getStartingPrice(event.tiers) : null;
+  const time = event ? formatEventTime(event.time) : '';
+  const organizer = event?.company?.companyName;
+  const description = event?.description?.trim();
+  const venueHasCity = event && event.city && event.venue?.toLowerCase().includes(event.city.toLowerCase());
+  const loginState = { from: location.pathname };
+
+  const backLink = (
+    <Link to={backHref} onClick={onBack} className="tl-dt-back">
+      <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Explore events
+    </Link>
+  );
+
+  const bookingAction = (where) => {
+    if (sale.key === 'onsale') {
+      return (
+        <Link to={`/events/${event.id}/seats`} className="tl-dt-cta" data-cta={where}>
+          Choose seats <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </Link>
-      </div>
-    );
-  }
-
-  const visual = getEventVisual(event, 0);
+      );
+    }
+    if (sale.key === 'soldout') {
+      return (
+        <a href="#waitlist" className="tl-dt-cta tl-dt-cta--ghost" data-cta={where}>
+          Join the waitlist <Bell className="w-4 h-4" aria-hidden="true" />
+        </a>
+      );
+    }
+    return null;
+  };
 
   return (
-    <div className="space-y-8 pb-14 text-slate-800">
-      
-      {/* Top Breadcrumb & Category */}
-      <div className="flex items-center justify-between">
-        <Link
-          to="/events"
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-[#16a34a] transition"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to all events
-        </Link>
-        <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-          {visual.badge}
-        </span>
-      </div>
+    <div ref={rootRef} className="tl-home tl-detail">
+      <PixelLoader />
+      <HomeHeader pageRef={pageRef} onCategories={toCategories} tone="dark" />
 
-      {/* Eventfrog Clean White Event Header Card */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col lg:flex-row gap-8 items-start">
-        {/* Event Image */}
-        <div className="w-full lg:w-96 h-64 sm:h-72 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-sm relative shrink-0">
-          <img
-            src={visual.image}
-            alt={event.name}
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute top-3 left-3 flex items-center gap-1.5">
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-900/80 text-white backdrop-blur-md">
-              {visual.badge}
-            </span>
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-600/90 text-white backdrop-blur-md">
-              {event.status}
-            </span>
-          </div>
-          <div className="absolute bottom-3 left-3 right-3">
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-white/95 text-slate-900 shadow-sm border border-slate-200">
-              <Sparkles className="w-3 h-3 text-amber-500" /> Polygon Amoy NFT Verified
-            </span>
-          </div>
-        </div>
+      <div ref={pageRef}>
+        <main className="tl-dt-main">
+          {status === 'loading' && (
+            <div className="tl-dt-hero tl-dt-hero--skeleton" aria-busy="true">
+              <p className="tl-dt-sr" role="status">Loading event…</p>
+            </div>
+          )}
 
-        {/* Event Header Information */}
-        <div className="flex-1 space-y-4">
-          <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#212b36] tracking-tight leading-tight">
-              {event.name}
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 font-medium">
-              Official verified ticketing powered by TicketLedger smart contracts
-            </p>
-          </div>
+          {(status === 'notfound' || status === 'error') && (
+            <div className="tl-dt-message">
+              {backLink}
+              <h1 className="tl-dt-message-title">{status === 'notfound' ? 'Event not found' : 'We couldn’t load this event'}</h1>
+              <p>{status === 'notfound' ? 'This event doesn’t exist or is no longer listed.' : 'Check your connection and try again.'}</p>
+              {status === 'error' && (
+                <button type="button" className="tl-dt-cta" onClick={() => setAttempt((a) => a + 1)}>
+                  Try again <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* Key Event Badges */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-            <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#16a34a] flex items-center justify-center font-bold shrink-0">
-                <Calendar className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-semibold uppercase">Date & Time</div>
-                <div className="font-bold text-slate-900">
-                  {new Date(event.date).toLocaleDateString('en-PK', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+          {status === 'ready' && (
+            <>
+              <section className="tl-dt-hero" aria-labelledby="tl-dt-title">
+                <div className="tl-dt-hero-media">
+                  <img
+                    className="tl-dt-hero-img"
+                    src={heroImage}
+                    alt=""
+                    fetchpriority="high"
+                    decoding="async"
+                    onError={(e) => e.currentTarget.parentElement.classList.add('is-broken')}
+                  />
+                  <span className="tl-dt-hero-fallback" aria-hidden="true" style={{ backgroundImage: `url(${logoImg})` }} />
                 </div>
-                <div className="text-[11px] text-slate-500 font-medium">{event.time} PKT</div>
-              </div>
-            </div>
+                <div className="tl-dt-hero-shade" aria-hidden="true" />
+                <div className="tl-dt-hero-top">{backLink}</div>
 
-            <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#16a34a] flex items-center justify-center font-bold shrink-0">
-                <MapPin className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 font-semibold uppercase">Venue Location</div>
-                <div className="font-bold text-slate-900 truncate max-w-[200px]">{event.venue}</div>
-                <div className="text-[11px] text-slate-500 font-medium">{event.city}, Pakistan</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Price Range & Quick Action */}
-          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400 block">Tickets Available From</span>
-              <div className="text-2xl font-black text-slate-900">
-                PKR {Number(event.tiers?.[0]?.price || event.pricing?.minPrice || 1500).toLocaleString()}
-              </div>
-            </div>
-
-            {event.tiers && event.tiers.length > 0 && (
-              <Link
-                to={`/events/${event.id}/seats`}
-                className="btn-eventfrog text-xs px-6 py-3 shadow"
-              >
-                <Ticket className="w-4 h-4" />
-                <span>Choose Seats on Stadium Map</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Column: Details & Guarantee */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-3">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Info className="w-4 h-4 text-[#16a34a]" /> Event Information
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-              {event.description}
-            </p>
-          </div>
-
-          {/* Blockchain & Security Guarantee */}
-          <div className="p-6 rounded-3xl bg-emerald-50 border border-emerald-200 space-y-2 text-xs text-emerald-950">
-            <div className="flex items-center gap-2 font-bold text-emerald-900 text-sm">
-              <ShieldCheck className="w-5 h-5 text-[#16a34a]" /> Official Smart Contract Ticket Guarantee
-            </div>
-            <p className="leading-relaxed text-emerald-800">
-              Every pass for <strong className="text-emerald-950">{event.name}</strong> is cryptographically minted as an ERC-721 token on Polygon Amoy. Secondary transfers are automatically capped at <strong className="text-emerald-950">110% of face value</strong>, and stadium entry gates require an animated 15-second rotating HMAC QR code.
-            </p>
-          </div>
-        </div>
-
-        {/* Right Column: Ticket Tiers & Organizer */}
-        <div className="space-y-6">
-          
-          {/* Ticket Tiers / Enclosures */}
-          <div className="p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <Ticket className="w-4 h-4 text-[#16a34a]" /> Select Ticket Category
-              </h2>
-              <span className="text-[10px] uppercase font-bold text-slate-400">PKR</span>
-            </div>
-
-            <div className="space-y-3">
-              {event.tiers?.map((tier) => (
-                <div
-                  key={tier.id}
-                  className="p-4 rounded-2xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition flex flex-col justify-between gap-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-sm">{tier.name}</h3>
-                      <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                        {tier.availableQuantity} of {tier.totalQuantity} seats available
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-base font-extrabold text-slate-900">
-                        Rs. {Number(tier.price).toLocaleString()}
-                      </div>
-                    </div>
+                <div className="tl-dt-hero-inner">
+                  <div className="tl-dt-hero-main">
+                    <p className="tl-dt-kicker">
+                      <span>{categoryName(event.type)}</span>
+                      <span className={`tl-dt-status is-${sale.key}`}>{sale.label}</span>
+                    </p>
+                    <h1 id="tl-dt-title" className="tl-dt-title">{event.name}</h1>
                   </div>
 
-                  <Link
-                    to={`/events/${event.id}/seats`}
-                    className="w-full btn-eventfrog text-xs py-2.5"
-                  >
-                    <span>Choose Seats in {tier.name}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="tl-dt-hero-side">
+                    <dl className="tl-dt-facts">
+                      <div>
+                        <dt>Location:</dt>
+                        <dd>
+                          {event.venue}
+                          {event.city && !venueHasCity && <><br />{event.city}</>}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Date:</dt>
+                        <dd>
+                          <time dateTime={new Date(event.date).toISOString().slice(0, 10)}>{formatEventDate(event.date)}</time>
+                          {time && <><br />{time} PKT</>}
+                        </dd>
+                      </div>
+                      {organizer && (
+                        <div>
+                          <dt>Organizer:</dt>
+                          <dd>{organizer}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <div className="tl-dt-book">
+                      {startingPrice && (
+                        <p className="tl-dt-price">
+                          <span>{startingPrice === 'Free' ? 'Price' : 'From'}</span> {startingPrice}
+                        </p>
+                      )}
+                      {bookingAction('hero') || <p className="tl-dt-book-note">{sale.note}</p>}
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              </section>
 
-          {/* Organizer Card */}
-          <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-3 text-xs">
-            <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Organizer</div>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-[#16a34a] flex items-center justify-center font-bold">
-                <Building2 className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
-                  {event.company?.companyName || 'Official Event Partner'}
-                  <CheckCircle2 className="w-4 h-4 text-[#16a34a]" title="Verified Organizer" />
-                </div>
-                <div className="text-slate-500 text-[11px]">
-                  Verified Organizer • {event.company?.city || event.city}
-                </div>
-              </div>
-            </div>
-          </div>
+              <div className="tl-dt-body">
+                {description && (
+                  <Row label="Overview">
+                    <p className="tl-dt-desc">{description}</p>
+                  </Row>
+                )}
 
-          {/* Resale Waitlist Card */}
-          <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-3 text-xs">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 font-bold text-slate-900">
-                <Bell className="w-4 h-4 text-emerald-600" />
-                <span>Resale Waitlist</span>
-              </div>
-              <div className="text-[11px] text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                {waitlistCount} waiting
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              If your preferred category is sold out, join the waitlist to receive instant notifications when authentic tickets are listed for resale.
-            </p>
+                <Row label="Tickets" id="tickets">
+                  {event.tiers?.length > 0 ? (
+                    <ul className="tl-dt-tiers">
+                      {event.tiers.map((tier) => {
+                        const left = Math.max(0, Number(tier.availableQuantity) || 0);
+                        const price = Number(tier.price);
+                        return (
+                          <li key={tier.id} className={`tl-dt-tier${left === 0 ? ' is-out' : ''}`}>
+                            <span className="tl-dt-tier-name">{tier.name}</span>
+                            <span className="tl-dt-tier-left">
+                              {left === 0 ? 'Sold out' : left <= LOW_AVAILABILITY ? `Only ${left} left` : `${left.toLocaleString('en-PK')} available`}
+                            </span>
+                            <span className="tl-dt-tier-price">{price === 0 ? 'Free' : formatPkr(price)}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="tl-dt-muted">Ticket categories haven’t been announced yet.</p>
+                  )}
+                  <div className="tl-dt-tickets-foot">
+                    {sale.key === 'onsale' ? (
+                      <>
+                        {bookingAction('tickets')}
+                        <p className="tl-dt-muted">
+                          Pick your seats on the venue map. {isAuthenticated ? 'Selected seats are held for you for 10 minutes while you check out.' : 'You’ll sign in before a seat is held for you.'}
+                        </p>
+                      </>
+                    ) : (
+                      <p className={`tl-dt-state is-${sale.key}`} role="status">{sale.note}</p>
+                    )}
+                  </div>
+                </Row>
 
-            {waitlistMessage && (
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px]">
-                {waitlistMessage}
-              </div>
-            )}
+                {soldOut && (
+                  <Row label="Waitlist" id="waitlist">
+                    <p className="tl-dt-desc tl-dt-desc--small">
+                      Join the waitlist to be notified as soon as a ticket for this event is listed on the fan resale marketplace.
+                      {waitlist.count != null && waitlist.count > 0 && ` ${waitlist.count.toLocaleString('en-PK')} ${waitlist.count === 1 ? 'person is' : 'people are'} waiting.`}
+                    </p>
+                    {isAuthenticated ? (
+                      <button type="button" className={`tl-dt-cta${waitlist.on ? ' tl-dt-cta--done' : ''}`} onClick={joinWaitlist} disabled={waitlist.busy || waitlist.on} aria-disabled={waitlist.busy || waitlist.on}>
+                        {waitlist.on ? <>On the waitlist <Check className="w-4 h-4" aria-hidden="true" /></> : waitlist.busy ? 'Joining…' : <>Join the waitlist <Bell className="w-4 h-4" aria-hidden="true" /></>}
+                      </button>
+                    ) : (
+                      <Link to="/login" state={loginState} className="tl-dt-cta">
+                        Sign in to join <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                      </Link>
+                    )}
+                    <p className="tl-dt-muted" role="status" aria-live="polite">{waitlist.message}</p>
+                  </Row>
+                )}
 
-            <button
-              onClick={handleJoinWaitlist}
-              disabled={waitlistLoading || onWaitlist}
-              className={`w-full py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center justify-center gap-2 ${
-                onWaitlist
-                  ? 'bg-slate-100 text-slate-600 border border-slate-200 cursor-default'
-                  : 'btn-eventfrog'
-              }`}
-            >
-              {onWaitlist ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-600" />
-                  <span>On Resale Waitlist</span>
-                </>
-              ) : waitlistLoading ? (
-                <span>Joining...</span>
-              ) : (
-                <>
-                  <Bell className="w-4 h-4" />
-                  <span>Join Resale Waitlist</span>
-                </>
+                {soldOut && resale && (
+                  <Row label="Resale">
+                    <p className="tl-dt-desc tl-dt-desc--small">
+                      {resale.count} {resale.count === 1 ? 'ticket is' : 'tickets are'} listed by fans from {formatPkr(resale.from)}. Resale prices are capped at 110% of face value.
+                    </p>
+                    <Link to="/resale" className="tl-dt-cta tl-dt-cta--ghost">
+                      View resale tickets <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                    </Link>
+                  </Row>
+                )}
+
+                <Row label="Details">
+                  <dl className="tl-dt-details">
+                    <div><dt>Category</dt><dd>{categoryName(event.type)}</dd></div>
+                    <div><dt>Date</dt><dd>{formatEventDate(event.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</dd></div>
+                    {time && <div><dt>Time</dt><dd>{time} <span className="tl-dt-tz">{EVENT_TIMEZONE_LABEL}</span></dd></div>}
+                    <div><dt>Venue</dt><dd>{event.venue}</dd></div>
+                    {event.city && <div><dt>City</dt><dd>{event.city}</dd></div>}
+                    {organizer && <div><dt>Organizer</dt><dd>{organizer}</dd></div>}
+                  </dl>
+                </Row>
+
+                {['onsale', 'soldout'].includes(sale.key) && (
+                  <Row label="Good to know">
+                    <ul className="tl-dt-notes">
+                      <li>Seats you select are held for 10 minutes while you complete checkout.</li>
+                      <li>Resale on TicketLedger is capped at 110% of the ticket’s face value.</li>
+                      <li>Your entry QR code lives in your wallet and refreshes every 30 seconds.</li>
+                    </ul>
+                  </Row>
+                )}
+              </div>
+
+              <EventGallery event={event} mainImage={heroImage} />
+
+              {related.length > 0 && (
+                <section className="tl-dt-related" aria-labelledby="tl-dt-related-title">
+                  <h2 id="tl-dt-related-title" className="tl-dt-related-title">Other events</h2>
+                  <div className="tl-dt-related-grid">
+                    {related.map((item, i) => (
+                      <div key={item.id} className="tl-dt-related-item">
+                        <EventTile
+                          event={item}
+                          index={i}
+                          isFavorite={favorites[item.id]}
+                          onToggleFavorite={(fid) => setFavorites((f) => ({ ...f, [fid]: !f[fid] }))}
+                          linkState={relatedLinkState}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </section>
               )}
-            </button>
-          </div>
+            </>
+          )}
+        </main>
 
-        </div>
-
+        <SiteFooter onCategories={toCategories} />
       </div>
-
     </div>
   );
 }

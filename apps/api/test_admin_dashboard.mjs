@@ -121,7 +121,7 @@ test('MODULE 19 - Super Admin & Organizer Analytics Dashboard Integration Test S
         Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
-        status: 'FROZEN',
+        status: 'SUSPENDED',
         reason: 'Temporary freeze due to automated script velocity detection',
       }),
     });
@@ -129,17 +129,17 @@ test('MODULE 19 - Super Admin & Organizer Analytics Dashboard Integration Test S
 
     assert.equal(freezeRes.status, 200);
     assert.equal(freezeJson.success, true);
-    assert.equal(freezeJson.user.status, 'FROZEN');
+    assert.equal(freezeJson.user.status, 'SUSPENDED');
 
     // Verify Audit Log
-    const auditRes = await fetch(`${BASE_URL}/admin/audit-logs?action=USER_FROZEN&limit=5`, {
+    const auditRes = await fetch(`${BASE_URL}/admin/audit-logs?action=USER_SUSPENDED&limit=5`, {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     const auditJson = await auditRes.json();
     assert.equal(auditRes.status, 200);
     assert.ok(auditJson.data.auditLogs.length > 0);
     const log = auditJson.data.auditLogs[0];
-    assert.equal(log.action, 'USER_FROZEN');
+    assert.equal(log.action, 'USER_SUSPENDED');
     assert.equal(log.targetId, customerUser.id);
   });
 
@@ -172,7 +172,7 @@ test('MODULE 19 - Super Admin & Organizer Analytics Dashboard Integration Test S
         Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
-        status: 'BLACKLISTED',
+        status: 'BANNED',
         reason: 'Confirmed bot farm ticket scalp operation',
       }),
     });
@@ -180,7 +180,7 @@ test('MODULE 19 - Super Admin & Organizer Analytics Dashboard Integration Test S
 
     assert.equal(blacklistRes.status, 200);
     assert.equal(blacklistJson.success, true);
-    assert.equal(blacklistJson.user.status, 'BLACKLISTED');
+    assert.equal(blacklistJson.user.status, 'BANNED');
 
     // Revert back to ACTIVE so customer user remains functional
     await fetch(`${BASE_URL}/admin/users/${customerUser.id}/status`, {

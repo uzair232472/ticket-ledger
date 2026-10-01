@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import StaffManager from '../components/StaffManager';
 import {
   TrendingUp,
   DollarSign,
@@ -20,7 +21,9 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
-  BarChart3
+  BarChart3,
+  Pencil,
+  LayoutGrid
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -110,7 +113,7 @@ export default function OrganizerDashboard() {
         </div>
 
         {/* Event Selector & Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={selectedEventId}
             onChange={(e) => {
@@ -126,6 +129,25 @@ export default function OrganizerDashboard() {
               </option>
             ))}
           </select>
+
+          {selectedEventId !== 'ALL' && (
+            <Link
+              to={`/organizer/events/${selectedEventId}/edit`}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm transition"
+            >
+              <Pencil className="w-3.5 h-3.5 text-[#16a34a]" />
+              <span>Edit event</span>
+            </Link>
+          )}
+          {selectedEventId !== 'ALL' && (
+            <Link
+              to={`/organizer/events/${selectedEventId}/venue`}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm transition"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-[#16a34a]" />
+              <span>Venue &amp; seating</span>
+            </Link>
+          )}
 
           <button
             onClick={fetchDashboard}
@@ -480,6 +502,9 @@ export default function OrganizerDashboard() {
           </Link>
         </div>
       </div>
+
+      {/* Gate staff invites and staff list for this company's events */}
+      <StaffManager />
     </div>
   );
 }

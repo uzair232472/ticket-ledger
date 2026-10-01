@@ -23,7 +23,7 @@ async function main() {
       status: 'ACTIVE',
       walletAddress: '0x1111111111111111111111111111111111111111',
       city: 'Islamabad',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
   });
   console.log('✓ Super Admin seeded:', admin.email);
@@ -43,7 +43,7 @@ async function main() {
       status: 'ACTIVE',
       walletAddress: '0x2222222222222222222222222222222222222222',
       city: 'Lahore',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
   });
 
@@ -81,7 +81,7 @@ async function main() {
       status: 'ACTIVE',
       walletAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       city: 'Lahore',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
   });
 
@@ -117,7 +117,7 @@ async function main() {
       status: 'ACTIVE',
       walletAddress: '0x3333333333333333333333333333333333333333',
       city: 'Lahore',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
   });
   console.log('✓ Gate Staff seeded:', gateStaff.email);
@@ -177,7 +177,7 @@ async function main() {
         status: 'ACTIVE',
         walletAddress: c.walletAddress,
         city: c.city,
-        isVerified: true,
+        emailVerifiedAt: new Date(),
       },
     });
     customers.push(cust);
@@ -189,20 +189,20 @@ async function main() {
   // -------------------------------------------------------------
   const fraudUser = await prisma.user.upsert({
     where: { email: 'scalper.bot@proxyfarm.com' },
-    update: { passwordHash, status: 'FROZEN', role: 'CUSTOMER' },
+    update: { passwordHash, status: 'SUSPENDED', role: 'CUSTOMER' },
     create: {
       email: 'scalper.bot@proxyfarm.com',
       name: 'Scalper Bot Ring Alpha',
       phone: '+923999999999',
       passwordHash,
       role: 'CUSTOMER',
-      status: 'FROZEN',
+      status: 'SUSPENDED',
       city: 'Karachi',
       walletAddress: '0x9999999999999999999999999999999999999999',
-      isVerified: false,
+      emailVerifiedAt: null,
     },
   });
-  console.log('✓ Fraud-like Bot User seeded (Status: FROZEN):', fraudUser.email);
+  console.log('✓ Fraud-like Bot User seeded (Status: SUSPENDED):', fraudUser.email);
 
   // -------------------------------------------------------------
   // 7. Abandoned Checkout User (Ready for 1-Click Recovery)
@@ -219,7 +219,7 @@ async function main() {
       status: 'ACTIVE',
       city: 'Lahore',
       walletAddress: '0x8888888888888888888888888888888888888888',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
   });
   console.log('✓ Abandoned Checkout User seeded:', abandonedUser.email);
@@ -246,7 +246,7 @@ async function main() {
         time: '19:30',
         city: 'Lahore',
         venue: 'Gaddafi Stadium, Ferozepur Road',
-        bannerUrl: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80',
+        bannerUrl: '/event-banners/psl-2026-final.png',
       },
     });
   }
@@ -311,7 +311,7 @@ async function main() {
         time: '20:00',
         city: 'Lahore',
         venue: 'Alhamra Arts Council Open Air, The Mall',
-        bannerUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+        bannerUrl: '/event-banners/live-in-concert.png',
       },
     });
 
@@ -363,7 +363,7 @@ async function main() {
         time: '18:00',
         city: 'Karachi',
         venue: 'Beach View Park, Clifton Block 4',
-        bannerUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+        bannerUrl: '/event-banners/qawwali-night.png',
       },
     });
 
@@ -397,6 +397,20 @@ async function main() {
       }),
     ]);
   }
+
+  // Link organizers and gate staff to their company, and assign the demo gate staff to the approved company's events
+  await prisma.user.update({ where: { id: approvedOrgUser.id }, data: { companyId: approvedCompany.id } });
+  await prisma.user.update({ where: { id: pendingOrgUser.id }, data: { companyId: pendingCompany.id } });
+  await prisma.user.update({ where: { id: gateStaff.id }, data: { companyId: approvedCompany.id } });
+  for (const ev of [pslEvent, concertEvent, festEvent]) {
+    if (ev.companyId !== approvedCompany.id) continue;
+    await prisma.staffEventAssignment.upsert({
+      where: { staffId_eventId: { staffId: gateStaff.id, eventId: ev.id } },
+      update: {},
+      create: { staffId: gateStaff.id, eventId: ev.id, assignedById: approvedOrgUser.id },
+    });
+  }
+  console.log('✓ Gate staff assigned to', approvedCompany.companyName, 'events');
 
   console.log('✓ 3 Pakistani Events & Tiers seeded:');
   console.log(`  1. ${pslEvent.name} (${pslEvent.city})`);
@@ -724,7 +738,7 @@ async function main() {
         },
         {
           userId: admin.id,
-          action: 'USER_FROZEN',
+          action: 'USER_SUSPENDED',
           targetType: 'User',
           targetId: fraudUser.id,
           details: { reason: 'Automated anti-scalp bot interception' },

@@ -1,4 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import VenueBooking from '../components/venue/VenueBooking';
+import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
+import { formatEventDate, formatEventTime } from '../utils/eventTime';
+import { liveAdapter } from '../components/venue/adapters';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
@@ -20,9 +24,71 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+/**
+ * Events with a published venue plan use the interactive plan; older events keep this seat page.
+ */
 export default function SeatMap() {
+  const { id: eventId } = useParams();
+  const { user, isAuthenticated } = useAuth();
+  const [mode, setMode] = useState('checking'); // checking | venue | legacy
+  const [venueEvent, setVenueEvent] = useState(null);
+  const adapter = useMemo(() => liveAdapter(eventId), [eventId]);
+
+  useEffect(() => {
+    let alive = true;
+    adapter
+      .load()
+      .then((d) => {
+        if (!alive) return;
+        setVenueEvent(d.event);
+        setMode(d.layout ? 'venue' : 'legacy');
+      })
+      .catch(() => alive && setMode('legacy'));
+    return () => {
+      alive = false;
+    };
+  }, [adapter]);
+
+  if (mode === 'legacy') {
+    return (
+      <BookingShell>
+        <LegacySeatMap />
+      </BookingShell>
+    );
+  }
+
+  const time = formatEventTime(venueEvent?.time);
+  return (
+    <BookingShell>
+      <Link to={`/events/${eventId}`} className="tl-bk-back">
+        <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Event details
+      </Link>
+      <header className="tl-bk-head tl-bk-rise">
+        <div>
+          <p className="tl-bk-kicker">Choose your seats</p>
+          <h1 className="tl-bk-title">{venueEvent?.name || 'Loading venue…'}</h1>
+          {venueEvent && (
+            <p className="tl-bk-meta">
+              <span><MapPin className="w-4 h-4" aria-hidden="true" /> {venueEvent.venue}, {venueEvent.city}</span>
+              <span><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(venueEvent.date)}{time && ` · ${time}`}</span>
+              <span><Clock className="w-4 h-4" aria-hidden="true" /> Selected seats are reserved for 10 minutes</span>
+            </p>
+          )}
+        </div>
+        <BookingSteps current="seats" />
+      </header>
+      {mode === 'checking' ? (
+        <div className="tl-vb-skeleton" aria-busy="true" aria-label="Loading the venue plan" />
+      ) : (
+        <VenueBooking adapter={adapter} eventId={eventId} isAuthenticated={isAuthenticated} userId={user?.id || null} />
+      )}
+    </BookingShell>
+  );
+}
+
+function LegacySeatMap() {
   const { id: eventId } = useParams();
   const navigate = useNavigate();
   const { user, token, isAuthenticated } = useAuth();
@@ -193,7 +259,7 @@ export default function SeatMap() {
   const handleSeatClick = async (seat) => {
     if (!isAuthenticated) {
       alert('Please sign in to select and reserve seats.');
-      navigate('/login');
+      navigate('/login', { state: { from: `/events/${eventId}/seats` } });
       return;
     }
 
@@ -413,11 +479,10 @@ export default function SeatMap() {
                 <button
                   key={secName}
                   onClick={() => setActiveSection(secName)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition border ${
-                    isSelected
-                      ? 'bg-[#22c55e] text-white border-[#16a34a] shadow-sm'
-                      : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-200'
-                  }`}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition border ${isSelected
+                    ? 'bg-[#22c55e] text-white border-[#16a34a] shadow-sm'
+                    : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-200'
+                    }`}
                 >
                   <div className="flex items-center gap-1.5">
                     <span>{secName}</span>

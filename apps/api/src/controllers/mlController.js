@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { revokeAllRefreshTokens } from '../services/tokenService.js';
 import mlService from '../services/mlService.js';
 
 /**
@@ -318,8 +319,9 @@ export const freezeUserAccount = async (req, res) => {
 
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: { status: 'FROZEN' },
+      data: { status: 'SUSPENDED' },
     });
+    await revokeAllRefreshTokens(userId);
 
     await prisma.auditLog.create({
       data: {
@@ -336,7 +338,7 @@ export const freezeUserAccount = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Account for ${user.name} (${user.email}) has been FROZEN. All active booking and ticket operations are blocked.`,
+      message: `Account for ${user.name} (${user.email}) has been SUSPENDED. All active booking and ticket operations are blocked.`,
       data: { user: updated },
     });
   } catch (error) {

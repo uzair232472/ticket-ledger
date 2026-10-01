@@ -16,7 +16,7 @@ export async function seedUsers() {
       role: 'SUPER_ADMIN',
       status: 'ACTIVE',
       walletAddress: '0x1111111111111111111111111111111111111111',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
     {
       name: 'Tariq Events Lahore (Organizer)',
@@ -25,7 +25,7 @@ export async function seedUsers() {
       role: 'ORGANIZER',
       status: 'ACTIVE',
       walletAddress: '0x2222222222222222222222222222222222222222',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
     {
       name: 'Bilal Khan (Gaddafi Gate Staff)',
@@ -34,7 +34,7 @@ export async function seedUsers() {
       role: 'GATE_STAFF',
       status: 'ACTIVE',
       walletAddress: '0x3333333333333333333333333333333333333333',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
     {
       name: 'Ali Raza (Customer)',
@@ -43,25 +43,25 @@ export async function seedUsers() {
       role: 'CUSTOMER',
       status: 'ACTIVE',
       walletAddress: '0x71C84183F33d3419186661a47B7777174452aa82',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
     {
       name: 'Kamran Frozen (Frozen Customer)',
       email: 'frozen@ticketledger.pk',
       phone: '+923001234564',
       role: 'CUSTOMER',
-      status: 'FROZEN',
+      status: 'SUSPENDED',
       walletAddress: '0x4444444444444444444444444444444444444444',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
     {
       name: 'Scalper Blacklisted (Blacklisted)',
       email: 'blacklisted@ticketledger.pk',
       phone: '+923001234565',
       role: 'CUSTOMER',
-      status: 'BLACKLISTED',
+      status: 'BANNED',
       walletAddress: '0x5555555555555555555555555555555555555555',
-      isVerified: false,
+      emailVerifiedAt: null,
     },
     {
       name: 'Fahad Sports & Music (Pending Org)',
@@ -70,7 +70,7 @@ export async function seedUsers() {
       role: 'ORGANIZER',
       status: 'ACTIVE',
       walletAddress: '0x6666666666666666666666666666666666666666',
-      isVerified: true,
+      emailVerifiedAt: new Date(),
     },
   ];
 
@@ -88,7 +88,7 @@ export async function seedUsers() {
           role: u.role,
           status: u.status,
           walletAddress: u.walletAddress,
-          isVerified: u.isVerified,
+          emailVerifiedAt: u.emailVerifiedAt,
           passwordHash: commonPasswordHash,
         },
       });
@@ -185,7 +185,7 @@ export async function seedUsers() {
         time: '7:00 PM PST',
         city: 'Lahore',
         venue: 'Gaddafi Stadium, Ferozepur Road, Lahore',
-        bannerUrl: 'https://images.unsplash.com/photo-1531415074868-036b1c57e3b0?auto=format&fit=crop&w=1200&q=80',
+        bannerUrl: '/event-banners/psl-2026-final.png',
         tiers: [
           { name: 'General Enclosure', price: 1500, totalQuantity: 1000 },
           { name: 'First Class Enclosure', price: 3500, totalQuantity: 500 },
@@ -202,7 +202,7 @@ export async function seedUsers() {
         time: '8:00 PM PST',
         city: 'Lahore',
         venue: 'Alhamra Open Air Theatre, Cultural Complex, Lahore',
-        bannerUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+        bannerUrl: '/event-banners/live-in-concert.png',
         tiers: [
           { name: 'Silver Pass', price: 3000, totalQuantity: 600 },
           { name: 'Gold Front Row', price: 6000, totalQuantity: 300 },
@@ -218,7 +218,7 @@ export async function seedUsers() {
         time: '6:30 PM PST',
         city: 'Karachi',
         venue: 'Arts Council of Pakistan, M.R. Kiyani Road, Karachi',
-        bannerUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=80',
+        bannerUrl: '/event-banners/qawwali-night.png',
         tiers: [
           { name: 'Standard Festival Pass', price: 2500, totalQuantity: 800 },
           { name: 'Executive Sufi Lounge', price: 5500, totalQuantity: 250 },

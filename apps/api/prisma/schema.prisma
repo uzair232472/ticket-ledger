@@ -16,9 +16,23 @@ enum Role {
 }
 
 enum AccountStatus {
+  PENDING_VERIFICATION
   ACTIVE
-  FROZEN
-  BLACKLISTED
+  SUSPENDED
+  BANNED
+  DEACTIVATED
+}
+
+enum OtpPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  CANCELLED
+  EXPIRED
 }
 
 enum CompanyStatus {
@@ -35,6 +49,24 @@ enum EventType {
   BOXING
   MUSIC_CONCERT
   MUSIC_FESTIVAL
+  HOCKEY_MATCH
+  QAWWALI
+  THEATRE
+  CONFERENCE
+  GENERAL_ADMISSION
+}
+
+// What a Seat row represents: a numbered seat, an unnumbered general-admission place, or a table seat
+enum SeatKind {
+  SEAT
+  GA_SLOT
+  TABLE_SEAT
+}
+
+enum VenueLayoutStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 enum EventStatus {
@@ -93,11 +125,12 @@ model User {
   passwordHash  String
   name          String
   role          Role           @default(CUSTOMER)
-  status        AccountStatus  @default(ACTIVE)
+  status        AccountStatus  @default(PENDING_VERIFICATION)
   walletAddress String?        @unique
-  otpCode       String?
-  otpExpiresAt  DateTime?
-  isVerified         Boolean        @default(false)
+  // Organizers: the company they own. Gate staff: the company whose events they work.
+  companyId          String?
+  memberOfCompany    Company?       @relation("CompanyMembers", fields: [companyId], references: [id], onDelete: SetNull)
+  emailVerifiedAt    DateTime?
   city               String?        @default("Lahore")
   emailNotifications Boolean        @default(true)
   pushNotifications  Boolean        @default(true)
@@ -107,6 +140,11 @@ model User {
 
   company        Company?
   orders         Order[]
+  otpCodes       OtpCode[]
+  refreshTokens  RefreshToken[]
+  invitesSent    StaffInvite[]           @relation("InvitesSent")
+  staffAssignments    StaffEventAssignment[] @relation("StaffAssignments")
+  assignmentsCreated  StaffEventAssignment[] @relation("AssignmentsCreated")
   tickets        Ticket[]
   scansPerformed GateScan[]
   behaviorEvents BehaviorEvent[]
@@ -119,6 +157,66 @@ model User {
 
   @@index([role])
   @@index([status])
+  @@index([companyId])
+}
+
+model OtpCode {
+  id         String     @id @default(uuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose    OtpPurpose
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int        @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([userId, purpose])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model StaffInvite {
+  id          String       @id @default(uuid())
+  email       String
+  companyId   String
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  eventId     String
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  invitedById String
+  invitedBy   User         @relation("InvitesSent", fields: [invitedById], references: [id])
+  tokenHash   String       @unique
+  status      InviteStatus @default(PENDING)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([email])
+  @@index([companyId])
+  @@index([eventId])
+}
+
+model StaffEventAssignment {
+  staffId      String
+  staff        User     @relation("StaffAssignments", fields: [staffId], references: [id], onDelete: Cascade)
+  eventId      String
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  assignedById String
+  assignedBy   User     @relation("AssignmentsCreated", fields: [assignedById], references: [id])
+  assignedAt   DateTime @default(now())
+
+  @@id([staffId, eventId])
+  @@index([eventId])
 }
 
 model Company {
@@ -139,7 +237,9 @@ model Company {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  events Event[]
+  events       Event[]
+  members      User[]        @relation("CompanyMembers")
+  staffInvites StaffInvite[]
 
   @@index([status])
 }
@@ -157,19 +257,38 @@ model Event {
   city        String
   venue       String
   bannerUrl   String?
+  // Organizer-managed media (all optional; the web app falls back to bannerUrl / category artwork)
+  cardImageUrl   String?
+  galleryWideUrl String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
+  galleryImages  EventGalleryImage[]
+  venueLayouts   VenueLayout[]
   tiers          TicketTier[]
   seats          Seat[]
   orders         Order[]
   tickets        Ticket[]
   behaviorEvents BehaviorEvent[]
   waitlist       Waitlist[]
+  staffInvites     StaffInvite[]
+  staffAssignments StaffEventAssignment[]
 
   @@index([city])
   @@index([type])
   @@index([status])
+}
+
+// Ordered photos for the event page's scrolling gallery strip
+model EventGalleryImage {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  url       String
+  position  Int
+  createdAt DateTime @default(now())
+
+  @@index([eventId, position])
 }
 
 model TicketTier {
@@ -203,9 +322,37 @@ model Seat {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
+  // Venue layout link (null for seats from the older grid generator)
+  layoutKey      String?
+  sectionKey     String?
+  kind           SeatKind   @default(SEAT)
+  tableKey       String?
+  wholeTable     Boolean    @default(false)
+
   ticket Ticket?
 
   @@unique([eventId, section, row, seatNumber])
+  @@unique([eventId, layoutKey])
+  @@index([eventId, status])
+  @@index([eventId, sectionKey])
+  @@index([eventId, tableKey])
+}
+
+// Organizer-designed venue plan. One DRAFT per event is edited freely; publishing validates it against
+// held/sold seats, syncs Seat rows and makes it the PUBLISHED version (the previous one is ARCHIVED).
+model VenueLayout {
+  id            String            @id @default(uuid())
+  eventId       String
+  event         Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  status        VenueLayoutStatus @default(DRAFT)
+  version       Int               @default(1)
+  template      String?
+  data          Json
+  createdById   String?
+  publishedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
   @@index([eventId, status])
 }
 

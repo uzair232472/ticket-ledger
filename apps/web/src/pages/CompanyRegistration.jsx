@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Building2, 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle, 
-  UploadCloud, 
-  ExternalLink, 
-  ShieldCheck, 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
+import {
+  Building2,
+  FileText,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  UploadCloud,
+  ExternalLink,
+  ShieldCheck,
+  User,
+  Mail,
+  Phone,
+  MapPin,
   CreditCard,
   RefreshCw,
   Send
@@ -21,8 +22,8 @@ import {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function CompanyRegistration() {
-  const { token, user } = useAuth();
-  
+  const { token, user, isAuthenticated, loading: authLoading, refreshUser } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [company, setCompany] = useState(null);
@@ -68,10 +69,15 @@ export default function CompanyRegistration() {
   };
 
   useEffect(() => {
-    if (token) {
+    // my-company is restricted to ORGANIZER / SUPER_ADMIN; skip it for other roles to avoid a 403
+    if (token && (user?.role === 'ORGANIZER' || user?.role === 'SUPER_ADMIN')) {
       loadCompany();
+      // The admin may have approved or rejected the company since this session started
+      if (user?.role === 'ORGANIZER') refreshUser();
+    } else if (!authLoading) {
+      setLoading(false);
     }
-  }, [token]);
+  }, [token, user?.role, authLoading]);
 
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -108,6 +114,7 @@ export default function CompanyRegistration() {
 
       setMessage({ text: data.message, type: 'success' });
       await loadCompany();
+      await refreshUser();
     } catch (err) {
       setMessage({ text: err.message, type: 'error' });
     } finally {
@@ -115,10 +122,38 @@ export default function CompanyRegistration() {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  // Company registration belongs to organizer accounts (one account = one role)
+  if (!isAuthenticated || user.role !== 'ORGANIZER') {
+    return (
+      <div className="max-w-xl mx-auto my-8 rounded-3xl bg-white p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[#16a34a] border border-emerald-200 flex items-center justify-center mx-auto">
+          <Building2 className="w-7 h-7" />
+        </div>
+        <h1 className="text-xl font-extrabold text-slate-900">Host events on TicketLedger</h1>
+        {!isAuthenticated ? (
+          <>
+            <p className="text-sm text-slate-600">
+              Create an Event Organizer account, verify your email, then register your company for approval.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link to="/signup" className="btn-eventfrog text-xs px-5 py-2.5">Create organizer account</Link>
+              <Link to="/login" className="text-xs font-bold text-[#16a34a] hover:underline self-center">I already have one →</Link>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-slate-600">
+            You're signed in with a {user.role.replace('_', ' ').toLowerCase()} account. Each account has one role, so to host
+            events please sign up for a separate Event Organizer account with a different email.
+          </p>
+        )}
       </div>
     );
   }
@@ -138,13 +173,12 @@ export default function CompanyRegistration() {
                   Organizer Company Registration
                 </h1>
                 {company && (
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase ${
-                    company.status === 'APPROVED' 
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
-                      : company.status === 'PENDING'
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase ${company.status === 'APPROVED'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : company.status === 'PENDING'
                       ? 'bg-amber-50 text-amber-800 border border-amber-200'
                       : 'bg-rose-50 text-rose-800 border border-rose-200'
-                  }`}>
+                    }`}>
                     {company.status}
                   </span>
                 )}
@@ -156,7 +190,7 @@ export default function CompanyRegistration() {
           </div>
 
           <button
-            onClick={loadCompany}
+            onClick={() => { loadCompany(); refreshUser(); }}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 shadow-sm transition w-fit"
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#16a34a]" /> Refresh Status
@@ -166,11 +200,10 @@ export default function CompanyRegistration() {
 
       {/* Feedback Alert */}
       {message.text && (
-        <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 border ${
-          message.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-            : 'bg-rose-50 border-rose-200 text-rose-800'
-        }`}>
+        <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 border ${message.type === 'success'
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}>
           {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-[#16a34a]" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />}
           <span>{message.text}</span>
         </div>
@@ -189,6 +222,9 @@ export default function CompanyRegistration() {
             <span>Reviewed by: <strong className="text-slate-800">{company.reviewedBy}</strong></span>
             <span>Approved on: <strong className="text-slate-800">{new Date(company.reviewedAt).toLocaleDateString()}</strong></span>
           </div>
+          <Link to="/organizer/dashboard" className="inline-flex btn-eventfrog text-xs px-5 py-2.5 mt-2">
+            Go to Organizer Dashboard
+          </Link>
         </div>
       )}
 
@@ -203,6 +239,9 @@ export default function CompanyRegistration() {
           <p className="text-[11px] text-amber-800 font-medium">
             ⚠️ Note: As required by TicketLedger governance, organizers cannot publish live events until company approval is granted.
           </p>
+          <p className="text-[11px] text-slate-600">
+            While you wait you can still update your <Link to="/profile" className="font-bold text-[#16a34a] hover:underline">profile</Link>.
+          </p>
         </div>
       )}
 
@@ -215,13 +254,14 @@ export default function CompanyRegistration() {
             Reason: <strong className="text-rose-800">{company.rejectionReason}</strong>
           </p>
           <p className="text-slate-500 text-[11px]">
-            Please correct the issues noted above and re-submit your registration below.
+            Please correct the issues noted above and press <strong>Resubmit</strong> below.
           </p>
         </div>
       )}
 
       {/* REGISTRATION FORM */}
-      {(company?.status !== 'APPROVED') && (
+      {/* Shown before the first submission and after a rejection; PENDING applications are locked while under review */}
+      {(!company || company.status === 'REJECTED') && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
           <h2 className="text-base font-bold text-slate-900 mb-6 flex items-center gap-2">
             <FileText className="w-4 h-4 text-[#16a34a]" />
@@ -342,7 +382,7 @@ export default function CompanyRegistration() {
               <label className="block text-slate-700 font-semibold mb-2">
                 Verification Document (NTN Certificate, FBR Registration, or CNIC Scan)
               </label>
-              
+
               <div className="p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center hover:border-slate-300 transition">
                 <UploadCloud className="w-8 h-8 text-[#16a34a] mx-auto mb-2" />
                 <div className="text-xs text-slate-700 font-medium">
@@ -380,7 +420,7 @@ export default function CompanyRegistration() {
               className="btn-eventfrog inline-flex items-center gap-2 px-6 py-2.5 text-xs font-bold shadow-sm transition disabled:opacity-50 mt-4"
             >
               <Send className="w-4 h-4" />
-              {submitting ? 'Submitting Registration...' : 'Submit for Super Admin Verification'}
+              {submitting ? 'Submitting Registration...' : company ? 'Resubmit for Verification' : 'Submit for Super Admin Verification'}
             </button>
           </form>
         </div>

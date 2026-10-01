@@ -230,7 +230,7 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
     });
     const freezeData = await freezeRes.json();
     assert.equal(freezeRes.status, 200);
-    assert.equal(freezeData.data.user.status, 'FROZEN');
+    assert.equal(freezeData.data.user.status, 'SUSPENDED');
 
     // Confirm frozen account cannot make authenticated calls
     const blockedRes = await fetch(`${BASE_URL}/tickets/wallet`, {
