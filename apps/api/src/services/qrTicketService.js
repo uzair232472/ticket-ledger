@@ -201,7 +201,10 @@ export const verifyTicketQR = async (rawPayload) => {
 /**
  * Gate Staff Check-In & Turnstile Processing (Updates DB, prevents double-entry, logs GateScan)
  */
-export const processGateScan = async ({ payload, staffId, gateNumber = 'Gate 1', offlineMode = false }) => {
+/**
+ * allowedEventIds: events the scanner may admit to (null = any event, used for Super Admins).
+ */
+export const processGateScan = async ({ payload, staffId, gateNumber = 'Gate 1', offlineMode = false, allowedEventIds = null }) => {
   // 1. First run offline HMAC verification
   const offlineCheck = verifyOfflineHMAC(payload);
   if (!offlineCheck.valid) {
@@ -232,6 +235,16 @@ export const processGateScan = async ({ payload, staffId, gateNumber = 'Gate 1',
       result: 'INVALID_SCAN',
       reason: 'NOT_FOUND',
       message: 'Ticket not found in ledger.',
+    };
+  }
+
+  // Gate staff may only admit tickets for events they are assigned to (organizers: their own events)
+  if (allowedEventIds && !allowedEventIds.includes(ticket.eventId)) {
+    return {
+      valid: false,
+      result: 'INVALID_SCAN',
+      reason: 'EVENT_NOT_ASSIGNED',
+      message: 'This ticket is for an event you are not assigned to.',
     };
   }
 

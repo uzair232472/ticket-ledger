@@ -1,4 +1,6 @@
 import prisma from '../config/prisma.js';
+import { revokeAllRefreshTokens } from './tokenService.js';
+import { BLOCKED_STATUSES } from '../config/auth.js';
 import { dispatchNotification, NOTIFICATION_TYPES } from './notificationService.js';
 
 /**
@@ -24,8 +26,8 @@ export const getSuperAdminMetrics = async () => {
   ] = await Promise.all([
     prisma.user.count(),
     prisma.user.count({ where: { status: 'ACTIVE' } }),
-    prisma.user.count({ where: { status: 'FROZEN' } }),
-    prisma.user.count({ where: { status: 'BLACKLISTED' } }),
+    prisma.user.count({ where: { status: 'SUSPENDED' } }),
+    prisma.user.count({ where: { status: 'BANNED' } }),
     prisma.company.count(),
     prisma.company.count({ where: { status: 'PENDING' } }),
     prisma.event.count(),
@@ -49,6 +51,9 @@ export const getSuperAdminMetrics = async () => {
     users: {
       total: totalUsers,
       active: activeUsers,
+      suspended: frozenUsers,
+      banned: blacklistedUsers,
+      // Legacy keys (FROZEN/BLACKLISTED were renamed to SUSPENDED/BANNED)
       frozen: frozenUsers,
       blacklisted: blacklistedUsers,
     },
@@ -124,7 +129,7 @@ export const getUsersList = async ({
         role: true,
         status: true,
         walletAddress: true,
-        isVerified: true,
+        emailVerifiedAt: true,
         createdAt: true,
         company: {
           select: { id: true, companyName: true, status: true },
@@ -148,9 +153,11 @@ export const getUsersList = async ({
 /**
  * 3. Update User Status: Freeze, Unfreeze, Blacklist
  */
+const ADMIN_SETTABLE_STATUSES = ['ACTIVE', 'SUSPENDED', 'BANNED', 'DEACTIVATED'];
+
 export const updateUserStatus = async ({ userId, status, reason = null, adminUser }) => {
-  if (!['ACTIVE', 'FROZEN', 'BLACKLISTED'].includes(status)) {
-    const error = new Error('Invalid account status. Allowed: ACTIVE, FROZEN, BLACKLISTED');
+  if (!ADMIN_SETTABLE_STATUSES.includes(status)) {
+    const error = new Error(`Invalid account status. Allowed: ${ADMIN_SETTABLE_STATUSES.join(', ')}`);
     error.status = 400;
     throw error;
   }
@@ -186,11 +193,17 @@ export const updateUserStatus = async ({ userId, status, reason = null, adminUse
     },
   });
 
+  // Blocked accounts lose every session; the access-token check rejects them on the next request
+  if (BLOCKED_STATUSES.includes(status)) {
+    await revokeAllRefreshTokens(userId);
+  }
+
   // Action name for audit log
   let auditAction = 'USER_STATUS_UPDATED';
-  if (status === 'FROZEN') auditAction = 'USER_FROZEN';
-  else if (status === 'BLACKLISTED') auditAction = 'USER_BLACKLISTED';
-  else if (status === 'ACTIVE' && previousStatus !== 'ACTIVE') auditAction = 'USER_UNFROZEN';
+  if (status === 'SUSPENDED') auditAction = 'USER_SUSPENDED';
+  else if (status === 'BANNED') auditAction = 'USER_BANNED';
+  else if (status === 'DEACTIVATED') auditAction = 'USER_DEACTIVATED';
+  else if (status === 'ACTIVE' && previousStatus !== 'ACTIVE') auditAction = 'USER_REACTIVATED';
 
   await prisma.auditLog.create({
     data: {

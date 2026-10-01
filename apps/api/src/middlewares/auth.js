@@ -1,35 +1,41 @@
-import jwt from 'jsonwebtoken';
 import prisma from '../config/prisma.js';
+import { verifyAccessToken } from '../services/tokenService.js';
+import { BLOCKED_STATUSES, MESSAGES } from '../config/auth.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'ticketledger_jwt_super_secret_key_2026_fyp';
+const USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  phone: true,
+  role: true,
+  status: true,
+  walletAddress: true,
+  companyId: true,
+  emailVerifiedAt: true,
+};
 
+const readBearer = (req) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  return authHeader.split(' ')[1];
+};
+
+/**
+ * requireAuth: verifies the access token, loads the user and rejects blocked or unverified accounts.
+ * The user is re-read on every request, so a ban takes effect immediately.
+ */
 export const authenticateJWT = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = readBearer(req);
+    if (!token) {
       return res.status(401).json({
         success: false,
         message: 'Access denied. Missing or malformed authentication token.',
       });
     }
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Fetch user from DB to ensure they still exist and status is up to date
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        status: true,
-        walletAddress: true,
-        isVerified: true,
-      },
-    });
+    const decoded = verifyAccessToken(token);
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: USER_SELECT });
 
     if (!user) {
       return res.status(401).json({
@@ -38,18 +44,15 @@ export const authenticateJWT = async (req, res, next) => {
       });
     }
 
-    // Check account status
-    if (user.status === 'BLACKLISTED') {
-      return res.status(403).json({
-        success: false,
-        message: 'Account is blacklisted due to suspicious activity or terms violation.',
-      });
+    if (BLOCKED_STATUSES.includes(user.status)) {
+      return res.status(403).json({ success: false, code: 'ACCOUNT_SUSPENDED', message: MESSAGES.ACCOUNT_SUSPENDED });
     }
 
-    if (user.status === 'FROZEN') {
+    if (user.status === 'PENDING_VERIFICATION') {
       return res.status(403).json({
         success: false,
-        message: 'Account has been temporarily frozen. Please contact administration.',
+        needsVerification: true,
+        message: 'Please verify your email before continuing.',
       });
     }
 
@@ -59,13 +62,13 @@ export const authenticateJWT = async (req, res, next) => {
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
+        code: 'TOKEN_EXPIRED',
         message: 'Authentication session expired. Please log in again.',
       });
     }
     return res.status(401).json({
       success: false,
       message: 'Invalid authentication token.',
-      error: error.message,
     });
   }
 };
@@ -99,26 +102,38 @@ export const requireRole = (...roles) => {
 export const requireAuth = authenticateJWT;
 
 /**
+ * Blocks organizer event routes until the organizer's company is APPROVED.
+ * Sets req.company for the route handler. Accounts without a company (including Super Admins) are blocked.
+ */
+export const requireApprovedCompany = async (req, res, next) => {
+  try {
+    const company = await prisma.company.findUnique({ where: { userId: req.user.id } });
+    if (!company || company.status !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        code: company ? 'COMPANY_NOT_APPROVED' : 'COMPANY_NOT_REGISTERED',
+        companyStatus: company?.status || 'NONE',
+        message: MESSAGES.COMPANY_NOT_APPROVED,
+      });
+    }
+
+    req.company = company;
+    next();
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to verify company approval' });
+  }
+};
+
+/**
  * Optional authentication: if Bearer token is provided, populates req.user.
  * If not provided or invalid, proceeds as guest (req.user remains undefined).
  */
 export const optionalAuth = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, JWT_SECRET);
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          phone: true,
-          role: true,
-          status: true,
-        },
-      });
+    const token = readBearer(req);
+    if (token) {
+      const decoded = verifyAccessToken(token);
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, select: USER_SELECT });
       if (user && user.status === 'ACTIVE') {
         req.user = user;
       }

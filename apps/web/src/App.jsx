@@ -11,6 +11,7 @@ import AdminCompanies from './pages/AdminCompanies';
 import Events from './pages/Events';
 import EventDetails from './pages/EventDetails';
 import CreateEvent from './pages/CreateEvent';
+import VenueEditor from './pages/VenueEditor';
 import SeatMap from './pages/SeatMap';
 import Checkout from './pages/Checkout';
 import BookingSuccess from './pages/BookingSuccess';
@@ -28,6 +29,12 @@ import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import OrganizerDashboard from './pages/OrganizerDashboard';
+import VerifyOtp from './pages/VerifyOtp';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import AcceptInvite from './pages/AcceptInvite';
+import Suspended from './pages/Suspended';
+import StaffEvents from './pages/StaffEvents';
 import { 
   User, 
   LogOut, 
@@ -56,9 +63,9 @@ function Navbar() {
   const [userMenu, setUserMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setUserMenu(false);
-    logout();
+    await logout();
     navigate('/login');
   };
 
@@ -197,11 +204,11 @@ function Navbar() {
           {/* Gate Staff Contextual Navigation */}
           {isAuthenticated && user?.role === 'GATE_STAFF' && (
             <Link
-              to="/scanner"
+              to="/staff/events"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold"
             >
               <Scan className="w-3.5 h-3.5" />
-              <span>Turnstile Scanner</span>
+              <span>My Gate Events</span>
             </Link>
           )}
         </nav>
@@ -286,13 +293,15 @@ function Navbar() {
                     <span>Create event</span>
                   </Link>
 
-                  <Link
-                    to="/wallet"
-                    className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition"
-                  >
-                    <Ticket className="w-4 h-4 text-slate-700" />
-                    <span>My tickets</span>
-                  </Link>
+                  {user?.role === 'CUSTOMER' && (
+                    <Link
+                      to="/wallet"
+                      className="flex items-center gap-3 px-4 py-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 transition"
+                    >
+                      <Ticket className="w-4 h-4 text-slate-700" />
+                      <span>My tickets</span>
+                    </Link>
+                  )}
 
                   <Link
                     to="/profile"
@@ -402,38 +411,56 @@ function Footer() {
   );
 }
 
+// The homepage and Explore Events have their own fixed header, menu and footer
+function SiteChrome({ children }) {
+  const { pathname } = useLocation();
+  // Pages with their own full-bleed header, menu and footer (including the whole booking flow)
+  const bookingFlow = /^\/(events\/[^/]+\/(seats|checkout)|checkout|booking-success\/[^/]+|bookings\/[^/]+\/confirmation)\/?$/.test(pathname);
+  return pathname === '/' || pathname === '/events' || /^\/events\/[^/]+\/?$/.test(pathname) || bookingFlow ? null : children;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
-          <Navbar />
+          <SiteChrome><Navbar /></SiteChrome>
           <main className="flex-1 w-full">
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/events" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Events /></div>} />
-              <Route path="/events/:id" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><EventDetails /></div>} />
-              <Route path="/events/:id/seats" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SeatMap /></div>} />
-              <Route path="/events/:id/checkout" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div>} />
-              <Route path="/booking-success/:orderId" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div>} />
+              <Route path="/events" element={<Events />} />
+              <Route path="/events/:id" element={<EventDetails />} />
+              <Route path="/events/:id/seats" element={<SeatMap />} />
+              <Route path="/events/:id/checkout" element={<Checkout />} />
+              <Route path="/checkout" element={<Checkout />} />
+              <Route path="/booking-success/:id" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
+              <Route path="/bookings/:id/confirmation" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/resale" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResaleMarketplace /></div></ProtectedRoute>} />
               <Route path="/login" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Login /></div>} />
               <Route path="/signup" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Signup /></div>} />
+              <Route path="/verify" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><VerifyOtp /></div>} />
+              <Route path="/forgot-password" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ForgotPassword /></div>} />
+              <Route path="/reset-password" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResetPassword /></div>} />
+              <Route path="/invite/:token" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AcceptInvite /></div>} />
+              <Route path="/suspended" element={<Suspended />} />
               <Route path="/company" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CompanyRegistration /></div>} />
 
               {/* Protected Customer Routes */}
-              <Route path="/wallet" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DigitalWallet /></div></ProtectedRoute>} />
-              <Route path="/my-bookings" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyBookings /></div></ProtectedRoute>} />
-              <Route path="/my-nfts" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyNFTTickets /></div></ProtectedRoute>} />
+              <Route path="/wallet" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DigitalWallet /></div></ProtectedRoute>} />
+              <Route path="/my-bookings" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyBookings /></div></ProtectedRoute>} />
+              <Route path="/my-nfts" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyNFTTickets /></div></ProtectedRoute>} />
               <Route path="/profile" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Profile /></div></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Notifications /></div></ProtectedRoute>} />
 
               {/* Protected Gate Staff Scanner */}
+              <Route path="/staff/events" element={<ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><StaffEvents /></ProtectedRoute>} />
               <Route path="/scanner" element={<ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><GateScanner /></div></ProtectedRoute>} />
 
               {/* Protected Organizer Studio */}
-              <Route path="/organizer/dashboard" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><OrganizerDashboard /></div></ProtectedRoute>} />
-              <Route path="/organizer/create-event" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CreateEvent /></div></ProtectedRoute>} />
+              <Route path="/organizer/dashboard" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><OrganizerDashboard /></div></ProtectedRoute>} />
+              <Route path="/organizer/create-event" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CreateEvent key="create" /></div></ProtectedRoute>} />
+              <Route path="/organizer/events/:id/venue" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><VenueEditor /></div></ProtectedRoute>} />
+              <Route path="/organizer/events/:id/edit" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CreateEvent key="edit" /></div></ProtectedRoute>} />
 
               {/* Protected Super Admin Governance */}
               <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SuperAdminDashboard /></div></ProtectedRoute>} />
@@ -445,7 +472,7 @@ export default function App() {
               <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
             </Routes>
           </main>
-          <Footer />
+          <SiteChrome><Footer /></SiteChrome>
         </div>
       </AuthProvider>
     </BrowserRouter>

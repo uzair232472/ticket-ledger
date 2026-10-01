@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Building2, 
-  ShieldCheck, 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
-  ExternalLink, 
-  Clock, 
-  Filter, 
-  RefreshCw, 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
+import {
+  Building2,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ExternalLink,
+  Clock,
+  Filter,
+  RefreshCw,
+  User,
+  Mail,
+  Phone,
+  MapPin,
   CreditCard,
   Ban
 } from 'lucide-react';
@@ -36,8 +36,8 @@ export default function AdminCompanies() {
   const loadCompanies = async () => {
     try {
       setLoading(true);
-      const url = filter === 'ALL' 
-        ? `${API_URL}/api/companies/admin/all` 
+      const url = filter === 'ALL'
+        ? `${API_URL}/api/companies/admin/all`
         : `${API_URL}/api/companies/admin/all?status=${filter}`;
 
       const res = await fetch(url, {
@@ -71,7 +71,7 @@ export default function AdminCompanies() {
     try {
       const res = await fetch(`${API_URL}/api/companies/admin/${companyId}/status`, {
         method: 'PATCH',
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
@@ -99,7 +99,7 @@ export default function AdminCompanies() {
     try {
       const res = await fetch(`${API_URL}/api/companies/admin/${companyId}/status`, {
         method: 'PATCH',
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
@@ -128,12 +128,12 @@ export default function AdminCompanies() {
     try {
       const res = await fetch(`${API_URL}/api/companies/admin/${rejectModal.companyId}/status`, {
         method: 'PATCH',
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          status: 'REJECTED', 
+        body: JSON.stringify({
+          status: 'REJECTED',
           rejectionReason: rejectModal.reason.trim(),
         }),
       });
@@ -180,11 +180,10 @@ export default function AdminCompanies() {
 
       {/* Feedback Banner */}
       {message.text && (
-        <div className={`p-4 rounded-2xl text-xs flex items-center gap-2.5 border font-medium ${
-          message.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-            : 'bg-rose-50 border-rose-200 text-rose-800'
-        }`}>
+        <div className={`p-4 rounded-2xl text-xs flex items-center gap-2.5 border font-medium ${message.type === 'success'
+          ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}>
           {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />}
           <span>{message.text}</span>
         </div>
@@ -194,45 +193,40 @@ export default function AdminCompanies() {
       <div className="flex items-center gap-2 text-xs font-bold overflow-x-auto pb-1">
         <button
           onClick={() => setFilter('ALL')}
-          className={`py-2 px-4 rounded-full transition border ${
-            filter === 'ALL' ? 'bg-[#008459] text-white border-[#008459] shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
-          }`}
+          className={`py-2 px-4 rounded-full transition border ${filter === 'ALL' ? 'bg-[#008459] text-white border-[#008459] shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
+            }`}
         >
           All Companies ({counts.all})
         </button>
 
         <button
           onClick={() => setFilter('PENDING')}
-          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${
-            filter === 'PENDING' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-amber-700 hover:bg-amber-50 border-amber-200'
-          }`}
+          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${filter === 'PENDING' ? 'bg-amber-500 text-white border-amber-500 shadow-sm' : 'bg-white text-amber-700 hover:bg-amber-50 border-amber-200'
+            }`}
         >
           <Clock className="w-3.5 h-3.5" /> Pending Review ({counts.pending})
         </button>
 
         <button
           onClick={() => setFilter('APPROVED')}
-          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${
-            filter === 'APPROVED' ? 'bg-[#008459] text-white border-[#008459] shadow-sm' : 'bg-white text-emerald-700 hover:bg-emerald-50 border-emerald-200'
-          }`}
+          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${filter === 'APPROVED' ? 'bg-[#008459] text-white border-[#008459] shadow-sm' : 'bg-white text-emerald-700 hover:bg-emerald-50 border-emerald-200'
+            }`}
         >
           <CheckCircle2 className="w-3.5 h-3.5" /> Approved ({counts.approved})
         </button>
 
         <button
           onClick={() => setFilter('REJECTED')}
-          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${
-            filter === 'REJECTED' ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-white text-rose-700 hover:bg-rose-50 border-rose-200'
-          }`}
+          className={`py-2 px-4 rounded-full transition flex items-center gap-1.5 border ${filter === 'REJECTED' ? 'bg-rose-600 text-white border-rose-600 shadow-sm' : 'bg-white text-rose-700 hover:bg-rose-50 border-rose-200'
+            }`}
         >
           <XCircle className="w-3.5 h-3.5" /> Rejected ({counts.rejected})
         </button>
 
         <button
           onClick={() => setFilter('SUSPENDED')}
-          className={`py-2 px-4 rounded-full transition border ${
-            filter === 'SUSPENDED' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
-          }`}
+          className={`py-2 px-4 rounded-full transition border ${filter === 'SUSPENDED' ? 'bg-slate-800 text-white border-slate-800 shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
+            }`}
         >
           Suspended ({counts.suspended})
         </button>
@@ -261,15 +255,14 @@ export default function AdminCompanies() {
                     {c.companyName}
                   </h3>
 
-                  <span className={`text-[10px] px-3 py-0.5 rounded-full font-bold uppercase border ${
-                    c.status === 'APPROVED' 
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
-                      : c.status === 'PENDING'
+                  <span className={`text-[10px] px-3 py-0.5 rounded-full font-bold uppercase border ${c.status === 'APPROVED'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : c.status === 'PENDING'
                       ? 'bg-amber-50 text-amber-800 border-amber-200'
                       : c.status === 'REJECTED'
-                      ? 'bg-rose-50 text-rose-800 border-rose-200'
-                      : 'bg-slate-100 text-slate-700 border-slate-200'
-                  }`}>
+                        ? 'bg-rose-50 text-rose-800 border-rose-200'
+                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}>
                     {c.status}
                   </span>
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import StaffManager from '../components/StaffManager';
 import {
+  UserPlus,
   ShieldCheck,
   Users,
   Building2,
@@ -230,12 +232,14 @@ export default function SuperAdminDashboard() {
       case 'SUCCESSFUL':
       case 'VALID_FIRST_SCAN':
         return 'bg-emerald-50 text-emerald-800 border border-emerald-200';
-      case 'FROZEN':
+      case 'SUSPENDED':
       case 'PENDING':
+      case 'PENDING_VERIFICATION':
       case 'ALREADY_SCANNED':
       case 'SUSPICIOUS':
         return 'bg-amber-50 text-amber-800 border border-amber-200';
-      case 'BLACKLISTED':
+      case 'BANNED':
+      case 'DEACTIVATED':
       case 'REJECTED':
       case 'FAILED':
       case 'INVALID_SCAN':
@@ -312,7 +316,7 @@ export default function SuperAdminDashboard() {
             {metrics?.users?.total ?? '...'}
           </div>
           <div className="text-[10px] text-emerald-700 mt-0.5 font-medium">
-            {metrics?.users?.active ?? 0} Active • {metrics?.users?.frozen ?? 0} Frozen
+            {metrics?.users?.active ?? 0} Active • {metrics?.users?.suspended ?? 0} Suspended
           </div>
         </div>
 
@@ -398,6 +402,7 @@ export default function SuperAdminDashboard() {
           { id: 'blockchain', label: 'Blockchain Logs', icon: Layers },
           { id: 'fraud', label: 'ML Fraud Alerts', icon: AlertTriangle },
           { id: 'gate', label: 'Gate Scan Logs', icon: Scan },
+          { id: 'staff', label: 'Gate Staff', icon: UserPlus },
           { id: 'audit', label: 'Audit Trail', icon: FileText },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -409,11 +414,10 @@ export default function SuperAdminDashboard() {
                 setActiveTab(tab.id);
                 setSearchTerm('');
               }}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold whitespace-nowrap transition shadow-sm ${
-                isActive
-                  ? 'bg-[#16a34a] text-white shadow-emerald-200'
-                  : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/80'
-              }`}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold whitespace-nowrap transition shadow-sm ${isActive
+                ? 'bg-[#16a34a] text-white shadow-emerald-200'
+                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200/80'
+                }`}
             >
               <Icon className="w-3.5 h-3.5" />
               {tab.label}
@@ -443,7 +447,7 @@ export default function SuperAdminDashboard() {
                 </div>
                 <h3 className="text-xs font-bold text-slate-900">Manage Users & Account States</h3>
                 <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                  Freeze, unfreeze, or permanently blacklist customer or bot accounts.
+                  Suspend, reactivate, or permanently ban customer or bot accounts.
                 </p>
               </div>
 
@@ -558,8 +562,10 @@ export default function SuperAdminDashboard() {
               >
                 <option value="ALL">All Statuses</option>
                 <option value="ACTIVE">Active</option>
-                <option value="FROZEN">Frozen</option>
-                <option value="BLACKLISTED">Blacklisted</option>
+                <option value="PENDING_VERIFICATION">Unverified</option>
+                <option value="SUSPENDED">Suspended</option>
+                <option value="BANNED">Banned</option>
+                <option value="DEACTIVATED">Deactivated</option>
               </select>
             </div>
             <button
@@ -617,27 +623,27 @@ export default function SuperAdminDashboard() {
                           <button
                             onClick={() => setStatusModal({ open: true, user: u, targetStatus: 'ACTIVE' })}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-semibold transition"
-                            title="Unfreeze account"
+                            title="Reactivate account"
                           >
-                            <Unlock className="w-3 h-3" /> Unfreeze
+                            <Unlock className="w-3 h-3" /> Reactivate
                           </button>
                         )}
-                        {u.status !== 'FROZEN' && (
+                        {u.status !== 'SUSPENDED' && (
                           <button
-                            onClick={() => setStatusModal({ open: true, user: u, targetStatus: 'FROZEN' })}
+                            onClick={() => setStatusModal({ open: true, user: u, targetStatus: 'SUSPENDED' })}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 text-[11px] font-semibold transition"
-                            title="Temporarily freeze account activity"
+                            title="Suspend the account and end its sessions"
                           >
-                            <Lock className="w-3 h-3" /> Freeze
+                            <Lock className="w-3 h-3" /> Suspend
                           </button>
                         )}
-                        {u.status !== 'BLACKLISTED' && (
+                        {u.status !== 'BANNED' && (
                           <button
-                            onClick={() => setStatusModal({ open: true, user: u, targetStatus: 'BLACKLISTED' })}
+                            onClick={() => setStatusModal({ open: true, user: u, targetStatus: 'BANNED' })}
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200 text-[11px] font-semibold transition"
-                            title="Permanently blacklist account from platform"
+                            title="Permanently ban the account from the platform"
                           >
-                            <Ban className="w-3 h-3" /> Blacklist
+                            <Ban className="w-3 h-3" /> Ban
                           </button>
                         )}
                       </td>
@@ -1006,6 +1012,8 @@ export default function SuperAdminDashboard() {
       )}
 
       {/* Tab 9: System Audit Trail */}
+      {activeTab === 'staff' && <StaffManager />}
+
       {activeTab === 'audit' && (
         <div className="bg-white border border-slate-200/90 rounded-3xl overflow-hidden shadow-sm p-6 sm:p-8 space-y-5">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -1060,16 +1068,15 @@ export default function SuperAdminDashboard() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-5 shadow-2xl">
             <div className="flex items-center gap-3">
-              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
-                statusModal.targetStatus === 'BLACKLISTED'
-                  ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                  : statusModal.targetStatus === 'FROZEN'
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${statusModal.targetStatus === 'BANNED'
+                ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                : statusModal.targetStatus === 'SUSPENDED'
                   ? 'bg-amber-50 text-amber-600 border border-amber-200'
                   : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-              }`}>
-                {statusModal.targetStatus === 'BLACKLISTED' ? (
+                }`}>
+                {statusModal.targetStatus === 'BANNED' ? (
                   <Ban className="w-5 h-5" />
-                ) : statusModal.targetStatus === 'FROZEN' ? (
+                ) : statusModal.targetStatus === 'SUSPENDED' ? (
                   <Lock className="w-5 h-5" />
                 ) : (
                   <Unlock className="w-5 h-5" />
@@ -1108,13 +1115,12 @@ export default function SuperAdminDashboard() {
               <button
                 onClick={handleUpdateStatusConfirm}
                 disabled={updatingStatus}
-                className={`px-5 py-2.5 rounded-full text-xs font-bold text-white transition shadow-sm ${
-                  statusModal.targetStatus === 'BLACKLISTED'
-                    ? 'bg-rose-600 hover:bg-rose-700'
-                    : statusModal.targetStatus === 'FROZEN'
+                className={`px-5 py-2.5 rounded-full text-xs font-bold text-white transition shadow-sm ${statusModal.targetStatus === 'BANNED'
+                  ? 'bg-rose-600 hover:bg-rose-700'
+                  : statusModal.targetStatus === 'SUSPENDED'
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-[#008459] hover:bg-[#00704c]'
-                }`}
+                  }`}
               >
                 {updatingStatus ? 'Updating...' : `Confirm ${statusModal.targetStatus}`}
               </button>

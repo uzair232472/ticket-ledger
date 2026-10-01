@@ -32,7 +32,7 @@ import {
   Filter
 } from 'lucide-react';
 
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
 export default function DigitalWallet() {
   const { user, token } = useAuth();
@@ -88,7 +88,7 @@ export default function DigitalWallet() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to fetch tickets');
-      
+
       const loadedTickets = data.data?.tickets || [];
       // Sort: ACTIVE tickets first, then SCANNED, then RESOLD
       loadedTickets.sort((a, b) => {
@@ -316,7 +316,7 @@ export default function DigitalWallet() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 py-4 pb-16 text-slate-800">
       <div className="space-y-8">
-        
+
         {/* Header Banner */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -424,48 +424,42 @@ export default function DigitalWallet() {
         <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
           <button
             onClick={() => setFilterTab('ACTIVE')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-              filterTab === 'ACTIVE'
-                ? 'bg-[#22c55e] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
-            }`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${filterTab === 'ACTIVE'
+              ? 'bg-[#22c55e] text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
+              }`}
           >
             <span>Active Passes</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              filterTab === 'ACTIVE' ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${filterTab === 'ACTIVE' ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
               {activeTicketsCount}
             </span>
           </button>
 
           <button
             onClick={() => setFilterTab('ALL')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-              filterTab === 'ALL'
-                ? 'bg-[#22c55e] text-white shadow-sm'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
-            }`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${filterTab === 'ALL'
+              ? 'bg-[#22c55e] text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
+              }`}
           >
             <span>All Tickets</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              filterTab === 'ALL' ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${filterTab === 'ALL' ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
               {tickets.length}
             </span>
           </button>
 
           <button
             onClick={() => setFilterTab('SCANNED')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
-              filterTab === 'SCANNED'
-                ? 'bg-slate-800 text-white'
-                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
-            }`}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${filterTab === 'SCANNED'
+              ? 'bg-slate-800 text-white'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-50'
+              }`}
           >
             <span>Scanned / Revoked</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              filterTab === 'SCANNED' ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${filterTab === 'SCANNED' ? 'bg-black/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
               {scannedTicketsCount}
             </span>
           </button>
@@ -524,25 +518,23 @@ export default function DigitalWallet() {
                 return (
                   <div
                     key={t.id}
-                    className={`rounded-3xl bg-white border ${
-                      isActive
-                        ? 'border-emerald-300 shadow-sm hover:shadow-md'
-                        : isScanned
+                    className={`rounded-3xl bg-white border ${isActive
+                      ? 'border-emerald-300 shadow-sm hover:shadow-md'
+                      : isScanned
                         ? 'border-slate-200 opacity-80'
                         : 'border-rose-200 opacity-80'
-                    } overflow-hidden transition-all flex flex-col`}
+                      } overflow-hidden transition-all flex flex-col`}
                   >
                     {/* Top Status & Event Banner */}
                     <div className="relative p-5 bg-slate-50/80 border-b border-slate-100 flex items-start justify-between gap-4">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isActive
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : isScanned
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isActive
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : isScanned
                               ? 'bg-slate-200 text-slate-700 border border-slate-300'
                               : 'bg-rose-100 text-rose-800 border border-rose-300'
-                          }`}>
+                            }`}>
                             {t.status}
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono">
@@ -580,7 +572,7 @@ export default function DigitalWallet() {
 
                     {/* Middle Section: Seat Info & QR Pass Side-by-Side */}
                     <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
-                      
+
                       {/* Left: Seat Coordinates & Pricing */}
                       <div className="space-y-4">
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2.5">
@@ -725,11 +717,10 @@ export default function DigitalWallet() {
 
                     {/* Gate Scan Simulation Banner if triggered */}
                     {qrVerifyResult && qrVerifyResult.ticketId === t.id && (
-                      <div className={`p-3.5 mx-6 my-2 rounded-2xl text-xs flex items-center gap-3 ${
-                        qrVerifyResult.valid
-                          ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
-                          : 'bg-rose-50 border border-rose-300 text-rose-900'
-                      }`}>
+                      <div className={`p-3.5 mx-6 my-2 rounded-2xl text-xs flex items-center gap-3 ${qrVerifyResult.valid
+                        ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
+                        : 'bg-rose-50 border border-rose-300 text-rose-900'
+                        }`}>
                         {qrVerifyResult.valid ? (
                           <CheckCircle2 className="w-5 h-5 text-[#16a34a] shrink-0" />
                         ) : (
@@ -1079,11 +1070,10 @@ export default function DigitalWallet() {
                       className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2"
                     >
                       <div className="flex items-center justify-between">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          h.transferType === 'DIRECT_TRANSFER'
-                            ? 'bg-sky-50 text-sky-800 border border-sky-200'
-                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${h.transferType === 'DIRECT_TRANSFER'
+                          ? 'bg-sky-50 text-sky-800 border border-sky-200'
+                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          }`}>
                           {h.transferType === 'DIRECT_TRANSFER' ? 'Direct P2P Transfer' : 'Marketplace Resale'}
                         </span>
                         <span className="text-[10px] text-slate-500">

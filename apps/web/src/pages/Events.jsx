@@ -1,305 +1,354 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { 
-  Search, 
-  MapPin, 
-  Clock, 
-  ChevronRight,
-  SlidersHorizontal,
-  RotateCcw,
-  Sparkles,
-  Heart
-} from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useNavigationType, useSearchParams } from 'react-router-dom';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { Search, X, RefreshCw } from 'lucide-react';
 import api, { trackClientBehavior } from '../utils/api';
-import { getEventVisual } from '../utils/eventMedia';
+import HomeHeader from '../components/home/HomeHeader';
+import SiteFooter from '../components/home/SiteFooter';
+import EventTile from '../components/events/EventTile';
+import PixelLoader from '../components/events/PixelLoader';
+import { ALL_CATEGORIES, categoryName } from '../components/home/homeData';
+import '../components/home/home.css';
+import '../components/events/events.css';
 
-const CATEGORY_OPTIONS = [
-  { id: '', label: 'All Categories' },
-  { id: 'CRICKET_MATCH', label: '🏏 PSL Cricket Match' },
-  { id: 'MUSIC_CONCERT', label: '🎵 Live Concerts' },
-  { id: 'MUSIC_FESTIVAL', label: '🎪 Music Festivals' },
-  { id: 'KABADDI', label: '🤼 Kabaddi Clash' },
-  { id: 'FOOTBALL_MATCH', label: '⚽ Football Match' },
-  { id: 'BOXING', label: '🥊 Boxing Match' },
+gsap.registerPlugin(ScrollTrigger);
+
+const BATCH = 6; // the reference reveals six projects at a time
+const SWAP_DELAY = 180; // results fade briefly before being replaced (as on the reference)
+const RETURN_KEY = 'tl-explore-return';
+// Lets the event page step back through history (restoring this list) instead of reloading it
+const EXPLORE_LINK_STATE = { exploreDepth: 1 };
+
+// Cities offered before results load (the list the page already used), plus any found in the results
+const KNOWN_CITIES = ['Lahore', 'Karachi', 'Islamabad', 'Faisalabad', 'Multan'];
+
+const WHEN_OPTIONS = [
+  { value: '', label: 'Any date' },
+  { value: '7', label: 'Next 7 days' },
+  { value: '30', label: 'Next 30 days' },
+  { value: '90', label: 'Next 3 months' },
 ];
+const PRICE_OPTIONS = [
+  { value: '', label: 'Any price' },
+  { value: '1500', label: 'Up to PKR 1,500' },
+  { value: '3000', label: 'Up to PKR 3,000' },
+  { value: '5000', label: 'Up to PKR 5,000' },
+  { value: '10000', label: 'Up to PKR 10,000' },
+];
+const SORT_OPTIONS = [
+  { value: '', label: 'Date: soonest' },
+  { value: 'date-desc', label: 'Date: latest' },
+  { value: 'price-asc', label: 'Price: low to high' },
+  { value: 'price-desc', label: 'Price: high to low' },
+];
+
+const FILTER_KEYS = ['search', 'type', 'city', 'maxPrice', 'when', 'sort'];
+const labelOf = (options, value) => options.find((o) => o.value === value)?.label || value;
+
+const sortEvents = (list, sort) => {
+  const price = (e) => (e.pricing?.minPrice == null ? Infinity : Number(e.pricing.minPrice));
+  const time = (e) => new Date(e.date).getTime();
+  const sorted = [...list];
+  if (sort === 'date-desc') sorted.sort((a, b) => time(b) - time(a));
+  else if (sort === 'price-asc') sorted.sort((a, b) => price(a) - price(b) || time(a) - time(b));
+  else if (sort === 'price-desc') sorted.sort((a, b) => (price(b) === Infinity ? -1 : price(a) === Infinity ? 1 : price(b) - price(a)) || time(a) - time(b));
+  else sorted.sort((a, b) => time(a) - time(b));
+  return sorted;
+};
 
 export default function Events() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [favorites, setFavorites] = useState({});
+  const navigationType = useNavigationType();
+  const rootRef = useRef(null);
+  const pageRef = useRef(null);
+  const categoriesRef = useRef(null);
+  const requestRef = useRef(0);
 
-  // Filters initialized from URL query parameters (if navigated from Dashboard or Navbar)
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [type, setType] = useState(searchParams.get('type') || '');
-  const [city, setCity] = useState(searchParams.get('city') || '');
-  const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') || '');
+  const filters = useMemo(() => Object.fromEntries(FILTER_KEYS.map((k) => [k, searchParams.get(k) || ''])), [searchParams]);
+  const [searchText, setSearchText] = useState(filters.search);
 
-  // Synchronize when URL searchParams change
-  useEffect(() => {
-    const qSearch = searchParams.get('search') || '';
-    const qType = searchParams.get('type') || '';
-    const qCity = searchParams.get('city') || '';
-    const qMaxPrice = searchParams.get('maxPrice') || '';
-    setSearch(qSearch);
-    setType(qType);
-    setCity(qCity);
-    setMaxPrice(qMaxPrice);
-  }, [searchParams]);
-
-  const loadEvents = async () => {
+  // Returning from an event page restores the batch count and scroll position
+  const saved = useMemo(() => {
     try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (search) params.append('search', search);
-      if (type) params.append('type', type);
-      if (city) params.append('city', city);
-      if (maxPrice) params.append('maxPrice', maxPrice);
-
-      const res = await api.get(`/events?${params.toString()}`);
-      if (res.data.success) {
-        setEvents(res.data.data.events || []);
-      }
-
-      if (type) {
-        trackClientBehavior('category_view', null, { category: type, city: city || null });
-      }
-    } catch (err) {
-      console.error('Failed to load events:', err);
-    } finally {
-      setLoading(false);
+      const s = JSON.parse(sessionStorage.getItem(RETURN_KEY) || 'null');
+      return navigationType === 'POP' && s && s.query === searchParams.toString() ? s : null;
+    } catch {
+      return null;
     }
+    // Only read on first render
+  }, []);
+
+  const [events, setEvents] = useState([]);
+  const [status, setStatus] = useState('loading'); // loading | ready | error
+  const [leaving, setLeaving] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [visible, setVisible] = useState(saved?.visible || BATCH);
+  const [favorites, setFavorites] = useState({});
+  const [showLoader] = useState(() => !saved);
+
+  const setFilter = useCallback(
+    (key, value) => {
+      const next = new URLSearchParams(searchParams);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
+  const clearFilters = () => {
+    setSearchText('');
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
 
+  // Debounced search box → URL
   useEffect(() => {
-    loadEvents();
-  }, [type, city, maxPrice, search]);
+    if (searchText === filters.search) return undefined;
+    const t = setTimeout(() => setFilter('search', searchText.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchText, filters.search, setFilter]);
+  useEffect(() => setSearchText(filters.search), [filters.search]);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    setSearchParams({ search, type, city, maxPrice });
-    loadEvents();
+  // Fetch: only the newest request may update the page (rapid filter changes cannot show stale results)
+  const fetchKey = ['search', 'type', 'city', 'maxPrice', 'when'].map((k) => filters[k]).join('|');
+  const load = useCallback(async () => {
+    const id = ++requestRef.current;
+    const params = new URLSearchParams();
+    ['search', 'type', 'city', 'maxPrice'].forEach((k) => filters[k] && params.set(k, filters[k]));
+    if (filters.when) {
+      const end = new Date(Date.now() + Number(filters.when) * 86400000);
+      params.set('startDate', new Date().toISOString());
+      params.set('endDate', end.toISOString());
+    }
+    setLeaving(true);
+    setStatus((s) => (s === 'ready' ? 'ready' : 'loading'));
+    const started = Date.now();
+    try {
+      const res = await api.get(`/events?${params}`);
+      const wait = SWAP_DELAY - (Date.now() - started);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      if (id !== requestRef.current) return;
+      setEvents(res.data?.data?.events || []);
+      setStatus('ready');
+    } catch {
+      if (id !== requestRef.current) return;
+      setStatus('error');
+    } finally {
+      if (id === requestRef.current) {
+        setLeaving(false);
+        setVersion((v) => v + 1);
+      }
+    }
+    if (filters.type) trackClientBehavior('category_view', null, { category: filters.type, city: filters.city || null });
+    // fetchKey captures every filter that changes the request
+  }, [fetchKey]);
+
+  // A filter change starts a new result set: back to the first batch. Comparing keys (rather than
+  // "not the first run") keeps a restored batch intact when Strict Mode re-runs the effect.
+  const lastKey = useRef(null);
+  useEffect(() => {
+    if (lastKey.current !== null && lastKey.current !== fetchKey) setVisible(BATCH);
+    lastKey.current = fetchKey;
+    load();
+  }, [load, fetchKey]);
+
+  const sorted = useMemo(() => sortEvents(events, filters.sort), [events, filters.sort]);
+  const shown = sorted.slice(0, visible);
+  const remaining = sorted.length - shown.length;
+
+  const cities = useMemo(() => {
+    const set = new Set(KNOWN_CITIES);
+    events.forEach((e) => e.city && set.add(e.city));
+    if (filters.city) set.add(filters.city);
+    return [...set];
+  }, [events, filters.city]);
+
+  const activeChips = [
+    filters.search && { key: 'search', label: `“${filters.search}”` },
+    filters.type && { key: 'type', label: categoryName(filters.type) },
+    filters.city && { key: 'city', label: filters.city },
+    filters.when && { key: 'when', label: labelOf(WHEN_OPTIONS, filters.when) },
+    filters.maxPrice && { key: 'maxPrice', label: labelOf(PRICE_OPTIONS, filters.maxPrice) },
+  ].filter(Boolean);
+  const hasFilters = activeChips.length > 0;
+
+  // Restore scroll after the saved batch has rendered
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!saved || restored.current || status !== 'ready') return;
+    restored.current = true;
+    requestAnimationFrame(() => window.scrollTo({ top: saved.y, behavior: 'instant' }));
+    sessionStorage.removeItem(RETURN_KEY);
+  }, [saved, status]);
+
+  const rememberPosition = () => {
+    sessionStorage.setItem(RETURN_KEY, JSON.stringify({ query: searchParams.toString(), visible, y: Math.round(window.scrollY) }));
   };
 
-  const handleResetFilters = () => {
-    setSearch('');
-    setType('');
-    setCity('');
-    setMaxPrice('');
-    setSearchParams({});
-  };
+  const focusCategories = useCallback(() => {
+    categoriesRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    categoriesRef.current?.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, []);
 
-  const toggleFavorite = (eventId, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setFavorites(prev => ({ ...prev, [eventId]: !prev[eventId] }));
-  };
+  // Footer: header logo steps aside; the footer lettering rises in (toggle actions, like the reference)
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const header = root.querySelector('[data-home-header]');
+    const ctx = gsap.context(() => {
+      ScrollTrigger.create({
+        trigger: '.tl-footer',
+        start: 'top 80px',
+        onToggle: (self) => { header.dataset.atFooter = String(self.isActive); },
+      });
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        gsap.fromTo(
+          '.tl-footer-wordmark',
+          { yPercent: 30, opacity: 0 },
+          { yPercent: 0, opacity: 1, duration: 0.9, ease: 'power3.out', scrollTrigger: { trigger: '.tl-footer', start: 'top 70%', toggleActions: 'play none none reverse' } }
+        );
+      }
+    }, root);
+    return () => {
+      ctx.revert();
+      delete header.dataset.atFooter;
+    };
+  }, []);
+  useEffect(() => {
+    requestAnimationFrame(() => ScrollTrigger.refresh());
+  }, [version, visible]);
 
   return (
-    <div className="space-y-8 pb-16">
-      
-      {/* Top Banner */}
-      <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-2 max-w-2xl">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-[#16a34a] text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Official Event Lineup</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
-            Discover Events & Book Tickets
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-            Browse upcoming sports matches, music concerts, festivals, and cultural events with verified smart contract seating and 100% entry guarantee.
-          </p>
-        </div>
+    <div ref={rootRef} className="tl-home tl-explore">
+      {showLoader && <PixelLoader />}
+      <HomeHeader pageRef={pageRef} onCategories={focusCategories} tone="light" />
 
-        <Link
-          to="/company"
-          className="btn-eventfrog text-xs whitespace-nowrap px-5 py-3 shadow"
-        >
-          <span>Host an Event</span>
-        </Link>
-      </div>
-
-      {/* Multi-Criteria Filter Bar */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-sm space-y-4">
-        <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs">
-          
-          {/* Keyword Search */}
-          <div className="md:col-span-4 relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search event, artist, or venue..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#22c55e] transition"
-            />
+      <div ref={pageRef}>
+        <main className="tl-ex-main">
+          <div className="tl-ex-head">
+            <h1 className="tl-ex-title">Explore Events</h1>
+            <div ref={categoriesRef} className="tl-ex-cats" role="group" aria-label="Categories">
+              {[{ type: '', name: 'All' }, ...ALL_CATEGORIES].map((c) => {
+                const active = filters.type === c.type;
+                return (
+                  <button
+                    key={c.type || 'all'}
+                    type="button"
+                    className={`tl-ex-cat${active ? ' is-active' : ''}`}
+                    aria-pressed={active}
+                    onClick={() => setFilter('type', c.type)}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Category */}
-          <div className="md:col-span-3">
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e]"
-            >
-              {CATEGORY_OPTIONS.map((c) => (
-                <option key={c.id} value={c.id}>{c.label}</option>
-              ))}
-            </select>
-          </div>
+          <form className="tl-ex-filters" role="search" aria-label="Search and filter events" onSubmit={(e) => { e.preventDefault(); setFilter('search', searchText.trim()); }}>
+            <label className="tl-ex-search">
+              <Search className="w-4 h-4" aria-hidden="true" />
+              <span className="sr-only">Search events</span>
+              <input type="search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search events, venues, cities" />
+            </label>
+            <label className="tl-ex-select">
+              <span>When</span>
+              <select value={filters.when} onChange={(e) => setFilter('when', e.target.value)}>
+                {WHEN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="tl-ex-select">
+              <span>City</span>
+              <select value={filters.city} onChange={(e) => setFilter('city', e.target.value)}>
+                <option value="">All cities</option>
+                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <label className="tl-ex-select">
+              <span>Price</span>
+              <select value={filters.maxPrice} onChange={(e) => setFilter('maxPrice', e.target.value)}>
+                {PRICE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="tl-ex-select">
+              <span>Sort</span>
+              <select value={filters.sort} onChange={(e) => setFilter('sort', e.target.value)}>
+                {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          </form>
 
-          {/* City */}
-          <div className="md:col-span-3">
-            <select
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e]"
-            >
-              <option value="">All Cities in Pakistan</option>
-              <option value="Lahore">Lahore (Gaddafi Stadium / Alhamra)</option>
-              <option value="Karachi">Karachi (National Arena)</option>
-              <option value="Islamabad">Islamabad / Rawalpindi</option>
-              <option value="Faisalabad">Faisalabad</option>
-              <option value="Multan">Multan</option>
-            </select>
-          </div>
-
-          {/* Filter & Reset Buttons */}
-          <div className="md:col-span-2 flex gap-2">
-            <button
-              type="submit"
-              className="flex-1 btn-eventfrog text-xs py-2"
-            >
-              Filter
-            </button>
-            {(search || type || city || maxPrice) && (
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition"
-                title="Reset Filters"
-              >
-                <RotateCcw className="w-4 h-4" />
+          <div className="tl-ex-status">
+            <p aria-live="polite">
+              {status === 'loading' ? 'Loading events…' : status === 'error' ? '' : `${sorted.length} event${sorted.length === 1 ? '' : 's'}`}
+            </p>
+            {activeChips.map((chip) => (
+              <button key={chip.key} type="button" className="tl-ex-chip" onClick={() => (chip.key === 'search' ? (setSearchText(''), setFilter('search', '')) : setFilter(chip.key, ''))} aria-label={`Remove filter ${chip.label}`}>
+                {chip.label} <X className="w-3 h-3" aria-hidden="true" />
               </button>
+            ))}
+            {hasFilters && (
+              <button type="button" className="tl-ex-clear" onClick={clearFilters}>Clear filters</button>
             )}
           </div>
-        </form>
+
+          {status === 'loading' && events.length === 0 && (
+            <div className="tl-ex-grid" aria-busy="true" aria-label="Loading events">
+              {Array.from({ length: BATCH }, (_, i) => (
+                <div key={i} className="tl-tile tl-tile--skeleton" aria-hidden="true">
+                  <div className="tl-tile-media" />
+                  <div className="tl-tile-caption"><span /><span /></div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {status === 'error' && (
+            <div className="tl-ex-empty" role="alert">
+              <p>We couldn’t load events right now.</p>
+              <button type="button" className="tl-ex-btn" onClick={load}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try again</button>
+            </div>
+          )}
+
+          {status === 'ready' && sorted.length === 0 && !leaving && (
+            <div className="tl-ex-empty">
+              <p>No events match {hasFilters ? 'these filters' : 'right now'}.</p>
+              {hasFilters && <button type="button" className="tl-ex-btn" onClick={clearFilters}>Clear filters</button>}
+            </div>
+          )}
+
+          {sorted.length > 0 && (
+            <div key={`${version}|${filters.sort}`} className={`tl-ex-grid${leaving ? ' is-leaving' : ''}`}>
+              {shown.map((event, i) => (
+                <EventTile
+                  key={event.id}
+                  event={event}
+                  index={i}
+                  isFavorite={favorites[event.id]}
+                  onToggleFavorite={(id) => setFavorites((f) => ({ ...f, [id]: !f[id] }))}
+                  onOpen={rememberPosition}
+                  linkState={EXPLORE_LINK_STATE}
+                />
+              ))}
+            </div>
+          )}
+
+          {status === 'ready' && sorted.length > 0 && (
+            <div className="tl-ex-more">
+              {remaining > 0 ? (
+                <button type="button" className="tl-ex-btn tl-ex-btn--more" onClick={() => setVisible((v) => v + BATCH)}>
+                  Load more <span className="tl-ex-plus" aria-hidden="true" />
+                </button>
+              ) : (
+                <p>{sorted.length > BATCH ? 'You’ve seen every event.' : ''}</p>
+              )}
+              <p className="tl-ex-progress">Showing {shown.length} of {sorted.length}</p>
+            </div>
+          )}
+        </main>
+
+        <SiteFooter onCategories={focusCategories} />
       </div>
-
-      {/* Event Cards Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3, 4, 5, 6].map((n) => (
-            <div key={n} className="h-80 rounded-2xl bg-white border border-slate-200 animate-pulse" />
-          ))}
-        </div>
-      ) : events.length === 0 ? (
-        <div className="p-16 text-center bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
-          <SlidersHorizontal className="w-8 h-8 text-slate-400 mx-auto" />
-          <div className="text-base font-bold text-slate-900">No events found</div>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Try adjusting your search criteria or resetting filters to see upcoming fixtures.
-          </p>
-          <button
-            onClick={handleResetFilters}
-            className="btn-eventfrog text-xs mt-2"
-          >
-            Reset All Filters
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {events.map((event, idx) => {
-            const visual = getEventVisual(event, idx);
-            const dateObj = new Date(event.date);
-            const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-            const dayNum = dateObj.getDate();
-            const isFav = favorites[event.id];
-
-            return (
-              <div 
-                key={event.id}
-                className="ec-card overflow-hidden flex flex-col justify-between group"
-              >
-                <div>
-                  {/* Image with Category Badge & Heart */}
-                  <div className="relative h-48 overflow-hidden bg-slate-100">
-                    <img
-                      src={visual.image}
-                      alt={event.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-
-                    <span className="absolute top-3 left-3 text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-900/80 text-white backdrop-blur-md">
-                      {visual.badge}
-                    </span>
-
-                    <button
-                      onClick={(e) => toggleFavorite(event.id, e)}
-                      className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/80 hover:bg-white text-rose-500 flex items-center justify-center transition shadow-sm"
-                      title="Save Event"
-                    >
-                      <Heart className={`w-4 h-4 ${isFav ? 'fill-rose-500 text-rose-500' : 'text-slate-600'}`} />
-                    </button>
-                  </div>
-
-                  {/* Card Body */}
-                  <div className="p-5 flex items-start gap-4">
-                    {/* Eventfrog-Style Date Stamp */}
-                    <div className="ec-date-badge flex-shrink-0">
-                      <span className="ec-date-month">{monthStr}</span>
-                      <span className="ec-date-day">{dayNum}</span>
-                    </div>
-
-                    {/* Details */}
-                    <div className="space-y-1 flex-1 min-w-0">
-                      <h3 className="font-bold text-base text-[#212b36] group-hover:text-[#16a34a] transition line-clamp-1">
-                        {event.name}
-                      </h3>
-
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{dateObj.toLocaleDateString('en-US', { weekday: 'short' })}, {event.time} PKT</span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                        <span className="truncate">{event.venue}, {event.city}</span>
-                      </div>
-
-                      <p className="text-xs text-slate-500 line-clamp-2 pt-1 leading-relaxed">
-                        {event.description}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer with Price & Green Get Tickets CTA */}
-                <div className="p-5 pt-0 border-t border-slate-100 flex items-center justify-between mt-2">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">From</span>
-                    <span className="font-extrabold text-slate-900 text-sm">
-                      PKR {Number(event.pricing?.minPrice || 1500).toLocaleString()}
-                    </span>
-                  </div>
-
-                  <Link
-                    to={`/events/${event.id}`}
-                    className="btn-eventfrog text-xs py-2 px-4"
-                  >
-                    <span>Get Tickets</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
     </div>
   );
 }

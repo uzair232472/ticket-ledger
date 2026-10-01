@@ -1,0 +1,11 @@
+{
+  "name": "@ticketledger/venue-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Venue layout geometry, seat generation, templates and validation shared by the API and web app",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  }
+}

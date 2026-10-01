@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
+import { requireApprovedCompany } from '../middlewares/auth.js';
 import { uploadFile } from '../utils/storage.js';
 
 // Schemas
@@ -86,6 +87,9 @@ export const registerCompany = async (req, res) => {
         },
       });
     }
+
+    // Link the organizer account to its company (used for staff and event ownership checks)
+    await prisma.user.update({ where: { id: userId }, data: { companyId: company.id } });
 
     // Create confirmation in-app notification
     await prisma.notification.create({
@@ -309,46 +313,5 @@ export const updateCompanyStatus = async (req, res) => {
   }
 };
 
-/**
- * Middleware: Requires the organizer to have an APPROVED company
- */
-export const requireApprovedOrganizer = async (req, res, next) => {
-  try {
-    if (!req.user || req.user.role !== 'ORGANIZER') {
-      return res.status(403).json({
-        success: false,
-        message: 'Organizer privileges required.',
-      });
-    }
-
-    const company = await prisma.company.findUnique({
-      where: { userId: req.user.id },
-    });
-
-    if (!company) {
-      return res.status(403).json({
-        success: false,
-        message: 'Company registration required before hosting events.',
-        code: 'COMPANY_NOT_REGISTERED',
-      });
-    }
-
-    if (company.status !== 'APPROVED') {
-      return res.status(403).json({
-        success: false,
-        message: `Your company "${company.companyName}" is currently ${company.status}. Only APPROVED organizers can create events.`,
-        code: 'COMPANY_NOT_APPROVED',
-        companyStatus: company.status,
-      });
-    }
-
-    req.company = company;
-    next();
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to verify organizer approval',
-      error: error.message,
-    });
-  }
-};
+// Kept for existing imports; the guard now lives in middlewares/auth.js
+export const requireApprovedOrganizer = requireApprovedCompany;

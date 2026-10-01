@@ -3,6 +3,8 @@ import prisma from '../config/prisma.js';
 import { acquireSeatLock, releaseSeatLock, checkSeatLock } from '../config/redis.js';
 import { getIO } from '../config/socket.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
+import { FREE_SQL, HOLD_SECONDS, expireStaleHolds } from '../services/venueService.js';
+import { canManageEvent } from '../utils/eventAccess.js';
 
 // Schemas
 const lockSeatSchema = z.object({
@@ -37,7 +39,8 @@ export const getEventSeatMap = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    const now = new Date();
+    // Release lapsed holds and stale checkouts in bulk, then read the current state
+    await expireStaleHolds(eventId);
 
     // Fetch all seats
     const allSeats = await prisma.seat.findMany({
@@ -54,41 +57,19 @@ export const getEventSeatMap = async (req, res) => {
       ],
     });
 
-    // Automatically reconcile expired locks back to AVAILABLE
-    const formattedSeats = await Promise.all(
-      allSeats.map(async (seat) => {
-        let currentStatus = seat.status;
-
-        if (seat.status === 'LOCKED') {
-          if (seat.lockedUntil && seat.lockedUntil < now) {
-            // Expired lock, release in Redis and DB
-            await releaseSeatLock(seat.id, seat.lockedByUserId);
-            await prisma.seat.update({
-              where: { id: seat.id },
-              data: {
-                status: 'AVAILABLE',
-                lockedUntil: null,
-                lockedByUserId: null,
-              },
-            });
-            currentStatus = 'AVAILABLE';
-          }
-        }
-
-        const isLockedByMe = currentStatus === 'LOCKED' && seat.lockedByUserId === currentUserId;
-
-        return {
-          id: seat.id,
-          section: seat.section,
-          row: seat.row,
-          seatNumber: seat.seatNumber,
-          status: currentStatus,
-          tier: seat.tier,
-          lockedUntil: currentStatus === 'LOCKED' ? seat.lockedUntil : null,
-          isLockedByMe,
-        };
-      })
-    );
+    const formattedSeats = allSeats.map((seat) => {
+      const isLockedByMe = seat.status === 'LOCKED' && seat.lockedByUserId === currentUserId;
+      return {
+        id: seat.id,
+        section: seat.section,
+        row: seat.row,
+        seatNumber: seat.seatNumber,
+        status: seat.status,
+        tier: seat.tier,
+        lockedUntil: seat.status === 'LOCKED' ? seat.lockedUntil : null,
+        isLockedByMe,
+      };
+    });
 
     // Group seats by section for the interactive frontend map
     const sections = {};
@@ -173,6 +154,14 @@ export const lockSeat = async (req, res) => {
       });
     }
 
+    // Venue-plan zones and whole tables are held through /api/venues (by quantity / whole table)
+    if (seat.kind === 'GA_SLOT' || seat.wholeTable) {
+      return res.status(400).json({
+        success: false,
+        message: seat.kind === 'GA_SLOT' ? 'General admission is booked by quantity.' : 'This table is booked as a whole table.',
+      });
+    }
+
     // Check if seat is currently locked by someone else
     if (seat.status === 'LOCKED' && seat.lockedUntil && seat.lockedUntil > now) {
       if (seat.lockedByUserId !== userId) {
@@ -181,28 +170,54 @@ export const lockSeat = async (req, res) => {
           message: 'Seat is currently reserved by another customer. Please select another seat.',
         });
       }
+      // Already held by this customer (e.g. after a reconnect): confirm it without restarting the timer
+      return res.status(200).json({
+        success: true,
+        message: 'Seat is already locked for you.',
+        data: {
+          seat: {
+            id: seat.id,
+            section: seat.section,
+            row: seat.row,
+            seatNumber: seat.seatNumber,
+            price: seat.tier.price,
+            tierName: seat.tier.name,
+            status: seat.status,
+            lockedUntil: seat.lockedUntil,
+            ttlSeconds: Math.max(0, Math.round((seat.lockedUntil - now) / 1000)),
+          },
+        },
+      });
     }
 
     // 1. Attempt Redis atomic lock acquisition (TTL: 600s = 10 min)
-    const acquired = await acquireSeatLock(seatId, userId, 600);
+    const acquired = await acquireSeatLock(seatId, userId, HOLD_SECONDS);
     if (!acquired) {
+      const holder = await checkSeatLock(seatId);
+      if (!holder.locked || holder.userId !== userId) {
+        return res.status(409).json({
+          success: false,
+          message: 'Seat lock collision: Another customer just reserved this seat.',
+        });
+      }
+    }
+
+    // 2. Persist the lock only if the seat is still free in PostgreSQL (the source of truth), so a
+    //    concurrent hold, checkout or plan publish can't be overwritten
+    const lockedRows = await prisma.$queryRaw`
+      UPDATE "Seat" s SET status = 'LOCKED', "lockedByUserId" = ${userId},
+        "lockedUntil" = (now() AT TIME ZONE 'UTC') + (${HOLD_SECONDS} * interval '1 second'), "updatedAt" = (now() AT TIME ZONE 'UTC')
+      WHERE s.id = ${seatId} AND ${FREE_SQL}
+      RETURNING s.id`;
+    if (!lockedRows.length) {
+      await releaseSeatLock(seatId, userId);
       return res.status(409).json({
         success: false,
         message: 'Seat lock collision: Another customer just reserved this seat.',
       });
     }
-
-    // 2. Persist lock status to PostgreSQL
-    const lockedUntil = new Date(Date.now() + 600 * 1000);
-    const updatedSeat = await prisma.seat.update({
-      where: { id: seatId },
-      data: {
-        status: 'LOCKED',
-        lockedUntil,
-        lockedByUserId: userId,
-      },
-      include: { tier: true },
-    });
+    const updatedSeat = await prisma.seat.findUnique({ where: { id: seatId }, include: { tier: true } });
+    const { lockedUntil } = updatedSeat;
 
     // 3. Broadcast real-time seat lock via Socket.io to all connected clients
     const io = getIO();
@@ -210,6 +225,8 @@ export const lockSeat = async (req, res) => {
       io.emit('seat:status_change', {
         eventId: seat.eventId,
         seatId: seat.id,
+        key: seat.layoutKey,
+        sectionKey: seat.sectionKey,
         section: seat.section,
         row: seat.row,
         seatNumber: seat.seatNumber,
@@ -260,7 +277,7 @@ export const lockSeat = async (req, res) => {
           tierName: updatedSeat.tier.name,
           status: updatedSeat.status,
           lockedUntil: updatedSeat.lockedUntil,
-          ttlSeconds: 600,
+          ttlSeconds: HOLD_SECONDS,
         },
       },
     });
@@ -289,18 +306,22 @@ export const unlockSeat = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Seat not found' });
     }
 
+    if (seat.status !== 'LOCKED' || seat.lockedByUserId !== userId) {
+      return res.status(403).json({ success: false, message: 'Only the customer holding this seat can release it.' });
+    }
+
+    // Release in PostgreSQL first, only while it is this customer's hold and not part of a checkout
+    const released = await prisma.seat.updateMany({
+      where: { id: seatId, status: 'LOCKED', lockedByUserId: userId, ticket: { is: null } },
+      data: { status: 'AVAILABLE', lockedUntil: null, lockedByUserId: null },
+    });
+    if (!released.count) {
+      return res.status(409).json({ success: false, message: 'This seat is in your checkout. Cancel the checkout to release it.' });
+    }
+
     // Release in Redis
     await releaseSeatLock(seatId, userId);
-
-    // Release in PostgreSQL
-    const updated = await prisma.seat.update({
-      where: { id: seatId },
-      data: {
-        status: 'AVAILABLE',
-        lockedUntil: null,
-        lockedByUserId: null,
-      },
-    });
+    const updated = await prisma.seat.findUnique({ where: { id: seatId } });
 
     // Broadcast via Socket.io
     const io = getIO();
@@ -308,6 +329,8 @@ export const unlockSeat = async (req, res) => {
       io.emit('seat:status_change', {
         eventId: seat.eventId,
         seatId: seat.id,
+        key: seat.layoutKey,
+        sectionKey: seat.sectionKey,
         section: seat.section,
         row: seat.row,
         seatNumber: seat.seatNumber,
@@ -334,6 +357,21 @@ export const generateSeatGrid = async (req, res) => {
   try {
     const validated = generateGridSchema.parse(req.body);
     const { eventId, section, tierId, rows, seatsPerRow } = validated;
+
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+    if (!(await canManageEvent(req.user, event))) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to modify this event.' });
+    }
+    const tier = await prisma.ticketTier.findFirst({ where: { id: tierId, eventId } });
+    if (!tier) {
+      return res.status(400).json({ success: false, message: 'This pricing tier does not belong to the event.' });
+    }
+    if (await prisma.venueLayout.findFirst({ where: { eventId, status: 'PUBLISHED' }, select: { id: true } })) {
+      return res.status(409).json({ success: false, message: 'This event uses a venue plan. Edit seats in Venue & Seating instead.' });
+    }
 
     const createdSeats = [];
 

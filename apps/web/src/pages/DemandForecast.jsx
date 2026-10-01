@@ -26,7 +26,7 @@ import {
   Ticket
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
 export default function DemandForecast() {
   const { eventId: paramEventId } = useParams();
@@ -295,11 +295,10 @@ export default function DemandForecast() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${
-              eventDetails.status === 'PUBLISHED'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-amber-50 text-amber-800 border-amber-200'
-            }`}>
+            <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${eventDetails.status === 'PUBLISHED'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}>
               Status: {eventDetails.status}
             </span>
           </div>
@@ -322,7 +321,7 @@ export default function DemandForecast() {
             {forecast?.projected_48h_sales?.toLocaleString() || forecast?.predicted_48h_sales?.toLocaleString() || '---'}
             <span className="text-xs text-slate-400 font-medium ml-2">tickets</span>
           </div>
-          
+
           <div className="pt-2 space-y-1.5">
             <div className="flex justify-between text-xs text-slate-500 font-medium">
               <span>Sellout Probability</span>
@@ -405,13 +404,12 @@ export default function DemandForecast() {
         </div>
 
         {/* Pricing Warning & AI Recommendation */}
-        <div className={`rounded-3xl p-6 border flex flex-col justify-between shadow-sm space-y-4 ${
-          forecast?.pricing_warning?.severity === 'amber'
-            ? 'bg-amber-50/50 border-amber-200 text-amber-900'
-            : forecast?.pricing_warning?.severity === 'cyan'
+        <div className={`rounded-3xl p-6 border flex flex-col justify-between shadow-sm space-y-4 ${forecast?.pricing_warning?.severity === 'amber'
+          ? 'bg-amber-50/50 border-amber-200 text-amber-900'
+          : forecast?.pricing_warning?.severity === 'cyan'
             ? 'bg-teal-50/50 border-teal-200 text-teal-900'
             : 'bg-emerald-50/50 border-emerald-200 text-emerald-900'
-        }`}>
+          }`}>
           <div>
             <div className="flex items-center gap-2 mb-2 font-bold text-xs uppercase tracking-wider">
               <AlertTriangle className="w-4 h-4" />

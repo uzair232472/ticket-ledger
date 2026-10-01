@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { corsOrigin } from './config/cors.js';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { redisConnected } from './config/redis.js';
@@ -17,6 +18,8 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import behaviorRoutes from './routes/behaviorRoutes.js';
 import intentAnalyticsRoutes from './routes/intentAnalyticsRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import staffRoutes from './routes/staffRoutes.js';
+import venueRoutes from './routes/venueRoutes.js';
 
 dotenv.config();
 
@@ -24,9 +27,11 @@ const app = express();
 
 // Middlewares
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: corsOrigin,
   credentials: true,
 }));
+// Venue plans can be larger than the default 100kb body limit (scoped to these routes only)
+app.use('/api/venues', express.json({ limit: '2mb' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -66,6 +71,8 @@ app.use('/api/ml', mlRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/behavior', behaviorRoutes);
 app.use('/api/analytics', intentAnalyticsRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/venues', venueRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/organizer', adminRoutes);
 

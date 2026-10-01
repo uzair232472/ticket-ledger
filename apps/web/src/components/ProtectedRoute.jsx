@@ -1,10 +1,16 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ShieldAlert } from 'lucide-react';
 
-export default function ProtectedRoute({ children, allowedRoles }) {
+/**
+ * Route guard. The API enforces the same rules; this only keeps users out of screens they can't use.
+ * - allowedRoles: roles that may open the route
+ * - requireApprovedCompany: organizers whose company is not APPROVED are sent to the company status screen
+ */
+export default function ProtectedRoute({ children, allowedRoles, requireApprovedCompany = false }) {
   const { user, loading, isAuthenticated } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -15,7 +21,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
@@ -33,6 +39,10 @@ export default function ProtectedRoute({ children, allowedRoles }) {
         </p>
       </div>
     );
+  }
+
+  if (requireApprovedCompany && user.role === 'ORGANIZER' && user.companyStatus !== 'APPROVED') {
+    return <Navigate to="/company" replace />;
   }
 
   return children;
