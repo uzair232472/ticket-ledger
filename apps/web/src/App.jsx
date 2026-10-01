@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -35,14 +35,14 @@ import ResetPassword from './pages/ResetPassword';
 import AcceptInvite from './pages/AcceptInvite';
 import Suspended from './pages/Suspended';
 import StaffEvents from './pages/StaffEvents';
-import { 
-  User, 
-  LogOut, 
-  ShieldCheck, 
-  PlusCircle, 
-  ShoppingBag, 
-  QrCode, 
-  TrendingUp, 
+import {
+  User,
+  LogOut,
+  ShieldCheck,
+  PlusCircle,
+  ShoppingBag,
+  QrCode,
+  TrendingUp,
   ChevronDown,
   Scan,
   Search,
@@ -83,14 +83,14 @@ function Navbar() {
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
-        
+
         {/* Left: Brand Logo & Integrated Header Search (matching Eventfrog in Image 3) */}
         <div className="flex items-center gap-5 sm:gap-7">
           <Link to="/" className="flex items-center flex-shrink-0">
-            <img 
-              src={logoImg} 
-              alt="TicketLedger" 
-              className="h-8 sm:h-9 w-auto object-contain" 
+            <img
+              src={logoImg}
+              alt="TicketLedger"
+              className="h-8 sm:h-9 w-auto object-contain"
             />
           </Link>
 
@@ -113,11 +113,10 @@ function Navbar() {
         <nav className="hidden lg:flex items-center space-x-1 text-xs font-semibold text-slate-700">
           <Link
             to="/events"
-            className={`px-3 py-2 rounded-lg transition ${
-              isActive('/events')
+            className={`px-3 py-2 rounded-lg transition ${isActive('/events')
                 ? 'text-[#16a34a] font-bold'
                 : 'hover:text-[#16a34a]'
-            }`}
+              }`}
           >
             Find events
           </Link>
@@ -134,7 +133,7 @@ function Navbar() {
             </button>
 
             {organizerMenu && (
-              <div 
+              <div
                 className="absolute left-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-50 animate-in fade-in duration-150"
                 onClick={() => setOrganizerMenu(false)}
               >
@@ -168,33 +167,29 @@ function Navbar() {
             <>
               <Link
                 to="/resale"
-                className={`px-3 py-2 rounded-lg transition ${
-                  isActive('/resale') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
-                }`}
+                className={`px-3 py-2 rounded-lg transition ${isActive('/resale') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                  }`}
               >
                 Fan Resale
               </Link>
               <Link
                 to="/wallet"
-                className={`px-3 py-2 rounded-lg transition ${
-                  isActive('/wallet') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
-                }`}
+                className={`px-3 py-2 rounded-lg transition ${isActive('/wallet') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                  }`}
               >
                 My Passes
               </Link>
               <Link
                 to="/my-nfts"
-                className={`px-3 py-2 rounded-lg transition ${
-                  isActive('/my-nfts') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
-                }`}
+                className={`px-3 py-2 rounded-lg transition ${isActive('/my-nfts') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                  }`}
               >
                 NFT Tickets
               </Link>
               <Link
                 to="/my-bookings"
-                className={`px-3 py-2 rounded-lg transition ${
-                  isActive('/my-bookings') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
-                }`}
+                className={`px-3 py-2 rounded-lg transition ${isActive('/my-bookings') ? 'text-[#16a34a] font-bold' : 'hover:text-[#16a34a]'
+                  }`}
               >
                 Orders
               </Link>
@@ -215,7 +210,7 @@ function Navbar() {
 
         {/* Right: "Create event" CTA Button & User Account */}
         <div className="flex items-center gap-3">
-          
+
           {/* Admin Governance Shortcut */}
           {isAuthenticated && user?.role === 'SUPER_ADMIN' && (
             <div className="relative">
@@ -230,7 +225,7 @@ function Navbar() {
               </button>
 
               {adminMenu && (
-                <div 
+                <div
                   className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-50"
                   onClick={() => setAdminMenu(false)}
                 >
@@ -281,7 +276,7 @@ function Navbar() {
               </button>
 
               {userMenu && (
-                <div 
+                <div
                   className="absolute right-0 mt-2 w-52 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in duration-150"
                   onClick={() => setUserMenu(false)}
                 >
@@ -345,7 +340,7 @@ function Footer() {
   return (
     <footer className="bg-white border-t border-slate-200 mt-20 pt-14 pb-10 text-xs text-slate-600">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           <div className="space-y-3">
             <img src={logoImg} alt="TicketLedger" className="h-8 w-auto object-contain" />
@@ -428,6 +423,7 @@ export default function App() {
           <main className="flex-1 w-full">
             <Routes>
               <Route path="/" element={<Dashboard />} />
+
               <Route path="/events" element={<Events />} />
               <Route path="/events/:id" element={<EventDetails />} />
               <Route path="/events/:id/seats" element={<SeatMap />} />
@@ -435,6 +431,15 @@ export default function App() {
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/booking-success/:id" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/bookings/:id/confirmation" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
+
+              <Route path="/events" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Events /></div>} />
+              <Route path="/events/:id" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><EventDetails /></div>} />
+              <Route path="/events/:id/seats" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SeatMap /></div>} />
+              <Route path="/events/:id/checkout" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div></ProtectedRoute>} />
+              <Route path="/checkout" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Checkout /></div></ProtectedRoute>} />
+              <Route path="/booking-success/:orderId" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div></ProtectedRoute>} />
+              <Route path="/bookings/:orderId/confirmation" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div></ProtectedRoute>} />
+
               <Route path="/resale" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResaleMarketplace /></div></ProtectedRoute>} />
               <Route path="/login" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Login /></div>} />
               <Route path="/signup" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Signup /></div>} />
@@ -466,10 +471,16 @@ export default function App() {
               <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SuperAdminDashboard /></div></ProtectedRoute>} />
               <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminCompanies /></div></ProtectedRoute>} />
               <Route path="/admin/fraud-watchlist" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminFraudWatchlist /></div></ProtectedRoute>} />
-              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
+              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
+              <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
               <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BehaviorProfile /></div></ProtectedRoute>} />
-              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
-              <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
+              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
+              <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
+
+              {/* Safe catch-all fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
           <SiteChrome><Footer /></SiteChrome>
