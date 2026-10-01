@@ -85,6 +85,7 @@ export default function Checkout() {
   const { id: paramId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const eventId = paramId || location.state?.eventId || new URLSearchParams(location.search).get('event');
 
@@ -200,7 +201,7 @@ export default function Checkout() {
         order = { id: d.orderId, method, keys, total: Number(d.totalAmount), params: d.paymentParams };
         orderRef.current = order;
         // The server prices the order; if that differs from what was shown, stop and let the customer review
-        if (Math.abs(order.total - subtotal) > 0.009) {
+        if(Math.abs(order.total - subtotal) > 0.009) {
           setServerTotal(order.total);
           setProblem({ tone: 'warn', kind: 'price', text: `The total was recalculated by the server: ${formatPkr(order.total)} (shown before: ${formatPkr(subtotal)}). Review the order and press Confirm order again to pay.` });
           return;
