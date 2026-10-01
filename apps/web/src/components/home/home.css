@@ -851,7 +851,3 @@
   .tl-hero-intro-text { font-size: clamp(18px, 5vw, 24px); }
   .tl-skip { top: auto; bottom: calc(clamp(18px, 4vh, 40px) + 13.2vw + 18px); }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .tl-home *, .tl-home *::before, .tl-home *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
-}
