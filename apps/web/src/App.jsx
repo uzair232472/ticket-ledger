@@ -53,6 +53,7 @@ import {
   Settings
 } from 'lucide-react';
 import BrandLogo from './components/brand/BrandLogo';
+import DashShell from './components/dash/DashShell';
 
 function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -419,7 +420,9 @@ function SiteChrome({ children }) {
   const customerPage = /^\/(resale|wallet|my-nfts|my-bookings)\/?$/.test(pathname) && ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role);
   // Profile and notifications are open to every signed-in role and bring their own header and footer
   const accountPage = /^\/(profile|notifications)\/?$/.test(pathname) && Boolean(user);
-  return pathname === '/' || pathname === '/company' || pathname === '/events' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
+  // Organizer, Super Admin and gate staff consoles use DashShell (header, console nav, footer)
+  const consolePage = /^\/((admin|organizer)\/|(scanner|staff\/events|demand-forecast|analytics\/intent)(\/|$))/.test(pathname);
+  return pathname === '/' || consolePage || pathname === '/company' || pathname === '/events' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
 }
 
 export default function App() {
@@ -458,26 +461,26 @@ export default function App() {
               <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
               {/* Protected Gate Staff Scanner */}
-              <Route path="/staff/events" element={<ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><StaffEvents /></ProtectedRoute>} />
-              <Route path="/scanner" element={<ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><GateScanner /></div></ProtectedRoute>} />
+              <Route path="/staff/events" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><StaffEvents /></ProtectedRoute></DashShell>} />
+              <Route path="/scanner" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><GateScanner /></ProtectedRoute></DashShell>} />
 
               {/* Protected Organizer Studio */}
-              <Route path="/organizer/dashboard" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><OrganizerDashboard /></div></ProtectedRoute>} />
-              <Route path="/organizer/create-event" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CreateEvent key="create" /></div></ProtectedRoute>} />
-              <Route path="/organizer/events/:id/venue" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><VenueEditor /></div></ProtectedRoute>} />
-              <Route path="/organizer/events/:id/edit" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CreateEvent key="edit" /></div></ProtectedRoute>} />
+              <Route path="/organizer/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><OrganizerDashboard /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/create-event" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="create" /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/venue" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><VenueEditor /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/edit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="edit" /></ProtectedRoute></DashShell>} />
 
               {/* Protected Super Admin Governance */}
-              <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><SuperAdminDashboard /></div></ProtectedRoute>} />
-              <Route path="/admin/companies" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminCompanies /></div></ProtectedRoute>} />
-              <Route path="/admin/fraud-watchlist" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AdminFraudWatchlist /></div></ProtectedRoute>} />
-              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
-              <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DemandForecast /></div></ProtectedRoute>} />
-              <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BehaviorProfile /></div></ProtectedRoute>} />
-              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
-              <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
-              <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><PurchaseIntentAnalytics /></div></ProtectedRoute>} />
-              <Route path="/admin/abandoned-intents" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AbandonedIntentDashboard /></div></ProtectedRoute>} />
+              <Route path="/admin/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/demand-forecast" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><DemandForecast /></ProtectedRoute></DashShell>} />
+              <Route path="/demand-forecast" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><DemandForecast /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/behavior-profile" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><BehaviorProfile /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/purchase-intent" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><PurchaseIntentAnalytics /></ProtectedRoute></DashShell>} />
+              <Route path="/analytics/intent/:id" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><PurchaseIntentAnalytics /></ProtectedRoute></DashShell>} />
+              <Route path="/analytics/intent" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><PurchaseIntentAnalytics /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><AbandonedIntentDashboard /></ProtectedRoute></DashShell>} />
 
               {/* Safe catch-all fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />

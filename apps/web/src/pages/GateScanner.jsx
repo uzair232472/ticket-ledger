@@ -1,69 +1,68 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { DashHead, Kpi, Chip, Status } from '../components/dash/DashShell';
+import { ArcGauge, SERIES, NEUTRAL } from '../components/dash/charts';
 import {
   ShieldCheck,
   QrCode,
   CheckCircle2,
   AlertTriangle,
   RefreshCw,
-  Clock,
-  MapPin,
-  Calendar,
-  User,
-  Ticket as TicketIcon,
-  Wifi,
-  WifiOff,
   Camera,
   Play,
-  Copy,
-  Check,
-  Search,
-  Activity,
-  Layers,
-  Sparkles
+  ArrowLeftRight,
+  TrendingUp,
+  TrendingDown,
+  Info,
+  XCircle,
 } from 'lucide-react';
 
 const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
+const GATES = [
+  'Gate 1 - Main Pavilion',
+  'Gate 2 - VIP Enclosure',
+  'Gate 3 - First Class Turnstile',
+  'Gate 4 - General Stand West',
+  'Gate 5 - Media & Staff',
+];
+
+const resultTone = (r) => (r?.valid ? 'good' : r?.result === 'ALREADY_SCANNED' ? 'warn' : 'bad');
+const RESULT_LABEL = { VALID_FIRST_SCAN: 'Admitted', ALREADY_SCANNED: 'Double entry', INVALID_SCAN: 'Invalid' };
+
 export default function GateScanner() {
   const { user, token } = useAuth();
+  const navigate = useNavigate();
   // Event chosen on the Select Event screen (/staff/events); the API only admits tickets for assigned events
   const [searchParams] = useSearchParams();
   const eventId = searchParams.get('eventId');
-  const [activeEvent, setActiveEvent] = useState(null);
+  const [myEvents, setMyEvents] = useState([]);
 
-  const [gateNumber, setGateNumber] = useState('Gate 1 - Main Pavilion');
+  const [gateNumber, setGateNumber] = useState(GATES[0]);
   const [offlineMode, setOfflineMode] = useState(false);
   const [rawPayloadInput, setRawPayloadInput] = useState('');
   const [scanning, setScanning] = useState(false);
   const [lastScanResult, setLastScanResult] = useState(null);
   const [recentScans, setRecentScans] = useState([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
-  const [scannerStats, setScannerStats] = useState({
-    total: 0,
-    valid: 0,
-    doubleEntryBlocked: 0,
-    rejected: 0,
-  });
+  const [scannerStats, setScannerStats] = useState({ total: 0, valid: 0, doubleEntryBlocked: 0, rejected: 0 });
 
-  // Fetch recent scans
   const fetchRecentScans = async () => {
     setLoadingRecent(true);
     try {
       const eventQuery = eventId ? `&eventId=${encodeURIComponent(eventId)}` : '';
-      const res = await fetch(`${API_BASE}/gate/recent-scans?limit=15${eventQuery}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(`${API_BASE}/gate/recent-scans?limit=15${eventQuery}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (res.ok && data.data?.scans) {
-        setRecentScans(data.data.scans);
-        // Calculate session stats
-        const total = data.data.scans.length;
-        const valid = data.data.scans.filter((s) => s.result === 'VALID_FIRST_SCAN').length;
-        const doubleEntry = data.data.scans.filter((s) => s.result === 'ALREADY_SCANNED').length;
-        const rejected = data.data.scans.filter((s) => s.result === 'INVALID_SCAN').length;
-        setScannerStats({ total, valid, doubleEntryBlocked: doubleEntry, rejected });
+        const scans = data.data.scans;
+        setRecentScans(scans);
+        setScannerStats({
+          total: scans.length,
+          valid: scans.filter((s) => s.result === 'VALID_FIRST_SCAN').length,
+          doubleEntryBlocked: scans.filter((s) => s.result === 'ALREADY_SCANNED').length,
+          rejected: scans.filter((s) => s.result === 'INVALID_SCAN').length,
+        });
       }
     } catch (err) {
       console.error('Error fetching recent scans:', err);
@@ -73,29 +72,24 @@ export default function GateScanner() {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchRecentScans();
-    }
+    if (token) fetchRecentScans();
   }, [token, eventId]);
 
+  // The events this account may scan for (scope picker)
   useEffect(() => {
-    if (!token || !eventId) {
-      setActiveEvent(null);
-      return;
-    }
+    if (!token) return;
     fetch(`${API_BASE}/staff/my-events`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
-      .then((data) => setActiveEvent(data.data?.events?.find((e) => e.id === eventId) || null))
-      .catch(() => setActiveEvent(null));
-  }, [token, eventId]);
+      .then((data) => setMyEvents(data.data?.events || []))
+      .catch(() => setMyEvents([]));
+  }, [token]);
+  const activeEvent = myEvents.find((e) => e.id === eventId) || null;
 
   const handleProcessScan = async (payloadToScan) => {
     const payload = payloadToScan || rawPayloadInput.trim();
     if (!payload) return;
-
     setScanning(true);
     setLastScanResult(null);
-
     try {
       let parsedPayload;
       try {
@@ -103,20 +97,11 @@ export default function GateScanner() {
       } catch (e) {
         parsedPayload = payload;
       }
-
       const res = await fetch(`${API_BASE}/gate/scan`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          payload: parsedPayload,
-          gateNumber,
-          offlineMode,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payload: parsedPayload, gateNumber, offlineMode }),
       });
-
       const data = await res.json();
       setLastScanResult({
         statusCode: res.status,
@@ -127,347 +112,188 @@ export default function GateScanner() {
         ticket: data.ticket,
         scannedAt: new Date().toLocaleTimeString(),
       });
-
-      // Refresh recent feed
       fetchRecentScans();
     } catch (err) {
-      setLastScanResult({
-        statusCode: 500,
-        valid: false,
-        result: 'ERROR',
-        message: `Network error: ${err.message}`,
-      });
+      setLastScanResult({ statusCode: 500, valid: false, result: 'ERROR', message: `Network error: ${err.message}` });
     } finally {
       setScanning(false);
     }
   };
 
+  const blocked = scannerStats.doubleEntryBlocked + scannerStats.rejected;
+  const tone = resultTone(lastScanResult);
+
   return (
-    <div className="space-y-8 pb-16 text-slate-800">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="tl-scan">
+      <DashHead eyebrow={`Gate console · ${user?.name || ''}`} title="Scanner" />
 
-        {/* Event being scanned (gate staff pick it on /staff/events) */}
-        {(eventId || user?.role === 'GATE_STAFF') && (
-          <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs">
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Scanning for</div>
-              <div className="font-bold text-slate-900 truncate">
-                {activeEvent ? activeEvent.name : eventId ? 'Loading event…' : 'No event selected'}
-              </div>
-            </div>
-            <Link to="/staff/events" className="font-bold text-[#16a34a] hover:underline flex-shrink-0">
-              {eventId ? 'Change event' : 'Select event'}
-            </Link>
-          </div>
-        )}
-
-        {/* Header */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-[#16a34a]" /> Stadium Gate Control System
-              </span>
-              <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${offlineMode ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-teal-50 text-teal-800 border border-teal-200'
-                }`}>
-                {offlineMode ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3 text-emerald-600" />}
-                {offlineMode ? 'Offline HMAC Verification Mode' : 'Online Real-Time Sync'}
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
-              Gate Staff Turnstile Scanner
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
-              Verifies rotating dynamic QR codes, prevents screenshot fraud, strictly rejects double-entry, and audits check-in timestamps.
-            </p>
-          </div>
-
-          {/* Controls: Gate selector & Offline toggle */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <label className="text-[10px] text-slate-500 block font-semibold mb-1">Active Turnstile Gate</label>
-              <select
-                value={gateNumber}
-                onChange={(e) => setGateNumber(e.target.value)}
-                className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-[#22c55e] font-semibold"
-              >
-                <option value="Gate 1 - Main Pavilion">Gate 1 - Main Pavilion</option>
-                <option value="Gate 2 - VIP Enclosure">Gate 2 - VIP Enclosure</option>
-                <option value="Gate 3 - First Class Turnstile">Gate 3 - First Class Turnstile</option>
-                <option value="Gate 4 - General Stand West">Gate 4 - General Stand West</option>
-                <option value="Gate 5 - Media & Staff">Gate 5 - Media & Staff</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[10px] text-slate-500 block font-semibold mb-1">Verification Mode</label>
-              <button
-                type="button"
-                onClick={() => setOfflineMode(!offlineMode)}
-                className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition ${offlineMode
-                  ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm'
-                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 shadow-sm'
-                  }`}
-              >
-                {offlineMode ? <WifiOff className="w-3.5 h-3.5 text-amber-600" /> : <Wifi className="w-3.5 h-3.5 text-emerald-600" />}
-                <span>{offlineMode ? 'Simulate Offline' : 'Online Server'}</span>
-              </button>
-            </div>
-          </div>
+      {/* Controls */}
+      <div className="tl-scan-bar">
+        <div className="tl-scan-mode" role="group" aria-label="Verification mode">
+          <button type="button" aria-pressed={!offlineMode} onClick={() => setOfflineMode(false)}><i aria-hidden="true" />Online</button>
+          <button type="button" aria-pressed={offlineMode} onClick={() => setOfflineMode(true)}><i aria-hidden="true" />Offline</button>
         </div>
-
-        {/* Live Turnstile Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase font-bold">Total Scans Audited</div>
-            <div className="text-2xl font-black text-slate-900 font-mono">{scannerStats.total}</div>
-          </div>
-          <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm space-y-1">
-            <div className="text-[10px] text-emerald-800 uppercase font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#16a34a]" /> Admitted Attendees
-            </div>
-            <div className="text-2xl font-black text-emerald-800 font-mono">{scannerStats.valid}</div>
-          </div>
-          <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm space-y-1">
-            <div className="text-[10px] text-amber-800 uppercase font-bold flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Double-Entries Blocked
-            </div>
-            <div className="text-2xl font-black text-amber-800 font-mono">{scannerStats.doubleEntryBlocked}</div>
-          </div>
-          <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200 shadow-sm space-y-1">
-            <div className="text-[10px] text-rose-800 uppercase font-bold flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-rose-600" /> Counterfeit / Expired
-            </div>
-            <div className="text-2xl font-black text-rose-800 font-mono">{scannerStats.rejected}</div>
-          </div>
+        <p className={`tl-scan-sys${offlineMode ? ' is-offline' : ''}`}>
+          <strong>{offlineMode ? 'Offline mode' : 'System online'}</strong>
+          <span>{offlineMode ? 'Signature check only · synced when back online.' : 'Live server verification · Duplicate entry blocked.'}</span>
+        </p>
+        <label className="tl-scan-field">
+          <span>Gate</span>
+          <select value={gateNumber} onChange={(e) => setGateNumber(e.target.value)}>
+            {GATES.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </label>
+        <label className="tl-scan-field">
+          <span>Scanning scope</span>
+          <select value={eventId || ''} onChange={(e) => navigate(e.target.value ? `/scanner?eventId=${e.target.value}` : '/scanner')}>
+            <option value="">All your events</option>
+            {myEvents.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+          </select>
+        </label>
+        <div className="tl-scan-bar-actions">
+          <Link to="/staff/events" className="tl-scan-choose"><ArrowLeftRight className="w-4 h-4" /> Choose event</Link>
+          <button type="button" className="tl-st-icon-btn" onClick={fetchRecentScans} aria-label="Refresh scans">
+            <RefreshCw className={`w-4 h-4 ${loadingRecent ? 'tl-dash-spin' : ''}`} />
+          </button>
         </div>
+      </div>
 
-        {/* Main Scanner Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* Counts */}
+      <div className="tl-scan-kpis">
+        <Kpi label="Scans" color="#2563eb" value={scannerStats.total} chips={[<Chip key="r" icon={QrCode}>{activeEvent ? 'Latest at this event' : 'Latest across your events'}</Chip>]} />
+        <Kpi label="Admitted" color="#16a34a" value={scannerStats.valid} chips={[<Chip key="a" icon={TrendingUp}>Entry granted</Chip>]} />
+        <Kpi
+          label="Blocked"
+          color="#d97706"
+          value={blocked}
+          chips={[<Chip key="d" tone="warn" icon={TrendingDown}>{scannerStats.doubleEntryBlocked} double entries</Chip>, <Chip key="i" tone="bad" icon={TrendingDown}>{scannerStats.rejected} invalid</Chip>]}
+        />
+      </div>
 
-          {/* Scanner Input & Camera Simulator (5 cols) */}
-          <div className="lg:col-span-5 rounded-3xl bg-white border border-slate-200/90 p-6 space-y-5 shadow-sm">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-[#16a34a] flex items-center justify-center font-bold">
-                  <QrCode className="w-4 h-4" />
-                </div>
-                <h3 className="font-bold text-slate-900 text-sm">Turnstile QR Scanner Input</h3>
-              </div>
-              <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded-full">{gateNumber}</span>
-            </div>
-
-            {/* Simulated Camera Target */}
-            <div className="relative h-44 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center p-4 text-center overflow-hidden">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-100 border border-emerald-300 flex items-center justify-center text-[#16a34a] animate-pulse mb-2">
-                <Camera className="w-8 h-8" />
-              </div>
-              <div className="text-xs font-semibold text-slate-800">Optical Camera Scanner Ready</div>
-              <div className="text-[10px] text-slate-500 mt-0.5">
-                Paste raw QR JSON payload or use test presets below
-              </div>
-            </div>
-
-            {/* Input Box */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-slate-700 flex justify-between">
-                <span>Scan / Paste Ticket Payload</span>
-                <span className="text-[10px] text-slate-400 font-mono">JSON Format</span>
-              </label>
-              <textarea
-                rows={4}
-                value={rawPayloadInput}
-                onChange={(e) => setRawPayloadInput(e.target.value)}
-                placeholder='Paste raw dynamic QR payload e.g. {"ticketId": "...", "nonce": "...", "signature": "..."}'
-                className="w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 font-mono text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#22c55e]"
-              />
-            </div>
-
-            {/* Trigger Button */}
-            <button
-              type="button"
-              disabled={scanning || !rawPayloadInput.trim()}
-              onClick={() => handleProcessScan()}
-              className="w-full py-3.5 btn-eventfrog disabled:opacity-40 text-xs shadow-sm flex items-center justify-center gap-2"
-            >
-              {scanning ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Verifying HMAC & Database...</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4" />
-                  <span>Verify Gate Pass & Open Turnstile</span>
-                </>
-              )}
+      <div className="tl-scan-grid">
+        {/* Scan a pass */}
+        <section className="tl-scan-card" aria-labelledby="tl-scan-pass">
+          <h2 id="tl-scan-pass">Scan a pass</h2>
+          <p className="tl-scan-sub">Present the current rotating QR from the attendee’s ticket.</p>
+          <div className="tl-scan-camera">
+            <span className="tl-scan-corner is-tl" aria-hidden="true" />
+            <span className="tl-scan-corner is-tr" aria-hidden="true" />
+            <span className="tl-scan-corner is-bl" aria-hidden="true" />
+            <span className="tl-scan-corner is-br" aria-hidden="true" />
+            <Camera className="w-10 h-10" aria-hidden="true" />
+            <strong>Camera ready</strong>
+            <span>The QR rotates every few seconds, so screenshots are rejected.</span>
+          </div>
+          <div className="tl-scan-manual">
+            <h3>Manual entry</h3>
+            <label htmlFor="tl-scan-payload">Pass payload (JSON)</label>
+            <textarea
+              id="tl-scan-payload"
+              rows={3}
+              value={rawPayloadInput}
+              onChange={(e) => setRawPayloadInput(e.target.value)}
+              placeholder='{"ticketId": "...", "nonce": "...", "signature": "..."}'
+            />
+            <button type="button" className="tl-scan-verify" disabled={scanning || !rawPayloadInput.trim()} onClick={() => handleProcessScan()}>
+              {scanning ? <><RefreshCw className="w-4 h-4 tl-dash-spin" /> Verifying…</> : <><Play className="w-4 h-4" /> Verify and open turnstile</>}
             </button>
           </div>
+        </section>
 
-          {/* Turnstile Visual Feedback Screen (7 cols) */}
-          <div className="lg:col-span-7 space-y-6">
-            {lastScanResult ? (
-              <div className={`rounded-3xl border p-6 sm:p-8 space-y-6 shadow-sm transition-all ${lastScanResult.valid
-                ? 'bg-emerald-50 border-emerald-300'
-                : lastScanResult.result === 'ALREADY_SCANNED'
-                  ? 'bg-amber-50 border-amber-300'
-                  : 'bg-rose-50 border-rose-300'
-                }`}>
-                {/* Result Title Banner */}
-                <div className="flex items-center gap-3">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${lastScanResult.valid
-                    ? 'bg-[#16a34a] text-white shadow-sm'
-                    : lastScanResult.result === 'ALREADY_SCANNED'
-                      ? 'bg-amber-500 text-white shadow-sm'
-                      : 'bg-rose-500 text-white shadow-sm'
-                    }`}>
-                    {lastScanResult.valid ? (
-                      <CheckCircle2 className="w-8 h-8" />
-                    ) : (
-                      <AlertTriangle className="w-8 h-8" />
-                    )}
-                  </div>
-                  <div>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${lastScanResult.valid ? 'text-emerald-800' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-800' : 'text-rose-800'
-                      }`}>
-                      Turnstile Decision • {lastScanResult.scannedAt}
-                    </span>
-                    <h2 className={`text-2xl font-black ${lastScanResult.valid ? 'text-emerald-900' : lastScanResult.result === 'ALREADY_SCANNED' ? 'text-amber-900' : 'text-rose-900'
-                      }`}>
-                      {lastScanResult.valid ? 'ACCESS GRANTED' : 'ACCESS DENIED'}
-                    </h2>
-                  </div>
+        {/* Verification result */}
+        <section className="tl-scan-card tl-scan-resultcard" aria-labelledby="tl-scan-result" aria-live="polite">
+          <h2 id="tl-scan-result">Verification result</h2>
+          {lastScanResult ? (
+            <div className={`tl-scan-verdict2 is-${tone}`}>
+              <div className="tl-scan-verdict2-head">
+                {lastScanResult.valid ? <CheckCircle2 className="w-9 h-9" /> : tone === 'warn' ? <AlertTriangle className="w-9 h-9" /> : <XCircle className="w-9 h-9" />}
+                <div>
+                  <p>{gateNumber} · {lastScanResult.scannedAt}</p>
+                  <h3>{lastScanResult.valid ? 'Access granted' : 'Access denied'}</h3>
                 </div>
-
-                {/* Explanation text */}
-                <div className="p-4 rounded-2xl bg-white border border-slate-200 text-xs space-y-1 shadow-sm">
-                  <div className="font-bold text-slate-900 text-sm">{lastScanResult.message}</div>
-                  {lastScanResult.reason && (
-                    <div className="text-[11px] font-mono text-slate-500">
-                      Reason code: <strong className="text-slate-800">{lastScanResult.reason}</strong>
-                    </div>
-                  )}
-                </div>
-
-                {/* Attendee & Seat Info (if valid or already scanned) */}
-                {lastScanResult.ticket && (
-                  <div className="p-5 rounded-2xl bg-white border border-slate-200 space-y-4 shadow-sm">
-                    <div className="flex justify-between items-start border-b border-slate-100 pb-3">
-                      <div>
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Attendee Name</div>
-                        <div className="font-bold text-slate-900 text-base">
-                          {lastScanResult.ticket.attendee?.name || lastScanResult.ticket.attendee || 'Admitted Fan'}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-[10px] text-slate-400 uppercase font-semibold">Gate Allocation</div>
-                        <div className="font-mono text-[#16a34a] font-bold text-xs">
-                          {gateNumber}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <div className="text-[10px] text-slate-400">Tier</div>
-                        <div className="font-bold text-slate-800 text-xs truncate">
-                          {lastScanResult.ticket.seat?.tierName || 'Standard'}
-                        </div>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <div className="text-[10px] text-slate-400">Row</div>
-                        <div className="font-bold text-sky-700 font-mono text-sm">
-                          {lastScanResult.ticket.seat?.row || 'GA'}
-                        </div>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <div className="text-[10px] text-slate-400">Seat #</div>
-                        <div className="font-bold text-[#16a34a] font-mono text-sm">
-                          #{lastScanResult.ticket.seat?.seatNumber || '1'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-            ) : (
-              <div className="rounded-3xl bg-white border border-slate-200/90 p-8 text-center space-y-3 shadow-sm">
-                <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mx-auto">
-                  <ShieldCheck className="w-7 h-7" />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">Awaiting Attendee Gate Pass</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  When a QR pass is scanned, the result, seat allocation, and attendee credentials will appear on this screen with instant turnstile verification.
-                </p>
-              </div>
-            )}
-
-            {/* Recent Scans Table */}
-            <div className="rounded-3xl bg-white border border-slate-200/90 p-6 space-y-4 shadow-sm">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-[#16a34a]" /> Recent Turnstile Scans Feed
-                </h3>
-                <button
-                  type="button"
-                  onClick={fetchRecentScans}
-                  className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 transition"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" /> Refresh
-                </button>
-              </div>
-
-              {loadingRecent ? (
-                <div className="text-center py-6 text-xs text-slate-400">Loading audit feed...</div>
-              ) : recentScans.length === 0 ? (
-                <div className="text-center py-6 text-xs text-slate-400">No scans recorded yet this session.</div>
-              ) : (
-                <div className="space-y-2 overflow-x-auto">
-                  {recentScans.slice(0, 6).map((scan) => (
-                    <div
-                      key={scan.id}
-                      className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 text-xs hover:bg-slate-100 transition"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className={`w-2 h-2 rounded-full ${scan.result === 'VALID_FIRST_SCAN'
-                          ? 'bg-emerald-500'
-                          : scan.result === 'ALREADY_SCANNED'
-                            ? 'bg-amber-500'
-                            : 'bg-rose-500'
-                          }`} />
-                        <div>
-                          <div className="font-bold text-slate-900">
-                            {scan.ticket?.user?.name || 'Attendee'} • {scan.ticket?.seat?.tier?.name} Row {scan.ticket?.seat?.row} #{scan.ticket?.seat?.seatNumber}
-                          </div>
-                          <div className="text-[10px] text-slate-500 truncate max-w-[240px]">
-                            {scan.ticket?.event?.name} • {scan.gateNumber || 'Gate 1'}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${scan.result === 'VALID_FIRST_SCAN'
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          : scan.result === 'ALREADY_SCANNED'
-                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                            : 'bg-rose-50 text-rose-800 border border-rose-200'
-                          }`}>
-                          {scan.result}
-                        </span>
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          {new Date(scan.scanTime).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <p className="tl-scan-msg">{lastScanResult.message}</p>
+              {lastScanResult.reason && <p className="tl-scan-reason">Reason · {lastScanResult.reason}</p>}
+              {lastScanResult.ticket && (
+                <>
+                  <p className="tl-scan-attendee"><span>Attendee</span>{lastScanResult.ticket.attendee?.name || lastScanResult.ticket.attendee || 'Ticket holder'}</p>
+                  <dl className="tl-scan-seat2">
+                    <div><dt>Tier</dt><dd>{lastScanResult.ticket.seat?.tierName || 'Standard'}</dd></div>
+                    <div><dt>Row</dt><dd>{lastScanResult.ticket.seat?.row || 'GA'}</dd></div>
+                    <div><dt>Seat</dt><dd>#{lastScanResult.ticket.seat?.seatNumber || '1'}</dd></div>
+                  </dl>
+                </>
               )}
             </div>
-
-          </div>
-        </div>
-
+          ) : (
+            <div className="tl-scan-waiting">
+              <ShieldCheck className="w-11 h-11" aria-hidden="true" />
+              <h3>Waiting for a pass</h3>
+              <p>Decision, attendee and seat details appear after scanning.</p>
+            </div>
+          )}
+          {!lastScanResult && (
+            <div className="tl-scan-note">
+              <Info className="w-5 h-5" aria-hidden="true" />
+              <div><strong>No ticket scanned yet</strong><span>Scan a QR code or enter a ticket payload to see verification details here.</span></div>
+            </div>
+          )}
+        </section>
       </div>
+
+      {/* Recent scans */}
+      <section className="tl-scan-card tl-scan-recent" aria-labelledby="tl-scan-recent">
+        <header className="tl-scan-recent-head">
+          <div>
+            <h2 id="tl-scan-recent">Recent scans</h2>
+            <p className="tl-scan-gate">{gateNumber}</p>
+          </div>
+          <div className="tl-scan-legend">
+            <span><i className="is-good" aria-hidden="true" />Admitted {scannerStats.valid}</span>
+            <span><i className="is-warn" aria-hidden="true" />Double entry {scannerStats.doubleEntryBlocked}</span>
+            <span><i className="is-bad" aria-hidden="true" />Invalid {scannerStats.rejected}</span>
+          </div>
+        </header>
+        <div className="tl-scan-gauge">
+          <ArcGauge
+            value={scannerStats.total}
+            caption="Recent scans"
+            parts={[
+              { label: 'Admitted', value: scannerStats.valid, color: SERIES[0] },
+              { label: 'Double entry', value: scannerStats.doubleEntryBlocked, color: SERIES[2] },
+              { label: 'Invalid', value: scannerStats.rejected, color: NEUTRAL },
+            ]}
+          />
+        </div>
+        {recentScans.length === 0 ? (
+          <div className="tl-scan-empty">
+            <p><QrCode className="w-5 h-5" aria-hidden="true" /> {loadingRecent ? 'Loading scans…' : 'No scans recorded yet.'}</p>
+            <span>Scanned tickets will appear here with time, attendee details and verification result.</span>
+          </div>
+        ) : (
+          <div className="tl-dash-table-wrap">
+            <table className="tl-dash-table">
+              <thead>
+                <tr><th>Attendee</th><th>Seat</th><th>Gate</th><th>Result</th><th className="is-num">Time</th></tr>
+              </thead>
+              <tbody>
+                {recentScans.slice(0, 10).map((scan) => (
+                  <tr key={scan.id}>
+                    <td>
+                      <div className="tl-cell-main">{scan.ticket?.user?.name || 'Attendee'}</div>
+                      <div className="tl-cell-sub">{scan.ticket?.event?.name}</div>
+                    </td>
+                    <td className="is-mono">{scan.ticket?.seat?.tier?.name || '—'} · R{scan.ticket?.seat?.row ?? '–'} #{scan.ticket?.seat?.seatNumber ?? '–'}</td>
+                    <td className="is-mono">{(scan.gateNumber || 'Gate 1').split(' - ')[0]}</td>
+                    <td><Status value={scan.result} label={RESULT_LABEL[scan.result] || 'Invalid'} /></td>
+                    <td className="is-num is-mono">{new Date(scan.scanTime).toLocaleTimeString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

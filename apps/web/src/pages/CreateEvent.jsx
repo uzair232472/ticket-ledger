@@ -6,25 +6,48 @@ import { getEventVisual } from '../utils/eventMedia';
 import ImageField, { emptyImageValue, imageValueSrc } from '../components/event-form/ImageField';
 import GalleryField, { galleryItemsFromSaved } from '../components/event-form/GalleryField';
 import {
-  Calendar,
-  Clock,
-  MapPin,
-  Building2,
-  Ticket,
-  Plus,
-  Trash2,
   AlertCircle,
-  CheckCircle2,
   ArrowLeft,
-  Sparkles,
+  ArrowRight,
+  Building2,
+  Check,
+  ChevronRight,
+  CalendarDays,
+  FileText,
+  MapPin,
+  Lightbulb,
+  Monitor,
+  Image as ImageIcon,
+  LayoutGrid,
+  Info,
+  PlusCircle,
+  Trash2,
+  Layers,
+  Tag,
+  Tags,
+  Armchair,
+  BarChart3,
   Send,
+  Sparkles,
   Save,
-  Image as ImageIcon
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const CITIES = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar', 'Quetta'];
+const CATEGORIES = [
+  ['CRICKET_MATCH', '🏏 Cricket Match (PSL)'],
+  ['MUSIC_CONCERT', '🎵 Music Concert'],
+  ['MUSIC_FESTIVAL', '🎪 Music Festival'],
+  ['KABADDI', '🤼 Kabaddi Match'],
+  ['FOOTBALL_MATCH', '⚽ Football Match'],
+  ['BOXING', '🥊 Boxing Match'],
+  ['HOCKEY_MATCH', '🏑 Hockey Match'],
+  ['QAWWALI', '🪘 Qawwali Night'],
+  ['THEATRE', '🎭 Theatre'],
+  ['CONFERENCE', '🎤 Conference'],
+  ['GENERAL_ADMISSION', '🎟️ General Admission'],
+];
 
 const emptyImages = (event) => ({
   banner: emptyImageValue(event?.bannerUrl || null),
@@ -32,7 +55,62 @@ const emptyImages = (event) => ({
   galleryWide: emptyImageValue(event?.galleryWideUrl || null),
 });
 
-/** Create a new event, or (at /organizer/events/:id/edit) edit an existing event's details and images. */
+// Event times are stored as wall-clock text in Pakistan time ("7:00 PM PKT"; older data says "PST").
+// The form uses a native time picker ("19:00") and converts both ways.
+function toTimeInput(text = '') {
+  const m = String(text).match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return '';
+  let h = Number(m[1]) % 12;
+  if (!m[3]) h = Number(m[1]);
+  else if (m[3].toUpperCase() === 'PM') h += 12;
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
+}
+function fromTimeInput(value = '') {
+  if (!value) return '';
+  const [hh, mm] = value.split(':').map(Number);
+  const suffix = hh >= 12 ? 'PM' : 'AM';
+  return `${hh % 12 || 12}:${String(mm).padStart(2, '0')} ${suffix} PKT`;
+}
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+function Field({ id, label, error, wide, children }) {
+  return (
+    <div className={`tl-wz-field${wide ? ' is-wide' : ''}${error ? ' has-error' : ''}`}>
+      <label htmlFor={id}>{label}</label>
+      {children}
+      {error && <p className="tl-wz-error" id={`${id}-error`}><AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />{error}</p>}
+    </div>
+  );
+}
+
+function Tips({ title, intro, items, note }) {
+  return (
+    <aside className="tl-wz-tips" aria-label={title}>
+      <div className="tl-wz-tips-head">
+        <Lightbulb className="w-9 h-9" aria-hidden="true" />
+        <h2>{title}</h2>
+        <p>{intro}</p>
+      </div>
+      {items.map(({ icon: Icon, title: t, text }) => (
+        <div key={t} className="tl-wz-tip">
+          <span aria-hidden="true"><Icon className="w-5 h-5" /></span>
+          <strong>{t}</strong>
+          <p>{text}</p>
+        </div>
+      ))}
+      {note && <p className="tl-wz-tips-note"><Info className="w-4 h-4" aria-hidden="true" />{note}</p>}
+    </aside>
+  );
+}
+
+/**
+ * Create a new event in three steps (details → images → tickets & pricing), or edit one at
+ * /organizer/events/:id/edit. Every step stays mounted, so going back shows exactly what was entered;
+ * "Next" only moves on once the current step is valid.
+ */
 export default function CreateEvent() {
   const navigate = useNavigate();
   const { token } = useAuth();
@@ -40,20 +118,20 @@ export default function CreateEvent() {
   const isEdit = Boolean(editId);
 
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState(null); // 'PRELAUNCH_ANALYSIS' | 'PUBLISHED' | 'SAVE' | null
   const [company, setCompany] = useState(null);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [step, setStep] = useState(0);
 
-  // Event form data
   const [eventData, setEventData] = useState({
     name: '',
     description: '',
     type: 'CRICKET_MATCH',
     date: '',
-    time: '7:00 PM PST',
+    time: '7:00 PM PKT',
     city: 'Lahore',
     venue: '',
-    status: 'PUBLISHED',
     bannerUrl: '',
   });
 
@@ -63,34 +141,26 @@ export default function CreateEvent() {
   const [savedGallery, setSavedGallery] = useState([]);
   const [loadError, setLoadError] = useState('');
 
-  // Dynamic ticket tiers
   const [tiers, setTiers] = useState([
     { name: 'General Enclosure', price: 1500, totalQuantity: 500 },
     { name: 'VIP Pavilion', price: 5000, totalQuantity: 100 },
   ]);
 
-  // Check company approval status
+  // Company approval status
   useEffect(() => {
     async function checkCompanyStatus() {
       try {
         setLoading(true);
-        const res = await fetch(`${API_URL}/api/companies/my-company`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await fetch(`${API_URL}/api/companies/my-company`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await res.json();
-        if (res.ok) {
-          setCompany(data.data.company);
-        }
+        if (res.ok) setCompany(data.data.company);
       } catch (err) {
         console.error('Failed to check company:', err);
       } finally {
         setLoading(false);
       }
     }
-
-    if (token) {
-      checkCompanyStatus();
-    }
+    if (token) checkCompanyStatus();
   }, [token]);
 
   // Edit mode: load the saved event (ownership is checked by the API)
@@ -110,7 +180,6 @@ export default function CreateEvent() {
           time: ev.time,
           city: ev.city,
           venue: ev.venue,
-          status: ev.status,
           bannerUrl: ev.bannerUrl || '',
         });
         setTiers(ev.tiers.map((t) => ({ name: t.name, price: Number(t.price), totalQuantity: t.totalQuantity })));
@@ -125,62 +194,93 @@ export default function CreateEvent() {
     };
   }, [isEdit, editId, token]);
 
+  const update = (key) => (e) => {
+    const value = key === 'time' ? fromTimeInput(e.target.value) : e.target.value;
+    setEventData((prev) => ({ ...prev, [key]: value }));
+    if (fieldErrors[key]) setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
   const setImage = (field) => (value) => setImages((prev) => ({ ...prev, [field]: value }));
 
   // What the event page falls back to when a field is empty (same logic as the attendee pages)
   const artwork = getEventVisual({ type: eventData.type, name: eventData.name }, 0).bannerImage;
   const bannerSrc = imageValueSrc(images.banner);
-  const bannerFallbackLabel = bannerSrc ? 'the Event Banner' : 'the category artwork shown here';
+  const bannerFallbackLabel = bannerSrc ? 'the event banner' : 'the category artwork shown here';
 
-  const handleAddTier = () => {
-    setTiers([...tiers, { name: '', price: 2000, totalQuantity: 100 }]);
+  // ---------- Tiers ----------
+  const handleAddTier = () => setTiers((prev) => [...prev, { name: '', price: 2000, totalQuantity: 100 }]);
+  const handleRemoveTier = (index) => {
+    if (tiers.length <= 1) return;
+    setTiers((prev) => prev.filter((_, i) => i !== index));
+    setFieldErrors({});
+  };
+  const handleTierChange = (index, field, value) => {
+    setTiers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: field === 'name' ? value : Number(value) } : t)));
+    const key = `tier-${index}-${field}`;
+    if (fieldErrors[key]) setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+  const totalCapacity = tiers.reduce((n, t) => n + (Number(t.totalQuantity) || 0), 0);
+
+  // ---------- Validation per step ----------
+  const validateStep = (index) => {
+    const errs = {};
+    if (index === 0) {
+      if (eventData.name.trim().length < 3) errs.name = 'Enter the event name or match title.';
+      if (!eventData.venue.trim()) errs.venue = 'Enter the venue or stadium.';
+      if (!eventData.date) errs.date = 'Choose the event date.';
+      else if (!isEdit && eventData.date < todayIso()) errs.date = 'The date can’t be in the past.';
+      if (!toTimeInput(eventData.time)) errs.time = 'Choose the start time.';
+      if (eventData.description.trim().length < 10) errs.description = 'Add a short description (at least 10 characters).';
+    }
+    if (index === 2 && !isEdit) {
+      tiers.forEach((t, i) => {
+        if (!t.name.trim()) errs[`tier-${i}-name`] = 'Enter a tier name.';
+        if (!(t.price > 0)) errs[`tier-${i}-price`] = 'Enter a price above 0.';
+        if (!(t.totalQuantity > 0)) errs[`tier-${i}-totalQuantity`] = 'Enter at least 1 ticket.';
+      });
+    }
+    return errs;
   };
 
-  const handleRemoveTier = (index) => {
-    if (tiers.length <= 1) {
-      alert('Event must have at least one ticket tier.');
+  // Moves to `target`, checking every step before it; stops (and shows the problems) at the first invalid one
+  const goTo = (target) => {
+    setError('');
+    if (target <= step) {
+      setStep(target);
+      window.scrollTo({ top: 0, behavior: 'instant' });
       return;
     }
-    setTiers(tiers.filter((_, i) => i !== index));
-  };
-
-  const handleTierChange = (index, field, value) => {
-    const updated = [...tiers];
-    updated[index][field] = field === 'price' || field === 'totalQuantity' ? Number(value) : value;
-    setTiers(updated);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
-
-    // Validate tiers
-    for (const t of tiers) {
-      if (!t.name.trim() || t.price <= 0 || t.totalQuantity <= 0) {
-        setError('All ticket tiers must have a valid name, positive price, and quantity.');
-        setSubmitting(false);
+    for (let i = step; i < target; i += 1) {
+      const errs = validateStep(i);
+      if (Object.keys(errs).length) {
+        setStep(i);
+        setFieldErrors(errs);
+        requestAnimationFrame(() => document.getElementById(`ev-${Object.keys(errs)[0]}`)?.focus());
         return;
       }
     }
+    setFieldErrors({});
+    setStep(target);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
 
-    if (isEdit) {
-      await saveEdits();
-      return;
+  // ---------- Save ----------
+  const createEvent = async (status) => {
+    if (submitting) return;
+    for (let i = 0; i < 3; i += 1) {
+      const errs = validateStep(i);
+      if (Object.keys(errs).length) {
+        setStep(i);
+        setFieldErrors(errs);
+        return;
+      }
     }
-
+    setError('');
+    setSubmitting(status);
     try {
       const formData = new FormData();
-      formData.append('name', eventData.name);
-      formData.append('description', eventData.description);
-      formData.append('type', eventData.type);
-      formData.append('date', eventData.date);
-      formData.append('time', eventData.time);
-      formData.append('city', eventData.city);
-      formData.append('venue', eventData.venue);
-      formData.append('status', eventData.status);
+      ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
+      formData.append('status', status);
       formData.append('tiers', JSON.stringify(tiers));
-
       if (images.banner.file) formData.append('banner', images.banner.file);
       if (images.cardImage.file) formData.append('cardImage', images.cardImage.file);
       if (images.galleryWide.file) formData.append('galleryWide', images.galleryWide.file);
@@ -191,25 +291,31 @@ export default function CreateEvent() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create event');
 
-      if (eventData.status === 'PRELAUNCH_ANALYSIS') {
-        navigate(`/demand-forecast?eventId=${data.data.event.id}`);
-      } else {
-        // Step 2 of setup: design the venue plan attendees will book from
-        navigate(`/organizer/events/${data.data.event.id}/venue?setup=1`);
-      }
+      if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${data.data.event.id}`);
+      // Next part of setup: the venue plan attendees book from
+      else navigate(`/organizer/events/${data.data.event.id}/venue?setup=1`);
     } catch (err) {
       setError(err.message);
+      window.scrollTo({ top: 0, behavior: 'instant' });
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
   };
 
   // Details and images in one request; the API swaps images only after every upload succeeds
-  async function saveEdits() {
+  const saveEdits = async () => {
+    if (submitting) return;
+    const errs = validateStep(0);
+    if (Object.keys(errs).length) {
+      setStep(0);
+      setFieldErrors(errs);
+      return;
+    }
+    setError('');
+    setSubmitting('SAVE');
     try {
       const formData = new FormData();
       ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
@@ -229,341 +335,297 @@ export default function CreateEvent() {
       navigate(`/events/${editId}`);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to save changes');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: 'instant' });
     } finally {
-      setSubmitting(false);
+      setSubmitting(null);
     }
-  }
+  };
 
+  // ---------- States ----------
   if (isEdit && loadError) {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-white border border-rose-200 rounded-3xl text-center space-y-4 shadow-sm">
-        <AlertCircle className="w-6 h-6 text-rose-500 mx-auto" />
-        <h2 className="text-xl font-bold text-slate-900">Can’t edit this event</h2>
-        <p className="text-xs text-slate-500">{loadError}</p>
-        <Link to="/organizer/dashboard" className="btn-eventfrog inline-flex items-center gap-1.5 px-5 py-2.5 text-xs shadow-sm">
-          <ArrowLeft className="w-4 h-4" /> Back to dashboard
-        </Link>
+      <div className="tl-wz-card" style={{ maxWidth: 640, margin: '48px auto', textAlign: 'center' }}>
+        <AlertCircle className="w-7 h-7" style={{ margin: '0 auto 12px', color: 'var(--st-rose)' }} />
+        <h2>Can’t edit this event</h2>
+        <p style={{ margin: '8px 0 20px', color: 'var(--st-muted)' }}>{loadError}</p>
+        <Link to="/organizer/dashboard" className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> Back to dashboard</Link>
       </div>
     );
   }
 
   if (loading || (isEdit && !eventData.name)) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
+    return <div className="tl-dash-state"><div className="tl-acct-spinner" style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid var(--st-green)', borderTopColor: 'transparent', animation: 'tl-dash-spin 0.9s linear infinite' }} /></div>;
   }
 
-  // Guard: If company is not approved
   if (!company || company.status !== 'APPROVED') {
     return (
-      <div className="max-w-2xl mx-auto my-12 p-8 bg-white border border-amber-200 rounded-3xl text-center space-y-4 shadow-sm">
-        <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
-          <AlertCircle className="w-6 h-6" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-900">Organizer Verification Required</h2>
-        <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-          As required by TicketLedger governance, only organizers with an <strong>APPROVED</strong> company registration can create and publish ticketed events.
+      <div className="tl-wz-card" style={{ maxWidth: 640, margin: '48px auto', textAlign: 'center' }}>
+        <AlertCircle className="w-7 h-7" style={{ margin: '0 auto 12px', color: 'var(--st-amber)' }} />
+        <h2>Organizer verification required</h2>
+        <p style={{ margin: '8px 0 16px', color: 'var(--st-muted)' }}>
+          Only organizers with an approved company registration can create and publish events.
+          Current status: <strong>{company?.status || 'Not registered'}</strong>.
         </p>
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-700">
-          Current Company Status: <span className="text-amber-600 font-bold">{company?.status || 'NOT_REGISTERED'}</span>
-        </div>
-        <Link
-          to="/company"
-          className="btn-eventfrog inline-flex items-center gap-1.5 px-5 py-2.5 text-xs shadow-sm"
-        >
-          <Building2 className="w-4 h-4" /> Go to Company Verification Portal
-        </Link>
+        <Link to="/company" className="tl-wz-btn tl-wz-btn--green"><Building2 className="w-4 h-4" /> Go to company verification</Link>
       </div>
     );
   }
 
+  const STEPS = [
+    { label: 'Event details', text: 'Tell attendees about your event.' },
+    { label: 'Event images', text: 'Add images for your event.' },
+    { label: 'Tickets & pricing', text: isEdit ? 'Review ticket tiers and save your changes.' : 'Set ticket tiers and choose your next step.' },
+  ];
+  const err = (key) => fieldErrors[key];
+  const backHref = isEdit ? `/events/${editId}` : '/organizer/dashboard';
+
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-16 text-slate-800">
-      {/* Header */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm">
-        <Link
-          to={isEdit ? `/events/${editId}` : '/events'}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#16a34a] transition mb-3"
-        >
-          <ArrowLeft className="w-4 h-4" /> {isEdit ? 'Back to event page' : 'Back to Events'}
-        </Link>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight flex items-center gap-2">
-          <Ticket className="w-6 h-6 text-[#16a34a]" /> {isEdit ? 'Edit Event' : 'Host a New Event'}
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-500 mt-1">
-          {isEdit
-            ? 'Update the details and images attendees see. Nothing changes until you save.'
-            : 'Publish a sports match or music concert with tiered ticket pricing.'}
-        </p>
-      </div>
+    <div>
+      <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
+        <Link to="/organizer/dashboard">Dashboard</Link>
+        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+        {isEdit ? <Link to={`/events/${editId}`}>{eventData.name}</Link> : <span style={{ color: 'var(--st-green)' }}>Create event</span>}
+        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+        <span aria-current="page">{STEPS[step].label}</span>
+      </nav>
 
-      {error && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2 shadow-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-500" />
-          <span>{error}</span>
+      <header className="tl-wz-head">
+        <div>
+          <h1 className="tl-wz-title">{isEdit ? 'Edit event' : 'Create event'}</h1>
+          <p className="tl-wz-step-text">Step {step + 1} of 3 · {STEPS[step].text}</p>
         </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-6 text-xs">
-        {/* Section 1: Event Details */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
-          <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">
-            1. Event Specifications
-          </h2>
-
-          <div>
-            <label className="block text-slate-700 font-semibold mb-1">Event Name / Match Title</label>
-            <input
-              type="text"
-              required
-              value={eventData.name}
-              onChange={(e) => setEventData({ ...eventData, name: e.target.value })}
-              placeholder="e.g. Lahore Qalandars vs Islamabad United - PSL 2026"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">Event Category</label>
-              <select
-                value={eventData.type}
-                onChange={(e) => setEventData({ ...eventData, type: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
+        <ol className="tl-wz-steps" aria-label="Steps">
+          {STEPS.map((s, i) => (
+            <li key={s.label} style={{ display: 'grid' }}>
+              <button
+                type="button"
+                className={`tl-wz-step${i === step ? ' is-current' : i < step ? ' is-done' : ''}`}
+                onClick={() => goTo(i)}
+                disabled={i === step}
+                aria-current={i === step ? 'step' : undefined}
               >
-                <option value="CRICKET_MATCH">🏏 Cricket Match (PSL)</option>
-                <option value="MUSIC_CONCERT">🎵 Music Concert</option>
-                <option value="MUSIC_FESTIVAL">🎪 Music Festival</option>
-                <option value="KABADDI">🤼 Kabaddi Match</option>
-                <option value="FOOTBALL_MATCH">⚽ Football Match</option>
-                <option value="BOXING">🥊 Boxing Match</option>
-                <option value="HOCKEY_MATCH">🏑 Hockey Match</option>
-                <option value="QAWWALI">🪘 Qawwali Night</option>
-                <option value="THEATRE">🎭 Theatre</option>
-                <option value="CONFERENCE">🎤 Conference</option>
-                <option value="GENERAL_ADMISSION">🎟️ General Admission</option>
-              </select>
-            </div>
+                <span className="tl-wz-dot">{i < step ? <Check className="w-4 h-4" /> : i + 1}</span>
+                {s.label}
+              </button>
+            </li>
+          ))}
+        </ol>
+      </header>
 
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">City in Pakistan</label>
-              <select
-                value={eventData.city}
-                onChange={(e) => setEventData({ ...eventData, city: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-              >
-                {(CITIES.includes(eventData.city) ? CITIES : [eventData.city, ...CITIES]).map((city) => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+      {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">Venue / Stadium</label>
-              <input
-                type="text"
-                required
-                value={eventData.venue}
-                onChange={(e) => setEventData({ ...eventData, venue: e.target.value })}
-                placeholder="e.g. Gaddafi Stadium"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">Date</label>
-              <input
-                type="date"
-                required
-                value={eventData.date}
-                onChange={(e) => setEventData({ ...eventData, date: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">Time (PST)</label>
-              <input
-                type="text"
-                required
-                value={eventData.time}
-                onChange={(e) => setEventData({ ...eventData, time: e.target.value })}
-                placeholder="7:00 PM PST"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-slate-700 font-semibold mb-1">Event Description & Lineup</label>
-            <textarea
-              required
-              rows={3}
-              value={eventData.description}
-              onChange={(e) => setEventData({ ...eventData, description: e.target.value })}
-              placeholder="Provide event overview, team rosters, or musical schedule..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-            />
-          </div>
-
-        </div>
-
-        {/* Section 2: Event Images */}
-        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
-          <div className="border-b border-slate-100 pb-2">
-            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-              <ImageIcon className="w-4 h-4 text-[#16a34a]" /> 2. Event Images
-            </h2>
-            <p className="text-[10px] text-slate-500">
-              Previews show how each image is cropped on the event pages. Images that don’t match a ratio can be cropped here.
-            </p>
-          </div>
-
-          <ImageField kind="banner" value={images.banner} onChange={setImage('banner')} fallbackSrc={artwork} fallbackLabel="the category artwork shown here" />
-          <ImageField kind="card" value={images.cardImage} onChange={setImage('cardImage')} fallbackSrc={bannerSrc || artwork} fallbackLabel={bannerFallbackLabel} />
-          <ImageField kind="galleryWide" value={images.galleryWide} onChange={setImage('galleryWide')} fallbackSrc={bannerSrc || artwork} fallbackLabel={bannerFallbackLabel} />
-          <GalleryField items={gallery} onChange={setGallery} savedItems={savedGallery} />
-        </div>
-
-        {/* Section 3: Ticket Tiers & Pricing (set at creation; price changes go through the forecast tools) */}
-        {isEdit ? (
-          <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
-            <h2 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">3. Ticket Tiers</h2>
-            <ul className="divide-y divide-slate-100">
-              {tiers.map((tier) => (
-                <li key={tier.name} className="py-2 flex justify-between gap-4">
-                  <span className="font-semibold text-slate-700">{tier.name}</span>
-                  <span className="font-mono text-slate-500">PKR {tier.price.toLocaleString()} · {tier.totalQuantity} seats</span>
-                </li>
-              ))}
-            </ul>
-            <p className="text-[10px] text-slate-500">
-              Seats, sections and tier quantities are set in{' '}
-              <Link to={`/organizer/events/${editId}/venue`} className="text-[#16a34a] font-semibold hover:underline">Venue &amp; Seating</Link>.{' '}
-              Tiers aren’t edited here. Adjust prices from the{' '}
-              <Link to={`/demand-forecast?eventId=${editId}`} className="text-[#16a34a] font-semibold hover:underline">Pre-Launch Demand Forecast</Link>.
-            </p>
-          </div>
-        ) : (
-        <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">3. Ticket Tiers & Capacity</h2>
-              <p className="text-[10px] text-slate-500">Configure ticket categories and original face value prices.</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleAddTier}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-[#16a34a] text-xs font-semibold border border-emerald-200 transition"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Tier
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {tiers.map((tier, idx) => (
-              <div
-                key={idx}
-                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center"
-              >
-                <div className="sm:col-span-5">
-                  <label className="block text-[10px] text-slate-500 font-semibold mb-1">Tier Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={tier.name}
-                    onChange={(e) => handleTierChange(idx, 'name', e.target.value)}
-                    placeholder="e.g. General Enclosure / VIP"
-                    className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs"
-                  />
-                </div>
-
-                <div className="sm:col-span-3">
-                  <label className="block text-[10px] text-slate-500 font-semibold mb-1">Price (PKR)</label>
-                  <input
-                    type="number"
-                    required
-                    min={100}
-                    value={tier.price}
-                    onChange={(e) => handleTierChange(idx, 'price', e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs font-mono"
-                  />
-                </div>
-
-                <div className="sm:col-span-3">
-                  <label className="block text-[10px] text-slate-500 font-semibold mb-1">Total Quantity</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    value={tier.totalQuantity}
-                    onChange={(e) => handleTierChange(idx, 'totalQuantity', e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-[#22c55e] text-xs font-mono"
-                  />
-                </div>
-
-                <div className="sm:col-span-1 flex items-end justify-center pt-3 sm:pt-0">
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveTier(idx)}
-                    className="p-1.5 text-slate-400 hover:text-rose-500 transition"
-                    title="Remove Tier"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (step < 2) goTo(step + 1);
+        }}
+      >
+        {/* ---------- Step 1: details ---------- */}
+        <div className="tl-wz-body" hidden={step !== 0}>
+          <div className="tl-wz-main">
+            <section className="tl-wz-card">
+              <div className="tl-wz-card-head">
+                <div>
+                  <h2>Event details</h2>
+                  <p>Provide the key details about your event. This information will be visible to attendees.</p>
                 </div>
               </div>
-            ))}
+              <div className="tl-wz-grid">
+                <Field id="ev-name" label="Event name / Match title" error={err('name')} wide>
+                  <input id="ev-name" className="tl-wz-input" type="text" value={eventData.name} onChange={update('name')} placeholder="e.g. Lahore Qalandars vs Islamabad United – PSL 2026" aria-invalid={Boolean(err('name'))} />
+                </Field>
+                <Field id="ev-type" label="Event category">
+                  <select id="ev-type" className="tl-wz-input" value={eventData.type} onChange={update('type')}>
+                    {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </Field>
+                <Field id="ev-city" label="City in Pakistan">
+                  <select id="ev-city" className="tl-wz-input" value={eventData.city} onChange={update('city')}>
+                    {(CITIES.includes(eventData.city) ? CITIES : [eventData.city, ...CITIES]).map((city) => <option key={city} value={city}>{city}</option>)}
+                  </select>
+                </Field>
+                <Field id="ev-venue" label="Venue / Stadium" error={err('venue')} wide>
+                  <input id="ev-venue" className="tl-wz-input" type="text" value={eventData.venue} onChange={update('venue')} placeholder="e.g. Gaddafi Stadium" aria-invalid={Boolean(err('venue'))} />
+                </Field>
+                <Field id="ev-date" label="Date" error={err('date')}>
+                  <input id="ev-date" className="tl-wz-input" type="date" value={eventData.date} min={isEdit ? undefined : todayIso()} onChange={update('date')} aria-invalid={Boolean(err('date'))} />
+                </Field>
+                <Field id="ev-time" label="Time (PKT)" error={err('time')}>
+                  <input id="ev-time" className="tl-wz-input" type="time" value={toTimeInput(eventData.time)} onChange={update('time')} aria-invalid={Boolean(err('time'))} />
+                </Field>
+                <Field id="ev-description" label="Event description & lineup" error={err('description')} wide>
+                  <textarea id="ev-description" className="tl-wz-input" rows={3} value={eventData.description} onChange={update('description')} placeholder="Provide event overview, team rosters, or musical schedule…" aria-invalid={Boolean(err('description'))} />
+                </Field>
+              </div>
+            </section>
           </div>
+          <Tips
+            title="Event setup tips"
+            intro="A few quick tips to help you create a great event listing."
+            items={[
+              { icon: FileText, title: 'Clear and specific title', text: 'Include team names, match type and season (e.g. Lahore Qalandars vs Islamabad United – PSL 2026).' },
+              { icon: MapPin, title: 'Accurate venue and city', text: 'Choose the correct stadium and city so attendees can easily find your event.' },
+              { icon: CalendarDays, title: 'Set the right date and time', text: 'Use the official schedule and local time (PKT) to avoid confusion.' },
+            ]}
+          />
         </div>
-        )}
 
-        {isEdit ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Link
-              to={`/events/${editId}`}
-              className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 shadow-sm transition flex items-center justify-center gap-2"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-3.5 btn-eventfrog text-xs shadow-sm flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              <Save className="w-4 h-4" />
-              {submitting ? 'Saving changes…' : 'Save Changes'}
+        {/* ---------- Step 2: images ---------- */}
+        <div className="tl-wz-body" hidden={step !== 1}>
+          <div className="tl-wz-main">
+            <section className="tl-wz-card">
+              <div className="tl-wz-card-head is-plain">
+                <div>
+                  <h2>Event images</h2>
+                  <p>All images are optional. If you don’t add your own, we’ll use category artwork or photos as fallbacks.</p>
+                </div>
+              </div>
+              <div className="tl-imf-grid">
+                <ImageField kind="banner" value={images.banner} onChange={setImage('banner')} fallbackSrc={artwork} fallbackLabel="the category artwork shown here" />
+                <ImageField kind="card" value={images.cardImage} onChange={setImage('cardImage')} fallbackSrc={bannerSrc || artwork} fallbackLabel={bannerFallbackLabel} />
+                <ImageField kind="galleryWide" value={images.galleryWide} onChange={setImage('galleryWide')} fallbackSrc={bannerSrc || artwork} fallbackLabel={bannerFallbackLabel} />
+                <GalleryField items={gallery} onChange={setGallery} savedItems={savedGallery} />
+              </div>
+            </section>
+          </div>
+          <Tips
+            title="Event image tips"
+            intro="A few quick tips to help you create a great event listing."
+            items={[
+              { icon: Monitor, title: 'Event banner', text: 'Use a wide, eye-catching image. Recommended size: 2400 × 1080 px (20:9), max 8 MB. Formats: JPG, PNG, WebP.' },
+              { icon: ImageIcon, title: 'Event card image', text: 'Shown in listings. Recommended size: 1600 × 1200 px (4:3), max 5 MB. Formats: JPG, PNG, WebP.' },
+              { icon: ImageIcon, title: 'Gallery wide image', text: 'Wide image for the event gallery. Recommended size: 2400 × 1200 px (2:1), max 8 MB.' },
+              { icon: LayoutGrid, title: 'Scrolling gallery', text: 'Add up to 12 square images. Recommended size: 1200 × 1200 px (1:1), max 5 MB each.' },
+            ]}
+            note="If you don’t add images, the banner falls back to category artwork, and the card and gallery images fall back to the banner. The scrolling gallery uses category photos when empty."
+          />
+        </div>
+
+        {/* ---------- Step 3: tickets & pricing ---------- */}
+        <div className="tl-wz-body" hidden={step !== 2}>
+          <div className="tl-wz-main">
+            {isEdit ? (
+              <section className="tl-wz-card">
+                <div className="tl-wz-card-head">
+                  <div>
+                    <h2>Ticket tiers</h2>
+                    <p>Tiers are set when an event is created.</p>
+                  </div>
+                </div>
+                <ul className="tl-tier-readonly">
+                  {tiers.map((tier) => (
+                    <li key={tier.name}><span>{tier.name}</span><span>PKR {tier.price.toLocaleString()} · {tier.totalQuantity} seats</span></li>
+                  ))}
+                </ul>
+                <p className="tl-wz-note">
+                  Seats, sections and tier quantities are set in <Link to={`/organizer/events/${editId}/venue`}>Venue &amp; seating</Link>. Adjust prices
+                  from the <Link to={`/demand-forecast?eventId=${editId}`}>Demand forecast</Link>.
+                </p>
+              </section>
+            ) : (
+              <>
+                <section className="tl-wz-card">
+                  <div className="tl-wz-card-head is-plain">
+                    <div>
+                      <h2>Ticket tiers &amp; capacity</h2>
+                      <p>Create ticket tiers for your event. You can add multiple tiers with different prices and quantities.</p>
+                    </div>
+                    <button type="button" className="tl-wz-btn" style={{ minHeight: 46, padding: '0 20px' }} onClick={handleAddTier}>
+                      <PlusCircle className="w-5 h-5" /> Add tier
+                    </button>
+                  </div>
+                  <div className="tl-tier-list">
+                    {tiers.map((tier, idx) => (
+                      <div key={idx} className="tl-tier-row">
+                        <Field id={`ev-tier-${idx}-name`} label="Tier name" error={err(`tier-${idx}-name`)}>
+                          <input id={`ev-tier-${idx}-name`} className="tl-wz-input" type="text" value={tier.name} onChange={(e) => handleTierChange(idx, 'name', e.target.value)} placeholder="e.g. General Enclosure" />
+                        </Field>
+                        <Field id={`ev-tier-${idx}-price`} label="Price (PKR)" error={err(`tier-${idx}-price`)}>
+                          <input id={`ev-tier-${idx}-price`} className="tl-wz-input" type="number" min={100} value={tier.price} onChange={(e) => handleTierChange(idx, 'price', e.target.value)} />
+                        </Field>
+                        <Field id={`ev-tier-${idx}-totalQuantity`} label="Total quantity" error={err(`tier-${idx}-totalQuantity`)}>
+                          <input id={`ev-tier-${idx}-totalQuantity`} className="tl-wz-input" type="number" min={1} value={tier.totalQuantity} onChange={(e) => handleTierChange(idx, 'totalQuantity', e.target.value)} />
+                        </Field>
+                        <button type="button" className="tl-tier-del" onClick={() => handleRemoveTier(idx)} disabled={tiers.length <= 1} aria-label={`Remove ${tier.name || 'this tier'}`} title={tiers.length <= 1 ? 'An event needs at least one tier' : 'Remove tier'}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="tl-tier-total">
+                    <Layers className="w-5 h-5" aria-hidden="true" />
+                    Total tiers: <b>{tiers.length}</b> <i>•</i> Total capacity: <b>{totalCapacity.toLocaleString()} tickets</b>
+                  </p>
+                </section>
+
+                <section className="tl-wz-card">
+                  <div className="tl-wz-card-head is-plain">
+                    <div>
+                      <h2>Ready for the next step?</h2>
+                      <p>Choose how you’d like to proceed. You can preview demand and adjust prices, or publish directly.</p>
+                    </div>
+                  </div>
+                  <div className="tl-next-options">
+                    <div className="tl-next-option is-recommended">
+                      <span aria-hidden="true"><BarChart3 className="w-6 h-6" /></span>
+                      <strong>Demand forecast</strong>
+                      <p>Preview expected demand and adjust prices before publishing.</p>
+                    </div>
+                    <div className="tl-next-option">
+                      <span aria-hidden="true"><Send className="w-6 h-6" /></span>
+                      <strong>Direct publishing</strong>
+                      <p>Publish with the tier prices entered above. Seating comes next.</p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+          </div>
+          <Tips
+            title="Ticket setup tips"
+            intro="A few quick tips to help you set up your ticket tiers and move forward."
+            items={[
+              { icon: Tag, title: 'Set clear tier names', text: 'Use simple, descriptive names such as General Enclosure, VIP Pavilion or Early Bird so attendees understand their options.' },
+              { icon: Tags, title: 'Check prices and quantities', text: 'Double-check ticket prices and total quantities. Make sure they match your event plan and venue capacity.' },
+              { icon: Armchair, title: 'Seating comes next', text: 'Preview demand and adjust prices, or publish directly. Seating and layout are set up after this step.' },
+            ]}
+          />
+        </div>
+
+        {/* ---------- Footer: back / next ---------- */}
+        <div className="tl-wz-foot">
+          {step === 0 ? (
+            <Link to={backHref} className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> {isEdit ? 'Back to event page' : 'Back to dashboard'}</Link>
+          ) : (
+            <button type="button" className="tl-wz-btn" onClick={() => goTo(step - 1)}>
+              <ArrowLeft className="w-4 h-4" /> Back: {STEPS[step - 1].label}
             </button>
-          </div>
-        ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <button
-            type="submit"
-            onClick={() => setEventData((prev) => ({ ...prev, status: 'PRELAUNCH_ANALYSIS' }))}
-            disabled={submitting}
-            className="w-full py-3.5 btn-eventfrog text-xs shadow-sm flex items-center justify-center gap-2"
-          >
-            <Sparkles className="w-4 h-4" />
-            {submitting ? 'Processing...' : 'Pre-Launch Demand Forecast & Pricing'}
-          </button>
+          )}
 
-          <button
-            type="submit"
-            onClick={() => setEventData((prev) => ({ ...prev, status: 'PUBLISHED' }))}
-            disabled={submitting}
-            className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs border border-slate-300 shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            <Send className="w-4 h-4 text-[#16a34a]" />
-            {submitting ? 'Creating Event...' : 'Publish Directly Without Forecast'}
-          </button>
+          <div className="tl-wz-foot-right">
+            {step < 2 && (
+              <button type="submit" className="tl-wz-btn tl-wz-btn--green">
+                Next: {STEPS[step + 1].label} <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+            {step === 2 && isEdit && (
+              <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={saveEdits} disabled={Boolean(submitting)}>
+                <Save className="w-4 h-4" /> {submitting ? 'Saving changes…' : 'Save changes'}
+              </button>
+            )}
+            {step === 2 && !isEdit && (
+              <>
+                <button type="button" className="tl-wz-btn tl-wz-btn--forecast" onClick={() => createEvent('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting)}>
+                  <Sparkles className="w-4 h-4" /> {submitting === 'PRELAUNCH_ANALYSIS' ? 'Creating…' : 'Pre-launch demand forecast & pricing'}
+                </button>
+                <button type="button" className="tl-wz-btn tl-wz-btn--publish" onClick={() => createEvent('PUBLISHED')} disabled={Boolean(submitting)}>
+                  <Send className="w-4 h-4" /> {submitting === 'PUBLISHED' ? 'Creating event…' : 'Publish directly without forecast'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        )}
       </form>
     </div>
   );

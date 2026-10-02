@@ -4,6 +4,7 @@ import gsap from 'gsap';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import BrandLogo from '../brand/BrandLogo';
+import menuIcon from '../../assets/menu-ticket.png';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -243,16 +244,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
           aria-label={open ? 'Close menu' : 'Open menu'}
           onClick={() => (open ? close(true) : setOpen(true))}
         >
-          {/* Ticket with menu lines (the lines cross into a close mark while the menu is open) */}
-          <svg className="tl-menu-icon" viewBox="76 341 1105 576" aria-hidden="true" focusable="false">
-            <path
-              className="tl-menu-icon-ticket"
-              d="M194 389H1063A70 70 0 0 1 1133 459V541A88 88 0 0 0 1133 717V799A70 70 0 0 1 1063 869H194A70 70 0 0 1 124 799V717A88 88 0 0 0 124 541V459A70 70 0 0 1 194 389Z"
-            />
-            <line className="tl-menu-icon-line tl-menu-icon-line--top" x1="448" y1="531" x2="806" y2="531" />
-            <line className="tl-menu-icon-line tl-menu-icon-line--mid" x1="448" y1="630" x2="806" y2="630" />
-            <line className="tl-menu-icon-line tl-menu-icon-line--bot" x1="448" y1="727" x2="806" y2="727" />
-          </svg>
+          <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
         </button>
 
         <div ref={backdropRef} className="tl-menu-backdrop" aria-hidden="true" onClick={() => close(true)} />

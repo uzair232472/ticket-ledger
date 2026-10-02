@@ -37,6 +37,8 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
       venue: true,
       date: true,
       status: true,
+      bannerUrl: true,
+      cardImageUrl: true,
     },
     orderBy: { date: 'desc' },
   });
