@@ -102,6 +102,22 @@ async function main() {
   });
   console.log('✓ Pending Organizer seeded:', pendingCompany.companyName);
 
+  await prisma.user.upsert({
+    where: { email: 'pending_organizer@ticketledger.pk' },
+    update: { passwordHash, status: 'ACTIVE', role: 'ORGANIZER' },
+    create: {
+      email: 'pending_organizer@ticketledger.pk',
+      name: 'Lahore Live Entertainment',
+      phone: '+923007778890',
+      passwordHash,
+      role: 'ORGANIZER',
+      status: 'ACTIVE',
+      walletAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab',
+      city: 'Lahore',
+      emailVerifiedAt: new Date(),
+    },
+  });
+
   // -------------------------------------------------------------
   // 4. Gate Staff
   // -------------------------------------------------------------
@@ -203,6 +219,36 @@ async function main() {
     },
   });
   console.log('✓ Fraud-like Bot User seeded (Status: SUSPENDED):', fraudUser.email);
+
+  await prisma.user.upsert({
+    where: { email: 'frozen@ticketledger.pk' },
+    update: { passwordHash, status: 'SUSPENDED', role: 'CUSTOMER' },
+    create: {
+      email: 'frozen@ticketledger.pk',
+      name: 'Frozen Test User',
+      phone: '+923999999998',
+      passwordHash,
+      role: 'CUSTOMER',
+      status: 'SUSPENDED',
+      city: 'Lahore',
+      emailVerifiedAt: new Date(),
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { email: 'blacklisted@ticketledger.pk' },
+    update: { passwordHash, status: 'BANNED', role: 'CUSTOMER' },
+    create: {
+      email: 'blacklisted@ticketledger.pk',
+      name: 'Blacklisted Test User',
+      phone: '+923999999997',
+      passwordHash,
+      role: 'CUSTOMER',
+      status: 'BANNED',
+      city: 'Karachi',
+      emailVerifiedAt: new Date(),
+    },
+  });
 
   // -------------------------------------------------------------
   // 7. Abandoned Checkout User (Ready for 1-Click Recovery)

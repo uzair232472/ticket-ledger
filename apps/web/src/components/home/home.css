@@ -1784,7 +1784,6 @@
     bottom: calc(clamp(18px, 4vh, 40px) + 13.2vw + 18px);
   }
 }
-
 @media (prefers-reduced-motion: reduce) {
 
   .tl-home *,

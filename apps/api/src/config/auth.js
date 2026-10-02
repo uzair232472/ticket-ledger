@@ -22,7 +22,7 @@ export const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 export const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 
 // Accounts in these states cannot log in, and their existing sessions are rejected.
-export const BLOCKED_STATUSES = ['SUSPENDED', 'BANNED', 'DEACTIVATED'];
+export const BLOCKED_STATUSES = ['SUSPENDED', 'BANNED', 'DEACTIVATED', 'FROZEN', 'BLACKLISTED'];
 
 // User-facing wording from the Login & Signup brief, section 7
 export const MESSAGES = {

@@ -37,7 +37,7 @@ test('MODULE 18 - Abandoned Intent Dashboard Integration Test Suite', async (t) 
     const data = await res.json();
     assert.equal(res.status, 200);
     assert.ok(data.data.events.length > 0, 'Should find at least 1 event');
-    targetEvent = data.data.events[0];
+    targetEvent = data.data.events.find(e => e.type !== 'CRICKET_MATCH') || data.data.events[0];
   });
 
   // 3. Verify Access Control (Customer must be denied access)

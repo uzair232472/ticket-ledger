@@ -85,7 +85,6 @@ export default function Checkout() {
   const { id: paramId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const eventId = paramId || location.state?.eventId || new URLSearchParams(location.search).get('event');
 
