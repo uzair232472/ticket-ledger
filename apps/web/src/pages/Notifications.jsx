@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import BasicShell from '../components/basic/BasicShell';
 import {
   Bell,
   Check,
@@ -143,270 +144,142 @@ export default function Notifications() {
     return true;
   });
 
+  // Icon per type; the colour comes from the row's tone group (see basic.css)
   const getIcon = (type) => {
-    switch (type) {
-      case 'BOOKING_CONFIRMATION':
-        return <Ticket className="w-5 h-5 text-emerald-400" />;
-      case 'PAYMENT_CONFIRMATION':
-        return <CreditCard className="w-5 h-5 text-teal-400" />;
-      case 'TICKET_ISSUED':
-        return <Sparkles className="w-5 h-5 text-purple-400" />;
-      case 'EVENT_REMINDER':
-        return <Clock className="w-5 h-5 text-amber-400" />;
-      case 'TICKET_TRANSFERRED':
-        return <ArrowRightLeft className="w-5 h-5 text-blue-400" />;
-      case 'RESALE_AVAILABLE':
-        return <Tag className="w-5 h-5 text-emerald-300" />;
-      case 'ORGANIZER_APPROVAL':
-        return <ShieldCheck className="w-5 h-5 text-teal-300" />;
-      case 'ORGANIZER_REJECTION':
-        return <XCircle className="w-5 h-5 text-rose-400" />;
-      case 'FRAUD_ALERT':
-        return <AlertTriangle className="w-5 h-5 text-rose-400" />;
-      case 'ABANDONED_CHECKOUT_REMINDER':
-        return <ShoppingCart className="w-5 h-5 text-amber-300" />;
-      default:
-        return <Bell className="w-5 h-5 text-slate-400" />;
-    }
+    const Icon = NOTIFICATION_TYPES_LIST.find((t) => t.value === type)?.icon || Bell;
+    return <Icon className="w-5 h-5" aria-hidden="true" />;
+  };
+  const toneOf = (type = '') => {
+    if (type.includes('FRAUD') || type.includes('REJECTION')) return 'security';
+    if (type.includes('REMINDER')) return 'reminder';
+    if (type.includes('TRANSFER')) return 'transfer';
+    if (type.includes('ISSUED')) return 'nft';
+    return 'default';
   };
 
-  return (
-    <div className="space-y-6 max-w-5xl mx-auto text-slate-800">
-      {/* Top Banner */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-[#16a34a] flex items-center justify-center font-bold">
-              <Bell className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Notification Center</h1>
-              <p className="text-xs sm:text-sm text-slate-500">
-                Multi-channel notifications via In-App, Nodemailer Email, FCM Push, and Real-Time WebSockets
-              </p>
-            </div>
-          </div>
-        </div>
+  const TABS = [
+    { id: 'ALL', label: `All (${total})` },
+    { id: 'UNREAD', label: `Unread (${unreadCount})` },
+    { id: 'BOOKINGS', label: 'Bookings & Payments' },
+    { id: 'TRANSFERS', label: 'NFTs & Transfers' },
+    { id: 'SECURITY', label: 'Security & Approvals' },
+  ];
 
-        <div className="flex items-center gap-3">
+  return (
+    <BasicShell
+      eyebrow="Your account"
+      title="Notifications"
+      intro={loading ? 'Loading your notification feed…' : `${unreadCount} unread of ${total}. Delivered in-app, by email, by push and in real time.`}
+      actions={
+        <>
           {unreadCount > 0 && (
-            <button
-              onClick={handleMarkAllRead}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 border border-slate-200 transition"
-            >
-              <CheckCheck className="w-4 h-4 text-[#16a34a]" />
-              <span>Mark All Read</span>
+            <button type="button" onClick={handleMarkAllRead} className="tl-btn tl-btn--green">
+              <CheckCheck className="w-4 h-4" aria-hidden="true" /> Mark all read
             </button>
           )}
-
-          <button
-            onClick={fetchNotifications}
-            className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-200 transition"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <button type="button" onClick={fetchNotifications} className="tl-basic-icon-btn" title="Refresh" aria-label="Refresh notifications">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'tl-nt-spin' : ''}`} aria-hidden="true" />
           </button>
-        </div>
-      </div>
-
-      {/* Multi-Channel Protocol Architecture Badges */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-emerald-100 text-[#16a34a]">
-            <Bell className="w-5 h-5" />
+        </>
+      }
+    >
+      <div className="tl-nt">
+        <section aria-label="Notification feed">
+          <div className="tl-nt-tabs" role="group" aria-label="Filter notifications">
+            {TABS.map((tab) => (
+              <button key={tab.id} type="button" className="tl-nt-tab" aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
+                {tab.label}
+              </button>
+            ))}
           </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Database Feed</div>
-            <div className="text-sm font-bold text-slate-900">In-App Alerts</div>
-            <div className="text-[10px] text-emerald-700 font-semibold">Prisma Persistent Storage</div>
-          </div>
-        </div>
 
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-blue-100 text-blue-600">
-            <Mail className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Email Gateway</div>
-            <div className="text-sm font-bold text-slate-900">Nodemailer HTML</div>
-            <div className="text-[10px] text-blue-700 font-semibold">Clean Branded Receipts</div>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-100 text-amber-600">
-            <Smartphone className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Push Notifications</div>
-            <div className="text-sm font-bold text-slate-900">Firebase FCM</div>
-            <div className="text-[10px] text-amber-700 font-semibold">Mobile & Device Tokens</div>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-purple-100 text-purple-600">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-medium">Real-Time Channel</div>
-            <div className="text-sm font-bold text-slate-900">Socket.io</div>
-            <div className="text-[10px] text-purple-700 font-semibold">Targeted User Rooms</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Simulator Section (Module 12 Demonstration) */}
-      <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-              <Send className="w-4 h-4 text-[#16a34a]" /> Multi-Channel Notification Simulator
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Simulate any of the 9 required FYP notification events across In-app, Nodemailer, FCM, and Socket.io
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/notifications/preview-email?type=${selectedType}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 transition shadow-sm"
-              title="Open full rendered Nodemailer HTML email in browser"
-            >
-              <Mail className="w-3.5 h-3.5 text-blue-600" />
-              <span>Preview HTML Email</span>
-            </a>
-
-            <button
-              onClick={handleSimulateNotification}
-              disabled={simulating}
-              className="btn-eventfrog text-xs px-4 py-2 shadow-sm disabled:opacity-50"
-            >
-              {simulating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              <span>Dispatch Test Notification</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-          {NOTIFICATION_TYPES_LIST.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setSelectedType(t.value)}
-              className={`p-3 rounded-2xl border text-left text-xs transition ${selectedType === t.value
-                ? 'bg-emerald-50 border-emerald-500 text-emerald-900 font-bold shadow-sm'
-                : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-            >
-              <t.icon className={`w-3.5 h-3.5 mb-1.5 ${t.color}`} />
-              <div className="truncate text-[11px]">{t.label}</div>
-            </button>
-          ))}
-        </div>
-
-        {simFeedback && (
-          <div className={`mt-3 p-3 rounded-xl text-xs font-semibold ${simFeedback.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
-            }`}>
-            {simFeedback.message}
-          </div>
-        )}
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-        {[
-          { id: 'ALL', label: `All (${total})` },
-          { id: 'UNREAD', label: `Unread (${unreadCount})` },
-          { id: 'BOOKINGS', label: 'Bookings & Payments' },
-          { id: 'TRANSFERS', label: 'NFTs & Transfers' },
-          { id: 'SECURITY', label: 'Security & Approvals' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${activeTab === tab.id
-              ? 'btn-eventfrog text-xs'
-              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-slate-200'
-              }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Notifications List */}
-      <div className="space-y-3">
-        {loading ? (
-          <div className="py-16 text-center text-slate-500">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-[#22c55e]" />
-            <p className="text-sm">Loading notification feed...</p>
-          </div>
-        ) : filteredNotifications.length === 0 ? (
-          <div className="py-16 text-center bg-white rounded-3xl border border-slate-200 shadow-sm">
-            <Bell className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-slate-900">No notifications in this view</h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              You are all caught up! Use the test dispatcher above to simulate notifications.
-            </p>
-          </div>
-        ) : (
-          filteredNotifications.map((item) => (
-            <div
-              key={item.id}
-              className={`p-4 rounded-2xl border transition flex items-start gap-4 ${!item.isRead
-                ? 'bg-white border-2 border-emerald-500/50 shadow-sm'
-                : 'bg-white border border-slate-200 shadow-sm opacity-90'
-                }`}
-            >
-              <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200 shrink-0 mt-0.5">
-                {getIcon(item.type)}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-slate-900">{item.title}</span>
-                    <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 font-semibold">
-                      {item.type.replace(/_/g, ' ')}
-                    </span>
-                    {!item.isRead && (
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    )}
-                  </div>
-                  <span className="text-xs text-slate-400 font-mono">
-                    {new Date(item.createdAt).toLocaleString()}
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-                  {item.message}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0">
-                {!item.isRead && (
-                  <button
-                    onClick={() => handleMarkAsRead(item.id)}
-                    title="Mark read"
-                    className="p-2 rounded-xl text-slate-400 hover:text-[#16a34a] hover:bg-slate-50 transition"
-                  >
-                    <Check className="w-4 h-4" />
-                  </button>
-                )}
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  title="Delete"
-                  className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-slate-50 transition"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
+          {loading ? (
+            <div className="tl-nt-state" aria-busy="true">
+              <RefreshCw className="w-8 h-8 tl-nt-spin" aria-hidden="true" />
+              <p>Loading notification feed...</p>
             </div>
-          ))
-        )}
+          ) : filteredNotifications.length === 0 ? (
+            <div className="tl-nt-state">
+              <Bell className="w-9 h-9" aria-hidden="true" />
+              <h3>No notifications in this view</h3>
+              <p>You are all caught up! Use the test dispatcher to simulate notifications.</p>
+            </div>
+          ) : (
+            <ul className="tl-nt-list">
+              {filteredNotifications.map((item) => (
+                <li key={item.id} className={`tl-nt-item${item.isRead ? '' : ' is-unread'}`} data-tone={toneOf(item.type)}>
+                  <span className="tl-nt-icon">{getIcon(item.type)}</span>
+                  <div>
+                    <div className="tl-nt-top">
+                      <span className="tl-nt-title">{item.title}</span>
+                      <span className="tl-nt-type">{item.type.replace(/_/g, ' ')}</span>
+                      {!item.isRead && <span className="tl-nt-new">New</span>}
+                    </div>
+                    <p className="tl-nt-msg">{item.message}</p>
+                    <time className="tl-nt-time" dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
+                  </div>
+                  <div className="tl-nt-actions">
+                    {!item.isRead && (
+                      <button type="button" onClick={() => handleMarkAsRead(item.id)} title="Mark read" aria-label={`Mark "${item.title}" as read`} className="tl-basic-icon-btn">
+                        <Check className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => handleDelete(item.id)} title="Delete" aria-label={`Delete "${item.title}"`} className="tl-basic-icon-btn tl-nt-delete">
+                      <Trash2 className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <aside className="tl-nt-side">
+          {/* Simulator (Module 12 demonstration) */}
+          <div className="tl-basic-card tl-nt-panel">
+            <p className="tl-basic-label">Test dispatcher</p>
+            <h2 style={{ marginTop: 8 }}>Send a test notification</h2>
+            <p>Pick an event type and dispatch it across in-app, email, push and Socket.io.</p>
+            <div className="tl-nt-types" role="group" aria-label="Notification type">
+              {NOTIFICATION_TYPES_LIST.map((t) => (
+                <button key={t.value} type="button" className="tl-nt-type-opt" aria-pressed={selectedType === t.value} onClick={() => setSelectedType(t.value)}>
+                  <t.icon className="w-4 h-4" aria-hidden="true" />
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="tl-nt-panel-actions">
+              <button type="button" onClick={handleSimulateNotification} disabled={simulating} className="tl-btn tl-btn--green">
+                {simulating ? <RefreshCw className="w-4 h-4 tl-nt-spin" aria-hidden="true" /> : <Send className="w-4 h-4" aria-hidden="true" />}
+                Dispatch test
+              </button>
+              <a
+                href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/notifications/preview-email?type=${selectedType}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tl-btn tl-btn--ghost"
+                title="Open full rendered Nodemailer HTML email in browser"
+              >
+                <Mail className="w-4 h-4" aria-hidden="true" /> Preview HTML email
+              </a>
+            </div>
+            {simFeedback && (
+              <p className={`tl-nt-feedback ${simFeedback.success ? 'is-ok' : 'is-err'}`} role="status">{simFeedback.message}</p>
+            )}
+          </div>
+
+          {/* Delivery channels */}
+          <div className="tl-basic-card tl-nt-panel">
+            <p className="tl-basic-label">Delivery channels</p>
+            <div className="tl-nt-channels">
+              <div className="tl-nt-channel"><Bell className="w-4 h-4" aria-hidden="true" /><strong>In-app alerts</strong><span>Stored with your account</span></div>
+              <div className="tl-nt-channel"><Mail className="w-4 h-4" aria-hidden="true" /><strong>Email</strong><span>Branded HTML via Nodemailer</span></div>
+              <div className="tl-nt-channel"><Smartphone className="w-4 h-4" aria-hidden="true" /><strong>Push</strong><span>Firebase Cloud Messaging</span></div>
+              <div className="tl-nt-channel"><Sparkles className="w-4 h-4" aria-hidden="true" /><strong>Real time</strong><span>Socket.io user rooms</span></div>
+            </div>
+          </div>
+        </aside>
       </div>
-    </div>
+    </BasicShell>
   );
 }

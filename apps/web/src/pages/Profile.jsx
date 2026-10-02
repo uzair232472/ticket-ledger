@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import BasicShell from '../components/basic/BasicShell';
 import {
   User,
   Wallet,
@@ -340,25 +341,23 @@ export default function Profile() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-[#008459]"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-7xl mx-auto py-4 text-slate-800 space-y-6">
-
-      {/* Top Breadcrumb (Eventfrog style) */}
-      <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-        <button onClick={() => setActiveTab('overview')} className="hover:text-slate-900 transition">
-          User account
-        </button>
-        <span>&gt;</span>
-        <span className="font-extrabold text-[#212b36]">{getBreadcrumbLabel()}</span>
-      </div>
+    <BasicShell
+      eyebrow="User account"
+      title={loading ? 'Account' : getBreadcrumbLabel()}
+      intro={loading ? 'Loading your account…' : `Signed in as ${profile?.name || profile?.email || 'you'}.`}
+      actions={
+        !loading && activeTab !== 'overview' && (
+          <button type="button" onClick={() => setActiveTab('overview')} className="tl-btn tl-btn--ghost">
+            Account overview
+          </button>
+        )
+      }
+    >
+    {loading ? (
+      <div className="tl-pf-loading" aria-busy="true" aria-label="Loading account"><span /></div>
+    ) : (
+    <div className="tl-basic-skin tl-pf text-slate-800">
 
       {/* Main Split Layout: Left Sidebar + Right Content */}
       <div className="flex flex-col md:flex-row gap-8 items-start">
@@ -1357,7 +1356,8 @@ export default function Profile() {
 
         </main>
       </div>
-
     </div>
+    )}
+    </BasicShell>
   );
 }

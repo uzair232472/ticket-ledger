@@ -276,7 +276,7 @@
 .tl-px-cell { background: #22c55e; opacity: 0; }
 .tl-px-center { position: absolute; left: 50%; top: 50%; width: 82px; height: 82px; margin: -41px 0 0 -41px; display: grid; place-items: center; background: #fbfbf9; }
 .tl-px-count { font: 500 13px/1 'JetBrains Mono', monospace; color: #0b0b0b; }
-.tl-px-badge { position: absolute; inset: 22px; background: no-repeat 0 50% / auto 100%; opacity: 0; }
+.tl-px-badge { position: absolute; inset: 22px; background: no-repeat 50% 50% / contain; opacity: 0; }
 
 /* ---------- Phones: heading and categories side by side, smaller (reference mobile layout) ---------- */
 @media (max-width: 767px) {

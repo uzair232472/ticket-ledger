@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
-import logoImg from '../../assets/ticketledger-logo.png';
+import BrandLogo from '../brand/BrandLogo';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -95,7 +95,6 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   const buttonRef = useRef(null);
   const panelRef = useRef(null);
   const backdropRef = useRef(null);
-  const ditherRef = useRef(null);
   const timelineRef = useRef(null);
   const savedScrollRef = useRef(0);
   const restoreScrollRef = useRef(true);
@@ -128,8 +127,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
             { clipPath: 'inset(0% 0% 0% 0%)', scale: 1, duration: 0.55, ease: 'power3.inOut' },
             0
           )
-          .fromTo(lines, { yPercent: 110, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.45, ease: 'power3.out', stagger: 0.035 }, 0.22)
-          .fromTo(ditherRef.current, { opacity: 0 }, { opacity: 1, duration: 0.08, repeat: 3, yoyo: true, ease: 'steps(1)' }, 0);
+          .fromTo(lines, { yPercent: 110, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.45, ease: 'power3.out', stagger: 0.035 }, 0.22);
       }
       timelineRef.current = tl;
     }, headerRef);
@@ -233,7 +231,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
     <>
       <header ref={headerRef} className="tl-header" data-tone={tone} data-home-header>
         <Link to="/" className="tl-header-logo" aria-label="TicketLedger home" data-header-logo>
-          <img src={logoImg} alt="TicketLedger" width="156" height="30" />
+          <BrandLogo />
         </Link>
 
         <button
@@ -242,11 +240,19 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
           className="tl-menu-btn"
           aria-expanded={open}
           aria-controls="tl-site-menu"
+          aria-label={open ? 'Close menu' : 'Open menu'}
           onClick={() => (open ? close(true) : setOpen(true))}
         >
-          <span className="tl-menu-btn-dither" ref={ditherRef} aria-hidden="true" />
-          <span>{open ? 'Close' : 'Menu'}</span>
-          <span className="tl-menu-btn-icon" aria-hidden="true" />
+          {/* Ticket with menu lines (the lines cross into a close mark while the menu is open) */}
+          <svg className="tl-menu-icon" viewBox="76 341 1105 576" aria-hidden="true" focusable="false">
+            <path
+              className="tl-menu-icon-ticket"
+              d="M194 389H1063A70 70 0 0 1 1133 459V541A88 88 0 0 0 1133 717V799A70 70 0 0 1 1063 869H194A70 70 0 0 1 124 799V717A88 88 0 0 0 124 541V459A70 70 0 0 1 194 389Z"
+            />
+            <line className="tl-menu-icon-line tl-menu-icon-line--top" x1="448" y1="531" x2="806" y2="531" />
+            <line className="tl-menu-icon-line tl-menu-icon-line--mid" x1="448" y1="630" x2="806" y2="630" />
+            <line className="tl-menu-icon-line tl-menu-icon-line--bot" x1="448" y1="727" x2="806" y2="727" />
+          </svg>
         </button>
 
         <div ref={backdropRef} className="tl-menu-backdrop" aria-hidden="true" onClick={() => close(true)} />

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import AccountShell, { AccountSection } from '../components/account/AccountShell';
+import { STAGE_IMAGE } from '../components/home/homeData';
 import {
   Ticket,
   Calendar,
@@ -44,37 +46,33 @@ export default function MyBookings() {
     fetchBookings();
   }, [token]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <RefreshCw className="w-10 h-10 text-[#22c55e] animate-spin mb-4" />
-        <p className="text-slate-500 text-sm">Loading your ticket ledger bookings...</p>
-      </div>
-    );
-  }
+  const ticketCount = orders.reduce((n, o) => n + (o.tickets?.length || 0), 0);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 py-4 pb-16 text-slate-800">
-      {/* Header */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight flex items-center gap-2">
-            <ShoppingBag className="w-6 h-6 text-[#16a34a]" /> My Ticket Bookings
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            View all confirmed purchases and issued digital passes
-          </p>
-        </div>
-
-        <Link
-          to="/events"
-          className="btn-eventfrog text-xs whitespace-nowrap px-4 py-2.5 shadow-sm"
-        >
-          <Ticket className="w-3.5 h-3.5" />
-          <span>Browse More Events</span>
+    <AccountShell
+      eyebrow="My account · Orders"
+      title={['Your', 'orders']}
+      intro="Every confirmed purchase and the seats issued with it. Open a receipt to see its QR passes."
+      image={STAGE_IMAGE}
+      stats={loading ? [] : [
+        { value: orders.length, label: orders.length === 1 ? 'Order' : 'Orders' },
+        { value: ticketCount, label: ticketCount === 1 ? 'Seat booked' : 'Seats booked' },
+      ]}
+      actions={
+        <Link to="/events" className="tl-btn tl-btn--green">
+          <Ticket className="w-4 h-4" aria-hidden="true" /> Browse more events
         </Link>
-      </div>
-
+      }
+      contentKey={`${loading}-${orders.length}-${Boolean(error)}`}
+    >
+      <AccountSection id="tl-orders" kicker="Booking history" title="Purchases" aside="Orders are listed newest first, with their payment status and the seats in each booking.">
+      {loading ? (
+        <div className="tl-acct-loading">
+          <RefreshCw className="w-10 h-10 text-[#22c55e] animate-spin" />
+          <p>Loading your ticket ledger bookings...</p>
+        </div>
+      ) : (
+      <div className="max-w-7xl mx-auto space-y-8 text-slate-800 pb-32">
       {error && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
@@ -108,6 +106,7 @@ export default function MyBookings() {
             return (
               <div
                 key={order.id}
+                data-reveal
                 className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:shadow-md transition space-y-4 shadow-sm"
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
@@ -188,6 +187,9 @@ export default function MyBookings() {
           })}
         </div>
       )}
-    </div>
+      </div>
+      )}
+      </AccountSection>
+    </AccountShell>
   );
 }

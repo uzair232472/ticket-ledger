@@ -24,7 +24,7 @@ const holeCoverScale = () => {
  * Staggered from→to inside scrubbed animations. A staggered fromTo only pre-renders its first target, so the
  * starting state is set explicitly on every target (reverted with the matchMedia context).
  */
-const staggerTo = (tl, targets, fromVars, toVars, position) => {
+export const staggerTo = (tl, targets, fromVars, toVars, position) => {
   gsap.set(targets, fromVars);
   return tl.to(targets, toVars, position);
 };
@@ -32,7 +32,7 @@ const staggerTo = (tl, targets, fromVars, toVars, position) => {
 /**
  * While `next` slides up over a pinned scene, the scene eases back and darkens (scrubbed by scroll).
  */
-const coverScene = (scene, shade, next) => {
+export const coverScene = (scene, shade, next) => {
   const tl = gsap.timeline({
     defaults: { ease: 'none' },
     scrollTrigger: { trigger: next, start: 'top bottom', end: 'top top', scrub: true },
@@ -96,7 +96,7 @@ const initTrail = (stage, dots, isReadable) => {
 };
 
 /** Jump (without animation) to a point inside a scrubbed scene, e.g. when keyboard focus lands in it. */
-const jumpToProgress = (trigger, progress) => {
+export const jumpToProgress = (trigger, progress) => {
   window.scrollTo({ top: trigger.start + (trigger.end - trigger.start) * progress, behavior: 'instant' });
 };
 
@@ -192,17 +192,15 @@ export function initHomeMotion(root) {
         return `inset(${t}% ${r}% ${b}% ${l}%)`;
       };
 
-      // Where the giant wordmark lands: over the text part of the header logo
+      // Where the giant wordmark lands: over the name in the header logo
       const logoTarget = () => {
-        const logo = headerLogo?.querySelector('img');
-        if (!logo) return { x: 0, y: -200, scale: 0.2 };
-        const lr = logo.getBoundingClientRect();
-        const textLeft = lr.left + lr.width * 0.235;
-        const textWidth = lr.width * 0.765;
-        const scale = textWidth / wordmark.offsetWidth;
+        const name = headerLogo?.querySelector('[data-logo-text]');
+        if (!name) return { x: 0, y: -200, scale: 0.2 };
+        const lr = name.getBoundingClientRect();
+        const scale = lr.width / wordmark.offsetWidth;
         return {
-          x: textLeft - wordmark.offsetLeft,
-          y: lr.top + lr.height * 0.06 - wordmark.offsetTop,
+          x: lr.left - wordmark.offsetLeft,
+          y: lr.top - wordmark.offsetTop,
           scale,
         };
       };

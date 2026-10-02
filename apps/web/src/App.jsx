@@ -52,7 +52,7 @@ import {
   Ticket,
   Settings
 } from 'lucide-react';
-import logoImg from './assets/ticketledger-logo.png';
+import BrandLogo from './components/brand/BrandLogo';
 
 function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -87,11 +87,7 @@ function Navbar() {
         {/* Left: Brand Logo & Integrated Header Search (matching Eventfrog in Image 3) */}
         <div className="flex items-center gap-5 sm:gap-7">
           <Link to="/" className="flex items-center flex-shrink-0">
-            <img
-              src={logoImg}
-              alt="TicketLedger"
-              className="h-8 sm:h-9 w-auto object-contain"
-            />
+            <BrandLogo className="text-[22px] sm:text-[25px]" />
           </Link>
 
           {/* Eventfrog Signature Pill Search Bar */}
@@ -343,7 +339,7 @@ function Footer() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           <div className="space-y-3">
-            <img src={logoImg} alt="TicketLedger" className="h-8 w-auto object-contain" />
+            <BrandLogo className="text-[22px]" />
             <p className="text-slate-500 leading-relaxed text-xs">
               Official verified ticketing platform for live sports, concerts, and stadium festivals. Powered by smart contracts with guaranteed fair pricing.
             </p>
@@ -409,9 +405,15 @@ function Footer() {
 // The homepage and Explore Events have their own fixed header, menu and footer
 function SiteChrome({ children }) {
   const { pathname } = useLocation();
+  const { user } = useAuth();
   // Pages with their own full-bleed header, menu and footer (including the whole booking flow)
   const bookingFlow = /^\/(events\/[^/]+\/(seats|checkout)|checkout|booking-success\/[^/]+|bookings\/[^/]+\/confirmation)\/?$/.test(pathname);
-  return pathname === '/' || pathname === '/events' || /^\/events\/[^/]+\/?$/.test(pathname) || bookingFlow ? null : children;
+  // Fan resale and the ticket pages have their own chrome for the roles that can open them; other roles keep
+  // this navbar around the access notice
+  const customerPage = /^\/(resale|wallet|my-nfts|my-bookings)\/?$/.test(pathname) && ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role);
+  // Profile and notifications are open to every signed-in role and bring their own header and footer
+  const accountPage = /^\/(profile|notifications)\/?$/.test(pathname) && Boolean(user);
+  return pathname === '/' || pathname === '/company' || pathname === '/events' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
 }
 
 export default function App() {
@@ -440,7 +442,7 @@ export default function App() {
               <Route path="/booking-success/:orderId" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div></ProtectedRoute>} />
               <Route path="/bookings/:orderId/confirmation" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><BookingSuccess /></div></ProtectedRoute>} />
 
-              <Route path="/resale" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResaleMarketplace /></div></ProtectedRoute>} />
+              <Route path="/resale" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><ResaleMarketplace /></ProtectedRoute>} />
               <Route path="/login" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Login /></div>} />
               <Route path="/signup" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Signup /></div>} />
               <Route path="/verify" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><VerifyOtp /></div>} />
@@ -448,14 +450,14 @@ export default function App() {
               <Route path="/reset-password" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><ResetPassword /></div>} />
               <Route path="/invite/:token" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><AcceptInvite /></div>} />
               <Route path="/suspended" element={<Suspended />} />
-              <Route path="/company" element={<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><CompanyRegistration /></div>} />
+              <Route path="/company" element={<CompanyRegistration />} />
 
               {/* Protected Customer Routes */}
-              <Route path="/wallet" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><DigitalWallet /></div></ProtectedRoute>} />
-              <Route path="/my-bookings" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyBookings /></div></ProtectedRoute>} />
-              <Route path="/my-nfts" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><MyNFTTickets /></div></ProtectedRoute>} />
-              <Route path="/profile" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Profile /></div></ProtectedRoute>} />
-              <Route path="/notifications" element={<ProtectedRoute><div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6"><Notifications /></div></ProtectedRoute>} />
+              <Route path="/wallet" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><DigitalWallet /></ProtectedRoute>} />
+              <Route path="/my-bookings" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><MyBookings /></ProtectedRoute>} />
+              <Route path="/my-nfts" element={<ProtectedRoute allowedRoles={['CUSTOMER', 'SUPER_ADMIN']}><MyNFTTickets /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
               {/* Protected Gate Staff Scanner */}
               <Route path="/staff/events" element={<ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><StaffEvents /></ProtectedRoute>} />

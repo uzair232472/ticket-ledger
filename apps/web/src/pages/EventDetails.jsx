@@ -14,7 +14,7 @@ import EventTile from '../components/events/EventTile';
 import PixelLoader from '../components/events/PixelLoader';
 import EventGallery from '../components/event-detail/EventGallery';
 import { categoryName } from '../components/home/homeData';
-import logoImg from '../assets/ticketledger-logo.png';
+import markUrl from '../assets/ticketledger-mark.svg';
 import '../components/home/home.css';
 import '../components/events/events.css';
 import '../components/event-detail/detail.css';
@@ -351,7 +351,7 @@ function EventDetailsPage({ id }) {
                     decoding="async"
                     onError={(e) => e.currentTarget.parentElement.classList.add('is-broken')}
                   />
-                  <span className="tl-dt-hero-fallback" aria-hidden="true" style={{ backgroundImage: `url(${logoImg})` }} />
+                  <span className="tl-dt-hero-fallback" aria-hidden="true" style={{ backgroundImage: `url(${markUrl})` }} />
                 </div>
                 <div className="tl-dt-hero-shade" aria-hidden="true" />
                 <div className="tl-dt-hero-top">{backLink}</div>
