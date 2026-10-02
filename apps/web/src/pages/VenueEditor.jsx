@@ -16,6 +16,7 @@ import { ConfirmDialog, NumberField, SelectField, TextField } from '../component
 import { formatPkr, generated, tierPalette } from '../components/venue/venueTheme';
 import { ACCEPT_ATTR, readImageSize } from '../utils/eventImageSpecs';
 import '../components/venue/venue.css';
+import { DashHead, Status } from '../components/dash/DashShell';
 
 const PLAN = { recommended: [3000, 2000], min: [1000, 600], maxBytes: 10 * 1024 * 1024 };
 const PLAN_HELP = 'Recommended: 3000 × 2000 px · Ratio: any (kept as uploaded) · Maximum: 10 MB · Formats: JPG, PNG, WebP';
@@ -565,52 +566,45 @@ export default function VenueEditor() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-5 pb-16 text-slate-800">
-      {/* Header */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <Link to={`/organizer/events/${eventId}/edit`} className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-[#16a34a] transition mb-2">
-            <ArrowLeft className="w-4 h-4" /> Event details
-          </Link>
-          <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight flex items-center gap-2">
-            <LayoutTemplate className="w-6 h-6 text-[#16a34a]" aria-hidden="true" /> Venue &amp; Seating
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {ev.name} · {ev.venue}, {ev.city}
-          </p>
-          <div className="flex flex-wrap gap-2 mt-2 text-[10px] font-bold">
+      <DashHead
+        eyebrow={<Link to={`/organizer/events/${eventId}/edit`}>← Event details</Link>}
+        title="Venue & seating"
+        segment={
+          <span className="tl-dash-actions" style={{ paddingBottom: 6 }}>
             {published ? (
-              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">Published v{published.version} · {new Date(published.publishedAt).toLocaleString()}</span>
+              <Status value="PUBLISHED" label={`Published v${published.version}`} />
             ) : (
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">Not published yet</span>
+              <Status value="DRAFT" label="Not published yet" />
             )}
             {dirty ? (
-              <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">Unsaved changes</span>
+              <Status value="PENDING" label="Unsaved changes" />
             ) : draftPending ? (
-              <span className="px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200">Draft saved · not published</span>
+              <span className="tl-status" data-tone="info">Draft saved · not published</span>
             ) : layout ? (
-              <span className="px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200">Up to date</span>
+              <span className="tl-status">Up to date</span>
             ) : null}
-          </div>
-        </div>
-        {layout && (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <button type="button" className="tl-vm-btn" onClick={undo} disabled={!history.current.past.length} aria-label="Undo"><Undo2 className="w-4 h-4" /></button>
-            <button type="button" className="tl-vm-btn" onClick={redo} disabled={!history.current.future.length} aria-label="Redo"><Redo2 className="w-4 h-4" /></button>
+          </span>
+        }
+        intro={`${ev.name} · ${ev.venue}, ${ev.city}${published ? ` · last published ${new Date(published.publishedAt).toLocaleString()}` : ''}`}
+        actions={layout && (
+          <>
+            <button type="button" className="tl-dash-icon-btn" onClick={undo} disabled={!history.current.past.length} aria-label="Undo"><Undo2 className="w-4 h-4" /></button>
+            <button type="button" className="tl-dash-icon-btn" onClick={redo} disabled={!history.current.future.length} aria-label="Redo"><Redo2 className="w-4 h-4" /></button>
             {(draftPending || dirty) && published && (
-              <button type="button" onClick={discard} className="px-3 py-2 rounded-xl border border-slate-200 font-semibold text-slate-600 hover:bg-slate-50">Discard changes</button>
+              <button type="button" onClick={discard} className="tl-dash-btn">Discard changes</button>
             )}
-            <button type="button" onClick={() => setPreviewKey((k) => k + 1)} className="px-3 py-2 rounded-xl border border-slate-200 font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-1.5">
-              <Eye className="w-4 h-4 text-[#16a34a]" /> Attendee preview
+            <button type="button" onClick={() => setPreviewKey((k) => k + 1)} className="tl-dash-btn">
+              <Eye className="w-4 h-4" /> Attendee preview
             </button>
-            <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy} className="px-3 py-2 rounded-xl border border-slate-300 font-semibold text-slate-800 hover:bg-slate-50 inline-flex items-center gap-1.5 disabled:opacity-50">
+            <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy} className="tl-dash-btn">
               <Save className="w-4 h-4" /> {busy === 'save' ? 'Saving…' : 'Save draft'}
             </button>
-            <button type="button" onClick={publish} disabled={busy || (!dirty && !draftPending)} className="px-4 py-2 btn-eventfrog text-xs inline-flex items-center gap-1.5 disabled:opacity-50">
+            <button type="button" onClick={publish} disabled={busy || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
               <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish'}
             </button>
-          </div>
+          </>
         )}
-      </div>
+      />
 
       {setup && (
         <Banner tone="info" icon={LayoutTemplate}>

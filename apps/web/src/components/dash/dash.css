@@ -1,0 +1,643 @@
+/*
+ * Organizer, Super Admin and Gate Staff consoles. No theme of their own: every piece is taken from the
+ * existing pages and only arranged into a dashboard layout.
+ *   Explore Events  - paper background + grain, tight 500-weight headings, slash-separated mono category
+ *                     row (console nav, tabs), 2px chips, black mono button, b/w photo event tiles
+ *   Event details   - mono uppercase status tags, label/value rows, hairline tier rows, green accent
+ *   Home / account  - .tl-btn buttons, night (#07110b) sections with green titles, green-bordered stats,
+ *                     numbered rows
+ *   NFT tickets     - event photo banner with gradient, token badge and seat line over the image
+ * Static by design: no scroll scenes or entry animations. Scoped under .tl-dash (with .tl-home for the
+ * shared header, menu, buttons and footer).
+ */
+
+.tl-dash {
+  --ds-paper: #f2f3ef;
+  --ds-card: #fbfbf8;
+  --ds-ink: #0b0b0b;
+  --ds-muted: #4b5563;
+  --ds-faint: rgba(11, 11, 11, 0.55);
+  --ds-line: rgba(11, 11, 11, 0.12);
+  --ds-line-strong: rgba(11, 11, 11, 0.28);
+  --ds-grid: rgba(11, 11, 11, 0.08);
+  --ds-gutter: clamp(16px, 2.4vw, 32px);
+  /* Chart series: the product green first; blue and amber are the notification tones
+     (validated for lightness band, colour-blind separation and contrast on the paper card) */
+  --ds-s1: #16a34a;
+  --ds-s2: #2563eb;
+  --ds-s3: #d97706;
+  --ds-s4: #a8a29e;
+  --ds-fill-track: rgba(22, 163, 74, 0.08);
+  --ds-fill-back: rgba(134, 239, 172, 0.7);
+  --ds-good: #15803d;
+  --ds-warn: #b45309;
+  --ds-bad: #be123c;
+  background: var(--ds-paper);
+  color: var(--ds-ink);
+  min-height: 100vh;
+}
+/* Fine paper grain, as on Explore Events */
+.tl-dash::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.tl-dash :focus-visible { outline: 2px solid var(--ds-ink); outline-offset: 3px; }
+.tl-dash .tl-footer { min-height: 0; }
+/* Keep the dark header logo readable over dense content, as Explore does over photos */
+.tl-dash .tl-header-logo { padding: 6px 10px; margin-left: -10px; border-radius: 3px; background: rgba(242, 243, 239, 0.88); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.tl-dash .tl-menu-btn { border-radius: 3px; background: rgba(242, 243, 239, 0.88); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.tl-dash .tl-header[data-at-footer='true'] .tl-header-logo, .tl-dash .tl-header[data-at-footer='true'] .tl-menu-btn { background: transparent; }
+
+/* No z-index here, so page dialogs (position: fixed) can rise above the header */
+.tl-dash-main {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(110px, 15vh, 150px) var(--ds-gutter) clamp(64px, 10vh, 110px);
+}
+/* Legacy dialogs used z-50, under the fixed header (z 60) */
+.tl-dash .fixed.inset-0.z-50 { z-index: 70; }
+
+/* ---------- Console nav: the Explore category row ---------- */
+.tl-dash-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding: 12px 0;
+  margin-bottom: clamp(24px, 4vh, 40px);
+  border-top: 1px solid rgba(11, 11, 11, 0.14);
+  border-bottom: 1px solid rgba(11, 11, 11, 0.14);
+}
+.tl-dash-nav-label { font: 600 12px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--tl-green-dark); }
+.tl-dash-nav-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; }
+.tl-dash-nav-link, .tl-dash-seg button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: var(--ds-ink);
+  font: 500 12px/1 'JetBrains Mono', 'Roboto Mono', monospace;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-underline-offset: 5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* Slash separators sit outside each link box, so the active underline covers only the label */
+.tl-dash-nav-link + .tl-dash-nav-link, .tl-dash-seg button + button { margin-left: 28px; }
+.tl-dash-nav-link + .tl-dash-nav-link::before, .tl-dash-seg button + button::before { content: '/'; position: absolute; left: -19px; opacity: 0.35; pointer-events: none; }
+.tl-dash-nav-link:hover, .tl-dash-seg button:hover { text-decoration: underline; text-decoration-color: rgba(11, 11, 11, 0.35); }
+.tl-dash-nav-link.is-active, .tl-dash-seg button[aria-pressed='true'] { text-decoration: underline; text-decoration-thickness: 1px; }
+.tl-dash-nav-link:not(.is-active), .tl-dash-seg button[aria-pressed='false'] { opacity: 0.6; }
+.tl-dash-nav-link:not(.is-active):hover, .tl-dash-seg button[aria-pressed='false']:hover { opacity: 1; }
+
+/* ---------- Page heading: Explore's editorial title, segmented row underneath ---------- */
+.tl-dash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px 40px;
+  margin-bottom: 22px;
+}
+.tl-dash-head > div:first-child { min-width: 0; max-width: 100%; }
+.tl-dash-eyebrow { font: 600 12px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--tl-green-dark); margin-bottom: 12px; }
+.tl-dash-eyebrow a { text-decoration: underline; text-underline-offset: 4px; }
+/* Filter row under the heading (Explore's search/filter bar) */
+.tl-dash-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 10px 0; margin-bottom: 22px; border-top: 1px solid rgba(11, 11, 11, 0.14); border-bottom: 1px solid rgba(11, 11, 11, 0.14); }
+.tl-dash-filter .tl-dash-select { min-width: min(320px, 100%); }
+.tl-dash-title { font-size: clamp(40px, 6vw, 88px); line-height: 0.88; font-weight: 500; letter-spacing: -0.045em; overflow-wrap: anywhere; }
+.tl-dash-intro { margin-top: 16px; max-width: 640px; font-size: 16px; line-height: 1.55; color: var(--ds-muted); }
+.tl-dash-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Segmented control = the Explore slash row (shares the nav-link rules above) */
+.tl-dash-seg { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; max-width: 100%; }
+.tl-dash-seg svg { display: none; }
+.tl-dash-seg-count { opacity: 0.6; }
+.tl-dash-seg-count::before { content: '('; }
+.tl-dash-seg-count::after { content: ')'; }
+
+/* Buttons: the homepage .tl-btn (mono, uppercase, 6px) */
+.tl-dash-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--ds-line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ds-ink);
+  font: 700 12px/1 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.tl-dash-btn:hover:not(:disabled) { border-color: var(--ds-ink); background: rgba(11, 11, 11, 0.04); }
+.tl-dash-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Explore's black "Load more" button */
+.tl-dash-btn--ink { background: var(--ds-ink); border-color: var(--ds-ink); color: #fff; border-radius: 2px; }
+.tl-dash-btn--ink:hover:not(:disabled) { background: #262626; border-color: #262626; }
+.tl-dash-btn--green { background: var(--tl-green); border-color: var(--tl-green); color: var(--tl-ink); }
+.tl-dash-btn--green:hover:not(:disabled) { background: #4ade80; border-color: #4ade80; box-shadow: 0 6px 24px rgba(34, 197, 94, 0.35); }
+.tl-dash-btn--danger { color: var(--ds-bad); border-color: rgba(190, 18, 60, 0.4); }
+.tl-dash-btn--danger:hover:not(:disabled) { border-color: var(--ds-bad); background: rgba(190, 18, 60, 0.05); }
+.tl-dash-btn--sm { min-height: 34px; padding: 0 12px; font-size: 11px; gap: 6px; }
+/* Square icon button (Profile / Notifications) */
+.tl-dash-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  border: 1.5px solid var(--ds-line-strong);
+  background: transparent;
+  color: var(--ds-ink);
+  cursor: pointer;
+}
+.tl-dash-icon-btn:hover:not(:disabled) { border-color: var(--ds-ink); background: rgba(11, 11, 11, 0.04); }
+.tl-dash-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.tl-dash-spin { animation: tl-dash-spin 0.9s linear infinite; }
+@keyframes tl-dash-spin { to { transform: rotate(360deg); } }
+
+/* Fields: Explore's underlined search and chevron select, on a paper card */
+.tl-dash-select, .tl-dash-input {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--ds-line-strong);
+  border-radius: 4px;
+  background: var(--ds-card);
+  color: var(--ds-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.tl-dash-select {
+  appearance: none;
+  padding-right: 34px;
+  max-width: 100%;
+  background: var(--ds-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%230b0b0b' fill='none'/%3E%3C/svg%3E") no-repeat right 14px center;
+  cursor: pointer;
+}
+.tl-dash-input { font-weight: 500; min-width: 0; }
+.tl-dash-input::placeholder { color: rgba(11, 11, 11, 0.45); }
+.tl-dash-select:focus, .tl-dash-input:focus { outline: none; border-color: var(--ds-ink); box-shadow: 0 0 0 1px var(--ds-ink); }
+.tl-dash-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-line-strong);
+  border-radius: 4px;
+  background: var(--ds-card);
+  color: var(--ds-ink);
+  font: 500 12px/1.5 'JetBrains Mono', monospace;
+  resize: vertical;
+}
+.tl-dash-textarea:focus { outline: none; border-color: var(--ds-ink); box-shadow: 0 0 0 1px var(--ds-ink); }
+.tl-dash-search { position: relative; display: flex; align-items: center; flex: 1 1 240px; }
+.tl-dash-search svg { position: absolute; left: 14px; color: var(--ds-faint); pointer-events: none; }
+.tl-dash-search .tl-dash-input { width: 100%; padding-left: 40px; }
+.tl-dash-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+
+/* ---------- Bento grid ---------- */
+.tl-dash-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
+.tl-dash-grid + .tl-dash-grid { margin-top: 16px; }
+.tl-span-3 { grid-column: span 3; }
+.tl-span-4 { grid-column: span 4; }
+.tl-span-5 { grid-column: span 5; }
+.tl-span-6 { grid-column: span 6; }
+.tl-span-7 { grid-column: span 7; }
+.tl-span-8 { grid-column: span 8; }
+.tl-span-12 { grid-column: span 12; }
+/* KPI trio + side panel: three stats in the first 9 columns, the panel spans two rows on the right */
+.tl-dash-kpis { grid-column: span 9; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.tl-dash-side { grid-column: span 3; grid-row: span 2; }
+.tl-dash-under { grid-column: span 9; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 1199px) {
+  .tl-dash-kpis, .tl-dash-under { grid-column: span 12; }
+  .tl-dash-side { grid-column: span 12; grid-row: auto; }
+  .tl-span-3, .tl-span-4, .tl-span-5 { grid-column: span 6; }
+  .tl-span-7, .tl-span-8 { grid-column: span 12; }
+}
+@media (max-width: 767px) {
+  .tl-dash-main { padding-top: 104px; }
+  .tl-dash-kpis, .tl-dash-under { grid-template-columns: 1fr; }
+  .tl-span-3, .tl-span-4, .tl-span-5, .tl-span-6 { grid-column: span 12; }
+  .tl-dash-title { font-size: clamp(36px, 11vw, 52px); line-height: 0.95; }
+}
+
+/* ---------- Cards: the Profile / Notifications paper card ---------- */
+.tl-dash-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 22px;
+  background: var(--ds-card);
+  border: 1px solid var(--ds-line);
+  border-radius: 6px;
+}
+.tl-dash-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.tl-dash-card-title { font-size: 22px; line-height: 1.15; font-weight: 500; letter-spacing: -0.03em; }
+.tl-dash-card-sub { margin-top: 6px; font: 500 11px/1.4 'JetBrains Mono', monospace; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ds-faint); }
+.tl-dash-card-link {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1.5px solid var(--ds-line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ds-ink);
+  cursor: pointer;
+}
+.tl-dash-card-link:hover { border-color: var(--ds-ink); background: rgba(11, 11, 11, 0.04); }
+.tl-dash-card-body { flex: 1; min-width: 0; }
+
+/* KPI: the account page stat (green left rule, mono label, big figure) on a paper card */
+.tl-dash-kpi { border-left: 3px solid var(--dot, var(--tl-green)); }
+.tl-dash-kpi-label { font: 600 11px/1.3 'JetBrains Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ds-faint); }
+.tl-dash-figure {
+  margin: 18px 0 16px;
+  font-size: clamp(40px, 3.8vw, 58px);
+  line-height: 0.95;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.tl-dash-figure-unit { font: 600 12px/1 'JetBrains Mono', monospace; letter-spacing: 0.06em; color: var(--ds-faint); margin-right: 8px; vertical-align: 0.9em; }
+.tl-dash-figure--md { font-size: clamp(32px, 2.8vw, 42px); margin: 4px 0 14px; }
+/* Chip: the Explore filter chip (2px, hairline border, mono) */
+.tl-dash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(11, 11, 11, 0.22);
+  border-radius: 2px;
+  color: var(--ds-ink);
+  font: 500 11px/1.2 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.tl-dash-chip svg { flex-shrink: 0; opacity: 0.7; }
+.tl-dash-chip[data-tone='good'] svg { color: var(--ds-good); opacity: 1; }
+.tl-dash-chip[data-tone='warn'] svg { color: var(--ds-warn); opacity: 1; }
+.tl-dash-chip[data-tone='bad'] svg { color: var(--ds-bad); opacity: 1; }
+.tl-dash-kpi-foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+
+/* ---------- Side panel: a homepage night section (green title, numbered rows) ---------- */
+.tl-dash-night {
+  background: var(--tl-night);
+  border-color: var(--tl-night);
+  color: #fff;
+}
+.tl-dash-panel-tag { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: #4ade80; }
+.tl-dash-panel-title { margin: 14px 0 18px; font-size: clamp(28px, 2.4vw, 38px); line-height: 0.95; font-weight: 800; letter-spacing: -0.05em; color: var(--tl-green); overflow-wrap: anywhere; }
+.tl-dash-tiles { display: grid; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.tl-dash-tile {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 4px 12px;
+  width: 100%;
+  padding: 16px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: none;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+div.tl-dash-tile { cursor: default; }
+.tl-dash-tile-num { grid-row: span 2; font-size: 22px; line-height: 1; font-weight: 800; letter-spacing: -0.04em; color: var(--tl-green); }
+.tl-dash-tile-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tl-dash-tile-name { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.tl-dash-tile-name svg { color: #4ade80; flex-shrink: 0; }
+.tl-dash-tile-value { padding: 5px 7px; border-radius: 2px; background: var(--tl-green); color: var(--tl-ink); font: 700 11px/1 'JetBrains Mono', monospace; }
+.tl-dash-tile p { font-size: 13px; line-height: 1.5; color: rgba(255, 255, 255, 0.7); }
+a.tl-dash-tile:hover .tl-dash-tile-name, button.tl-dash-tile:hover .tl-dash-tile-name { text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #4ade80; }
+.tl-dash-ask { position: relative; display: flex; align-items: center; margin-top: auto; padding-top: 18px; }
+.tl-dash-ask svg { position: absolute; left: 14px; bottom: 15px; color: #4ade80; pointer-events: none; }
+.tl-dash-ask input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px 0 40px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-size: 14px;
+}
+.tl-dash-skin .tl-dash-ask input { background-color: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.3); }
+.tl-dash-skin .tl-dash-ask input:focus { border-color: #4ade80; box-shadow: none; }
+.tl-dash-ask input::placeholder { color: rgba(255, 255, 255, 0.45); }
+.tl-dash-ask input:focus { outline: none; border-color: #4ade80; }
+.tl-dash-night .tl-dash-btn, .tl-ticket .tl-dash-btn { border-color: rgba(255, 255, 255, 0.55); color: #fff; background: rgba(0, 0, 0, 0.25); width: 100%; }
+.tl-dash-night .tl-dash-btn:hover, .tl-ticket .tl-dash-btn:hover { border-color: #fff; background: rgba(0, 0, 0, 0.45); }
+.tl-dash-night :focus-visible, .tl-ticket :focus-visible { outline-color: #4ade80; }
+.tl-dash-side .tl-dash-card-body { display: flex; flex-direction: column; }
+
+/* ---------- Charts ---------- */
+.tl-chart { position: relative; width: 100%; }
+.tl-chart svg { display: block; overflow: visible; }
+.tl-chart-axis { font: 500 10.5px/1 'JetBrains Mono', monospace; fill: var(--ds-faint); }
+.tl-chart-grid { stroke: var(--ds-grid); stroke-width: 1; }
+.tl-chart-cross { stroke: var(--ds-ink); stroke-width: 1; stroke-dasharray: 3 3; }
+.tl-chart-tip {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  min-width: 120px;
+  padding: 8px 10px;
+  border-radius: 2px;
+  background: var(--ds-ink);
+  color: #fff;
+  font: 500 11px/1.5 'JetBrains Mono', monospace;
+  transform: translate(-50%, calc(-100% - 10px));
+  white-space: nowrap;
+}
+.tl-chart-tip strong { display: block; font: 600 15px/1.3 'Plus Jakarta Sans', sans-serif; font-variant-numeric: tabular-nums; }
+.tl-chart-tip span { opacity: 0.75; text-transform: uppercase; }
+.tl-chart-tip-row { display: flex; align-items: center; gap: 6px; }
+.tl-chart-tip-row strong { font-size: 12px; }
+.tl-chart-empty { display: grid; place-items: center; min-height: 160px; padding: 20px; border: 1px dashed var(--ds-line-strong); border-radius: 2px; font: 500 12px/1.4 'JetBrains Mono', monospace; text-transform: uppercase; color: var(--ds-faint); text-align: center; }
+
+.tl-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font: 500 11px/1.3 'JetBrains Mono', monospace; text-transform: uppercase; color: var(--ds-muted); }
+.tl-legend-item { display: inline-flex; align-items: center; gap: 7px; }
+.tl-legend-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--sw); }
+.tl-legend-item strong { color: var(--ds-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.tl-split { display: flex; gap: 2px; height: 8px; margin-top: 16px; }
+.tl-split span { height: 100%; border-radius: 2px; background: var(--sw); min-width: 4px; }
+
+.tl-fill { display: grid; justify-items: center; gap: 4px; padding: 4px 0; }
+.tl-fill svg { width: min(190px, 100%); height: auto; }
+.tl-fill-value { font-size: 30px; font-weight: 600; letter-spacing: -0.03em; fill: #fff; }
+.tl-fill-value.is-low { fill: var(--ds-ink); }
+
+.tl-arc { position: relative; display: grid; justify-items: center; }
+.tl-arc svg { width: min(270px, 100%); height: auto; }
+.tl-arc-center { position: absolute; left: 0; right: 0; top: 44%; transform: translateY(-50%); text-align: center; }
+.tl-arc-center strong { display: block; font-size: clamp(32px, 2.8vw, 44px); line-height: 1; font-weight: 500; letter-spacing: -0.045em; }
+.tl-arc-center span { display: block; margin-top: 8px; font: 500 11px/1.2 'JetBrains Mono', monospace; text-transform: uppercase; color: var(--ds-faint); }
+.tl-arc .tl-legend { justify-content: center; margin-top: 4px; }
+
+.tl-meter { display: inline-flex; align-items: center; gap: 8px; }
+.tl-meter-track { width: 64px; height: 6px; border-radius: 2px; background: rgba(11, 11, 11, 0.08); overflow: hidden; }
+.tl-meter-fill { height: 100%; border-radius: 2px; background: var(--ds-s1); }
+.tl-meter span { font: 600 11px/1 'JetBrains Mono', monospace; color: var(--ds-muted); }
+
+/* ---------- Tables: the event page tier rows (hairlines, mono headers) ---------- */
+.tl-dash-table-wrap { overflow-x: auto; }
+.tl-dash-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tl-dash-table th {
+  padding: 0 14px 12px 0;
+  text-align: left;
+  font: 500 11px/1.2 'JetBrains Mono', monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-faint);
+  border-bottom: 1px solid var(--ds-line-strong);
+  white-space: nowrap;
+}
+.tl-dash-table td { padding: 14px 14px 14px 0; border-bottom: 1px solid var(--ds-line); vertical-align: middle; }
+.tl-dash-table tr:last-child td { border-bottom: 0; }
+.tl-dash-table .is-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-dash-table .is-mono { font: 500 12px/1.4 'JetBrains Mono', monospace; }
+.tl-dash-table .is-right { text-align: right; }
+.tl-cell-main { font-weight: 600; color: var(--ds-ink); }
+.tl-cell-sub { margin-top: 3px; font-size: 13px; color: var(--ds-muted); }
+.tl-cell-icon { display: flex; align-items: center; gap: 12px; }
+/* Event thumbnail: the Explore tile photo in miniature (b/w, colour on row hover) */
+.tl-cell-thumb { position: relative; flex-shrink: 0; width: 64px; aspect-ratio: 503 / 377; border-radius: 2px; overflow: hidden; background: #dfe0db; }
+.tl-cell-thumb img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; display: block; filter: grayscale(1); }
+.tl-dash-table tr:hover .tl-cell-thumb img { filter: none; }
+.tl-cell-badge { display: inline-grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 2px; background: var(--ds-ink); color: #4ade80; }
+.tl-dash-row-actions { display: inline-flex; flex-wrap: nowrap; gap: 6px; }
+
+/* Status: the event page status tag (mono, uppercase, 2px) */
+.tl-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 2px;
+  background: rgba(11, 11, 11, 0.08);
+  color: var(--ds-ink);
+  font: 600 10.5px/1 'JetBrains Mono', monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tl-status[data-tone='good'] { background: var(--tl-green); color: #04140a; }
+.tl-status[data-tone='warn'] { background: #fde68a; color: #422006; }
+.tl-status[data-tone='bad'] { background: #f87171; color: #1a0505; }
+.tl-status[data-tone='info'] { background: #bfdbfe; color: #0b1a3d; }
+
+/* ---------- Notices, states ---------- */
+.tl-dash-notice { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: 4px; font-size: 14px; font-weight: 600; }
+.tl-dash-notice > span { flex: 1; }
+.tl-dash-notice[data-tone='good'] { background: rgba(34, 197, 94, 0.14); color: #14532d; }
+.tl-dash-notice[data-tone='bad'] { background: rgba(225, 29, 72, 0.1); color: #9f1239; }
+.tl-dash-notice[data-tone='warn'] { background: rgba(245, 158, 11, 0.14); color: #78350f; }
+.tl-dash-notice button { background: none; border: 0; color: inherit; font: 600 12px/1 'JetBrains Mono', monospace; text-transform: uppercase; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.tl-dash-state { display: grid; justify-items: center; gap: 10px; padding: 56px 16px; text-align: center; font-size: 15px; color: var(--ds-muted); }
+.tl-dash-state h3 { font-size: 20px; font-weight: 700; color: var(--ds-ink); }
+.tl-dash-state svg { color: var(--tl-green-dark); }
+
+.tl-dash-feed { display: grid; border-top: 1px solid var(--ds-line); }
+.tl-dash-feed-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 14px 0; border-bottom: 1px solid var(--ds-line); }
+.tl-dash-feed-item time { font: 500 11px/1.4 'JetBrains Mono', monospace; color: var(--ds-faint); text-align: right; }
+
+/* Label / value list: the event page "details" rows */
+.tl-dash-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 22px 32px; }
+.tl-dash-kv dt { font-size: 14px; color: var(--ds-faint); margin-bottom: 6px; }
+.tl-dash-kv dd { font-size: 16px; line-height: 1.4; font-weight: 500; }
+
+/* Dialog: paper card */
+.tl-dash-dialog-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; background: rgba(5, 11, 7, 0.6); }
+.tl-dash-dialog { width: min(480px, 100%); padding: 26px; border-radius: 6px; background: var(--ds-card); color: var(--ds-ink); }
+.tl-dash-dialog h3 { font-size: 30px; line-height: 1; font-weight: 500; letter-spacing: -0.04em; }
+.tl-dash-dialog p { margin-top: 10px; font-size: 14px; color: var(--ds-muted); }
+.tl-dash-dialog label { display: block; margin: 20px 0 8px; font: 500 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ds-faint); }
+.tl-dash-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* ---------- Event tiles (Explore Events), static ---------- */
+.tl-dash .tl-tile { animation: none; }
+.tl-dash .tl-tile-media { transform: none; transition: none; }
+.tl-dash .tl-tile-img { transition: none; }
+/* No cursor-following mask here: the b/w layer simply gives way to colour on hover/focus */
+.tl-dash .tl-tile-gray { -webkit-mask-image: none; mask-image: none; }
+.tl-dash .tl-tile:hover .tl-tile-gray, .tl-dash .tl-tile-link:focus-visible .tl-tile-gray { opacity: 0; }
+.tl-dash-tiles-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px 16px; }
+@media (max-width: 1199px) { .tl-dash-tiles-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 639px) { .tl-dash-tiles-row { grid-template-columns: 1fr; } }
+.tl-dash .tl-tile-flag.is-live { background: var(--tl-green); color: #04140a; }
+.tl-dash-tile-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; }
+.tl-dash-tile-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; font: 500 12px/1 'JetBrains Mono', monospace; text-transform: uppercase; }
+.tl-dash-tile-actions a { min-height: 28px; display: inline-flex; align-items: center; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(11, 11, 11, 0.35); }
+.tl-dash-tile-actions a:hover { text-decoration-color: currentColor; }
+
+/* ---------- Ticket card: the NFT ticket banner (photo, gradient, token badge, seat line) ---------- */
+.tl-ticket { overflow: hidden; padding: 0; background: var(--tl-night); border-color: var(--tl-night); color: #fff; }
+.tl-ticket-banner { position: relative; min-height: 210px; display: flex; flex-direction: column; justify-content: flex-end; padding: 18px; background: #0d1a12; }
+.tl-ticket-banner img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 35%; }
+.tl-ticket-banner::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, rgba(0, 0, 0, 0.82) 0%, rgba(0, 0, 0, 0.25) 55%, rgba(0, 0, 0, 0.35) 100%); }
+.tl-ticket-banner > :not(img) { position: relative; z-index: 1; }
+.tl-ticket-badges { position: absolute !important; top: 14px; left: 14px; right: 14px; display: flex; justify-content: space-between; gap: 8px; }
+.tl-ticket-badge { padding: 6px 8px; border-radius: 2px; background: rgba(244, 244, 241, 0.92); color: #0b0b0b; font: 600 10.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; text-transform: uppercase; }
+.tl-ticket-badge.is-green { background: var(--tl-green); color: #04140a; }
+.tl-ticket-kicker { font: 600 11px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255, 255, 255, 0.75); }
+.tl-ticket-title { margin-top: 6px; font-size: clamp(24px, 2.2vw, 32px); line-height: 1; font-weight: 500; letter-spacing: -0.04em; overflow-wrap: anywhere; }
+.tl-ticket-body { padding: 18px; }
+.tl-ticket-rows { display: grid; }
+.tl-ticket-rows div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.12); font-size: 13.5px; }
+.tl-ticket-rows dt { color: rgba(255, 255, 255, 0.6); }
+.tl-ticket-rows dd { font: 600 12px/1.4 'JetBrains Mono', monospace; text-align: right; }
+.tl-ticket .tl-dash-ask { padding-top: 16px; }
+
+/* ---------- Gate scanner ---------- */
+.tl-scan-target {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 26px 16px;
+  margin-bottom: 16px;
+  border: 1.5px dashed var(--ds-line-strong);
+  border-radius: 2px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ds-muted);
+}
+.tl-scan-target svg { color: var(--tl-green-dark); }
+.tl-scan-target strong { color: var(--ds-ink); font: 600 12px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.06em; text-transform: uppercase; }
+/* Result: an NFT ticket whose banner carries the verdict */
+.tl-scan-result .tl-ticket-banner { min-height: 170px; }
+.tl-scan-verdict { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.tl-scan-verdict svg { flex-shrink: 0; }
+.tl-scan-verdict h2 { font-size: clamp(34px, 3.4vw, 52px); line-height: 0.9; font-weight: 800; letter-spacing: -0.05em; }
+.tl-scan-result[data-tone='good'] .tl-scan-verdict { color: var(--tl-green); }
+.tl-scan-result[data-tone='warn'] .tl-scan-verdict { color: #fbbf24; }
+.tl-scan-result[data-tone='bad'] .tl-scan-verdict { color: #f87171; }
+.tl-scan-seat { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.tl-scan-seat div { padding: 12px 0; }
+.tl-scan-seat div + div { padding-left: 14px; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+.tl-scan-seat dt { font: 600 10.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }
+.tl-scan-seat dd { margin-top: 8px; font-size: 22px; font-weight: 800; letter-spacing: -0.04em; color: var(--tl-green); overflow-wrap: anywhere; }
+
+/* ================= Theme layer for the sub-modules' existing Tailwind markup =================
+   Keeps their structure and behaviour; swaps the old 24px-rounded, shadowed white cards and Eventfrog
+   greens for the paper cards, hairlines, mono labels, 2px tags and TicketLedger greens used on the
+   Explore, event and account pages. */
+.tl-dash-skin .shadow-sm, .tl-dash-skin .shadow-md, .tl-dash-skin .shadow, .tl-dash-skin .shadow-lg, .tl-dash-skin .shadow-xl,
+.tl-dash-skin [class*='hover:shadow']:hover { box-shadow: none; }
+.tl-dash-skin .shadow-2xl { box-shadow: 0 20px 50px rgba(5, 11, 7, 0.25); }
+.tl-dash-skin .rounded-3xl, .tl-dash-skin .rounded-2xl { border-radius: 6px; }
+.tl-dash-skin .rounded-xl, .tl-dash-skin .rounded-lg { border-radius: 4px; }
+/* Pills and small badges become the 2px event page tags */
+.tl-dash-skin span.rounded-full:not([class*='w-']) {
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.tl-dash-skin button.rounded-full, .tl-dash-skin a.rounded-full { border-radius: 6px; }
+.tl-dash-skin .bg-white { background-color: var(--ds-card); }
+.tl-dash-skin .bg-slate-50, .tl-dash-skin [class~='bg-slate-50/80'], .tl-dash-skin [class~='bg-slate-50/50'] { background-color: rgba(11, 11, 11, 0.03); }
+.tl-dash-skin .bg-slate-100 { background-color: rgba(11, 11, 11, 0.06); }
+.tl-dash-skin [class*='hover:bg-slate-50']:hover { background-color: rgba(11, 11, 11, 0.04); }
+.tl-dash-skin [class*='hover:bg-slate-100']:hover, .tl-dash-skin [class*='hover:bg-slate-200']:hover { background-color: rgba(11, 11, 11, 0.08); }
+.tl-dash-skin [class*='border-slate-'] { border-color: var(--ds-line); }
+.tl-dash-skin [class*='divide-slate-'] > * + * { border-color: var(--ds-line); }
+.tl-dash-skin .text-slate-900, .tl-dash-skin .text-slate-800, .tl-dash-skin [class*='text-[#212b36]'] { color: var(--ds-ink); }
+.tl-dash-skin .text-slate-700, .tl-dash-skin .text-slate-600, .tl-dash-skin .text-slate-500 { color: var(--ds-muted); }
+.tl-dash-skin .text-slate-400 { color: var(--ds-faint); }
+/* Section headings: the card title; small uppercase headings: mono labels */
+.tl-dash-skin h2.text-sm.uppercase, .tl-dash-skin h3.text-sm.uppercase,
+.tl-dash-skin .uppercase.tracking-wider, .tl-dash-skin .uppercase.tracking-wide, .tl-dash-skin .uppercase.tracking-widest { font-family: 'JetBrains Mono', monospace; letter-spacing: 0.06em; }
+.tl-dash-skin h2.text-base, .tl-dash-skin h2.text-lg, .tl-dash-skin h2.text-xl, .tl-dash-skin h3.text-base, .tl-dash-skin h3.text-lg { font-size: 22px; font-weight: 500; letter-spacing: -0.03em; }
+.tl-dash-skin .font-black, .tl-dash-skin .font-extrabold { font-weight: 700; letter-spacing: -0.02em; }
+.tl-dash-skin .font-mono.font-black, .tl-dash-skin .font-mono.font-extrabold { letter-spacing: 0; }
+/* Greens (Eventfrog #008459 / #16a34a) become the TicketLedger greens */
+.tl-dash-skin [class*='text-[#008459]'], .tl-dash-skin [class*='text-[#16a34a]'] { color: var(--tl-green-dark); }
+.tl-dash-skin [class*='bg-[#008459]'], .tl-dash-skin [class*='bg-[#16a34a]'] { background-color: var(--tl-green); color: var(--tl-ink); }
+.tl-dash-skin [class*='hover:bg-[#00704c]']:hover, .tl-dash-skin [class*='hover:bg-[#15803d]']:hover { background-color: #4ade80; }
+.tl-dash-skin [class*='bg-[#e6f4ea]'] { background-color: var(--ds-ink); color: #4ade80; }
+.tl-dash-skin [class*='border-[#008459]'], .tl-dash-skin [class*='focus:border-[#008459]']:focus,
+.tl-dash-skin [class*='focus:border-[#22c55e]']:focus { border-color: var(--ds-ink); }
+.tl-dash-skin .bg-emerald-50, .tl-dash-skin .bg-emerald-100 { background-color: rgba(34, 197, 94, 0.12); }
+/* Primary buttons: the homepage green .tl-btn */
+.tl-dash-skin .btn-eventfrog {
+  background: var(--tl-green);
+  color: var(--tl-ink);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+.tl-dash-skin .btn-eventfrog:hover:not(:disabled) { background: #4ade80; transform: none; box-shadow: 0 6px 24px rgba(34, 197, 94, 0.35); }
+.tl-dash-skin .btn-eventfrog-outline { border-radius: 6px; border-color: var(--ds-line-strong); color: var(--ds-ink); background: transparent; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.06em; }
+.tl-dash-skin .btn-eventfrog-outline:hover:not(:disabled) { border-color: var(--ds-ink); background: rgba(11, 11, 11, 0.04); }
+/* Off-palette accents (purple, indigo, teal, sky, fuchsia) fold into the product's blue notification tone,
+   and pastel icon squares into the ink/green badge used elsewhere */
+.tl-dash-skin [class*='text-purple-'], .tl-dash-skin [class*='text-indigo-'], .tl-dash-skin [class*='text-violet-'],
+.tl-dash-skin [class*='text-teal-'], .tl-dash-skin [class*='text-sky-'], .tl-dash-skin [class*='text-fuchsia-'], .tl-dash-skin [class*='text-blue-'] { color: #1d4ed8; }
+.tl-dash-skin [class*='bg-purple-50'], .tl-dash-skin [class*='bg-indigo-50'], .tl-dash-skin [class*='bg-violet-50'],
+.tl-dash-skin [class*='bg-teal-50'], .tl-dash-skin [class*='bg-sky-50'], .tl-dash-skin [class*='bg-fuchsia-50'], .tl-dash-skin [class*='bg-blue-50'],
+.tl-dash-skin [class*='bg-purple-100'], .tl-dash-skin [class*='bg-indigo-100'] { background-color: rgba(37, 99, 235, 0.08); }
+.tl-dash-skin [class*='border-purple-'], .tl-dash-skin [class*='border-indigo-'], .tl-dash-skin [class*='border-teal-'],
+.tl-dash-skin [class*='border-sky-'], .tl-dash-skin [class*='border-blue-'] { border-color: rgba(37, 99, 235, 0.25); }
+.tl-dash-skin [class*='bg-purple-6'], .tl-dash-skin [class*='bg-indigo-6'], .tl-dash-skin [class*='bg-purple-5'], .tl-dash-skin [class*='bg-indigo-5'] { background-color: var(--ds-ink); color: #fff; }
+/* Icon squares (w-8/w-10/w-12 tinted boxes) become the ink badge */
+.tl-dash-skin div[class*='rounded-xl'][class*='w-8'][class*='-50'], .tl-dash-skin div[class*='rounded-2xl'][class*='w-12'][class*='-50'],
+.tl-dash-skin span[class*='rounded-xl'][class*='w-8'][class*='-50'], .tl-dash-skin div[class*='rounded-xl'][class*='w-10'][class*='-50'] {
+  background-color: var(--ds-ink);
+  color: #4ade80;
+  border-color: var(--ds-ink);
+  border-radius: 2px;
+}
+.tl-dash-skin div[class*='rounded-xl'][class*='w-8'][class*='-50'] svg, .tl-dash-skin div[class*='rounded-2xl'][class*='w-12'][class*='-50'] svg,
+.tl-dash-skin span[class*='rounded-xl'][class*='w-8'][class*='-50'] svg, .tl-dash-skin div[class*='rounded-xl'][class*='w-10'][class*='-50'] svg { color: #4ade80; }
+
+/* Fields */
+.tl-dash-skin input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']),
+.tl-dash-skin select,
+.tl-dash-skin textarea { background-color: var(--ds-card); border-color: var(--ds-line-strong); }
+.tl-dash-skin input:focus, .tl-dash-skin select:focus, .tl-dash-skin textarea:focus { border-color: var(--ds-ink); box-shadow: 0 0 0 1px var(--ds-ink); outline: none; }
+.tl-dash-skin input[type='checkbox'], .tl-dash-skin input[type='radio'], .tl-dash-skin input[type='range'] { accent-color: var(--tl-green-dark); }
+/* Tables: mono headers on hairlines */
+.tl-dash-skin thead.bg-slate-50, .tl-dash-skin thead [class*='bg-slate-50'] { background: transparent; }
+.tl-dash-skin thead th { font-family: 'JetBrains Mono', monospace; font-weight: 500; letter-spacing: 0.04em; color: var(--ds-faint); }
+/* Dark surfaces (route guard notice) become a night card */
+.tl-dash-skin .bg-slate-900 { background-color: var(--tl-night); border-color: var(--tl-night); border-radius: 6px; }
+.tl-dash-skin .bg-slate-900 .text-slate-400, .tl-dash-skin .bg-slate-900 .text-slate-500 { color: rgba(255, 255, 255, 0.7); }
+.tl-dash-skin .bg-slate-900 .text-white { color: #fff; }
+/* Legacy page wrappers fill the console width */
+.tl-dash-skin > .max-w-6xl, .tl-dash-skin > .max-w-7xl { max-width: none; }
+/* No entrance or pulse animations in the consoles */
+.tl-dash-skin .animate-pulse, .tl-dash-skin .animate-in { animation: none; }
+.tl-dash-skin [class*='hover:-translate-y']:hover, .tl-dash-skin [class*='hover:scale']:hover, .tl-dash-skin [class*='group-hover:scale'] { transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-dash-spin { animation-duration: 2s; }
+}
+.tl-dash-tile-actions button { min-height: 28px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-transform: inherit; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(11, 11, 11, 0.35); cursor: pointer; }
+.tl-dash-tile-actions button:hover { text-decoration-color: currentColor; }
+.tl-dash-feed-item > button, .tl-dash-feed-item > .tl-dash-row-actions { align-self: start; }

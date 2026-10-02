@@ -1,9 +1,17 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { AlertCircle, ImagePlus, RotateCcw, Trash2 } from 'lucide-react';
-import { ACCEPT_ATTR, EVENT_IMAGE_SPECS, checkImageFile, specHelperText, specLimitText } from '../../utils/eventImageSpecs';
+import { AlertCircle, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { ACCEPT_ATTR, EVENT_IMAGE_SPECS, checkImageFile } from '../../utils/eventImageSpecs';
 import { resolveMediaUrl } from '../../utils/eventMedia';
 import ImageCropper from './ImageCropper';
 import PreviewFrame from './PreviewFrame';
+
+// Short titles and descriptions for the image cards
+export const CARD_COPY = {
+  banner: { title: 'Event banner', text: 'Wide banner shown on your event page.' },
+  card: { title: 'Event card image', text: 'Main image for event listings.' },
+  galleryWide: { title: 'Gallery wide image', text: 'Wide image for the gallery section.' },
+  gallery: { title: 'Scrolling gallery', text: 'Multiple square images for the event gallery.' },
+};
 
 /** Form value for one image placement. Nothing changes on the server until the event is saved. */
 export const emptyImageValue = (savedUrl = null) => ({ savedUrl, file: null, previewUrl: null, removed: false });
@@ -55,26 +63,28 @@ export default function ImageField({ kind, value, onChange, fallbackSrc, fallbac
   else if (value.savedUrl) status = 'Current image';
 
   return (
-    <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
-      <div>
-        <label htmlFor={id} className="block text-slate-700 font-semibold">
-          {spec.label} <span className="font-normal text-slate-400">(optional)</span>
-        </label>
-        <p className="text-[11px] text-slate-500 mt-0.5">{spec.description}</p>
-        <p className="text-[11px] text-slate-700 font-medium mt-1.5" id={`${id}-help`}>{specHelperText(spec)}</p>
-        <p className="text-[10px] text-slate-400">{specLimitText(spec)}. {spec.fallbackNote}</p>
-      </div>
+    <section className="tl-imf" aria-labelledby={`${id}-title`}>
+      <header className="tl-imf-head">
+        <div>
+          <h3 id={`${id}-title`}>{CARD_COPY[kind]?.title || spec.label}</h3>
+          <p>{CARD_COPY[kind]?.text || spec.description}</p>
+        </div>
+        <p className="tl-imf-spec" id={`${id}-help`}>
+          <b>Recommended: {spec.recommended[0]} × {spec.recommended[1]} px</b>
+          {spec.ratioLabel} · Max {Math.round(spec.maxBytes / 1048576)}MB · JPG, PNG, WebP
+        </p>
+      </header>
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="tl-imf-frames">
         {spec.frames.map((frame) => (
-          <PreviewFrame key={frame.label} frame={frame} src={src || fallbackSrc} dimmed={showFallback} />
+          <PreviewFrame key={frame.label} frame={frame} src={src || fallbackSrc} dimmed={showFallback} emptyLabel={fallbackLabel} />
         ))}
       </div>
-      <p className="text-[11px] text-slate-500" aria-live="polite">
-        {showFallback ? `Not set: attendees see ${fallbackLabel}` : status}
+      <p className="tl-imf-status" aria-live="polite">
+        {showFallback ? `Optional. Until you add one, attendees see ${fallbackLabel}.` : status}
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="tl-imf-actions">
         <input
           ref={inputRef}
           id={id}
@@ -84,37 +94,24 @@ export default function ImageField({ kind, value, onChange, fallbackSrc, fallbac
           aria-describedby={`${id}-help`}
           className="sr-only"
         />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={checking}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold disabled:opacity-60"
-        >
-          <ImagePlus className="w-3.5 h-3.5" /> {checking ? 'Checking…' : src && !showFallback ? 'Replace image' : 'Choose image'}
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={checking} className="tl-imf-btn">
+          <Upload className="w-4 h-4" /> {checking ? 'Checking…' : src && !showFallback ? 'Replace image' : 'Choose image'}
         </button>
         {src && !showFallback && (
-          <button
-            type="button"
-            onClick={() => onChange({ ...value, file: null, previewUrl: null, removed: true })}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-rose-600 font-semibold"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Remove
+          <button type="button" onClick={() => onChange({ ...value, file: null, previewUrl: null, removed: true })} className="tl-imf-btn tl-imf-btn--quiet">
+            <Trash2 className="w-4 h-4" /> Remove
           </button>
         )}
         {changed && value.savedUrl && (
-          <button
-            type="button"
-            onClick={() => onChange(emptyImageValue(value.savedUrl))}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 font-semibold"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Keep current image
+          <button type="button" onClick={() => onChange(emptyImageValue(value.savedUrl))} className="tl-imf-btn tl-imf-btn--quiet">
+            <RotateCcw className="w-4 h-4" /> Keep current
           </button>
         )}
       </div>
 
       {error && (
-        <p className="flex items-start gap-1.5 text-rose-600" role="alert">
-          <AlertCircle className="w-3.5 h-3.5 mt-px flex-shrink-0" /> {error}
+        <p className="tl-imf-error" role="alert">
+          <AlertCircle className="w-4 h-4" /> {error}
         </p>
       )}
 
@@ -130,6 +127,6 @@ export default function ImageField({ kind, value, onChange, fallbackSrc, fallbac
           }}
         />
       )}
-    </div>
+    </section>
   );
 }

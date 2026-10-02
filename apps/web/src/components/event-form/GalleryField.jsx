@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { AlertCircle, ArrowDown, ArrowUp, GripVertical, ImagePlus, RotateCcw, Trash2 } from 'lucide-react';
-import { ACCEPT_ATTR, EVENT_IMAGE_SPECS, checkImageFile, specHelperText, specLimitText } from '../../utils/eventImageSpecs';
+import { AlertCircle, ArrowLeft, ArrowRight, GripVertical, ImagePlus, RotateCcw, Trash2, Upload } from 'lucide-react';
+import { ACCEPT_ATTR, EVENT_IMAGE_SPECS, checkImageFile } from '../../utils/eventImageSpecs';
 import { resolveMediaUrl } from '../../utils/eventMedia';
 import ImageCropper from './ImageCropper';
 import PreviewFrame from './PreviewFrame';
@@ -80,18 +80,22 @@ export default function GalleryField({ items, onChange, savedItems }) {
   const changed = items.map((i) => i.key).join() !== savedKeys;
 
   return (
-    <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
-      <div>
-        <label htmlFor={id} className="block text-slate-700 font-semibold">
-          {spec.label} <span className="font-normal text-slate-400">(optional · {items.length}/{spec.maxCount})</span>
-        </label>
-        <p className="text-[11px] text-slate-500 mt-0.5">{spec.description}</p>
-        <p className="text-[11px] text-slate-700 font-medium mt-1.5" id={`${id}-help`}>{specHelperText(spec)}</p>
-        <p className="text-[10px] text-slate-400">{specLimitText(spec)}. {spec.fallbackNote}</p>
-      </div>
+    <section className="tl-imf" aria-labelledby={`${id}-title`}>
+      <header className="tl-imf-head">
+        <div>
+          <h3 id={`${id}-title`}>Scrolling gallery</h3>
+          <p>Multiple square images for the event gallery.</p>
+        </div>
+        <p className="tl-imf-spec" id={`${id}-help`}>
+          <b>{items.length} / {spec.maxCount} images</b>
+          Recommended: {spec.recommended[0]} × {spec.recommended[1]} px
+          <br />
+          {spec.ratioLabel} · Max {Math.round(spec.maxBytes / 1048576)}MB each · JPG, PNG, WebP
+        </p>
+      </header>
 
       {items.length > 0 ? (
-        <ol className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <ol className="tl-imf-gallery">
           {items.map((item, i) => (
             <li
               key={item.key}
@@ -106,62 +110,60 @@ export default function GalleryField({ items, onChange, savedItems }) {
                 onDrop(item.key);
               }}
               onDragEnd={() => setDragKey(null)}
-              className={`p-2 rounded-xl bg-white border space-y-2 ${dragKey === item.key ? 'opacity-50 border-[#22c55e]' : 'border-slate-200'}`}
+              className={dragKey === item.key ? 'is-dragging' : ''}
             >
-              <div className="flex items-center justify-between text-[10px] text-slate-500">
-                <span className="inline-flex items-center gap-1 cursor-grab">
-                  <GripVertical className="w-3.5 h-3.5" aria-hidden="true" /> #{i + 1}
-                </span>
-                {item.file && <span className="text-[#16a34a] font-semibold">New</span>}
-              </div>
-              <PreviewFrame frame={{ ...spec.frames[0], width: '100%' }} src={itemSrc(item)} />
-              <div className="flex items-center justify-between">
-                <div className="flex gap-1">
-                  <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0} className="p-1 rounded-lg border border-slate-200 disabled:opacity-30" aria-label={`Move image ${i + 1} earlier`}>
-                    <ArrowUp className="w-3.5 h-3.5" />
+              <PreviewFrame frame={{ ...spec.frames[0], label: item.file ? 'New' : `#${i + 1}` }} src={itemSrc(item)} />
+              <div className="tl-imf-gallery-bar">
+                <span><GripVertical className="w-3.5 h-3.5" aria-hidden="true" /> #{i + 1}</span>
+                <div>
+                  <button type="button" onClick={() => move(i, i - 1)} disabled={i === 0} aria-label={`Move image ${i + 1} earlier`}>
+                    <ArrowLeft className="w-3.5 h-3.5" />
                   </button>
-                  <button type="button" onClick={() => move(i, i + 1)} disabled={i === items.length - 1} className="p-1 rounded-lg border border-slate-200 disabled:opacity-30" aria-label={`Move image ${i + 1} later`}>
-                    <ArrowDown className="w-3.5 h-3.5" />
+                  <button type="button" onClick={() => move(i, i + 1)} disabled={i === items.length - 1} aria-label={`Move image ${i + 1} later`}>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button type="button" onClick={() => onChange(items.filter((x) => x.key !== item.key))} aria-label={`Remove image ${i + 1}`}>
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <button type="button" onClick={() => onChange(items.filter((x) => x.key !== item.key))} className="p-1 text-slate-400 hover:text-rose-600" aria-label={`Remove image ${i + 1}`}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
               </div>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="text-[11px] text-slate-500">No gallery images: attendees see category photos in the strip.</p>
+        <div className="tl-imf-gallery" aria-hidden="true">
+          {[0, 1, 2].map((n) => (
+            <div key={n} className="tl-imf-slot">
+              <span className="tl-imf-empty">
+                <ImagePlus className="w-6 h-6" />
+                <strong>Category artwork</strong>
+                <span>No image uploaded</span>
+              </span>
+            </div>
+          ))}
+        </div>
       )}
+      <p className="tl-imf-status">
+        {items.length === 0 ? 'Optional. Until you add some, attendees see category photos in the strip.' : changed ? 'Changes apply when you save. Drag or use the arrows to reorder.' : 'Drag or use the arrows to reorder.'}
+      </p>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="tl-imf-actions">
         <input ref={inputRef} id={id} type="file" multiple accept={ACCEPT_ATTR} onChange={onSelect} aria-describedby={`${id}-help`} className="sr-only" />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={checking || room <= 0}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#16a34a] hover:bg-[#15803d] text-white font-semibold disabled:opacity-60"
-        >
-          <ImagePlus className="w-3.5 h-3.5" /> {checking ? 'Checking…' : room <= 0 ? 'Gallery is full' : 'Add images'}
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={checking || room <= 0} className="tl-imf-btn">
+          <Upload className="w-4 h-4" /> {checking ? 'Checking…' : room <= 0 ? 'Gallery is full' : 'Add images'}
         </button>
         {changed && savedItems.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onChange(savedItems)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-900 font-semibold"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Restore saved gallery
+          <button type="button" onClick={() => onChange(savedItems)} className="tl-imf-btn tl-imf-btn--quiet">
+            <RotateCcw className="w-4 h-4" /> Restore saved gallery
           </button>
         )}
-        {changed && <span className="text-[11px] text-slate-500">Changes apply when you save.</span>}
       </div>
 
       {errors.length > 0 && (
-        <ul className="space-y-1 text-rose-600" role="alert">
+        <ul role="alert">
           {errors.map((msg) => (
-            <li key={msg} className="flex items-start gap-1.5">
-              <AlertCircle className="w-3.5 h-3.5 mt-px flex-shrink-0" /> {msg}
+            <li key={msg} className="tl-imf-error">
+              <AlertCircle className="w-4 h-4" /> {msg}
             </li>
           ))}
         </ul>
@@ -179,6 +181,6 @@ export default function GalleryField({ items, onChange, savedItems }) {
           }}
         />
       )}
-    </div>
+    </section>
   );
 }

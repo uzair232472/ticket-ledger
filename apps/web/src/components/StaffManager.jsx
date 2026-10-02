@@ -2,24 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../lib/session';
 import { validateEmail } from '../lib/validation';
-import { UserPlus, Send, RefreshCw, XCircle, UserX, Mail, Users, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Send, RefreshCw, XCircle, UserX, Mail, AlertCircle, CheckCircle2, Users, UserPlus, CalendarDays, Info } from 'lucide-react';
+import { DashCard, Notice, Status } from './dash/DashShell';
 
-const STATUS_STYLES = {
-  PENDING: 'bg-amber-50 text-amber-700 border-amber-200',
-  ACCEPTED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  CANCELLED: 'bg-slate-100 text-slate-500 border-slate-200',
-  EXPIRED: 'bg-slate-100 text-slate-500 border-slate-200',
-  ACTIVE: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  DEACTIVATED: 'bg-rose-50 text-rose-700 border-rose-200',
-  SUSPENDED: 'bg-rose-50 text-rose-700 border-rose-200',
-  BANNED: 'bg-rose-50 text-rose-700 border-rose-200',
-};
-
-const Badge = ({ status }) => (
-  <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${STATUS_STYLES[status] || STATUS_STYLES.CANCELLED}`}>
-    {status}
-  </span>
-);
+const Badge = ({ status }) => <Status value={status} />;
 
 const formatDate = (value) => new Date(value).toLocaleDateString(undefined, { dateStyle: 'medium' });
 
@@ -28,7 +14,7 @@ const formatDate = (value) => new Date(value).toLocaleDateString(undefined, { da
  * organizers see their own events and staff; the Super Admin sees everything with a company filter.
  * The API enforces the same scoping, so this only shapes the UI.
  */
-export default function StaffManager() {
+export default function StaffManager({ layout } = {}) {
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -114,57 +100,177 @@ export default function StaffManager() {
 
   const openInvites = invites.filter((i) => i.status !== 'ACCEPTED');
 
-  return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-          <Users className="w-4 h-4 text-[#16a34a]" /> Gate Staff
-        </h2>
-        {isAdmin && (
-          <select
-            value={companyFilter}
-            onChange={(e) => setCompanyFilter(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5"
-            aria-label="Filter by company"
-          >
-            <option value="">All companies</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>{c.companyName}</option>
-            ))}
-          </select>
-        )}
-      </div>
+  const initials = (name = '') => name.replace(/\(.*?\)/g, '').trim().split(/\s+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || '?';
 
-      {error && (
-        <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+  // Full-page layout (admin console "Gate staff" tab): filter bar, staff cards, invite + invitations column
+  if (layout === 'full') {
+    const activeStaff = staff.filter((s) => s.status === 'ACTIVE');
+    const pendingInvites = invites.filter((i) => i.status === 'PENDING');
+    return (
+      <div className="tl-sf">
+        <div className="tl-sf-bar">
+          {isAdmin ? (
+            <label className="tl-ss tl-sf-company">
+              <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} aria-label="Filter by company">
+                <option value="">All companies</option>
+                {companies.map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+              </select>
+            </label>
+          ) : <span />}
+          <div className="tl-sf-stats">
+            <div><span className="tl-sf-stat-icon" aria-hidden="true"><Users className="w-5 h-5" /></span><p><small>Active staff</small><strong>{activeStaff.length}</strong></p></div>
+            <div><span className="tl-sf-stat-icon" aria-hidden="true"><Mail className="w-5 h-5" /></span><p><small>Open invitations</small><strong>{pendingInvites.length}</strong></p></div>
+          </div>
         </div>
-      )}
-      {notice && !error && (
-        <div role="status" className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> {notice}
+
+        {error && <Notice tone="bad" icon={AlertCircle} onDismiss={() => setError('')}>{error}</Notice>}
+        {notice && !error && <Notice tone="good" icon={CheckCircle2} onDismiss={() => setNotice('')}>{notice}</Notice>}
+
+        <div className="tl-sf-grid">
+          <section className="tl-sf-card" aria-labelledby="tl-sf-active">
+            <h2 id="tl-sf-active">Active staff ({activeStaff.length})</h2>
+            <p className="tl-sf-sub">Staff members who can scan tickets at your events’ gates.</p>
+            {loading ? (
+              <div className="tl-dash-state"><RefreshCw className="w-5 h-5 tl-dash-spin" /></div>
+            ) : staff.length === 0 ? (
+              <div className="tl-sf-empty"><Users className="w-7 h-7" aria-hidden="true" /><strong>No gate staff yet</strong><span>Invite someone to an event to add them here.</span></div>
+            ) : (
+              <div className="tl-sf-list">
+                {staff.map((s) => (
+                  <article key={s.id} className="tl-sf-person">
+                    <header>
+                      <span className="tl-sf-avatar" aria-hidden="true">{initials(s.name)}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <h3>{s.name} <Badge status={s.status} /></h3>
+                        <p>{s.email}</p>
+                        {s.memberOfCompany && <p>{s.memberOfCompany.companyName}</p>}
+                      </div>
+                    </header>
+                    <div className="tl-sf-assigned">
+                      <h4>Assigned events ({s.staffAssignments.length})</h4>
+                      <p className="tl-sf-sub">Events this staff member can scan tickets for.</p>
+                      {s.staffAssignments.length === 0 ? (
+                        <p className="tl-sf-none">No events assigned.</p>
+                      ) : (
+                        <ul>
+                          {s.staffAssignments.map((a) => (
+                            <li key={a.event.id || a.event.name}><span aria-hidden="true"><CalendarDays className="w-4 h-4" /></span>{a.event.name}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {s.status === 'ACTIVE' && (
+                      <button
+                        type="button"
+                        className="tl-sf-deactivate"
+                        disabled={busyId === s.id}
+                        onClick={() => run(s.id, () => request(`/${s.id}/deactivate`, { method: 'PATCH' }))}
+                      >
+                        {busyId === s.id ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <UserX className="w-4 h-4" />} Deactivate staff
+                      </button>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <div className="tl-sf-side">
+            <section className="tl-sf-card" aria-labelledby="tl-sf-invite">
+              <div className="tl-sf-card-head">
+                <span className="tl-sf-head-icon" aria-hidden="true"><UserPlus className="w-6 h-6" /></span>
+                <div>
+                  <h2 id="tl-sf-invite">Invite gate staff</h2>
+                  <p className="tl-sf-sub">Give staff access to scan tickets for an event.</p>
+                </div>
+              </div>
+              <form onSubmit={handleInvite} noValidate className="tl-sf-form">
+                <label htmlFor="tl-sf-email">Staff email</label>
+                <div className="tl-dash-search">
+                  <Mail className="w-4 h-4" aria-hidden="true" />
+                  <input id="tl-sf-email" type="email" className="tl-dash-input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="staff@email.com" />
+                </div>
+                <label htmlFor="tl-sf-event">Event to assign</label>
+                <select id="tl-sf-event" className="tl-dash-select" value={eventId} onChange={(e) => setEventId(e.target.value)}>
+                  <option value="">Select an event</option>
+                  {events.map((ev) => (
+                    <option key={ev.id} value={ev.id}>{ev.name} · {formatDate(ev.date)}{isAdmin ? ` · ${ev.company.companyName}` : ''}</option>
+                  ))}
+                </select>
+                <button type="submit" className="tl-sf-invite-btn" disabled={sending}>
+                  {sending ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Plus className="w-4 h-4" />} Invite staff
+                </button>
+                <p className="tl-sf-hint"><Info className="w-4 h-4" aria-hidden="true" />{events.length === 0 ? 'Create an event first, then invite staff to it.' : 'Select an event before sending the invitation.'}</p>
+              </form>
+            </section>
+
+            <section className="tl-sf-card" aria-labelledby="tl-sf-invites">
+              <div className="tl-sf-card-head">
+                <span className="tl-sf-head-icon" aria-hidden="true"><Mail className="w-6 h-6" /></span>
+                <div>
+                  <h2 id="tl-sf-invites">Open invitations ({pendingInvites.length})</h2>
+                  <p className="tl-sf-sub">Invitations you’ve sent to join your gate team.</p>
+                </div>
+              </div>
+              {invites.filter((i) => i.status !== 'ACCEPTED').length === 0 ? (
+                <div className="tl-sf-empty">
+                  <Mail className="w-7 h-7" aria-hidden="true" />
+                  <strong>No pending invitations</strong>
+                  <span>Invitations will appear here after you send them.</span>
+                </div>
+              ) : (
+                <ul className="tl-sf-invites">
+                  {invites.filter((i) => i.status !== 'ACCEPTED').map((inv) => (
+                    <li key={inv.id}>
+                      <div style={{ minWidth: 0 }}>
+                        <strong>{inv.email} <Badge status={inv.status} /></strong>
+                        <span>{inv.event.name}</span>
+                        <span>Invited by {inv.invitedBy.name}{inv.status === 'PENDING' ? ` · expires ${formatDate(inv.expiresAt)}` : ''}</span>
+                      </div>
+                      {['PENDING', 'EXPIRED'].includes(inv.status) && (
+                        <div className="tl-staff-actions">
+                          <button type="button" className="tl-staff-icon" disabled={busyId === inv.id} onClick={() => run(inv.id, () => request(`/invites/${inv.id}/resend`, { method: 'POST' }))} aria-label={`Resend invite to ${inv.email}`} title="Resend">
+                            <RefreshCw className="w-4 h-4" />
+                          </button>
+                          <button type="button" className="tl-staff-icon is-danger" disabled={busyId === inv.id} onClick={() => run(inv.id, () => request(`/invites/${inv.id}`, { method: 'DELETE' }), 'Invite cancelled.')} aria-label={`Cancel invite to ${inv.email}`} title="Cancel invite">
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <DashCard
+      title="Gate staff"
+      sub="Invite staff to scan at an event's gates"
+      aside={isAdmin && (
+        <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="tl-dash-select" aria-label="Filter by company">
+          <option value="">All companies</option>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>{c.companyName}</option>
+          ))}
+        </select>
       )}
+    >
+      {error && <Notice tone="bad" icon={AlertCircle}>{error}</Notice>}
+      {notice && !error && <Notice tone="good" icon={CheckCircle2}>{notice}</Notice>}
 
       {/* Invite form */}
-      <form onSubmit={handleInvite} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2" noValidate>
-        <div className="relative">
-          <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="staff@email.com"
-            aria-label="Staff email"
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:border-[#22c55e]"
-          />
+      <form onSubmit={handleInvite} className="tl-staff-form" noValidate>
+        <div className="tl-dash-search">
+          <Mail className="w-4 h-4" aria-hidden="true" />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="staff@email.com" aria-label="Staff email" className="tl-dash-input" />
         </div>
-        <select
-          value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-          aria-label="Event to assign"
-          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-[#22c55e]"
-        >
+        <select value={eventId} onChange={(e) => setEventId(e.target.value)} aria-label="Event to assign" className="tl-dash-select">
           <option value="">Event to assign…</option>
           {events.map((ev) => (
             <option key={ev.id} value={ev.id}>
@@ -172,106 +278,97 @@ export default function StaffManager() {
             </option>
           ))}
         </select>
-        <button type="submit" disabled={sending} className="btn-eventfrog text-xs px-4 py-2 inline-flex items-center justify-center gap-1.5">
-          {sending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-          Send invite
+        <button type="submit" disabled={sending} className="tl-st-btn tl-st-btn--green tl-st-btn--sm">
+          {sending ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Plus className="w-4 h-4" />}
+          Invite staff
         </button>
       </form>
       {!loading && events.length === 0 && (
-        <p className="text-[11px] text-slate-500">No events yet. Create an event first, then invite staff to it.</p>
+        <p className="tl-dash-card-sub">No events yet. Create an event first, then invite staff to it.</p>
       )}
 
       {loading ? (
-        <div className="flex justify-center py-6"><RefreshCw className="w-5 h-5 animate-spin text-[#16a34a]" /></div>
+        <div className="tl-dash-state"><RefreshCw className="w-5 h-5 tl-dash-spin" /></div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Staff accounts */}
-          <div>
-            <h3 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-              <UserPlus className="w-3.5 h-3.5" /> Staff accounts ({staff.length})
-            </h3>
+        <>
+          <section className="tl-staff-group" aria-labelledby="tl-staff-active">
+            <h3 id="tl-staff-active">Active staff ({staff.filter((s) => s.status === 'ACTIVE').length})</h3>
             {staff.length === 0 ? (
-              <p className="text-xs text-slate-500">No gate staff yet.</p>
+              <p className="tl-dash-card-sub">No gate staff yet.</p>
             ) : (
-              <ul className="divide-y divide-slate-100 border border-slate-100 rounded-xl">
-                {staff.map((s) => (
-                  <li key={s.id} className="p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                        <span className="truncate">{s.name}</span> <Badge status={s.status} />
-                      </div>
-                      <div className="text-[11px] text-slate-500 truncate">{s.email}</div>
-                      {isAdmin && s.memberOfCompany && (
-                        <div className="text-[11px] text-slate-400">{s.memberOfCompany.companyName}</div>
-                      )}
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        {s.staffAssignments.map((a) => a.event.name).join(', ') || 'No events'}
-                      </div>
-                    </div>
-                    {s.status === 'ACTIVE' && (
+              staff.map((s) => (
+                <div key={s.id} className="tl-staff-row">
+                  <span className="tl-staff-avatar" aria-hidden="true">{initials(s.name)}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="tl-staff-name"><span>{s.name}</span><Badge status={s.status} /></div>
+                    <p>{s.email}{isAdmin && s.memberOfCompany ? ` · ${s.memberOfCompany.companyName}` : ''}</p>
+                    <p>Gate staff · {s.staffAssignments.map((a) => a.event.name).join(', ') || 'No events'}</p>
+                  </div>
+                  {s.status === 'ACTIVE' && (
+                    <div className="tl-staff-actions">
                       <button
                         type="button"
                         disabled={busyId === s.id}
                         onClick={() => run(s.id, () => request(`/${s.id}/deactivate`, { method: 'PATCH' }))}
-                        className="text-[11px] font-bold text-rose-600 hover:underline inline-flex items-center gap-1 flex-shrink-0"
+                        className="tl-staff-icon is-danger"
+                        aria-label={`Deactivate ${s.name}`}
+                        title="Deactivate"
                       >
-                        <UserX className="w-3.5 h-3.5" /> Deactivate
+                        <UserX className="w-4 h-4" />
                       </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {/* Invites */}
-          <div>
-            <h3 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-              <Send className="w-3.5 h-3.5" /> Invites ({openInvites.length} open)
-            </h3>
-            {invites.length === 0 ? (
-              <p className="text-xs text-slate-500">No invites sent yet.</p>
-            ) : (
-              <ul className="divide-y divide-slate-100 border border-slate-100 rounded-xl">
-                {invites.map((inv) => (
-                  <li key={inv.id} className="p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                        <span className="truncate">{inv.email}</span> <Badge status={inv.status} />
-                      </div>
-                      <div className="text-[11px] text-slate-500 truncate">{inv.event.name}</div>
-                      <div className="text-[11px] text-slate-400">
-                        Invited by {inv.invitedBy.name}
-                        {inv.status === 'PENDING' ? ` · expires ${formatDate(inv.expiresAt)}` : ''}
-                      </div>
                     </div>
-                    {['PENDING', 'EXPIRED'].includes(inv.status) && (
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <button
-                          type="button"
-                          disabled={busyId === inv.id}
-                          onClick={() => run(inv.id, () => request(`/invites/${inv.id}/resend`, { method: 'POST' }))}
-                          className="text-[11px] font-bold text-[#16a34a] hover:underline inline-flex items-center gap-1"
-                        >
-                          <RefreshCw className="w-3 h-3" /> Resend
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyId === inv.id}
-                          onClick={() => run(inv.id, () => request(`/invites/${inv.id}`, { method: 'DELETE' }), 'Invite cancelled.')}
-                          className="text-[11px] font-bold text-slate-500 hover:text-rose-600 hover:underline inline-flex items-center gap-1"
-                        >
-                          <XCircle className="w-3 h-3" /> Cancel
-                        </button>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                  )}
+                </div>
+              ))
             )}
-          </div>
-        </div>
+          </section>
+
+          <section className="tl-staff-group" aria-labelledby="tl-staff-invites">
+            <h3 id="tl-staff-invites">Invites ({openInvites.length} open)</h3>
+            {invites.length === 0 ? (
+              <p className="tl-dash-card-sub">No invites sent yet.</p>
+            ) : (
+              invites.map((inv) => (
+                <div key={inv.id} className="tl-staff-row">
+                  <span className="tl-staff-avatar" aria-hidden="true"><Send className="w-4 h-4" /></span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="tl-staff-name"><span>{inv.email}</span><Badge status={inv.status} /></div>
+                    <p>{inv.event.name}</p>
+                    <p>
+                      Invited by {inv.invitedBy.name}
+                      {inv.status === 'PENDING' ? ` · expires ${formatDate(inv.expiresAt)}` : ''}
+                    </p>
+                  </div>
+                  {['PENDING', 'EXPIRED'].includes(inv.status) && (
+                    <div className="tl-staff-actions">
+                      <button
+                        type="button"
+                        disabled={busyId === inv.id}
+                        onClick={() => run(inv.id, () => request(`/invites/${inv.id}/resend`, { method: 'POST' }))}
+                        className="tl-staff-icon"
+                        aria-label={`Resend invite to ${inv.email}`}
+                        title="Resend"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === inv.id}
+                        onClick={() => run(inv.id, () => request(`/invites/${inv.id}`, { method: 'DELETE' }), 'Invite cancelled.')}
+                        className="tl-staff-icon is-danger"
+                        aria-label={`Cancel invite to ${inv.email}`}
+                        title="Cancel invite"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </section>
+        </>
       )}
-    </section>
+    </DashCard>
   );
 }
