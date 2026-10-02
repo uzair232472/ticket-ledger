@@ -45,9 +45,19 @@ async function startServer() {
   });
 }
 
+// Process-level resilience guards
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Uncaught Exception:', err);
+});
+
 // Only start when run directly
 if (process.env.NODE_ENV !== 'test') {
   startServer();
 }
 
 export { server };
+

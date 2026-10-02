@@ -6,12 +6,8 @@ import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import { formatPkr } from '../components/venue/venueTheme';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 
-
 const POLL_MS = 3000;
 const POLL_LIMIT_MS = 3 * 60 * 1000;
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
 
 const seatFacts = (seat) => {
   if (!seat) return [['Seat', '—']];
@@ -26,10 +22,8 @@ const seatFacts = (seat) => {
  * FAILED one explains that no tickets were issued.
  */
 export default function BookingSuccess() {
-  const params = useParams();
-  const orderId = params.orderId || params.id;
+  const { id: orderId } = useParams();
   const location = useLocation();
-
   const [order, setOrder] = useState(location.state?.order?.status === 'SUCCESSFUL' ? location.state.order : null);
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [error, setError] = useState('');
@@ -37,10 +31,6 @@ export default function BookingSuccess() {
   const started = useRef(Date.now());
   const receipt = location.state?.receipt;
   const eventId = order?.eventId || location.state?.eventId;
-
-  const { token } = useAuth();
-  const authToken = token || localStorage.getItem('tl_token');
-
 
   const fetchOrder = useCallback(async () => {
     setChecking(true);
@@ -57,7 +47,6 @@ export default function BookingSuccess() {
   }, [orderId]);
 
   useEffect(() => {
-
     fetchOrder();
   }, [fetchOrder]);
 

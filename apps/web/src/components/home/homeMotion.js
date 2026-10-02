@@ -124,12 +124,11 @@ export function initHomeMotion(root) {
 
   mm.add(
     {
-      motion: '(prefers-reduced-motion: no-preference)',
-      reduce: '(prefers-reduced-motion: reduce)',
+      motion: '(min-width: 0px)',
     },
     (context) => {
-      const { motion } = context.conditions;
-      root.classList.toggle('tl-home--motion', motion);
+      const motion = true;
+      root.classList.add('tl-home--motion');
       const cleanups = [];
       const onFocusIn = (el, handler) => {
         if (!el) return;
@@ -155,19 +154,7 @@ export function initHomeMotion(root) {
       });
       cleanups.push(() => header && delete header.dataset.atFooter);
 
-      if (!motion) {
-        ScrollTrigger.create({
-          trigger: q('.tl-closing-stage'),
-          start: 'top 40px',
-          end: 'bottom 40px',
-          onToggle: (self) => setTone('closing', self.isActive),
-        });
-        return () => {
-          cleanups.forEach((fn) => fn());
-          tones.clear();
-          if (header) header.dataset.tone = 'dark';
-        };
-      }
+
 
       /* ---------- Scene 1: pinned hero ---------- */
       const heroTrack = q('.tl-hero-track');

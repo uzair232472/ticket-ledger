@@ -2,7 +2,7 @@ import rateLimit from 'express-rate-limit';
 
 // AUTH_RATE_LIMIT_MAX can raise the ceiling for local testing; limits are skipped in automated tests
 // (NODE_ENV=test, or NODE_TEST_CONTEXT which `node --test` sets for test processes).
-const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX) || 5;
+const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX) || (process.env.NODE_ENV === 'production' ? 5 : 200);
 const isTestRun = () => process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT);
 
 const tooManyRequests = (req, res) => {
