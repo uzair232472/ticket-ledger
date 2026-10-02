@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
-import logoImg from '../../assets/ticketledger-logo.png';
+import BrandLogo from '../brand/BrandLogo';
 
 /**
  * Two-column card used by every login / signup screen, so they look the same for all roles.
@@ -51,7 +51,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           <div className="max-w-md mx-auto w-full space-y-6">
             <div>
               <div className="mb-3">
-                <img src={logoImg} alt="TicketLedger" className="h-7 w-auto object-contain" />
+                <BrandLogo className="text-[22px]" />
               </div>
               <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">{title}</h1>
               {subtitle && <p className="text-xs text-slate-500 mt-1">{subtitle}</p>}

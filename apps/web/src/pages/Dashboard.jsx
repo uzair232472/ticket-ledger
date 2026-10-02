@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowDown, ArrowUpRight, Search, RefreshCw, CalendarDays, Wallet, MapPin, Tag, List } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
-import logoImg from '../assets/ticketledger-logo.png';
+import markUrl from '../assets/ticketledger-mark.svg';
 import HomeHeader from '../components/home/HomeHeader';
 import EventCard from '../components/home/EventCard';
 import SiteFooter, { organizerAction } from '../components/home/SiteFooter';
@@ -460,7 +460,7 @@ export default function Dashboard() {
             <div className="tl-trail" aria-hidden="true">
               {TRAIL_SIZES.map((size, i) => (
                 <span key={size} className="tl-trail-dot" style={{ '--size': `${size}px`, '--alpha': [1, 0.6, 0.45, 0.32, 0.22, 0.14][i] }}>
-                  <span className="tl-trail-icon" style={{ backgroundImage: `url(${logoImg})` }} />
+                  <span className="tl-trail-icon" style={{ backgroundImage: `url(${markUrl})` }} />
                 </span>
               ))}
             </div>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
+import { HERO_IMAGE } from '../components/home/homeData';
 import {
   Wallet,
   QrCode,
@@ -314,91 +316,47 @@ export default function DigitalWallet() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 py-4 pb-16 text-slate-800">
-      <div className="space-y-8">
-
-        {/* Header Banner */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="flex flex-wrap items-center gap-2 mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-600" /> Cryptographic Gate Pass
-              </span>
-              <Link
-                to="/my-nfts"
-                className="text-[10px] font-bold text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 transition shadow-sm"
-              >
-                <Sparkles className="w-3 h-3 text-purple-600" /> Polygon Amoy NFT Explorer →
-              </Link>
-              <span className="text-[10px] font-bold text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <ArrowRightLeft className="w-3 h-3 text-sky-600" /> P2P Transfer & 110% Resale
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
-              Digital Ticket & QR Wallet
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-2xl leading-relaxed">
-              Your official stadium turnstile gate passes. Each ticket contains a rotating cryptographic HMAC QR code, on-chain NFT ownership badge, and controlled peer-to-peer transfer capabilities.
-            </p>
-          </div>
-
-          {/* Action Buttons & Wallet Info Box */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              to="/my-nfts"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-xs font-bold text-purple-800 transition shadow-sm"
-            >
-              <Sparkles className="w-4 h-4 text-purple-600" />
-              <span>View On-Chain NFTs</span>
-            </Link>
-
-            <button
-              onClick={handleOpenMyTransfers}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 transition shadow-sm"
-            >
-              <History className="w-4 h-4 text-emerald-600" />
-              <span>Transfer Log ({myTransfersData.sent.length + myTransfersData.received.length})</span>
+    <AccountShell
+      eyebrow="My account · Cryptographic gate passes"
+      title={['Your', 'tickets']}
+      intro="Gate passes with a rotating QR code, ready to scan at the turnstile. Transfer a pass to a friend, list it for fan resale, or download it as a PDF."
+      image={HERO_IMAGE.src}
+      stats={loading ? [] : [
+        { value: activeTicketsCount, label: 'Active passes' },
+        { value: tickets.length, label: 'All tickets' },
+        { value: scannedTicketsCount, label: 'Scanned' },
+      ]}
+      actions={
+        <>
+          <button type="button" onClick={handleOpenMyTransfers} className="tl-btn tl-btn--green">
+            <History className="w-4 h-4" aria-hidden="true" />
+            <span>Transfer log ({myTransfersData.sent.length + myTransfersData.received.length})</span>
+          </button>
+          <Link to="/my-nfts" className="tl-btn tl-btn--ghost">
+            <Sparkles className="w-4 h-4" aria-hidden="true" /> On-chain NFTs
+          </Link>
+          <div className="tl-acct-wallet">
+            <Wallet className="w-4 h-4" aria-hidden="true" />
+            <span>
+              <small>{user?.name || 'Customer'}</small>
+              {user?.walletAddress ? `0x...${user.walletAddress.slice(-6)}` : 'Custodial Web3 Vault'}
+            </span>
+            <button type="button" onClick={fetchWallet} className="tl-acct-wallet-link" title="Refresh Wallet" aria-label="Refresh wallet">
+              <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
-
-            <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs shadow-sm">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#16a34a] flex items-center justify-center font-bold">
-                <Wallet className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-[10px] text-slate-400 uppercase font-semibold">Wallet Holder</div>
-                <div className="font-bold text-slate-900 text-xs">{user?.name || 'Customer'}</div>
-                <div className="font-mono text-[10px] text-emerald-700 truncate max-w-[140px]">
-                  {user?.walletAddress ? `0x...${user.walletAddress.slice(-6)}` : 'Custodial Web3 Vault'}
-                </div>
-              </div>
-              <button
-                onClick={fetchWallet}
-                className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-900 transition ml-1"
-                title="Refresh Wallet"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            </div>
           </div>
-        </div>
-
-        {/* Info Banner: How to Transfer Pass */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-[#16a34a] flex items-center justify-center shrink-0">
-              <Send className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                <span>Want to transfer a ticket to a friend or list it for resale?</span>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full font-bold">SMART PASS</span>
-              </div>
-              <div className="text-[11px] text-emerald-800 mt-0.5">
-                Click the green <strong>"Transfer Pass"</strong> button on any active ticket card below. Your old QR will be safely revoked and a fresh pass issued to the recipient.
-              </div>
-            </div>
-          </div>
-        </div>
+        </>
+      }
+      contentKey={`${loading}-${filterTab}-${displayedTickets.length}-${Boolean(error)}-${Boolean(successMessage)}-${expandedPayloadId}-${qrVerifyResult?.ticketId || ''}`}
+    >
+    <AccountSection
+      id="tl-passes"
+      kicker="Gate passes"
+      title="Passes"
+      aside={`QR codes rotate every 30 seconds. Next refresh in ${secondsLeft}s.`}
+    >
+    <div className="max-w-7xl space-y-8 text-slate-800">
+      <div className="space-y-8">
 
         {/* Global Success / Alert Banner */}
         {successMessage && (
@@ -518,6 +476,7 @@ export default function DigitalWallet() {
                 return (
                   <div
                     key={t.id}
+                    data-reveal
                     className={`rounded-3xl bg-white border ${isActive
                       ? 'border-emerald-300 shadow-sm hover:shadow-md'
                       : isScanned
@@ -661,7 +620,7 @@ export default function DigitalWallet() {
                           <span>Rotating TOTP • Refreshes in {secondsLeft}s</span>
                         </div>
 
-                        <div className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
+                        <div className="tl-qr-frame bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
                           <img
                             src={t.qr?.qrCodeDataUrl}
                             alt="Ticket QR Code"
@@ -832,6 +791,32 @@ export default function DigitalWallet() {
           </div>
         )}
 
+      </div>
+    </div>
+    </AccountSection>
+
+    <AccountSection id="tl-wallet-howto" tone="light" kicker="Smart pass" title="Transfer, resell or keep">
+      <ol className="tl-acct-rows">
+        <li className="tl-acct-row" data-reveal>
+          <span className="tl-acct-row-num" aria-hidden="true">01</span>
+          <h3>Transfer</h3>
+          <p>Choose <strong>Transfer Pass</strong> on an active ticket and enter your friend’s email. Your old QR is revoked and a fresh pass is issued to them.</p>
+        </li>
+        <li className="tl-acct-row" data-reveal>
+          <span className="tl-acct-row-num" aria-hidden="true">02</span>
+          <h3>Resell</h3>
+          <p>Choose <strong>Resale (≤110%)</strong> to list the ticket on <Link to="/resale" className="underline underline-offset-4 font-semibold">Fan Resale</Link> at up to 110% of its face value.</p>
+        </li>
+        <li className="tl-acct-row" data-reveal>
+          <span className="tl-acct-row-num" aria-hidden="true">03</span>
+          <h3>Keep track</h3>
+          <p><strong>History</strong> shows a ticket’s chain of custody, and the transfer log lists every pass you’ve sent and received.</p>
+        </li>
+      </ol>
+    </AccountSection>
+
+    <AccountPortal>
+      <div>
         {/* MODAL 1: Direct P2P Ticket Transfer Modal */}
         {transferModalTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
@@ -1030,7 +1015,7 @@ export default function DigitalWallet() {
         {/* MODAL 3: Ticket Provenance & Custody History Modal */}
         {historyModalTicket && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-            <div className="relative w-full max-w-lg rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
+            <div className="relative w-full max-w-4xl rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
@@ -1122,7 +1107,7 @@ export default function DigitalWallet() {
         {/* MODAL 4: User's Overall Sent & Received Transfers Log */}
         {showMyTransfersModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
-            <div className="relative w-full max-w-xl rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
+            <div className="relative w-full max-w-4xl rounded-3xl bg-white border border-slate-200 p-6 shadow-2xl space-y-5 max-h-[85vh] flex flex-col">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-emerald-100 text-[#16a34a] flex items-center justify-center">
@@ -1221,6 +1206,7 @@ export default function DigitalWallet() {
         )}
 
       </div>
-    </div>
+    </AccountPortal>
+    </AccountShell>
   );
 }

@@ -190,17 +190,16 @@
 .tl-dt-message-title { font-size: clamp(40px, 6vw, 80px); line-height: 0.95; font-weight: 500; letter-spacing: -0.04em; }
 .tl-dt-message p { font-size: 17px; color: var(--dt-dim); }
 
-/* ---------- Gallery: wide image + drifting, draggable strip of cards (reference marquee) ---------- */
-.tl-dt-gallery { position: relative; overflow: hidden; display: grid; gap: 20px; padding: 0 0 clamp(80px, 12vh, 140px); }
-.tl-dt-wide { margin: 0 20px; aspect-ratio: 1471 / 740; overflow: hidden; border-radius: 2px; background: #151515; }
-.tl-dt-wide img, .tl-dt-marquee-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.tl-dt-wide.is-broken img, .tl-dt-marquee-item.is-broken img { visibility: hidden; }
-.tl-dt-marquee { padding-left: 20px; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+/* ---------- Gallery: drifting, draggable strip of cards similar height to hero ---------- */
+.tl-dt-gallery { position: relative; overflow: hidden; display: grid; gap: 0; padding: 0 0 clamp(80px, 12vh, 140px); }
+.tl-dt-marquee { padding-left: 0; cursor: grab; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .tl-dt-marquee.is-dragging { cursor: grabbing; }
 .tl-dt-marquee-track { display: flex; width: max-content; will-change: transform; }
 .tl-dt-marquee-list { display: flex; }
-.tl-dt-marquee-item { width: 33vw; margin-right: 20px; aspect-ratio: 539 / 550; overflow: hidden; border-radius: 2px; background: #151515; }
-.tl-dt-marquee-item img { pointer-events: none; }
+/* Each card matches the hero's height — tall, cinematic, clearly visible */
+.tl-dt-marquee-item { width: 52vw; margin-right: 16px; height: clamp(400px, 62svh, 700px); overflow: hidden; border-radius: 0; background: #151515; }
+.tl-dt-marquee-item img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; display: block; pointer-events: none; }
+.tl-dt-marquee-item.is-broken img { visibility: hidden; }
 .tl-dt-marquee-toggle {
   justify-self: end;
   display: inline-flex;
@@ -217,11 +216,9 @@
   cursor: pointer;
 }
 .tl-dt-marquee-toggle:hover { color: var(--dt-ink); }
-@media (max-width: 1023px) { .tl-dt-marquee-item { width: 50vw; } }
+@media (max-width: 1023px) { .tl-dt-marquee-item { width: 70vw; } }
 @media (max-width: 767px) {
-  .tl-dt-wide { margin: 0 16px; aspect-ratio: 373 / 349; }
-  .tl-dt-marquee { padding-left: 16px; }
-  .tl-dt-marquee-item { width: 70vw; aspect-ratio: 373 / 349; margin-right: 12px; }
+  .tl-dt-marquee-item { width: 88vw; height: clamp(260px, 52svh, 480px); margin-right: 12px; }
   .tl-dt-marquee-toggle { margin-right: 16px; }
 }
 

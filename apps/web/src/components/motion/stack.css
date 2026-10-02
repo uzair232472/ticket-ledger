@@ -1,0 +1,5 @@
+/* Stacked sections (see stackSections.js). Only applied while the helper is active (motion allowed).
+   The doubled attribute outranks a page's own `.section { position: relative }` regardless of load order. */
+[data-stacked][data-stacked] { position: sticky; top: var(--stick-top, 0px); }
+/* Natural layout while ScrollTrigger measures */
+.tl-stack-measuring [data-stacked] { position: relative !important; top: auto !important; }

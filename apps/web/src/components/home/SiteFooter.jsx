@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import logoImg from '../../assets/ticketledger-logo.png';
+import BrandLogo from '../brand/BrandLogo';
 
 /** Organizer call to action for the current visitor (matches the routes their role can open). */
 export function organizerAction(user, isAuthenticated) {
@@ -34,7 +34,7 @@ export default function SiteFooter({ onCategories }) {
       <div>
         <div className="tl-footer-top">
           <div className="tl-footer-brand">
-            <img src={logoImg} alt="TicketLedger" width="176" height="34" loading="lazy" />
+            <BrandLogo />
             <p>Tickets for cricket, concerts and festivals across Pakistan, with seat selection and QR entry.</p>
           </div>
           <nav aria-label="Discover">

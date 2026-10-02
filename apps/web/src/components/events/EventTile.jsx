@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart } from 'lucide-react';
 import { getEventVisual } from '../../utils/eventMedia';
-import logoImg from '../../assets/ticketledger-logo.png';
+import markUrl from '../../assets/ticketledger-mark.svg';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
 
 // Shown only when the API reports this few seats left
@@ -92,7 +92,7 @@ export default function EventTile({ event, index, isFavorite, onToggleFavorite, 
         <div className="tl-tile-media">
           <img className="tl-tile-img" src={visual.image} alt="" loading={index < 3 ? 'eager' : 'lazy'} decoding="async" onError={fallback} />
           <img className="tl-tile-img tl-tile-gray" src={visual.image} alt="" aria-hidden="true" loading={index < 3 ? 'eager' : 'lazy'} decoding="async" />
-          <span className="tl-tile-fallback" aria-hidden="true" style={{ backgroundImage: `url(${logoImg})` }} />
+          <span className="tl-tile-fallback" aria-hidden="true" style={{ backgroundImage: `url(${markUrl})` }} />
           {(soldOut || limited) && (
             <span className={`tl-tile-flag${soldOut ? ' is-soldout' : ''}`}>{soldOut ? 'Sold out' : `Only ${available} left`}</span>
           )}

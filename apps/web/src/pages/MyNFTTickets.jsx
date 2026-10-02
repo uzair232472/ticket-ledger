@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
+import { COLLAGE_IMAGES } from '../components/home/homeData';
 import {
   Sparkles,
   ExternalLink,
@@ -140,60 +142,42 @@ export default function MyNFTTickets() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-3">
-        <RefreshCw className="w-10 h-10 text-purple-400 animate-spin" />
-        <p className="text-slate-400 text-sm">Querying Polygon Amoy testnet for ERC721 NFT tickets...</p>
-      </div>
-    );
-  }
+  const listedCount = tickets.filter((t) => t.activeResaleListing).length;
 
   return (
-    <div className="space-y-6 text-slate-800">
-      {/* Header */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-purple-600" /> Polygon Amoy (ChainId 80002)
+    <AccountShell
+      eyebrow="My account · Polygon Amoy (ChainId 80002)"
+      title={['On-chain', 'tickets']}
+      intro="Your seats as ERC721 tokens, each carrying its 110% resale ceiling. List a ticket for fan resale or cancel a listing from here."
+      image={COLLAGE_IMAGES[1]}
+      stats={loading ? [] : [
+        { value: tickets.length, label: tickets.length === 1 ? 'NFT ticket' : 'NFT tickets' },
+        { value: listedCount, label: 'Listed for resale' },
+      ]}
+      actions={
+        <>
+          <div className="tl-acct-wallet">
+            <Wallet className="w-4 h-4" aria-hidden="true" />
+            <span>
+              <small>Connected wallet</small>
+              {user?.walletAddress ? `0x...${user.walletAddress.substring(36)}` : 'Platform Custodian'}
             </span>
-            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3 text-[#16a34a]" /> Smart Contract Verified
-            </span>
+            <Link to="/profile" className="tl-acct-wallet-link">Manage</Link>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight mt-2">
-            My Web3 NFT Tickets
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Immutable ERC721 tokens on Polygon with anti-scalping price ceilings (max 110%)
-          </p>
-        </div>
-
-        {/* Wallet Status Banner */}
-        <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs shadow-sm">
-          <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-            <Wallet className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-400 font-semibold uppercase">Connected Wallet</div>
-            <div className="font-mono text-slate-900 font-semibold truncate max-w-[180px]">
-              {user?.walletAddress ? (
-                `0x...${user.walletAddress.substring(36)}`
-              ) : (
-                <span className="text-slate-600">Platform Custodian</span>
-              )}
-            </div>
-          </div>
-          <Link
-            to="/profile"
-            className="text-[11px] text-[#16a34a] hover:underline font-bold ml-1"
-          >
-            Manage
+          <Link to="/resale" className="tl-btn tl-btn--ghost">
+            Fan resale <ArrowRight className="w-4 h-4" aria-hidden="true" />
           </Link>
-        </div>
-      </div>
-
+        </>
+      }
+      contentKey={`${loading}-${tickets.length}-${listedCount}-${Boolean(error)}`}
+    >
+    <AccountSection
+      id="tl-nfts"
+      kicker="Smart contract verified"
+      title="Your tokens"
+      aside="Each card shows the token, its transaction, the owner wallet and the resale ceiling recorded for it."
+    >
+    <div className="space-y-6 text-slate-800 pb-32">
       {error && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
@@ -202,7 +186,12 @@ export default function MyNFTTickets() {
       )}
 
       {/* NFT Grid */}
-      {tickets.length === 0 ? (
+      {loading ? (
+        <div className="tl-acct-loading">
+          <RefreshCw className="w-10 h-10 text-purple-400 animate-spin" />
+          <p>Querying Polygon Amoy testnet for ERC721 NFT tickets...</p>
+        </div>
+      ) : tickets.length === 0 ? (
         <div className="text-center py-16 space-y-4 max-w-md mx-auto bg-white rounded-3xl p-8 border border-slate-200 shadow-sm">
           <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto text-slate-400">
             <Sparkles className="w-7 h-7 text-[#16a34a]" />
@@ -227,16 +216,17 @@ export default function MyNFTTickets() {
             return (
               <div
                 key={t.id}
+                data-reveal
                 className="group relative rounded-3xl bg-white border border-slate-200/90 hover:border-slate-300 transition-all duration-300 shadow-sm hover:shadow-md overflow-hidden flex flex-col justify-between"
               >
                 {/* Event Banner */}
-                <div className="relative h-44 overflow-hidden bg-slate-100">
+                <div className="relative h-64 overflow-hidden bg-slate-100">
                   <img
                     src={event?.bannerUrl || 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80'}
                     alt={event?.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
                   {/* Token ID Badge */}
                   <div className="absolute top-3 left-3 flex items-center gap-1.5">
@@ -381,6 +371,10 @@ export default function MyNFTTickets() {
         </div>
       )}
 
+      </div>
+    </AccountSection>
+
+      <AccountPortal>
       {/* Built-in TicketLedger On-Chain Explorer Modal */}
       {selectedTicketForExplorer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
@@ -679,6 +673,7 @@ export default function MyNFTTickets() {
           </div>
         </div>
       )}
-    </div>
+      </AccountPortal>
+    </AccountShell>
   );
 }

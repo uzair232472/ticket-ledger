@@ -10,7 +10,7 @@ gsap.registerPlugin(ScrollTrigger);
 const SPEED = 36; // px/s, measured on the reference marquee
 const MIN_CARDS = 6;
 
-const photo = (id, w) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=70`;
+const photo = (id, w) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=82`;
 // Atmosphere photos already used in the project, grouped so a match never shows concert crowds
 const SPORT_POOL = ['1540747913346-19e32dc3e97e', '1431324155629-1a6deb1dec8d', '1508098682722-e99c43a406b2', '1531415074968-036ba1b575da'];
 const MUSIC_POOL = ['1501386761578-eac5c94b800a', '1470229722913-7c0e2dbbafd3', '1459749411175-04bf5292ceea', '1540039155733-5bb30b53aa14', '1514525253161-7a46d19cd819', '1470225620780-dba8ba36b745'];
@@ -18,7 +18,10 @@ const MUSIC_TYPES = ['MUSIC_CONCERT', 'MUSIC_FESTIVAL'];
 
 const photoId = (src = '') => src.match(/photo-([\w-]+?)(\?|$)/)?.[1] || src;
 
-const sized = (src) => (src.includes('images.unsplash.com') ? src.replace(/w=\d+/, 'w=900') : src);
+// Wide banner: 1800px so it fills the 16/7 cinematic strip without upscaling
+const sizedWide = (src) => (src.includes('images.unsplash.com') ? src.replace(/w=\d+/, 'w=1800').replace(/q=\d+/, 'q=88') : src);
+// Marquee cards: 1400px is ample for the 38vw tiles at any desktop viewport
+const sizedCard = (src) => (src.includes('images.unsplash.com') ? src.replace(/w=\d+/, 'w=1400').replace(/q=\d+/, 'q=82') : src);
 
 /** Repeats a list until there are enough cards for the strip to be wider than the screen. */
 const fill = (pool) => {
@@ -36,18 +39,19 @@ function buildCards(event, mainImage) {
   if (own.length) return fill(own);
   const visual = EVENT_VISUALS[event.type] || {};
   const category = CATEGORIES.find((c) => c.type === event.type);
-  const group = (MUSIC_TYPES.includes(event.type) ? MUSIC_POOL : SPORT_POOL).map((id) => photo(id, 900));
+  // Pull marquee cards at 1400px so they never look upscaled in the 38vw strip
+  const group = (MUSIC_TYPES.includes(event.type) ? MUSIC_POOL : SPORT_POOL).map((id) => photo(id, 1400));
   const seen = new Set([photoId(mainImage)]);
   const cards = [];
   [visual.defaultImage, visual.altImage, category?.image, ...group].filter(Boolean).forEach((src) => {
     const key = photoId(src);
     if (!seen.has(key)) {
       seen.add(key);
-      cards.push(sized(src));
+      cards.push(sizedCard(src));
     }
   });
   // Too few distinct photos: include the event image and repeat so the strip is wider than the screen
-  return fill(cards.length ? [sized(mainImage), ...cards] : [sized(mainImage)]);
+  return fill(cards.length ? [sizedCard(mainImage), ...cards] : [sizedCard(mainImage)]);
 }
 
 /**
@@ -57,7 +61,9 @@ function buildCards(event, mainImage) {
  */
 export default function EventGallery({ event, mainImage }) {
   const cards = useMemo(() => buildCards(event, mainImage), [event, mainImage]);
-  const wideImage = resolveMediaUrl(event.galleryWideUrl) || mainImage;
+  // Wide banner: 1800px so the cinematic 16/7 strip is never pixelated
+  const rawWide = resolveMediaUrl(event.galleryWideUrl) || mainImage;
+  const wideImage = sizedWide(rawWide);
   const stripRef = useRef(null);
   const trackRef = useRef(null);
   const [paused, setPaused] = useState(false);
@@ -165,9 +171,6 @@ export default function EventGallery({ event, mainImage }) {
 
   return (
     <section className="tl-dt-gallery" aria-label="Photos">
-      <div className="tl-dt-wide">
-        <img src={wideImage} alt={`${event.name}`} loading="lazy" decoding="async" onError={hideBroken} />
-      </div>
       <div ref={stripRef} className="tl-dt-marquee" data-event-marquee>
         <div ref={trackRef} className="tl-dt-marquee-track">
           {renderList(false)}

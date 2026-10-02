@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import AccountShell, { AccountSection } from '../components/account/AccountShell';
+import { STAGE_IMAGE } from '../components/home/homeData';
 import {
   Building2,
   FileText,
@@ -10,6 +12,7 @@ import {
   UploadCloud,
   ExternalLink,
   ShieldCheck,
+  ArrowUpRight,
   User,
   Mail,
   Phone,
@@ -122,82 +125,101 @@ export default function CompanyRegistration() {
     }
   };
 
-  if (loading || authLoading) {
-    return (
-      <div className="min-h-[50vh] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
+  const busy = loading || authLoading;
+  const isOrganizer = isAuthenticated && user?.role === 'ORGANIZER';
+  const approved = company?.status === 'APPROVED';
+
+  // Hosting steps, as implemented: organizer signup -> email verification -> company registration with
+  // NTN/CNIC + document -> super admin review -> events with tiers, seating and forecast -> gate staff
+  const steps = [
+    { title: 'Sign up', copy: 'Create an account and choose Event Organizer as the account type, then verify your email with the code we send.' },
+    { title: 'Register', copy: 'Add your company name, contact details, headquarters city and NTN or CNIC, with a verification document (PDF, PNG or JPG).' },
+    { title: 'Get approved', copy: 'A super admin reviews your application. You can create and publish events once your company is approved.' },
+    { title: 'Create', copy: 'Set up ticket tiers and the seating plan, then run the pre-launch demand forecast or publish directly.' },
+    { title: 'Run the gate', copy: 'Invite gate staff from your organizer dashboard. They scan rotating QR tickets at the door.' },
+  ];
+
+  const organizerNav = approved
+    ? [
+        { to: '/organizer/dashboard', label: 'Organizer dashboard' },
+        { to: '/organizer/create-event', label: 'Create event' },
+        { to: '/scanner', label: 'Gate scanner' },
+        { to: '/company', label: 'Company' },
+      ]
+    : [];
+
+  const statusLabel = { APPROVED: 'Approved', PENDING: 'Under review', REJECTED: 'Needs changes' };
+
+  let actions;
+  if (busy) actions = null;
+  else if (!isAuthenticated) {
+    actions = (
+      <>
+        <Link to="/signup" className="tl-btn tl-btn--green">
+          Create organizer account <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+        </Link>
+        <Link to="/login" className="tl-btn tl-btn--ghost">I already have one</Link>
+      </>
+    );
+  } else if (isOrganizer) {
+    actions = (
+      <>
+        {approved ? (
+          <Link to="/organizer/create-event" className="tl-btn tl-btn--green">
+            Create an event <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+          </Link>
+        ) : (
+          <a href="#tl-host-company" className="tl-btn tl-btn--green">
+            {company ? 'View application' : 'Register your company'} <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+          </a>
+        )}
+        <button type="button" onClick={() => { loadCompany(); refreshUser(); }} className="tl-btn tl-btn--ghost">
+          <RefreshCw className="w-4 h-4" aria-hidden="true" /> Refresh status
+        </button>
+      </>
     );
   }
 
-  // Company registration belongs to organizer accounts (one account = one role)
-  if (!isAuthenticated || user.role !== 'ORGANIZER') {
-    return (
-      <div className="max-w-xl mx-auto my-8 rounded-3xl bg-white p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[#16a34a] border border-emerald-200 flex items-center justify-center mx-auto">
-          <Building2 className="w-7 h-7" />
-        </div>
-        <h1 className="text-xl font-extrabold text-slate-900">Host events on TicketLedger</h1>
-        {!isAuthenticated ? (
-          <>
-            <p className="text-sm text-slate-600">
-              Create an Event Organizer account, verify your email, then register your company for approval.
-            </p>
-            <div className="flex flex-wrap justify-center gap-3">
-              <Link to="/signup" className="btn-eventfrog text-xs px-5 py-2.5">Create organizer account</Link>
-              <Link to="/login" className="text-xs font-bold text-[#16a34a] hover:underline self-center">I already have one →</Link>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-slate-600">
-            You're signed in with a {user.role.replace('_', ' ').toLowerCase()} account. Each account has one role, so to host
-            events please sign up for a separate Event Organizer account with a different email.
-          </p>
-        )}
-      </div>
-    );
-  }
+  const howItWorks = (
+    <AccountSection id="tl-host-steps" tone="light" kicker="How hosting works" title="From sign-up to the gate">
+      <ol className="tl-acct-rows">
+        {steps.map((step, i) => (
+          <li key={step.title} className="tl-acct-row" data-reveal>
+            <span className="tl-acct-row-num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+            <h3>{step.title}</h3>
+            <p>{step.copy}</p>
+          </li>
+        ))}
+      </ol>
+    </AccountSection>
+  );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-16 text-slate-800">
-      {/* Header */}
-      <div className="rounded-3xl bg-white p-6 sm:p-8 border border-slate-200/90 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-4">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[#16a34a] border border-emerald-200 flex items-center justify-center font-bold shadow-sm">
-              <Building2 className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#212b36] tracking-tight">
-                  Organizer Company Registration
-                </h1>
-                {company && (
-                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase ${company.status === 'APPROVED'
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : company.status === 'PENDING'
-                      ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200'
-                    }`}>
-                    {company.status}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs sm:text-sm text-slate-500">
-                Verify your organization via NTN or CNIC to publish sports matches and concerts on TicketLedger.
-              </p>
-            </div>
+    <AccountShell
+      eyebrow="For organizers"
+      title={['Host your', 'next event']}
+      intro="Register your company for approval, set up ticket tiers and seating, check a demand forecast before you publish, and invite gate staff to scan tickets at the door."
+      image={STAGE_IMAGE}
+      stats={isOrganizer && company ? [{ value: statusLabel[company.status] || company.status, label: company.companyName }] : []}
+      actions={actions}
+      nav={organizerNav}
+      contentKey={`${busy}-${company?.status || 'none'}-${message.text}`}
+    >
+      {busy ? (
+        <AccountSection id="tl-host-company" kicker="Organizer company" title="Loading">
+          <div className="tl-acct-loading">
+            <span className="tl-acct-spinner" aria-hidden="true" />
+            <p>Checking your organizer account…</p>
           </div>
-
-          <button
-            onClick={() => { loadCompany(); refreshUser(); }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 shadow-sm transition w-fit"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-[#16a34a]" /> Refresh Status
-          </button>
-        </div>
-      </div>
-
+        </AccountSection>
+      ) : isOrganizer ? (
+        <AccountSection
+          id="tl-host-company"
+          kicker={company ? `Status · ${statusLabel[company.status] || company.status}` : 'Step 2 of hosting'}
+          title={company ? 'Your company' : 'Register your company'}
+          aside="Verify your organization via NTN or CNIC to publish sports matches and concerts on TicketLedger."
+        >
+          <div className="max-w-4xl space-y-6 text-slate-800">
       {/* Feedback Alert */}
       {message.text && (
         <div className={`p-4 rounded-2xl text-xs flex items-center gap-2 border ${message.type === 'success'
@@ -425,6 +447,31 @@ export default function CompanyRegistration() {
           </form>
         </div>
       )}
-    </div>
+          </div>
+        </AccountSection>
+      ) : (
+        <AccountSection id="tl-host-company" kicker="Organizer accounts" title="Start hosting">
+          <div className="tl-host-start" data-reveal>
+            <Building2 className="w-8 h-8" aria-hidden="true" />
+            {!isAuthenticated ? (
+              <>
+                <p>Create an Event Organizer account, verify your email, then register your company for approval.</p>
+                <div className="tl-host-start-actions">
+                  <Link to="/signup" className="tl-btn tl-btn--green">Create organizer account <ArrowUpRight className="w-4 h-4" aria-hidden="true" /></Link>
+                  <Link to="/login" className="tl-btn tl-btn--ghost">Log in</Link>
+                </div>
+              </>
+            ) : (
+              <p>
+                You're signed in with a {user.role.replace('_', ' ').toLowerCase()} account. Each account has one role, so to host
+                events please sign up for a separate Event Organizer account with a different email.
+              </p>
+            )}
+          </div>
+        </AccountSection>
+      )}
+
+      {howItWorks}
+    </AccountShell>
   );
 }

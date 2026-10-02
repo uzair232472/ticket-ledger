@@ -1,33 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useNavigationType } from 'react-router-dom';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAuth } from '../context/AuthContext';
 import {
   ShieldCheck,
   Tag,
   Search,
   Filter,
-  Sparkles,
-  ArrowRight,
+  ArrowDown,
+  ArrowUpRight,
   CheckCircle2,
   AlertTriangle,
-  Calendar,
+  CalendarDays,
   MapPin,
   Ticket as TicketIcon,
   CreditCard,
   Lock,
-  RefreshCw,
   ShoppingBag,
-  ExternalLink,
-  ChevronRight,
-  Layers,
-  Percent
+  Wallet,
+  Plus,
+  X,
 } from 'lucide-react';
+import HomeHeader from '../components/home/HomeHeader';
+import SiteFooter from '../components/home/SiteFooter';
+import { HERO_IMAGE, categoryName } from '../components/home/homeData';
+import { getEventVisual } from '../utils/eventMedia';
+import { formatEventDate, formatEventTime } from '../utils/eventTime';
+import { initResaleMotion } from '../components/resale/resaleMotion';
+import { RESALE_CITIES, RESALE_STEPS, RESALE_FAQS } from '../components/resale/resaleContent';
+import '../components/home/home.css';
+import '../components/resale/resale.css';
 
 const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
+const SCROLL_KEY = 'tl-resale-scroll';
+const HEADER_H = 84;
+const hideBroken = (e) => e.currentTarget.classList.add('is-broken');
+const rupees = (n) => `Rs. ${Number(n).toLocaleString()}`;
+
+const markupLabel = (pct) => (pct > 0 ? `+${pct}% on face value` : pct < 0 ? `${pct}% below face value` : 'At face value');
 
 export default function ResaleMarketplace() {
   const { user, token, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const rootRef = useRef(null);
+  const pageRef = useRef(null);
+  const requestRef = useRef(0);
 
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +53,8 @@ export default function ResaleMarketplace() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [maxPriceFilter, setMaxPriceFilter] = useState('');
+  // Whether the listings on screen were fetched with any filter (the inputs may hold unapplied edits)
+  const [filtersApplied, setFiltersApplied] = useState(false);
 
   // Purchase modal states
   const [selectedListing, setSelectedListing] = useState(null);
@@ -42,25 +62,35 @@ export default function ResaleMarketplace() {
   const [purchaseSuccess, setPurchaseSuccess] = useState(null);
   const [purchaseError, setPurchaseError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('TEST_INSTANT');
+  // Synchronous guard: a double click fires twice before `purchasing` re-renders the button as disabled
+  const purchasingRef = useRef(false);
 
-  // Fetch listings
-  const fetchListings = async () => {
+  const [openFaq, setOpenFaq] = useState(0);
+
+  // Fetch listings. `overrides` lets Reset fetch with cleared filters before the state update lands.
+  // Only the newest request may update the page, so quick filter changes can't show stale results.
+  const fetchListings = async (overrides = {}) => {
+    const { search = searchQuery, city = selectedCity, maxPrice = maxPriceFilter } = overrides;
+    const id = ++requestRef.current;
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams();
-      if (searchQuery) params.append('search', searchQuery);
-      if (selectedCity) params.append('city', selectedCity);
-      if (maxPriceFilter) params.append('maxPrice', maxPriceFilter);
+      if (search) params.append('search', search);
+      if (city) params.append('city', city);
+      if (maxPrice) params.append('maxPrice', maxPrice);
 
       const res = await fetch(`${API_BASE}/resale/market?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to fetch resale tickets');
-      setListings(data.data?.listings || []);
+      if (id === requestRef.current) {
+        setListings(data.data?.listings || []);
+        setFiltersApplied(Boolean(search || city || maxPrice));
+      }
     } catch (err) {
-      setError(err.message);
+      if (id === requestRef.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (id === requestRef.current) setLoading(false);
     }
   };
 
@@ -73,14 +103,23 @@ export default function ResaleMarketplace() {
     fetchListings();
   };
 
+  const handleReset = () => {
+    setSearchQuery('');
+    setMaxPriceFilter('');
+    // Changing the city refetches through the effect above; otherwise fetch here with the cleared values
+    if (selectedCity) setSelectedCity('');
+    else fetchListings({ search: '', city: '', maxPrice: '' });
+  };
+
   const handleBuyTicket = async () => {
     if (!isAuthenticated) {
       navigate('/login');
       return;
     }
 
-    if (!selectedListing) return;
+    if (!selectedListing || purchasingRef.current) return;
 
+    purchasingRef.current = true;
     setPurchasing(true);
     setPurchaseError('');
 
@@ -104,492 +143,562 @@ export default function ResaleMarketplace() {
       fetchListings();
     } catch (err) {
       setPurchaseError(err.message);
+      // The listing may have just sold or been cancelled; show current availability behind the dialog
+      fetchListings();
     } finally {
+      purchasingRef.current = false;
       setPurchasing(false);
     }
   };
 
+  const openPurchase = (item) => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    setSelectedListing(item);
+    setPurchaseSuccess(null);
+    setPurchaseError('');
+  };
+
+  /* ---------- Scroll scenes (created once per mount, fully reverted on unmount) ---------- */
+  useLayoutEffect(() => {
+    const mm = initResaleMotion(rootRef.current);
+    return () => mm.revert();
+  }, []);
+
+  // A fresh visit starts at the top. Back/forward (and reload) return to the previous position once the
+  // listings have loaded and the scenes are measured, so the page never lands mid-scene at the wrong spot.
+  const pendingRestoreRef = useRef(null);
+  useEffect(() => {
+    const previous = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+    const saved = Number(sessionStorage.getItem(SCROLL_KEY));
+    const reload = performance.getEntriesByType('navigation')[0]?.type === 'reload';
+    if ((navigationType === 'POP' || reload) && saved > 0) pendingRestoreRef.current = saved;
+    else window.scrollTo({ top: 0, behavior: 'instant' });
+    const save = () => sessionStorage.setItem(SCROLL_KEY, String(Math.round(window.scrollY)));
+    window.addEventListener('pagehide', save);
+    return () => {
+      save();
+      window.removeEventListener('pagehide', save);
+      window.history.scrollRestoration = previous;
+    };
+  }, []);
+
+  // Loaded cards change the page height, so the pinned scenes below them must be re-measured
+  useEffect(() => {
+    if (loading) return undefined;
+    const frame = requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+      if (pendingRestoreRef.current != null) {
+        window.scrollTo({ top: pendingRestoreRef.current, behavior: 'instant' });
+        pendingRestoreRef.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading, listings.length, error]);
+
+  const scrollToListings = useCallback(() => {
+    const el = document.getElementById('listings');
+    if (!el) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY, behavior: reduce ? 'instant' : 'smooth' });
+    el.focus({ preventScroll: true });
+  }, []);
+
+  const lowestPrice = useMemo(
+    () => (listings.length ? Math.min(...listings.map((l) => Number(l.resalePrice))) : null),
+    [listings]
+  );
+
   return (
-    <div className="max-w-7xl mx-auto space-y-8 py-4 pb-16 text-slate-800">
-      <div className="space-y-8">
+    <div ref={rootRef} className="tl-home tl-resale">
+      {/* Categories live on Explore Events, so the menu's Categories item goes there */}
+      <HomeHeader pageRef={pageRef} onCategories={() => navigate('/events')} />
 
-        {/* Anti-Scalping Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-10 shadow-sm">
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-3 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold uppercase tracking-wider">
-                <ShieldCheck className="w-4 h-4 text-[#16a34a]" />
-                Anti-Scalping Protected P2P Marketplace
+      <div ref={pageRef}>
+        {/* ---------- 1. Hero ---------- */}
+        <section className="tl-rs-hero-track" aria-labelledby="tl-rs-title">
+          <div className="tl-rs-hero-stage">
+            <div className="tl-rs-hero-media" aria-hidden="true">
+              <img src={HERO_IMAGE.src} srcSet={HERO_IMAGE.srcSet} sizes="100vw" alt="" fetchpriority="high" onError={hideBroken} />
+              <div className="tl-rs-hero-shade" />
+              <div className="tl-rs-hero-dim" />
+            </div>
+
+            <span className="tl-rs-cta-ghost" aria-hidden="true">Resell</span>
+
+            <div className="tl-rs-hero-content">
+              <div className="tl-rs-hero-title">
+                <p className="tl-eyebrow">Fan resale · Can’t make it?</p>
+                <h1 id="tl-rs-title" className="tl-rs-cta-title">
+                  <span className="tl-rs-cta-line">List your ticket</span>
+                  <span className="tl-rs-cta-line">at a fair price<span className="tl-rs-accent">.</span></span>
+                </h1>
+                <p className="tl-rs-hero-sub">Fan-to-fan tickets, capped at 110% of face value.</p>
+                <div className="tl-hero-actions tl-rs-hero-actions">
+                  <Link to="/wallet" className="tl-btn tl-btn--green">
+                    List a ticket <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+                  </Link>
+                  <button type="button" className="tl-btn tl-btn--ghost" onClick={scrollToListings}>
+                    Browse tickets <ArrowDown className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                  <Link to="/my-nfts" className="tl-rs-textlink tl-rs-textlink--light">
+                    Manage my listings <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  </Link>
+                </div>
               </div>
-              <h1 className="text-2xl sm:text-4xl font-extrabold text-[#212b36] tracking-tight">
-                Verified Secondary Fan Exchange
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-                Buy and resell authentic event tickets directly with fellow fans. All listings are bounded by an
-                <strong className="text-emerald-800 font-bold"> immutable 110% price ceiling</strong> enforced by our Polygon smart contracts, preventing predatory black-market markups and ticket botting.
-              </p>
-              <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-slate-600">
-                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                  <CheckCircle2 className="w-4 h-4 text-[#16a34a]" /> Max 10% Profit Margin
-                </div>
-                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                  <Lock className="w-4 h-4 text-purple-600" /> Instant QR Nonce Revocation
-                </div>
-                <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                  <Sparkles className="w-4 h-4 text-emerald-600" /> ERC721 NFT On-Chain Transfer
-                </div>
+
+              <div className="tl-rs-hero-stat">
+                {loading && listings.length === 0 ? (
+                  <span className="tl-rs-hero-stat-label">Checking listings…</span>
+                ) : error ? (
+                  <span className="tl-rs-hero-stat-label">Listings unavailable right now</span>
+                ) : (
+                  <>
+                    <strong>{listings.length}</strong>
+                    <span className="tl-rs-hero-stat-label">
+                      {listings.length === 1 ? 'ticket' : 'tickets'} listed{filtersApplied ? ' for your filters' : ' now'}
+                      {lowestPrice != null && <> · from {rupees(lowestPrice)}</>}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row md:flex-col gap-3 shrink-0">
-              <Link
-                to="/wallet"
-                className="btn-eventfrog text-xs px-5 py-3 shadow-sm flex items-center justify-center gap-2"
-              >
-                <Tag className="w-4 h-4" />
-                <span>List My Ticket for Resale</span>
-              </Link>
-              <Link
-                to="/events"
-                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition"
-              >
-                <TicketIcon className="w-4 h-4 text-slate-500" />
-                <span>Explore Primary Box Office</span>
-              </Link>
-            </div>
+            <div className="tl-rs-hero-progress" aria-hidden="true" />
+            <div className="tl-cover-shade" aria-hidden="true" />
           </div>
-        </div>
+        </section>
 
-        {/* Filter & Search Bar */}
-        <div className="bg-white border border-slate-200/90 p-4 rounded-2xl shadow-sm">
-          <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search event, team, artist..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#22c55e]"
-              />
-            </div>
-
-            {/* City Filter */}
+        {/* ---------- 2. Live listings ---------- */}
+        <section id="listings" className="tl-rs-market" tabIndex={-1} aria-labelledby="tl-rs-market-title">
+          <div className="tl-rs-market-head">
             <div>
-              <select
-                value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-[#22c55e]"
-              >
-                <option value="">All Pakistan Cities</option>
-                <option value="Lahore">Lahore</option>
-                <option value="Karachi">Karachi</option>
-                <option value="Islamabad">Islamabad</option>
-                <option value="Rawalpindi">Rawalpindi</option>
-                <option value="Multan">Multan</option>
-                <option value="Peshawar">Peshawar</option>
-              </select>
+              <p className="tl-eyebrow">On sale now</p>
+              <h2 id="tl-rs-market-title" className="tl-section-title">Tickets from fans</h2>
             </div>
+            <p className="tl-rs-market-note">
+              Every price is capped at 110% of face value. Listings disappear as soon as they sell or the seller takes them down.
+            </p>
+          </div>
 
-            {/* Max Price Filter */}
-            <div>
-              <input
-                type="number"
-                value={maxPriceFilter}
-                onChange={(e) => setMaxPriceFilter(e.target.value)}
-                placeholder="Max Price (PKR)"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#22c55e]"
-              />
-            </div>
-
-            {/* Submit & Reset Button */}
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                className="flex-1 btn-eventfrog text-xs py-2 shadow-sm"
-              >
-                <Filter className="w-3.5 h-3.5" /> Apply
+          <form className="tl-filter-bar tl-rs-filters" onSubmit={handleSearchSubmit} role="search" aria-label="Filter resale tickets">
+            <label className="tl-pill tl-pill--wide">
+              <Search className="w-4 h-4" aria-hidden="true" />
+              <span className="tl-pill-text">
+                <span className="tl-pill-label">search</span>
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="event, team, artist or venue"
+                />
+              </span>
+            </label>
+            <label className="tl-pill">
+              <MapPin className="w-4 h-4" aria-hidden="true" />
+              <span className="tl-pill-text">
+                <span className="tl-pill-label">where</span>
+                <select value={selectedCity} onChange={(e) => setSelectedCity(e.target.value)}>
+                  <option value="">all of Pakistan</option>
+                  {RESALE_CITIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </span>
+            </label>
+            <label className="tl-pill">
+              <Wallet className="w-4 h-4" aria-hidden="true" />
+              <span className="tl-pill-text">
+                <span className="tl-pill-label">max price (PKR)</span>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={maxPriceFilter}
+                  onChange={(e) => setMaxPriceFilter(e.target.value)}
+                  placeholder="any"
+                />
+              </span>
+            </label>
+            <div className="tl-rs-filter-actions">
+              <button type="submit" className="tl-pill tl-pill--action">
+                <Filter className="w-4 h-4" aria-hidden="true" /> Apply
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setSelectedCity('');
-                  setMaxPriceFilter('');
-                  fetchListings();
-                }}
-                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition"
-              >
+              <button type="button" className="tl-rs-reset" onClick={handleReset}>
                 Reset
               </button>
             </div>
           </form>
-        </div>
 
-        {/* Listings Content */}
-        {error && (
-          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
-            <div>{error}</div>
-          </div>
-        )}
+          <p className="tl-rs-count" aria-live="polite">
+            {loading ? 'Loading resale tickets…' : error ? '' : `${listings.length} ${listings.length === 1 ? 'ticket' : 'tickets'} available`}
+          </p>
 
-        {loading ? (
-          <div className="text-center py-20 space-y-4">
-            <div className="w-10 h-10 border-4 border-[#22c55e] border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-slate-500">Loading verified secondary marketplace tickets...</p>
-          </div>
-        ) : listings.length === 0 ? (
-          <div className="text-center py-16 space-y-4 bg-white border border-slate-200 rounded-3xl p-8 max-w-lg mx-auto shadow-sm">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto text-[#16a34a]">
-              <Tag className="w-7 h-7" />
+          {error && (
+            <div className="tl-rs-alert" role="alert">
+              <AlertTriangle className="w-5 h-5 shrink-0" aria-hidden="true" />
+              <span>{error}</span>
+              <button type="button" className="tl-rs-alert-retry" onClick={() => fetchListings()}>Try again</button>
             </div>
-            <h2 className="text-lg font-bold text-slate-900">No Resale Tickets Available Right Now</h2>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              There are currently no tickets listed for resale matching your filters. You can check back later or explore primary box office tickets.
-            </p>
-            <div className="pt-2 flex justify-center gap-3">
-              <Link
-                to="/events"
-                className="btn-eventfrog text-xs px-5 py-2.5 shadow-sm"
-              >
-                Browse All Events
-              </Link>
-              <Link
-                to="/wallet"
-                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition"
-              >
-                List a Ticket
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {listings.map((item) => {
-              const { event, seat, seller } = item;
-              const isOwner = user?.id === seller?.id;
+          )}
 
-              return (
-                <div
-                  key={item.id}
-                  className="rounded-3xl bg-white border border-slate-200/90 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
-                >
-                  {/* Event Banner */}
-                  <div className="relative h-44 w-full bg-slate-100 overflow-hidden">
-                    {event?.bannerUrl ? (
-                      <img
-                        src={event.bannerUrl}
-                        alt={event.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-slate-100 flex items-center justify-center">
-                        <TicketIcon className="w-12 h-12 text-slate-400" />
+          {loading && listings.length === 0 ? (
+            <div className="tl-rs-grid" aria-busy="true" aria-label="Loading resale tickets">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="tl-card" aria-hidden="true">
+                  <div className="tl-card-media tl-skeleton" />
+                  <div className="tl-card-body"><div className="tl-skeleton" style={{ height: 180, borderRadius: 6 }} /></div>
+                </div>
+              ))}
+            </div>
+          ) : !error && listings.length === 0 ? (
+            <div className="tl-rs-empty">
+              <Tag className="w-7 h-7" aria-hidden="true" />
+              <h3>No resale tickets {filtersApplied ? 'match these filters' : 'available right now'}</h3>
+              <p>Check back later, or find tickets from the box office.</p>
+              <div className="tl-rs-empty-actions">
+                <Link to="/events" className="tl-btn tl-btn--green">Browse all events</Link>
+                <Link to="/wallet" className="tl-btn tl-btn--ghost">List a ticket</Link>
+              </div>
+            </div>
+          ) : listings.length > 0 ? (
+            <div className={`tl-rs-grid${loading ? ' is-refreshing' : ''}`} aria-busy={loading}>
+              {listings.map((item, i) => {
+                const { event, seat, seller } = item;
+                const isOwner = user?.id === seller?.id;
+                const visual = getEventVisual(event, i);
+
+                return (
+                  <article key={item.id} className="tl-card tl-rs-card">
+                    <div className="tl-card-media">
+                      <img src={visual.image} alt="" loading="lazy" decoding="async" onError={hideBroken} />
+                      <span className="tl-card-type">{categoryName(event?.type)}</span>
+                      <span className="tl-rs-badge tl-rs-badge--cap">
+                        <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Within 110% cap
+                      </span>
+                    </div>
+
+                    <div className="tl-card-body">
+                      <h3 className="tl-card-title">{event?.name}</h3>
+                      <p className="tl-card-meta">
+                        <CalendarDays className="w-4 h-4" aria-hidden="true" />
+                        <span>{event?.date ? formatEventDate(event.date) : 'Date TBA'}{event?.time ? ` · ${formatEventTime(event.time)}` : ''}</span>
+                      </p>
+                      <p className="tl-card-meta">
+                        <MapPin className="w-4 h-4" aria-hidden="true" />
+                        <span>{[event?.venue, event?.city].filter(Boolean).join(', ')}</span>
+                      </p>
+
+                      <div className="tl-rs-card-details">
+                      <dl className="tl-rs-seat">
+                        <div><dt>Tier</dt><dd>{seat?.tierName || 'Standard'}</dd></div>
+                        <div><dt>Row</dt><dd>{seat?.row || 'GA'}</dd></div>
+                        <div><dt>Seat</dt><dd>#{seat?.seatNumber}</dd></div>
+                      </dl>
+
+                      <dl className="tl-rs-price">
+                        <div className="tl-rs-price-main">
+                          <dt>Resale price</dt>
+                          <dd>{rupees(item.resalePrice)}</dd>
+                        </div>
+                        <div><dt>Face value</dt><dd>{rupees(item.originalPrice)}</dd></div>
+                        <div><dt>110% ceiling</dt><dd>{rupees(item.maxAllowedCeiling)}</dd></div>
+                        <div><dt>Markup</dt><dd>{markupLabel(item.markupPercent)}</dd></div>
+                      </dl>
                       </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
-                    {/* Anti-Scalping Verification Badge */}
-                    <div className="absolute top-3 left-3">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/90 text-emerald-800 backdrop-blur-md shadow-sm">
-                        <ShieldCheck className="w-3 h-3 text-[#16a34a]" /> Max 110% Compliant
-                      </span>
+                      <div className="tl-card-foot tl-rs-card-foot">
+                        <p className="tl-rs-seller">
+                          Sold by <strong>{seller?.name || 'Verified Fan'}</strong>
+                        </p>
+                        {isOwner ? (
+                          <div className="tl-rs-own">
+                            <span>Your active listing</span>
+                            <Link to="/my-nfts" className="tl-rs-textlink">Manage <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" /></Link>
+                          </div>
+                        ) : (
+                          <button type="button" className="tl-btn tl-btn--green tl-rs-buy" onClick={() => openPurchase(item)}>
+                            <ShoppingBag className="w-4 h-4" aria-hidden="true" /> Buy for {rupees(item.resalePrice)}
+                          </button>
+                        )}
+                      </div>
                     </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
+          <div className="tl-cover-shade" aria-hidden="true" />
+        </section>
 
-                    {/* Markup Badge */}
-                    <div className="absolute top-3 right-3">
-                      <span className="inline-flex items-center gap-0.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/90 text-purple-700 backdrop-blur-md shadow-sm">
-                        <Percent className="w-2.5 h-2.5" /> +{item.markupPercent}% Markup
-                      </span>
-                    </div>
+        {/* ---------- 3. How resale works (pinned on large screens) ---------- */}
+        <section className="tl-rs-steps-track" aria-labelledby="tl-rs-steps-title" data-header-light>
+          <div className="tl-rs-steps">
+            <header className="tl-rs-steps-head">
+              <p className="tl-eyebrow tl-rs-kicker">How resale works</p>
+              <h2 id="tl-rs-steps-title" className="tl-rs-display">
+                <span>List it fairly,</span>
+                <span>buy it safely,</span>
+                <span>walk in with a new QR.</span>
+              </h2>
+              <div className="tl-rs-steps-rail" aria-hidden="true"><span className="tl-rs-steps-fill" /></div>
+            </header>
 
-                    {/* Event Title on Image */}
-                    <div className="absolute bottom-3 left-3 right-3">
-                      <span className="text-[10px] font-bold uppercase text-emerald-300 tracking-wider">
-                        {event?.type?.replace('_', ' ')}
-                      </span>
-                      <h3 className="text-base font-bold text-white truncate drop-shadow">
-                        {event?.name}
-                      </h3>
-                    </div>
+            <ol className="tl-rs-steps-list">
+              {RESALE_STEPS.map((step, i) => (
+                <li key={step.title} className="tl-rs-step">
+                  <span className="tl-rs-step-num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+                  <div className="tl-rs-step-title">
+                    <p className="tl-rs-kicker">Step {i + 1}</p>
+                    <h3>{step.title}</h3>
                   </div>
+                  <div className="tl-rs-step-copy">
+                    <p>{step.copy}</p>
+                    {step.link && (
+                      <Link to={step.link.to} className="tl-rs-textlink">
+                        {step.link.label} <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+                      </Link>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="tl-cover-shade" aria-hidden="true" />
+          </div>
+        </section>
 
-                  {/* Body Content */}
-                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                    <div className="space-y-3">
-                      {/* Venue & Time */}
-                      <div className="space-y-1 text-xs text-slate-500">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span className="truncate">{event?.venue}, {event?.city}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>{event?.date ? new Date(event.date).toLocaleDateString('en-PK', { dateStyle: 'medium' }) : 'TBD'} • {event?.time}</span>
-                        </div>
-                      </div>
-
-                      {/* Seat Coordinate Details */}
-                      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Tier</div>
-                          <div className="text-slate-900 font-bold truncate">{seat?.tierName || 'Standard'}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Row</div>
-                          <div className="text-slate-900 font-bold font-mono">{seat?.row || 'GA'}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] text-slate-500 uppercase font-semibold">Seat</div>
-                          <div className="text-emerald-700 font-bold font-mono">#{seat?.seatNumber}</div>
-                        </div>
-                      </div>
-
-                      {/* Price Matrix Comparison */}
-                      <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-600">Resale Price</span>
-                          <span className="text-lg font-black text-slate-900 font-mono">
-                            Rs. {item.resalePrice.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200">
-                          <span>Original Box-Office Price:</span>
-                          <span className="font-mono text-slate-700">Rs. {item.originalPrice.toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[10px] text-emerald-800">
-                          <span>Anti-Scalping Ceiling (110%):</span>
-                          <span className="font-mono font-bold">Rs. {item.maxAllowedCeiling.toLocaleString()}</span>
-                        </div>
-                      </div>
-
-                      {/* Verified Seller Info */}
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
-                        <span>Seller: <strong className="text-slate-800">{seller?.name || 'Verified Fan'}</strong></span>
-                        <span className="text-emerald-700 flex items-center gap-1 font-semibold">
-                          <CheckCircle2 className="w-3 h-3 text-[#16a34a]" /> Legit Ticket
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Action Button */}
-                    <div>
-                      {isOwner ? (
-                        <div className="w-full py-2.5 px-4 rounded-xl bg-slate-100 text-slate-500 text-xs font-semibold text-center border border-slate-200">
-                          Your Active Listing
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!isAuthenticated) {
-                              navigate('/login');
-                              return;
-                            }
-                            setSelectedListing(item);
-                            setPurchaseSuccess(null);
-                            setPurchaseError('');
-                          }}
-                          className="w-full btn-eventfrog text-xs py-3 shadow-sm flex items-center justify-center gap-2"
-                        >
-                          <ShoppingBag className="w-4 h-4" />
-                          <span>Buy for Rs. {item.resalePrice.toLocaleString()}</span>
-                        </button>
-                      )}
-                    </div>
+        {/* ---------- 4. FAQs ---------- */}
+        <section className="tl-rs-faq" aria-labelledby="tl-rs-faq-title" data-header-light>
+          <div className="tl-rs-faq-head">
+            <p className="tl-rs-kicker">Resale rules</p>
+            <h2 id="tl-rs-faq-title" className="tl-rs-display"><span>Resale</span><span>FAQs</span></h2>
+          </div>
+          <div className="tl-rs-faq-list">
+            {RESALE_FAQS.map((item, i) => {
+              const open = openFaq === i;
+              return (
+                <div key={item.q} className={`tl-rs-faq-item${open ? ' is-open' : ''}`}>
+                  <h3>
+                    <button
+                      type="button"
+                      id={`tl-rs-faq-q${i}`}
+                      aria-expanded={open}
+                      aria-controls={`tl-rs-faq-a${i}`}
+                      onClick={() => setOpenFaq(open ? -1 : i)}
+                    >
+                      <span className="tl-rs-faq-num">{String(i + 1).padStart(2, '0')}</span>
+                      <span className="tl-rs-faq-q">{item.q}</span>
+                      <Plus className="tl-rs-faq-icon w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </h3>
+                  <div id={`tl-rs-faq-a${i}`} role="region" aria-labelledby={`tl-rs-faq-q${i}`} className="tl-rs-faq-a" inert={open ? undefined : ''}>
+                    <div><p>{item.a}</p></div>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
+          <div className="tl-cover-shade" aria-hidden="true" />
+        </section>
 
+        {/* ---------- 5. Waitlist band ---------- */}
+        <section className="tl-rs-band" aria-labelledby="tl-rs-band-title" data-header-light>
+          <div className="tl-rs-band-inner">
+            <div>
+              <p className="tl-rs-kicker tl-rs-kicker--ink">Sold out?</p>
+              <h2 id="tl-rs-band-title" className="tl-rs-band-title">
+                <span>Be first</span>
+                <span>to know.</span>
+              </h2>
+              <p className="tl-rs-band-text">
+                Join the waitlist on a sold-out event’s page. When a fan lists a ticket for that event, you get a notification.
+              </p>
+            </div>
+            <div className="tl-rs-band-card">
+              <TicketIcon className="w-6 h-6" aria-hidden="true" />
+              <p><strong>Waitlist alerts.</strong> Delivered to your TicketLedger notifications.</p>
+              <Link to="/events" className="tl-btn tl-btn--dark">
+                Find an event <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+          <ul className="tl-rs-band-ticker" aria-label="How resale alerts work">
+            <li>Join a waitlist</li>
+            <li>Fan lists a ticket</li>
+            <li>You get notified</li>
+            <li>Buy within the cap</li>
+          </ul>
+          <div className="tl-cover-shade" aria-hidden="true" />
+        </section>
+
+        <SiteFooter />
       </div>
 
-      {/* Instant Purchase & Ownership Transfer Modal */}
       {selectedListing && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white border border-slate-200 p-6 sm:p-8 space-y-6 shadow-2xl relative">
+        <PurchaseDialog
+          listing={selectedListing}
+          purchasing={purchasing}
+          purchaseSuccess={purchaseSuccess}
+          purchaseError={purchaseError}
+          paymentMethod={paymentMethod}
+          setPaymentMethod={setPaymentMethod}
+          onConfirm={handleBuyTicket}
+          onClose={() => setSelectedListing(null)}
+        />
+      )}
+    </div>
+  );
+}
 
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase text-emerald-800 tracking-wider flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3 text-[#16a34a]" /> Anti-Scalp Verified Secondary Purchase
-                </span>
-                <h3 className="text-xl font-bold text-slate-900 mt-1">
-                  Confirm Ticket Transfer
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedListing(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition"
-              >
-                ✕
-              </button>
+const PAYMENT_OPTIONS = [
+  { value: 'TEST_INSTANT', label: '1-Click Test', icon: <CreditCard className="w-4 h-4" aria-hidden="true" /> },
+  { value: 'JAZZCASH', label: 'JazzCash', icon: <span className="tl-rs-pay-mark">JC</span> },
+  { value: 'EASYPAISA', label: 'EasyPaisa', icon: <span className="tl-rs-pay-mark">EP</span> },
+];
+
+/**
+ * Purchase confirmation. Locks page scroll on <body> (the same lock the header menu uses, so sticky scenes
+ * stay in place), traps focus, closes on Escape unless a purchase is in flight, and returns focus on close.
+ */
+function PurchaseDialog({ listing, purchasing, purchaseSuccess, purchaseError, paymentMethod, setPaymentMethod, onConfirm, onClose }) {
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    const returnTo = document.activeElement;
+    const body = document.body;
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    const prevOverflow = body.style.overflow;
+    const prevPadding = body.style.paddingRight;
+    body.style.overflow = 'hidden';
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
+    dialogRef.current?.querySelector('[data-autofocus]')?.focus({ preventScroll: true });
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPadding;
+      returnTo?.focus?.({ preventScroll: true });
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !purchasing) {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const items = [...dialogRef.current.querySelectorAll('a[href], button:not([disabled])')];
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [purchasing, onClose]);
+
+  const seatLine = `${listing.seat?.tierName} · Row ${listing.seat?.row} · Seat #${listing.seat?.seatNumber}`;
+
+  return (
+    <div className="tl-rs-modal" onMouseDown={(e) => e.target === e.currentTarget && !purchasing && onClose()}>
+      <div ref={dialogRef} className="tl-rs-dialog" role="dialog" aria-modal="true" aria-labelledby="tl-rs-dialog-title">
+        <div className="tl-rs-dialog-head">
+          <div>
+            <p className="tl-eyebrow"><ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Fan resale purchase</p>
+            <h2 id="tl-rs-dialog-title">{purchaseSuccess ? 'Ticket transferred' : 'Confirm ticket transfer'}</h2>
+          </div>
+          <button type="button" className="tl-rs-close" onClick={onClose} disabled={purchasing} aria-label="Close">
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        {purchaseSuccess ? (
+          <div className="tl-rs-dialog-body">
+            <div className="tl-rs-success">
+              <CheckCircle2 className="w-8 h-8" aria-hidden="true" />
+              <p>
+                The ticket is now in your account. The seller’s QR code has been revoked and a new rotating QR has been issued to you.
+              </p>
+            </div>
+            <dl className="tl-rs-summary">
+              <div><dt>Event</dt><dd>{purchaseSuccess.ticket?.event?.name || listing.event.name}</dd></div>
+              <div><dt>Seat</dt><dd>{seatLine}</dd></div>
+              <div><dt>Paid</dt><dd>{rupees(listing.resalePrice)}</dd></div>
+              <div><dt>New QR nonce</dt><dd className="tl-rs-mono">{purchaseSuccess.ticket?.qrNonce}</dd></div>
+            </dl>
+            <div className="tl-rs-dialog-actions">
+              <Link to="/wallet" className="tl-btn tl-btn--green" data-autofocus>
+                View my tickets <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
+              <button type="button" className="tl-btn tl-btn--ghost" onClick={onClose}>Done</button>
+            </div>
+          </div>
+        ) : (
+          <div className="tl-rs-dialog-body">
+            <div className="tl-rs-summary-head">
+              <strong>{listing.event.name}</strong>
+              <span><MapPin className="w-3.5 h-3.5" aria-hidden="true" /> {listing.event.venue}, {listing.event.city}</span>
+              <span>{seatLine}</span>
             </div>
 
-            {purchaseSuccess ? (
-              <div className="space-y-5 text-center py-4">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-[#16a34a] flex items-center justify-center mx-auto shadow-sm">
-                  <CheckCircle2 className="w-8 h-8" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="text-xl font-bold text-slate-900">Ownership Transferred!</h4>
-                  <p className="text-xs text-slate-500">
-                    The ERC721 NFT ticket is now stored in your account. The seller's gate pass has been revoked, and a fresh rotating QR code is issued for you.
-                  </p>
-                </div>
+            <dl className="tl-rs-summary">
+              <div><dt>Face value</dt><dd>{rupees(listing.originalPrice)}</dd></div>
+              <div><dt>Resale price</dt><dd>{rupees(listing.resalePrice)}</dd></div>
+              <div><dt>Markup</dt><dd>{listing.markupPercent > 0 ? '+' : ''}{listing.markupPercent}% (capped at +10%)</dd></div>
+              <div className="tl-rs-summary-total"><dt>Total due</dt><dd>{rupees(listing.resalePrice)}</dd></div>
+            </dl>
 
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2 text-left">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Event</span>
-                    <span className="text-slate-900 font-bold">{purchaseSuccess.ticket?.event?.name || selectedListing.event.name}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Seat</span>
-                    <span className="text-emerald-700 font-bold">
-                      {selectedListing.seat?.tierName} • Row {selectedListing.seat?.row}, Seat #{selectedListing.seat?.seatNumber}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Paid Amount</span>
-                    <span className="text-slate-900 font-mono font-bold">Rs. {selectedListing.resalePrice.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Gate Security Nonce</span>
-                    <span className="font-mono text-purple-700 truncate max-w-[150px]">
-                      {purchaseSuccess.ticket?.qrNonce}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <Link
-                    to="/wallet"
-                    className="flex-1 btn-eventfrog text-xs py-3 shadow-sm flex items-center justify-center gap-1.5"
-                  >
-                    <Sparkles className="w-4 h-4" /> View My Digital Passes
-                  </Link>
+            <fieldset className="tl-rs-pay">
+              <legend>Payment method</legend>
+              <div className="tl-rs-pay-grid">
+                {PAYMENT_OPTIONS.map((opt) => (
                   <button
+                    key={opt.value}
                     type="button"
-                    onClick={() => setSelectedListing(null)}
-                    className="py-3 px-5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition"
+                    aria-pressed={paymentMethod === opt.value}
+                    className="tl-rs-pay-opt"
+                    onClick={() => setPaymentMethod(opt.value)}
+                    disabled={purchasing}
                   >
-                    Done
+                    {opt.icon}
+                    <span>{opt.label}</span>
                   </button>
-                </div>
+                ))}
               </div>
-            ) : (
-              <div className="space-y-5">
-                {/* Event & Seat Summary */}
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
-                  <div className="text-slate-900 font-bold text-sm">{selectedListing.event.name}</div>
-                  <div className="text-slate-500 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{selectedListing.event.venue}, {selectedListing.event.city}</span>
-                  </div>
-                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-slate-600">
-                    <span>Seat Coordinates:</span>
-                    <span className="font-bold text-emerald-700">
-                      {selectedListing.seat?.tierName} • Row {selectedListing.seat?.row} • #{selectedListing.seat?.seatNumber}
-                    </span>
-                  </div>
-                </div>
+            </fieldset>
 
-                {/* Price Matrix */}
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">Primary Face Value:</span>
-                    <span className="text-slate-800 font-mono">Rs. {selectedListing.originalPrice.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-600">Secondary Fan Price:</span>
-                    <span className="text-emerald-800 font-mono font-bold">Rs. {selectedListing.resalePrice.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between text-[11px] text-purple-700">
-                    <span>Markup:</span>
-                    <span>+{selectedListing.markupPercent}% (Legally capped at 10%)</span>
-                  </div>
-                  <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-bold text-slate-900">
-                    <span>Total Due:</span>
-                    <span className="font-mono text-slate-900 text-base font-black">Rs. {selectedListing.resalePrice.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                {/* Payment Gateway Picker */}
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-700">Select Payment Method</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('TEST_INSTANT')}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${paymentMethod === 'TEST_INSTANT'
-                        ? 'bg-emerald-50 border-[#22c55e] text-emerald-900 shadow-sm'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                    >
-                      <CreditCard className="w-4 h-4 text-[#16a34a]" />
-                      <span>1-Click Test</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('JAZZCASH')}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${paymentMethod === 'JAZZCASH'
-                        ? 'bg-red-50 border-red-400 text-red-900 shadow-sm'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                    >
-                      <span className="font-bold text-red-600 text-sm">JC</span>
-                      <span>JazzCash</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('EASYPAISA')}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex flex-col items-center gap-1 transition ${paymentMethod === 'EASYPAISA'
-                        ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
-                        }`}
-                    >
-                      <span className="font-bold text-emerald-600 text-sm">EP</span>
-                      <span>EasyPaisa</span>
-                    </button>
-                  </div>
-                </div>
-
-                {purchaseError && (
-                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
-                    <span>{purchaseError}</span>
-                  </div>
-                )}
-
-                {/* Confirm Button */}
-                <button
-                  type="button"
-                  disabled={purchasing}
-                  onClick={handleBuyTicket}
-                  className="w-full btn-eventfrog text-sm py-3.5 shadow-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {purchasing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Processing Ownership Transfer...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      <span>Confirm & Claim Ownership (Rs. {selectedListing.resalePrice.toLocaleString()})</span>
-                    </>
-                  )}
-                </button>
+            {purchaseError && (
+              <div className="tl-rs-alert" role="alert">
+                <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span>{purchaseError}</span>
               </div>
             )}
 
+            <button type="button" disabled={purchasing} onClick={onConfirm} className="tl-btn tl-btn--green tl-rs-confirm" data-autofocus>
+              {purchasing ? (
+                <>
+                  <span className="tl-rs-spinner" aria-hidden="true" />
+                  <span>Processing transfer…</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" aria-hidden="true" />
+                  <span>Confirm &amp; buy · {rupees(listing.resalePrice)}</span>
+                </>
+              )}
+            </button>
           </div>
-        </div>
-      )}
-
+        )}
+      </div>
     </div>
   );
 }

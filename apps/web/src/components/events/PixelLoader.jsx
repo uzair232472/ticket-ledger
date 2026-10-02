@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
-import logoImg from '../../assets/ticketledger-logo.png';
+import markUrl from '../../assets/ticketledger-mark.svg';
 
 const CELL = 82; // the reference grid uses ~82px squares
 
@@ -59,7 +59,7 @@ export default function PixelLoader({ onDone }) {
       </div>
       <div className="tl-px-center">
         <span className="tl-px-count">0%</span>
-        <span className="tl-px-badge" style={{ backgroundImage: `url(${logoImg})` }} />
+        <span className="tl-px-badge" style={{ backgroundImage: `url(${markUrl})` }} />
       </div>
     </div>
   );
