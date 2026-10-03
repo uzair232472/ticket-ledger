@@ -445,8 +445,8 @@ function Footer() {
 function SiteChrome({ children }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
-  // Pages with their own full-bleed header, menu and footer (including the whole booking flow)
-  const bookingFlow = /^\/(events\/[^/]+\/(seats|checkout)|checkout|booking-success\/[^/]+|bookings\/[^/]+\/confirmation)\/?$/.test(pathname);
+  // Pages with their own full-bleed header, menu and footer (including the whole booking flow and cart)
+  const bookingFlow = /^\/(events\/[^/]+\/(seats|checkout)|checkout|cart|booking-success\/[^/]+|bookings\/[^/]+\/confirmation)\/?$/.test(pathname);
   // Fan resale and the ticket pages have their own chrome for the roles that can open them; other roles keep
   // this navbar around the access notice
   const customerPage = /^\/(resale|wallet|my-nfts|my-bookings)\/?$/.test(pathname) && ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role);
