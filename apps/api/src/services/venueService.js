@@ -285,6 +285,26 @@ export async function getAvailability(eventId, userId) {
 }
 
 /**
+ * The caller's live seat holds across every event, grouped per event with the earliest expiry
+ * (drives the site-wide "My tickets" countdown).
+ */
+export async function activeHoldsForUser(userId) {
+  const now = new Date();
+  const seats = await prisma.seat.findMany({
+    where: { status: 'LOCKED', lockedByUserId: userId, lockedUntil: { gt: now } },
+    select: { eventId: true, lockedUntil: true, event: { select: { name: true } } },
+  });
+  const byEvent = new Map();
+  for (const s of seats) {
+    const h = byEvent.get(s.eventId) || { eventId: s.eventId, eventName: s.event?.name || 'Your event', count: 0, expiresAt: s.lockedUntil };
+    h.count++;
+    if (s.lockedUntil < h.expiresAt) h.expiresAt = s.lockedUntil;
+    byEvent.set(s.eventId, h);
+  }
+  return { holds: [...byEvent.values()].sort((a, b) => a.expiresAt - b.expiresAt), serverTime: now };
+}
+
+/**
  * Publishes the event's draft. Inside one transaction the event row and all its seats are locked
  * (holds and checkouts wait), the draft is validated, and Seat rows are synced: new positions are
  * created, free positions that changed or disappeared are replaced, and anything held, in a checkout

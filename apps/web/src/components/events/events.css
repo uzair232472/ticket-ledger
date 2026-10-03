@@ -22,8 +22,6 @@
   opacity: 0.35;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-/* Keep the dark header logo readable when it passes over photos */
-.tl-explore .tl-header-logo { padding: 6px 10px; margin-left: -10px; border-radius: 3px; background: rgba(242, 243, 239, 0.88); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 .tl-explore .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .tl-explore :focus-visible { outline: 2px solid var(--ex-ink); outline-offset: 3px; }
 
@@ -48,37 +46,71 @@
   letter-spacing: -0.045em;
   white-space: nowrap;
 }
+/* One "Category" button; the full list opens in a panel underneath */
 .tl-ex-cats {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 4px 0;
+  position: relative;
+  justify-self: end;
   padding-bottom: 6px;
 }
-.tl-ex-cat {
-  position: relative;
-  min-height: 36px;
-  padding: 0 4px;
-  background: none;
-  border: 0;
+.tl-ex-cats-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(11, 11, 11, 0.28);
+  border-radius: 2px;
+  background: transparent;
   color: var(--ex-ink);
   font: 500 12px/1 'JetBrains Mono', 'Roboto Mono', monospace;
   text-transform: uppercase;
   letter-spacing: 0.02em;
   cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
-/* Slash separators between items, as on the reference */
-.tl-ex-cat + .tl-ex-cat::before {
-  content: '/';
-  display: inline-block;
-  margin: 0 16px 0 12px;
-  opacity: 0.35;
+.tl-ex-cats-btn:hover, .tl-ex-cats-btn.is-open { border-color: var(--ex-ink); background: rgba(11, 11, 11, 0.04); }
+.tl-ex-cats-btn-label { opacity: 0.55; }
+.tl-ex-cats-btn-value { font-weight: 600; }
+.tl-ex-cats-btn svg { transition: transform 0.3s var(--ex-ease); }
+.tl-ex-cats-btn.is-open svg { transform: rotate(180deg); }
+
+.tl-ex-cats-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  width: min(560px, calc(100vw - 40px));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid rgba(11, 11, 11, 0.14);
+  border-radius: 4px;
+  background: #fbfbf8;
+  box-shadow: 0 18px 44px rgba(11, 11, 11, 0.14);
+  animation: tl-ex-cats-in 0.22s var(--ex-ease);
 }
-.tl-ex-cat span, .tl-ex-cat { text-underline-offset: 4px; }
-.tl-ex-cat:hover { text-decoration: underline; text-decoration-color: rgba(11, 11, 11, 0.35); }
-.tl-ex-cat.is-active { text-decoration: underline; text-decoration-thickness: 1px; }
-.tl-ex-cat + .tl-ex-cat:hover::before, .tl-ex-cat + .tl-ex-cat.is-active::before { text-decoration: none; }
+@keyframes tl-ex-cats-in { from { opacity: 0; transform: translateY(-6px); } }
+.tl-ex-cat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--ex-ink);
+  font: 500 12px/1.2 'JetBrains Mono', 'Roboto Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.tl-ex-cat:hover { background: rgba(11, 11, 11, 0.05); }
+.tl-ex-cat.is-active { background: var(--ex-ink); color: #fff; }
 
 /* ---------- Search + compact filter row ---------- */
 .tl-ex-filters {
@@ -284,9 +316,12 @@
   /* The heading is longer than "Projects", so categories wrap on their own row underneath */
   .tl-ex-head { grid-template-columns: 1fr; gap: 14px; }
   .tl-ex-title { font-size: clamp(36px, 11vw, 48px); line-height: 0.95; }
-  .tl-ex-cats { justify-content: flex-start; gap: 2px 10px; padding-bottom: 0; }
-  .tl-ex-cat + .tl-ex-cat::before { display: none; }
-  .tl-ex-cat { min-height: 32px; padding: 0 5px; }
+  /* The button spans the row and the list opens full width, two columns */
+  .tl-ex-cats { justify-self: stretch; padding-bottom: 0; }
+  .tl-ex-cats-btn { width: 100%; }
+  .tl-ex-cats-btn svg { margin-left: auto; }
+  .tl-ex-cats-panel { left: 0; right: 0; width: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tl-ex-cat { min-height: 46px; }
   .tl-ex-filters { gap: 10px 18px; }
   .tl-ex-select { flex: 1 1 40%; }
   .tl-ex-select select { width: 100%; }

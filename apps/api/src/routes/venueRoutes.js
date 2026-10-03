@@ -7,6 +7,7 @@ import {
   discardDraft,
   getEditor,
   getEventVenue,
+  getMyHolds,
   listReusable,
   listTemplates,
   publish,
@@ -33,6 +34,7 @@ const planUpload = (req, res, next) =>
 router.get('/templates', listTemplates);
 
 // Attendees: published plan + live availability, and holds (existing 10-minute reservations)
+router.get('/holds/mine', authenticateJWT, getMyHolds);
 router.get('/event/:eventId', optionalAuth, getEventVenue);
 router.post('/event/:eventId/holds', authenticateJWT, createHold);
 router.post('/event/:eventId/holds/release', authenticateJWT, releaseHold);

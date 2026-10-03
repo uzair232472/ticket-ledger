@@ -44,6 +44,7 @@ export default function SiteFooter({ onCategories }) {
               {onCategories && (
                 <li><button type="button" className="tl-footer-link" onClick={onCategories}>Categories</button></li>
               )}
+              <li><Link to="/categories">All categories</Link></li>
               {(!isAuthenticated || ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role)) && <li><Link to="/resale">Fan resale</Link></li>}
             </ul>
           </nav>

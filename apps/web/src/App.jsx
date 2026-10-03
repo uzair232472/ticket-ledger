@@ -9,6 +9,7 @@ import Profile from './pages/Profile';
 import CompanyRegistration from './pages/CompanyRegistration';
 import AdminCompanies from './pages/AdminCompanies';
 import Events from './pages/Events';
+import Categories from './pages/Categories';
 import EventDetails from './pages/EventDetails';
 import CreateEvent from './pages/CreateEvent';
 import VenueEditor from './pages/VenueEditor';
@@ -24,6 +25,7 @@ import AdminFraudWatchlist from './pages/AdminFraudWatchlist';
 import DemandForecast from './pages/DemandForecast';
 import Notifications from './pages/Notifications';
 import NotificationBell from './components/NotificationBell';
+import HoldBar from './components/HoldBar';
 import BehaviorProfile from './pages/BehaviorProfile';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
@@ -422,7 +424,7 @@ function SiteChrome({ children }) {
   const accountPage = /^\/(profile|notifications)\/?$/.test(pathname) && Boolean(user);
   // Organizer, Super Admin and gate staff consoles use DashShell (header, console nav, footer)
   const consolePage = /^\/((admin|organizer)\/|(scanner|staff\/events|demand-forecast|analytics\/intent)(\/|$))/.test(pathname);
-  return pathname === '/' || consolePage || pathname === '/company' || pathname === '/events' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
+  return pathname === '/' || consolePage || pathname === '/company' || pathname === '/events' || pathname === '/categories' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
 }
 
 export default function App() {
@@ -435,6 +437,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/events" element={<Events />} />
+              <Route path="/categories" element={<Categories />} />
               <Route path="/events/:id" element={<EventDetails />} />
               <Route path="/events/:id/seats" element={<SeatMap />} />
               <Route path="/events/:id/checkout" element={<Checkout />} />
@@ -487,6 +490,7 @@ export default function App() {
             </Routes>
           </main>
           <SiteChrome><Footer /></SiteChrome>
+          <HoldBar />
         </div>
       </AuthProvider>
     </BrowserRouter>

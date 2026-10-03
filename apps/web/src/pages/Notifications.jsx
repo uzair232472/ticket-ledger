@@ -268,16 +268,7 @@ export default function Notifications() {
             )}
           </div>
 
-          {/* Delivery channels */}
-          <div className="tl-basic-card tl-nt-panel">
-            <p className="tl-basic-label">Delivery channels</p>
-            <div className="tl-nt-channels">
-              <div className="tl-nt-channel"><Bell className="w-4 h-4" aria-hidden="true" /><strong>In-app alerts</strong><span>Stored with your account</span></div>
-              <div className="tl-nt-channel"><Mail className="w-4 h-4" aria-hidden="true" /><strong>Email</strong><span>Branded HTML via Nodemailer</span></div>
-              <div className="tl-nt-channel"><Smartphone className="w-4 h-4" aria-hidden="true" /><strong>Push</strong><span>Firebase Cloud Messaging</span></div>
-              <div className="tl-nt-channel"><Sparkles className="w-4 h-4" aria-hidden="true" /><strong>Real time</strong><span>Socket.io user rooms</span></div>
-            </div>
-          </div>
+
         </aside>
       </div>
     </BasicShell>
