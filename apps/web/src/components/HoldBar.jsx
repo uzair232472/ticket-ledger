@@ -66,7 +66,7 @@ export default function HoldBar() {
     load();
   }, [secondsLeft, load]);
 
-  if (!first || !secondsLeft || pathname === `/events/${first.eventId}/seats`) return null;
+  if (!first || !secondsLeft || pathname === `/events/${first.eventId}/seats` || pathname === '/cart') return null;
 
   const urgent = secondsLeft < 60;
   return (

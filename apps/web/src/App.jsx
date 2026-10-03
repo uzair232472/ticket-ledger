@@ -20,6 +20,7 @@ import BookingSuccess from './pages/BookingSuccess';
 import MyBookings from './pages/MyBookings';
 import MyNFTTickets from './pages/MyNFTTickets';
 import ResaleMarketplace from './pages/ResaleMarketplace';
+import Cart from './pages/Cart';
 import DigitalWallet from './pages/DigitalWallet';
 import GateScanner from './pages/GateScanner';
 import AdminFraudWatchlist from './pages/AdminFraudWatchlist';
@@ -70,7 +71,7 @@ function Navbar() {
   const [scrollHidden, setScrollHidden] = useState(false);
   const lastScrollYRef = useRef(0);
 
-  // Auto-hide navbar when scrolling down; reveal when scrolling up or at top
+  // Smooth auto-hide navbar when deliberately scrolling down; reveal when scrolling up or near top
   useEffect(() => {
     let ticking = false;
     const handleScroll = () => {
@@ -79,11 +80,11 @@ function Navbar() {
       requestAnimationFrame(() => {
         const currentY = window.scrollY;
         const diff = currentY - lastScrollYRef.current;
-        if (organizerMenu || adminMenu || userMenu || currentY <= 30) {
+        if (organizerMenu || adminMenu || userMenu || currentY <= 80) {
           setScrollHidden(false);
-        } else if (diff > 6 && currentY > 60) {
+        } else if (diff > 18 && currentY > 140) {
           setScrollHidden(true);
-        } else if (diff < -6) {
+        } else if (diff < -12) {
           setScrollHidden(false);
         }
         lastScrollYRef.current = currentY;
@@ -115,7 +116,7 @@ function Navbar() {
   if (location.pathname === '/') return null;
 
   return (
-    <header className={`sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-transform duration-300 ease-out ${scrollHidden ? '-translate-y-full shadow-none pointer-events-none' : 'translate-y-0'}`}>
+    <header className={`sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${scrollHidden ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
 
         {/* Left: Brand Logo & Integrated Header Search (matching Eventfrog in Image 3) */}
@@ -495,6 +496,7 @@ export default function App() {
               <Route path="/events/:id/seats" element={<SeatMap />} />
               <Route path="/events/:id/checkout" element={<Checkout />} />
               <Route path="/checkout" element={<Checkout />} />
+              <Route path="/cart" element={<Cart />} />
               <Route path="/booking-success/:orderId" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/booking-success/:id" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/bookings/:orderId/confirmation" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />

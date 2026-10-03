@@ -104,7 +104,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   const [scrollHidden, setScrollHidden] = useState(false);
   const lastScrollYRef = useRef(0);
 
-  // Auto-hide header when scrolling down; reveal when scrolling up or at top
+  // Smooth auto-hide header when deliberately scrolling down; reveal when scrolling up or near top
   useEffect(() => {
     let ticking = false;
     const handleScroll = () => {
@@ -113,11 +113,11 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
       requestAnimationFrame(() => {
         const currentY = window.scrollY;
         const diff = currentY - lastScrollYRef.current;
-        if (open || currentY <= 30) {
+        if (open || currentY <= 80) {
           setScrollHidden(false);
-        } else if (diff > 6 && currentY > 60) {
+        } else if (diff > 18 && currentY > 140) {
           setScrollHidden(true);
-        } else if (diff < -6) {
+        } else if (diff < -12) {
           setScrollHidden(false);
         }
         lastScrollYRef.current = currentY;
@@ -265,7 +265,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
         </Link>
 
         <div className="tl-header-actions">
-        {isAuthenticated && <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />}
+          <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />
         <button
           ref={buttonRef}
           type="button"
