@@ -1,6 +1,7 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, useNavigationType, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import NavbarCart from './components/cart/NavbarCart';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -66,6 +67,33 @@ function Navbar() {
   const [adminMenu, setAdminMenu] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [scrollHidden, setScrollHidden] = useState(false);
+  const lastScrollYRef = useRef(0);
+
+  // Auto-hide navbar when scrolling down; reveal when scrolling up or at top
+  useEffect(() => {
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const currentY = window.scrollY;
+        const diff = currentY - lastScrollYRef.current;
+        if (organizerMenu || adminMenu || userMenu || currentY <= 30) {
+          setScrollHidden(false);
+        } else if (diff > 6 && currentY > 60) {
+          setScrollHidden(true);
+        } else if (diff < -6) {
+          setScrollHidden(false);
+        }
+        lastScrollYRef.current = currentY;
+        ticking = false;
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [organizerMenu, adminMenu, userMenu]);
 
   const handleLogout = async () => {
     setUserMenu(false);
@@ -87,7 +115,7 @@ function Navbar() {
   if (location.pathname === '/') return null;
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+    <header className={`sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-transform duration-300 ease-out ${scrollHidden ? '-translate-y-full shadow-none pointer-events-none' : 'translate-y-0'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
 
         {/* Left: Brand Logo & Integrated Header Search (matching Eventfrog in Image 3) */}
@@ -255,6 +283,9 @@ function Navbar() {
           >
             Create event
           </Link>
+
+          {/* Ticket Cart Button for held seats */}
+          <NavbarCart />
 
           {/* Notification Bell */}
           {isAuthenticated && <NotificationBell />}

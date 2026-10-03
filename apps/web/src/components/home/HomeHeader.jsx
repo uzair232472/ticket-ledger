@@ -101,6 +101,33 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   const timelineRef = useRef(null);
   const savedScrollRef = useRef(0);
   const restoreScrollRef = useRef(true);
+  const [scrollHidden, setScrollHidden] = useState(false);
+  const lastScrollYRef = useRef(0);
+
+  // Auto-hide header when scrolling down; reveal when scrolling up or at top
+  useEffect(() => {
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const currentY = window.scrollY;
+        const diff = currentY - lastScrollYRef.current;
+        if (open || currentY <= 30) {
+          setScrollHidden(false);
+        } else if (diff > 6 && currentY > 60) {
+          setScrollHidden(true);
+        } else if (diff < -6) {
+          setScrollHidden(false);
+        }
+        lastScrollYRef.current = currentY;
+        ticking = false;
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [open]);
 
   const goToCategories = useCallback(() => {
     restoreScrollRef.current = true;
@@ -232,7 +259,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
 
   return (
     <>
-      <header ref={headerRef} className="tl-header" data-tone={tone} data-home-header>
+      <header ref={headerRef} className="tl-header" data-tone={tone} data-home-header data-scroll-hidden={scrollHidden ? 'true' : 'false'}>
         <Link to="/" className="tl-header-logo" aria-label="TicketLedger home" data-header-logo>
           <BrandLogo />
         </Link>
