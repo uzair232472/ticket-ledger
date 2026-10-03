@@ -1,8 +1,9 @@
-/* Site-wide seat-hold countdown: the seat plan's "My tickets" button, floating bottom-right on every page */
+/* Site-wide seat-hold countdown: the seat plan's "My tickets" button, floating top-right under the menu button */
 .tl-holdbar {
   position: fixed;
   right: clamp(16px, 2.4vw, 32px);
-  bottom: clamp(16px, 2.4vw, 28px);
+  /* Header height (76px) plus a clear gap below the menu button */
+  top: 116px;
   /* Under the site menu (backdrop 55, panel 58) so an open menu still covers it */
   z-index: 54;
   display: inline-flex;
@@ -60,7 +61,14 @@
 }
 
 @keyframes tl-holdbar-in {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 0; transform: translateY(-12px); }
+}
+
+@media (max-width: 639px) {
+  .tl-holdbar {
+    right: 12px;
+    top: 104px;
+  }
 }
 
 @keyframes tl-holdbar-pulse {

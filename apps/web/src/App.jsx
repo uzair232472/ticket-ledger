@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import React, { useLayoutEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, useNavigationType, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
@@ -26,6 +26,7 @@ import DemandForecast from './pages/DemandForecast';
 import Notifications from './pages/Notifications';
 import NotificationBell from './components/NotificationBell';
 import HoldBar from './components/HoldBar';
+import PixelLoader from './components/events/PixelLoader';
 import BehaviorProfile from './pages/BehaviorProfile';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
@@ -427,10 +428,31 @@ function SiteChrome({ children }) {
   return pathname === '/' || consolePage || pathname === '/company' || pathname === '/events' || pathname === '/categories' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
 }
 
+/**
+ * Every new screen (link, menu, login, logout) opens at its top. Back/forward and reloads ('POP') are left to
+ * the pages that restore their own position (homepage, Explore Events, Fan resale).
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+  useLayoutEffect(() => {
+    if (navigationType !== 'POP') window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname, navigationType]);
+  return null;
+}
+
+/** The pixel loader plays on every page change (keyed by path, so filters and query changes don't trigger it). */
+function RouteLoader() {
+  const { pathname } = useLocation();
+  return <PixelLoader key={pathname} />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ScrollToTop />
+        <RouteLoader />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
           <SiteChrome><Navbar /></SiteChrome>
           <main className="flex-1 w-full">

@@ -7,7 +7,6 @@ import api, { trackClientBehavior } from '../utils/api';
 import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
-import PixelLoader from '../components/events/PixelLoader';
 import { ALL_CATEGORIES, categoryName } from '../components/home/homeData';
 import '../components/home/home.css';
 import '../components/events/events.css';
@@ -85,7 +84,6 @@ export default function Events() {
   const [version, setVersion] = useState(0);
   const [visible, setVisible] = useState(saved?.visible || BATCH);
   const [favorites, setFavorites] = useState({});
-  const [showLoader] = useState(() => !saved);
 
   const setFilter = useCallback(
     (key, value) => {
@@ -243,7 +241,6 @@ export default function Events() {
 
   return (
     <div ref={rootRef} className="tl-home tl-explore">
-      {showLoader && <PixelLoader />}
       <HomeHeader pageRef={pageRef} onCategories={focusCategories} tone="light" />
 
       <div ref={pageRef}>
