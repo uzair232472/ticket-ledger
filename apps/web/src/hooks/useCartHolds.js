@@ -77,6 +77,26 @@ export function useCartHolds() {
     }
   }, [load]);
 
+  const deleteItem = useCallback(async (eventId, seat) => {
+    if (!eventId) return;
+    try {
+      setReleasing(true);
+      if (seat?.key) {
+        await api.post(`/venues/event/${eventId}/holds/release`, { keys: [seat.key] });
+      } else if (seat?.id) {
+        await api.post('/seats/unlock', { seatId: seat.id });
+      } else if (typeof seat === 'string') {
+        await api.post(`/venues/event/${eventId}/holds/release`, { keys: [seat] });
+      }
+      window.dispatchEvent(new Event('tl:holds-changed'));
+      await load();
+    } catch (err) {
+      console.error('Failed to delete cart item:', err);
+    } finally {
+      setReleasing(false);
+    }
+  }, [load]);
+
   return {
     holds,
     first,
@@ -84,6 +104,7 @@ export function useCartHolds() {
     secondsLeft,
     releasing,
     releaseAll,
+    deleteItem,
     refresh: load,
   };
 }
