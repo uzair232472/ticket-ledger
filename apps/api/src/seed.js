@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import prisma from './config/prisma.js';
+import { publishAllLayouts } from '../seed_venue_layouts.js';
 
 export async function seedUsers() {
   console.log('🌱 Seeding demo users for TicketLedger...');
@@ -264,47 +265,9 @@ export async function seedUsers() {
       }
     }
 
-    // Seed Stadium & Venue Seats
-    console.log('🌱 Seeding interactive stadium seat maps...');
-    const allEvents = await prisma.event.findMany({ include: { tiers: true } });
-
-    for (const ev of allEvents) {
-      for (const tier of ev.tiers) {
-        // Create 2 rows with 10 seats each per tier
-        for (let r = 1; r <= 2; r++) {
-          const rowLetter = String.fromCharCode(64 + r); // A, B
-          for (let s = 1; s <= 10; s++) {
-            const seatNumber = `${s}`;
-
-            // Make seat 3 in Row A SOLD, seat 5 in Row A BLOCKED for demo variety
-            let status = 'AVAILABLE';
-            if (r === 1 && s === 3) status = 'SOLD';
-            if (r === 1 && s === 5) status = 'BLOCKED';
-
-            await prisma.seat.upsert({
-              where: {
-                eventId_section_row_seatNumber: {
-                  eventId: ev.id,
-                  section: tier.name,
-                  row: rowLetter,
-                  seatNumber,
-                },
-              },
-              update: { tierId: tier.id },
-              create: {
-                eventId: ev.id,
-                section: tier.name,
-                row: rowLetter,
-                seatNumber,
-                tierId: tier.id,
-                status,
-              },
-            });
-          }
-        }
-      }
-      console.log(`   Generated seat map for: ${ev.name}`);
-    }
+    // Seed Stadium & Venue Interactive Layouts
+    console.log('🌱 Seeding interactive stadium & venue layout plans...');
+    await publishAllLayouts();
   }
 }
 

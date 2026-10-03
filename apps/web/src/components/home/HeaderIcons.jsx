@@ -30,3 +30,13 @@ export function TicketUserIcon({ className }) {
     </Frame>
   );
 }
+
+/** Ticket with a shopping bag / cart for held tickets. */
+export function TicketCartIcon({ className }) {
+  return (
+    <Frame className={className}>
+      <path d="M25 24v-2.5a7 7 0 0 1 14 0V24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
+      <path d="M21 24h22l-2 18H23L21 24Z" fill="currentColor" />
+    </Frame>
+  );
+}

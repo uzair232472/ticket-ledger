@@ -71,12 +71,12 @@ export default function HoldBar() {
   const urgent = secondsLeft < 60;
   return (
     <Link
-      to={`/events/${first.eventId}/seats`}
+      to={`/events/${first.eventId}/checkout`}
       className={`tl-holdbar${urgent ? ' is-urgent' : ''}`}
-      aria-label={`My tickets: ${count} seat${count === 1 ? '' : 's'} reserved for ${first.eventName}, ${Math.ceil(secondsLeft / 60)} minute${secondsLeft > 60 ? 's' : ''} left`}
-      title={`Seats reserved for ${first.eventName}`}
+      aria-label={`Complete booking: ${count} seat${count === 1 ? '' : 's'} reserved for ${first.eventName}, ${Math.ceil(secondsLeft / 60)} minute${secondsLeft > 60 ? 's' : ''} left`}
+      title={`Seats reserved for ${first.eventName}: Click to complete booking`}
     >
-      <span className="tl-holdbar-label">My tickets</span>
+      <span className="tl-holdbar-label">Complete booking</span>
       <span className="tl-holdbar-time" role="timer" aria-hidden="true">{clock(secondsLeft)}</span>
       <span className="tl-holdbar-count" aria-hidden="true">{count}</span>
     </Link>

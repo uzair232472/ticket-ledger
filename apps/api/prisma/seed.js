@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { publishAllLayouts } from '../seed_venue_layouts.js';
 
 const prisma = new PrismaClient();
 
@@ -793,6 +794,8 @@ async function main() {
     });
     console.log('✓ Initial security audit logs seeded');
   }
+
+  await publishAllLayouts();
 
   console.log('\n🎉 TicketLedger Database Seeding Completed Successfully!\n');
 }
