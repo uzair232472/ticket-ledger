@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import markUrl from '../../assets/ticketledger-mark.svg';
+import './pixelloader.css';
 
 const CELL = 82; // the reference grid uses ~82px squares
 

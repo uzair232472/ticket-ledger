@@ -1,14 +1,12 @@
 import React from 'react';
 
-// Tilted ticket outline shared by the header icons (same notched ticket as the menu button)
+// Ticket outline shared by the header icons (same notched ticket as the menu button)
 const TICKET = 'M10 15H54a4 4 0 0 1 4 4V26a6 6 0 0 0 0 12V45a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V38a6 6 0 0 0 0-12V19a4 4 0 0 1 4-4Z';
 
 const Frame = ({ children, className }) => (
-  <svg className={className} viewBox="-1 -3 66 66" aria-hidden="true" focusable="false">
-    <g transform="rotate(-12 32 32)">
-      <path d={TICKET} fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinejoin="round" />
-      {children}
-    </g>
+  <svg className={className} viewBox="3 2 58 50" aria-hidden="true" focusable="false">
+    <path d={TICKET} fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinejoin="round" />
+    {children}
   </svg>
 );
 

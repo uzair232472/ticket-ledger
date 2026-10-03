@@ -301,15 +301,6 @@
 .tl-ex-btn:focus-visible { outline: 2px solid #0b0b0b; outline-offset: 3px; }
 .tl-ex-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 80px 16px; text-align: center; font-size: 17px; }
 
-/* ---------- Page-entry pixel transition ---------- */
-.tl-px { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
-.tl-px-base { position: absolute; inset: 0; background: var(--ex-bg); }
-.tl-px-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols), 82px); grid-auto-rows: 82px; }
-.tl-px-cell { background: #22c55e; opacity: 0; }
-.tl-px-center { position: absolute; left: 50%; top: 50%; width: 82px; height: 82px; margin: -41px 0 0 -41px; display: grid; place-items: center; background: #fbfbf9; }
-.tl-px-count { font: 500 13px/1 'JetBrains Mono', monospace; color: #0b0b0b; }
-.tl-px-badge { position: absolute; inset: 22px; background: no-repeat 50% 50% / contain; opacity: 0; }
-
 /* ---------- Phones: heading and categories side by side, smaller (reference mobile layout) ---------- */
 @media (max-width: 767px) {
   .tl-ex-main { padding-top: 150px; padding-left: 16px; padding-right: 16px; }
