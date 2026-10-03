@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw } fr
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
+import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
 import { formatClock, groupByTier, lineTitle, summaryLines } from '../components/venue/BookingSummary';
 import { formatPkr } from '../components/venue/venueTheme';
 import { getEventVisual } from '../utils/eventMedia';
@@ -107,6 +108,7 @@ export default function Checkout() {
   const [phase, setPhase] = useState('idle'); // idle | reserving | paying
   const [problem, setProblem] = useState(null); // { tone, kind, text }
   const [serverTotal, setServerTotal] = useState(null);
+  const [confirmed, setConfirmed] = useState(null); // { order, receipt } once the payment is confirmed
   const inFlight = useRef(false);
   const orderRef = useRef(null); // { id, method, keys, total, params }
   const formRef = useRef(null);
@@ -221,7 +223,13 @@ export default function Checkout() {
         throw err;
       }
       const d = res.data.data;
-      navigate(`/bookings/${order.id}/confirmation`, { replace: true, state: { eventId, order: d.order, receipt: d.paymentReceipt } });
+      if (d.order?.status === 'SUCCESSFUL') {
+        // Confirmed: show the "You're going" pop-up over this page; the held seats are now sold
+        setConfirmed({ order: d.order, receipt: d.paymentReceipt });
+        window.dispatchEvent(new Event('tl:holds-changed'));
+      } else {
+        navigate(`/bookings/${order.id}/confirmation`, { replace: true, state: { eventId, order: d.order, receipt: d.paymentReceipt } });
+      }
     } catch (err) {
       const code = err.response?.status;
       const msg = err.response?.data?.message || 'Something went wrong. Please try again.';
@@ -446,6 +454,9 @@ export default function Checkout() {
           </section>
         </aside>
       </form>
+      {confirmed && (
+        <OrderConfirmedModal order={confirmed.order} receipt={confirmed.receipt} onClose={() => navigate(`/events/${eventId}`, { replace: true })} />
+      )}
     </BookingShell>
   );
 }

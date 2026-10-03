@@ -200,32 +200,30 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <button type="button" className="tl-skip" onClick={skipIntro}>
-              Skip intro <ArrowDown className="w-4 h-4" aria-hidden="true" />
-            </button>
+
             <div className="tl-cover-shade" aria-hidden="true" />
           </div>
         </section>
 
         {/* ---------- 2. Category panels ---------- */}
         <div className="tl-cat-track">
-        <section id="categories" className="tl-categories" tabIndex={-1} aria-labelledby="tl-categories-title">
-          <div className="tl-categories-head">
-            <h2 id="tl-categories-title" className="tl-section-title">Categories</h2>
-            <div className="tl-categories-aside">
-              <p>From floodlit stadiums to festival grounds, pick a category to see what’s coming up.</p>
-              <Link to="/categories" className="tl-btn tl-btn--green">
-                View all categories <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-              </Link>
+          <section id="categories" className="tl-categories" tabIndex={-1} aria-labelledby="tl-categories-title">
+            <div className="tl-categories-head">
+              <h2 id="tl-categories-title" className="tl-section-title">Categories</h2>
+              <div className="tl-categories-aside">
+                <p>From floodlit stadiums to festival grounds, pick a category to see what’s coming up.</p>
+                <Link to="/categories" className="tl-btn tl-btn--green">
+                  View all categories <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+                </Link>
+              </div>
             </div>
-          </div>
-          <div className="tl-category-grid">
-            {CATEGORIES.map((cat, i) => (
-              <CategoryCard key={cat.type} cat={cat} index={i} count={status === 'ready' ? countsByType[cat.type] || 0 : undefined} />
-            ))}
-          </div>
-          <div className="tl-cover-shade" aria-hidden="true" />
-        </section>
+            <div className="tl-category-grid">
+              {CATEGORIES.map((cat, i) => (
+                <CategoryCard key={cat.type} cat={cat} index={i} count={status === 'ready' ? countsByType[cat.type] || 0 : undefined} />
+              ))}
+            </div>
+            <div className="tl-cover-shade" aria-hidden="true" />
+          </section>
         </div>
 
         {/* ---------- 3–4. Strip reveal, featured events and discovery over one background ---------- */}
@@ -241,49 +239,49 @@ export default function Dashboard() {
           <div className="tl-feature-content">
             <div className="tl-feature-spacer" aria-hidden="true" />
             <div className="tl-cards-block">
-            <div className="tl-cards-block-inner">
-            <div className="tl-feature-head">
-              <h2 id="tl-featured-title" ref={featureHeadingRef} tabIndex={-1} className="tl-section-title">
-                Featured events
-              </h2>
-              <Link to="/events" className="tl-btn tl-btn--green">
-                View all events <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-              </Link>
-            </div>
+              <div className="tl-cards-block-inner">
+                <div className="tl-feature-head">
+                  <h2 id="tl-featured-title" ref={featureHeadingRef} tabIndex={-1} className="tl-section-title">
+                    Featured events
+                  </h2>
+                  <Link to="/events" className="tl-btn tl-btn--green">
+                    View all events <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+                  </Link>
+                </div>
 
-            {status === 'loading' && (
-              <div className="tl-cards" aria-busy="true" aria-label="Loading events">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="tl-card" aria-hidden="true">
-                    <div className="tl-card-media tl-skeleton" />
-                    <div className="tl-card-body"><div className="tl-skeleton" style={{ height: 120, borderRadius: 6 }} /></div>
+                {status === 'loading' && (
+                  <div className="tl-cards" aria-busy="true" aria-label="Loading events">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="tl-card" aria-hidden="true">
+                        <div className="tl-card-media tl-skeleton" />
+                        <div className="tl-card-body"><div className="tl-skeleton" style={{ height: 120, borderRadius: 6 }} /></div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            {status === 'error' && (
-              <div className="tl-card-state" role="alert">
-                <p>We couldn’t load events right now.</p>
-                <button type="button" className="tl-btn tl-btn--green" style={{ marginTop: 16 }} onClick={loadEvents}>
-                  <RefreshCw className="w-4 h-4" aria-hidden="true" /> Try again
-                </button>
-              </div>
-            )}
-            {status === 'ready' && featured.length === 0 && (
-              <div className="tl-card-state">
-                <p>No upcoming events are published yet. Check back soon.</p>
-              </div>
-            )}
-            {status === 'ready' && featured.length > 0 && (
-              <div className="tl-cards">
-                {featured.map((event, i) => (
-                  <EventCard key={event.id} event={event} index={i} isFavorite={favorites[event.id]} onToggleFavorite={toggleFavorite} />
-                ))}
-              </div>
-            )}
+                )}
+                {status === 'error' && (
+                  <div className="tl-card-state" role="alert">
+                    <p>We couldn’t load events right now.</p>
+                    <button type="button" className="tl-btn tl-btn--green" style={{ marginTop: 16 }} onClick={loadEvents}>
+                      <RefreshCw className="w-4 h-4" aria-hidden="true" /> Try again
+                    </button>
+                  </div>
+                )}
+                {status === 'ready' && featured.length === 0 && (
+                  <div className="tl-card-state">
+                    <p>No upcoming events are published yet. Check back soon.</p>
+                  </div>
+                )}
+                {status === 'ready' && featured.length > 0 && (
+                  <div className="tl-cards">
+                    {featured.map((event, i) => (
+                      <EventCard key={event.id} event={event} index={i} isFavorite={favorites[event.id]} onToggleFavorite={toggleFavorite} />
+                    ))}
+                  </div>
+                )}
 
-            </div>
-            <div className="tl-cover-shade" aria-hidden="true" />
+              </div>
+              <div className="tl-cover-shade" aria-hidden="true" />
             </div>
             <div className="tl-cards-hold" aria-hidden="true" />
 
