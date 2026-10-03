@@ -262,6 +262,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
         </Link>
 
         <div className="tl-header-actions">
+          <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />
           <button
             ref={buttonRef}
             type="button"
@@ -273,7 +274,6 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
           >
             <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
           </button>
-          <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />
         </div>
 
         <div ref={backdropRef} className="tl-menu-backdrop" aria-hidden="true" onClick={() => close(true)} />
