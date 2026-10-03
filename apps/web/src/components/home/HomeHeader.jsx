@@ -104,7 +104,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   const [scrollHidden, setScrollHidden] = useState(false);
   const lastScrollYRef = useRef(0);
 
-  // Smooth auto-hide header when deliberately scrolling down; reveal when scrolling up or near top
+  // Smooth auto-hide header when scrolling down; only reveal when getting back to the top
   useEffect(() => {
     let ticking = false;
     const handleScroll = () => {
@@ -112,13 +112,10 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
       ticking = true;
       requestAnimationFrame(() => {
         const currentY = window.scrollY;
-        const diff = currentY - lastScrollYRef.current;
         if (open || currentY <= 80) {
           setScrollHidden(false);
-        } else if (diff > 18 && currentY > 140) {
+        } else if (currentY > 120) {
           setScrollHidden(true);
-        } else if (diff < -12) {
-          setScrollHidden(false);
         }
         lastScrollYRef.current = currentY;
         ticking = false;
@@ -265,18 +262,18 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
         </Link>
 
         <div className="tl-header-actions">
+          <button
+            ref={buttonRef}
+            type="button"
+            className="tl-menu-btn"
+            aria-expanded={open}
+            aria-controls="tl-site-menu"
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            onClick={() => (open ? close(true) : setOpen(true))}
+          >
+            <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
+          </button>
           <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />
-        <button
-          ref={buttonRef}
-          type="button"
-          className="tl-menu-btn"
-          aria-expanded={open}
-          aria-controls="tl-site-menu"
-          aria-label={open ? 'Close menu' : 'Open menu'}
-          onClick={() => (open ? close(true) : setOpen(true))}
-        >
-          <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
-        </button>
         </div>
 
         <div ref={backdropRef} className="tl-menu-backdrop" aria-hidden="true" onClick={() => close(true)} />

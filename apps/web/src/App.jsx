@@ -71,7 +71,7 @@ function Navbar() {
   const [scrollHidden, setScrollHidden] = useState(false);
   const lastScrollYRef = useRef(0);
 
-  // Smooth auto-hide navbar when deliberately scrolling down; reveal when scrolling up or near top
+  // Smooth auto-hide navbar when scrolling down; only reveal when getting back to the top
   useEffect(() => {
     let ticking = false;
     const handleScroll = () => {
@@ -79,13 +79,10 @@ function Navbar() {
       ticking = true;
       requestAnimationFrame(() => {
         const currentY = window.scrollY;
-        const diff = currentY - lastScrollYRef.current;
         if (organizerMenu || adminMenu || userMenu || currentY <= 80) {
           setScrollHidden(false);
-        } else if (diff > 18 && currentY > 140) {
+        } else if (currentY > 120) {
           setScrollHidden(true);
-        } else if (diff < -12) {
-          setScrollHidden(false);
         }
         lastScrollYRef.current = currentY;
         ticking = false;

@@ -83,19 +83,18 @@
   transform: translateY(-8px);
 }
 
-/* Right side: signed-in icons (notifications, account) next to the menu button */
+/* Right side: ticket menu button on the left, round icons (cart, notifications, account) on the RIGHT */
 .tl-header-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
 }
 
 .tl-hacc {
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Keeps notifications and account a little apart from the menu button */
-  margin-right: clamp(10px, 2vw, 24px);
+  margin-left: 2px;
 }
 
 .tl-hacc-item {
