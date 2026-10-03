@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useNavigationType, useSearchParams } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Search, X, RefreshCw } from 'lucide-react';
+import { Search, X, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import api, { trackClientBehavior } from '../utils/api';
 import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
@@ -186,10 +186,33 @@ export default function Events() {
     sessionStorage.setItem(RETURN_KEY, JSON.stringify({ query: searchParams.toString(), visible, y: Math.round(window.scrollY) }));
   };
 
+  // Categories: one button that opens the full list (there are too many for a single row)
+  const [catsOpen, setCatsOpen] = useState(false);
   const focusCategories = useCallback(() => {
     categoriesRef.current?.querySelector('button')?.focus({ preventScroll: true });
     categoriesRef.current?.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    setCatsOpen(true);
   }, []);
+  useEffect(() => {
+    if (!catsOpen) return undefined;
+    const onDown = (e) => !categoriesRef.current?.contains(e.target) && setCatsOpen(false);
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      setCatsOpen(false);
+      categoriesRef.current?.querySelector('button')?.focus();
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [catsOpen]);
+  const pickCategory = (type) => {
+    setFilter('type', type);
+    setCatsOpen(false);
+    categoriesRef.current?.querySelector('button')?.focus({ preventScroll: true });
+  };
 
   // Footer: header logo steps aside; the footer lettering rises in (toggle actions, like the reference)
   useLayoutEffect(() => {
@@ -227,21 +250,37 @@ export default function Events() {
         <main className="tl-ex-main">
           <div className="tl-ex-head">
             <h1 className="tl-ex-title">Explore Events</h1>
-            <div ref={categoriesRef} className="tl-ex-cats" role="group" aria-label="Categories">
-              {[{ type: '', name: 'All' }, ...ALL_CATEGORIES].map((c) => {
-                const active = filters.type === c.type;
-                return (
-                  <button
-                    key={c.type || 'all'}
-                    type="button"
-                    className={`tl-ex-cat${active ? ' is-active' : ''}`}
-                    aria-pressed={active}
-                    onClick={() => setFilter('type', c.type)}
-                  >
-                    {c.name}
-                  </button>
-                );
-              })}
+            <div ref={categoriesRef} className="tl-ex-cats">
+              <button
+                type="button"
+                className={`tl-ex-cats-btn${catsOpen ? ' is-open' : ''}`}
+                aria-expanded={catsOpen}
+                aria-controls="tl-ex-cats-panel"
+                onClick={() => setCatsOpen((o) => !o)}
+              >
+                <span className="tl-ex-cats-btn-label">Category</span>
+                <span className="tl-ex-cats-btn-value">{filters.type ? categoryName(filters.type) : 'All'}</span>
+                <ChevronDown className="w-4 h-4" aria-hidden="true" />
+              </button>
+              {catsOpen && (
+                <div id="tl-ex-cats-panel" className="tl-ex-cats-panel" role="group" aria-label="Categories">
+                  {[{ type: '', name: 'All categories' }, ...ALL_CATEGORIES].map((c) => {
+                    const active = filters.type === c.type;
+                    return (
+                      <button
+                        key={c.type || 'all'}
+                        type="button"
+                        className={`tl-ex-cat${active ? ' is-active' : ''}`}
+                        aria-pressed={active}
+                        onClick={() => pickCategory(c.type)}
+                      >
+                        <span>{c.name}</span>
+                        {active && <Check className="w-4 h-4" aria-hidden="true" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 

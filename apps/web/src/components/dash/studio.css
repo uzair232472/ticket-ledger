@@ -40,7 +40,6 @@
 }
 .tl-dash--studio::before { display: none; }
 .tl-dash--studio :focus-visible { outline: 2px solid var(--st-green); outline-offset: 3px; }
-.tl-dash--studio .tl-header-logo, .tl-dash--studio .tl-menu-btn { background: rgba(246, 248, 244, 0.9); }
 
 /* ---------- Console nav ---------- */
 .tl-dash--studio .tl-dash-nav { border-color: var(--st-line); border-top-width: 1px; }

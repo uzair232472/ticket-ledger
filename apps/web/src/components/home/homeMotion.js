@@ -221,7 +221,6 @@ export function initHomeMotion(root) {
         // autoAlpha: the button is also unclickable and unfocusable until it is visible
         .fromTo(introCta, { autoAlpha: 0, y: 18 }, { autoAlpha: 1, y: 0, duration: 0.06 }, 0.42 + 0.011 * introWords.length)
         .to(wordmark, { opacity: 0, duration: 0.04 }, 0.38)
-        .fromTo(headerLogo, { opacity: 0 }, { opacity: 1, duration: 0.04 }, 0.38)
         // Hold the finished composition before the next scene scrolls in
         .to({}, { duration: 0.18 });
 

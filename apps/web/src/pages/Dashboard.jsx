@@ -6,6 +6,7 @@ import api from '../utils/api';
 import markUrl from '../assets/ticketledger-mark.svg';
 import HomeHeader from '../components/home/HomeHeader';
 import EventCard from '../components/home/EventCard';
+import CategoryCard from '../components/home/CategoryCard';
 import SiteFooter, { organizerAction } from '../components/home/SiteFooter';
 import EventMap, { CITY_COORDS } from '../components/home/EventMap';
 import { initHomeMotion, refreshScrollScenes, TICKET_HOLE_RADIUS } from '../components/home/homeMotion';
@@ -211,38 +212,17 @@ export default function Dashboard() {
         <section id="categories" className="tl-categories" tabIndex={-1} aria-labelledby="tl-categories-title">
           <div className="tl-categories-head">
             <h2 id="tl-categories-title" className="tl-section-title">Categories</h2>
-            <p>From floodlit stadiums to festival grounds, pick a category to see what’s coming up.</p>
+            <div className="tl-categories-aside">
+              <p>From floodlit stadiums to festival grounds, pick a category to see what’s coming up.</p>
+              <Link to="/categories" className="tl-btn tl-btn--green">
+                View all categories <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
+            </div>
           </div>
           <div className="tl-category-grid">
-            {CATEGORIES.map((cat, i) => {
-              const count = countsByType[cat.type] || 0;
-              return (
-                <Link
-                  key={cat.type}
-                  to={`/events?type=${cat.type}`}
-                  className="tl-category"
-                  style={{ '--panel': cat.panel, '--strip': cat.strip, '--ink': cat.ink }}
-                  aria-label={`${cat.name}: ${status === 'ready' ? `${count} upcoming event${count === 1 ? '' : 's'}` : 'browse events'}`}
-                >
-                  {/* The face grows below the row on hover/focus without changing the page layout */}
-                  <span className="tl-category-face">
-                    <span className="tl-category-media" aria-hidden="true">
-                      <img src={cat.image} alt="" loading="lazy" decoding="async" onError={hideBroken} />
-                    </span>
-                    <span className="tl-category-num">{String(i + 1).padStart(2, '0')}</span>
-                    <span className="tl-category-foot">
-                      {status === 'ready' && (
-                        <span className="tl-category-count">{count ? `${count} upcoming` : 'Nothing scheduled yet'}</span>
-                      )}
-                      <span className="tl-category-label">
-                        {cat.name}
-                        <ArrowUpRight className="w-5 h-5" aria-hidden="true" />
-                      </span>
-                    </span>
-                  </span>
-                </Link>
-              );
-            })}
+            {CATEGORIES.map((cat, i) => (
+              <CategoryCard key={cat.type} cat={cat} index={i} count={status === 'ready' ? countsByType[cat.type] || 0 : undefined} />
+            ))}
           </div>
           <div className="tl-cover-shade" aria-hidden="true" />
         </section>

@@ -4,6 +4,7 @@ import gsap from 'gsap';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import BrandLogo from '../brand/BrandLogo';
+import HeaderAccount from './HeaderAccount';
 import menuIcon from '../../assets/menu-ticket.png';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -21,6 +22,7 @@ function useMenuGroups(onCategories) {
   const discover = [
     { label: 'Explore Events', to: '/events' },
     { label: 'Categories', onClick: onCategories },
+    { label: 'All Categories', to: '/categories' },
   ];
   if (!isAuthenticated || role === 'CUSTOMER' || role === 'SUPER_ADMIN') discover.push({ label: 'Fan Resale', to: '/resale' });
   groups.push({ title: 'Discover', items: discover });
@@ -235,6 +237,8 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
           <BrandLogo />
         </Link>
 
+        <div className="tl-header-actions">
+        {isAuthenticated && <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />}
         <button
           ref={buttonRef}
           type="button"
@@ -246,6 +250,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
         >
           <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
         </button>
+        </div>
 
         <div ref={backdropRef} className="tl-menu-backdrop" aria-hidden="true" onClick={() => close(true)} />
 

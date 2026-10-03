@@ -86,6 +86,8 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
       const expired = lost.filter((m) => new Date(m.lockedUntil).getTime() <= Date.now() + offset.current + 1000);
       if (expired.length) say(`${expired.length === 1 ? 'A hold' : `${expired.length} holds`} expired and ${expired.length === 1 ? 'was' : 'were'} released.`, 'warn');
       prevMine.current = nextMine;
+      // Keeps the site-wide hold countdown (HoldBar) in step with this page
+      window.dispatchEvent(new Event('tl:holds-changed'));
       setData(d);
       setLoadError('');
       onLoaded?.(d);

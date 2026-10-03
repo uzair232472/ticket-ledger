@@ -5,6 +5,7 @@ import { MediaValidationError, validateEventImage } from '../services/eventMedia
 import { uploadFile } from '../utils/storage.js';
 import {
   VenueError,
+  activeHoldsForUser,
   getAvailability,
   holdSeat,
   holdTable,
@@ -52,6 +53,14 @@ export const getEventVenue = async (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     fail(res, error, 'Failed to load the venue plan');
+  }
+};
+
+export const getMyHolds = async (req, res) => {
+  try {
+    res.json({ success: true, data: await activeHoldsForUser(req.user.id) });
+  } catch (error) {
+    fail(res, error, 'Failed to load your reserved seats');
   }
 };
 

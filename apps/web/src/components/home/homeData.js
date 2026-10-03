@@ -26,7 +26,7 @@ export const COLLAGE_IMAGES = [
 export const STAGE_IMAGE = unsplash('1470229722913-7c0e2dbbafd3', 1920);
 
 // Event types that exist in the database (EventType enum), with TicketLedger greens from light to dark
-// `image` is revealed (tinted with the panel colour) when the panel is hovered or focused.
+// `image` shows tinted with the panel colour, and in its original colours when the panel is hovered or focused.
 // There is no kabaddi-specific photo, so Kabaddi uses a generic floodlit sports field.
 export const CATEGORIES = [
   { type: 'CRICKET_MATCH', name: 'Cricket', panel: '#86efac', strip: '#bbf7d0', ink: '#052e16', image: unsplash('1531415074968-036ba1b575da', 640, 640) },
@@ -41,12 +41,13 @@ export const CATEGORIES = [
 export const TRAIL_SIZES = [112, 88, 68, 52, 38, 26];
 
 // Categories without a homepage panel (the home scenes keep their six panels); listed on Explore
+// They reuse photos already in this project and continue the green scale on the All Categories page.
 export const MORE_CATEGORIES = [
-  { type: 'HOCKEY_MATCH', name: 'Hockey' },
-  { type: 'QAWWALI', name: 'Qawwali' },
-  { type: 'THEATRE', name: 'Theatre' },
-  { type: 'CONFERENCE', name: 'Conferences' },
-  { type: 'GENERAL_ADMISSION', name: 'General admission' },
+  { type: 'HOCKEY_MATCH', name: 'Hockey', panel: '#bbf7d0', strip: '#dcfce7', ink: '#052e16', image: unsplash('1540747913346-19e32dc3e97e', 640, 640) },
+  { type: 'QAWWALI', name: 'Qawwali', panel: '#4ade80', strip: '#86efac', ink: '#052e16', image: unsplash('1501386761578-eac5c94b800a', 640, 640) },
+  { type: 'THEATRE', name: 'Theatre', panel: '#16a34a', strip: '#15803d', ink: '#ffffff', image: unsplash('1459749411175-04bf5292ceea', 640, 640) },
+  { type: 'CONFERENCE', name: 'Conferences', panel: '#166534', strip: '#14532d', ink: '#ffffff', image: unsplash('1470225620780-dba8ba36b745', 640, 640) },
+  { type: 'GENERAL_ADMISSION', name: 'General admission', panel: '#14532d', strip: '#0f3d22', ink: '#ffffff', image: unsplash('1470229722913-7c0e2dbbafd3', 640, 640) },
 ];
 export const ALL_CATEGORIES = [...CATEGORIES, ...MORE_CATEGORIES];
 
