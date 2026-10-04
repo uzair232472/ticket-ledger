@@ -1,32 +1,69 @@
 import React from 'react';
 
-// Ticket outline shared by the header icons (same notched ticket as the menu button)
-const TICKET = 'M10 15H54a4 4 0 0 1 4 4V26a6 6 0 0 0 0 12V45a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V38a6 6 0 0 0 0-12V19a4 4 0 0 1 4-4Z';
-
-const Frame = ({ children, className }) => (
-  <svg className={className} viewBox="3 2 58 50" aria-hidden="true" focusable="false">
-    <path d={TICKET} fill="none" stroke="currentColor" strokeWidth="3.6" strokeLinejoin="round" />
-    {children}
-  </svg>
-);
-
-/** Ticket with a bell, plus little ring marks over its corners. */
-export function TicketBellIcon({ className }) {
+/**
+ * Modern, sleek Cart / Shopping Bag icon.
+ * Clean stroke geometry for high-end professional appearance.
+ */
+export function TicketCartIcon({ className }) {
   return (
-    <Frame className={className}>
-      <path d="M32 21.5c-4.6 0-7.2 3.4-7.2 7.9v5.1l-2.6 3.3h19.6l-2.6-3.3v-5.1c0-4.5-2.6-7.9-7.2-7.9Z" fill="currentColor" />
-      <path d="M29.2 40.2a2.8 2.8 0 0 0 5.6 0Z" fill="currentColor" />
-      <path d="M9 9.5c2.4-2.4 5.3-3.7 8.5-4M55 9.5c-2.4-2.4-5.3-3.7-8.5-4" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
-    </Frame>
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+      <path d="M3 6h18" />
+      <path d="M16 10a4 4 0 0 1-8 0" />
+    </svg>
   );
 }
 
-/** Ticket with a person (account). */
+/**
+ * Modern, sleek Bell icon for notifications.
+ */
+export function TicketBellIcon({ className }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
+/**
+ * Modern, sleek User Account icon.
+ */
 export function TicketUserIcon({ className }) {
   return (
-    <Frame className={className}>
-      <circle cx="32" cy="26.5" r="5.6" fill="currentColor" />
-      <path d="M21 42.5c0-6.3 4.9-9.6 11-9.6s11 3.3 11 9.6Z" fill="currentColor" />
-    </Frame>
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
   );
 }
