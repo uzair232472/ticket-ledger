@@ -40,6 +40,8 @@ const STATUS_BADGE = {
   PUBLISHED: ['On sale', 'is-live'],
   DRAFT: ['Draft', 'is-warn'],
   PRELAUNCH_ANALYSIS: ['Pre-launch', 'is-warn'],
+  PENDING_APPROVAL: ['Awaiting approval', 'is-warn'],
+  REJECTED: ['Changes requested', 'is-warn'],
   PAUSED: ['Paused', 'is-warn'],
   COMPLETED: ['Completed', ''],
   CANCELLED: ['Cancelled', ''],
@@ -77,6 +79,9 @@ function EventCard({ event, index, totals, selected, onStats }) {
         <h3><Link to={`/events/${event.id}`}>{event.name}</Link></h3>
         <p className="tl-st-ev-meta"><CalendarDays className="w-3.5 h-3.5" aria-hidden="true" />{eventDate(event.date)}</p>
         <p className="tl-st-ev-meta"><MapPin className="w-3.5 h-3.5" aria-hidden="true" />{place(event.venue, event.city)}</p>
+        {event.status === 'REJECTED' && event.reviewComment && (
+          <p className="tl-st-ev-meta" style={{ color: 'var(--st-rose)' }} title={event.reviewComment}>Admin: “{event.reviewComment.length > 90 ? `${event.reviewComment.slice(0, 90)}…` : event.reviewComment}”</p>
+        )}
         <div className="tl-st-ev-stats">
           <div>
             <small>Revenue</small>
@@ -94,6 +99,10 @@ function EventCard({ event, index, totals, selected, onStats }) {
           <button type="button" onClick={onStats} aria-pressed={selected}>Stats</button>
           <Link to={`/organizer/events/${event.id}/edit`}>Edit</Link>
           <Link to={`/organizer/events/${event.id}/venue`}>Seating</Link>
+          {/* Not on sale yet: preview the details and send it (or see its review state) */}
+          {!['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status) && (
+            <Link to={`/organizer/events/${event.id}/submit`}>{event.status === 'PENDING_APPROVAL' ? 'Preview' : 'Preview & submit'}</Link>
+          )}
           <Link to={`/events/${event.id}`} className="tl-st-ev-open" aria-label={`Open the ${event.name} event page`}>
             <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
           </Link>

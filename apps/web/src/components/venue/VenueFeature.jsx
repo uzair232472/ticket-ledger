@@ -68,15 +68,30 @@ export default function VenueFeature({ feature, uid }) {
       </>
     );
   } else {
-    body = <rect x={-hw} y={-hh} width={w} height={h} rx={Math.min(w, h) * 0.12} fill={`url(#${uid}-stage)`} />;
+    // Stage in plan view: an outlined platform with an inner edge line and steps at both front corners
+    const step = Math.min(w * 0.08, h * 0.35);
+    body = (
+      <>
+        <rect x={-hw} y={-hh} width={w} height={h} rx={2} fill={`url(#${uid}-stage)`} className="tl-vm-cad-line" strokeWidth={2.2} />
+        <rect x={-hw + 5} y={-hh + 5} width={w - 10} height={h - 10} rx={1} fill="none" className="tl-vm-cad-line" strokeWidth={0.8} />
+        {[-1, 1].map((side) => (
+          <g key={side} transform={`translate(${side * (hw - step / 2 - 8)} ${hh - step / 2 - 6})`}>
+            <rect x={-step / 2} y={-step / 2} width={step} height={step} fill="none" className="tl-vm-cad-line" strokeWidth={0.8} />
+            {[0.2, 0.4, 0.6, 0.8].map((k) => (
+              <line key={k} x1={-step / 2} x2={step / 2} y1={-step / 2 + step * k} y2={-step / 2 + step * k} className="tl-vm-cad-line" strokeWidth={0.6} />
+            ))}
+          </g>
+        ))}
+      </>
+    );
   }
 
-  const dark = kind === 'stage' || kind === 'screen';
+  const dark = kind === 'screen';
   return (
     <g className="tl-vm-feature" transform={`translate(${x} ${y}) rotate(${rotation})`} aria-hidden="true">
       {body}
       {label && (
-        <text className="tl-vm-feature-label" y={kind === 'screen' ? hh * 0.35 : 0} fill={dark ? '#f8fafc' : 'rgba(21,83,45,0.75)'} fontSize={Math.max(10, Math.min(w, h) * (dark ? 0.26 : 0.09))}>
+        <text className="tl-vm-feature-label" y={kind === 'screen' ? hh * 0.35 : 0} fill={dark ? '#f8fafc' : '#1f4d36'} fontSize={Math.max(10, Math.min(w, h) * (kind === 'stage' ? 0.2 : dark ? 0.26 : 0.09))}>
           {label}
         </text>
       )}
@@ -93,9 +108,13 @@ export function VenueDefs({ uid }) {
         <rect width="14" height="28" fill="#c5e3cb" />
       </pattern>
       <linearGradient id={`${uid}-stage`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#2b3743" />
-        <stop offset="1" stopColor="#1b232c" />
+        <stop offset="0" stopColor="#eef1e8" />
+        <stop offset="1" stopColor="#e3e9dd" />
       </linearGradient>
+      {/* Standing / general-admission floor: fine diagonal hatching, as on an architectural plan */}
+      <pattern id={`${uid}-standing`} width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="7" stroke="#24543a" strokeOpacity="0.18" strokeWidth="1" />
+      </pattern>
       <pattern id={`${uid}-hatch`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <rect width="6" height="6" fill="#eef2f6" />
         <line x1="0" y1="0" x2="0" y2="6" stroke="#cbd5e1" strokeWidth="2" />

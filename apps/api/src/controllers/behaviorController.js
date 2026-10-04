@@ -1,3 +1,4 @@
+import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
 /**
@@ -59,6 +60,15 @@ export const getMyBehaviorProfile = async (req, res) => {
 export const getUserBehaviorProfileById = async (req, res) => {
   try {
     const { userId } = req.params;
+    if (req.user.role !== 'SUPER_ADMIN') {
+      const customer = await prisma.order.findFirst({
+        where: { userId, event: { company: { userId: req.user.id } } },
+        select: { id: true },
+      });
+      if (!customer) {
+        return res.status(403).json({ success: false, message: 'You can only view attendees of your own events.' });
+      }
+    }
     const profile = await behaviorService.getUserBehavioralProfile(userId);
 
     return res.status(200).json({

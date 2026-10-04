@@ -18,6 +18,7 @@ const CONSOLES = {
     links: [
       { to: '/admin/dashboard', label: 'Overview' },
       { to: '/admin/companies', label: 'Approvals' },
+      { to: '/admin/event-approvals', label: 'Event approvals' },
       { to: '/admin/fraud-watchlist', label: 'Fraud watchlist' },
       { to: '/admin/demand-forecast', label: 'Demand forecast' },
       { to: '/admin/purchase-intent', label: 'Purchase intent' },
@@ -50,7 +51,7 @@ const CONSOLES = {
 const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/scanner', '/admin/dashboard', '/admin/companies', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/scanner', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
 
 /**
  * Static console layout for organizers, super admins and gate staff: the site header and footer around the
@@ -65,7 +66,7 @@ export default function DashShell({ children }) {
   const pageRef = useRef(null);
   const console_ = CONSOLES[user?.role];
   const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
-  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|events\/[^/]+\/edit)\/?$/.test(pathname);
+  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|events\/[^/]+\/(edit|submit))\/?$/.test(pathname);
 
   useEffect(() => {
     if (navigationType !== 'POP') window.scrollTo({ top: 0, behavior: 'instant' });

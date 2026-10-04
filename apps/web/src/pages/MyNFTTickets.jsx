@@ -4,6 +4,9 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
 import { COLLAGE_IMAGES } from '../components/home/homeData';
+import NftTicketCard from '../components/account/NftTicketCard';
+import '../components/account/passes.css';
+import { useDialog } from '../components/ui/DialogProvider';
 import {
   Sparkles,
   ExternalLink,
@@ -32,6 +35,7 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function MyNFTTickets() {
+  const dialog = useDialog();
   const { token, user } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,6 +116,7 @@ export default function MyNFTTickets() {
 
       if (res.data.success) {
         setResaleSuccessMsg('Ticket successfully listed on secondary marketplace!');
+        dialog.alert({ tone: 'success', title: 'Listed for resale', message: 'Your ticket is on fan resale. We’ll email you when it sells.' });
         fetchNFTs();
         setTimeout(() => {
           setSelectedTicketForResale(null);
@@ -125,7 +130,7 @@ export default function MyNFTTickets() {
   };
 
   const handleCancelListing = async (listingId) => {
-    if (!window.confirm('Are you sure you want to cancel this resale listing and reclaim your ticket?')) return;
+    if (!(await dialog.confirm({ title: 'Cancel this resale listing?', message: 'The ticket comes back to your wallet as an active pass.', confirmLabel: 'Cancel listing', cancelLabel: 'Keep listing', tone: 'warning' }))) return;
 
     setCancellingListingId(listingId);
     try {
@@ -136,7 +141,7 @@ export default function MyNFTTickets() {
       );
       fetchNFTs();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to cancel listing');
+      dialog.alert({ tone: 'error', title: 'Couldn’t cancel the listing', message: err.response?.data?.message || 'Please try again.' });
     } finally {
       setCancellingListingId(null);
     }
@@ -209,165 +214,17 @@ export default function MyNFTTickets() {
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {tickets.map((t) => {
-            const { event, seat, blockchain } = t;
-
-            return (
-              <div
-                key={t.id}
-                data-reveal
-                className="group relative rounded-3xl bg-white border border-slate-200/90 hover:border-slate-300 transition-all duration-300 shadow-sm hover:shadow-md overflow-hidden flex flex-col justify-between"
-              >
-                {/* Event Banner */}
-                <div className="relative h-64 overflow-hidden bg-slate-100">
-                  <img
-                    src={event?.bannerUrl || 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=1200&q=80'}
-                    alt={event?.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-
-                  {/* Token ID Badge */}
-                  <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black font-mono bg-white/95 text-purple-900 border border-purple-200 shadow-sm">
-                      TLT #{blockchain?.tokenId || '1001'}
-                    </span>
-                  </div>
-
-                  {/* Verified Pill */}
-                  <div className="absolute top-3 right-3 flex items-center gap-1">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-white/95 text-emerald-800 border border-emerald-200 shadow-sm flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-[#16a34a]" /> Polygon ERC721
-                    </span>
-                  </div>
-
-                  {/* Seat coordinates on hero */}
-                  <div className="absolute bottom-3 left-3 right-3">
-                    <div className="text-[10px] text-white/80 uppercase tracking-widest font-bold">
-                      {seat?.tierName}
-                    </div>
-                    <div className="text-base font-black text-white drop-shadow-sm">
-                      Section {seat?.section} • Row {seat?.row}, Seat {seat?.seatNumber}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Content */}
-                <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
-                  <div className="space-y-3">
-                    <h3 className="font-extrabold text-[#212b36] text-base leading-snug line-clamp-1">
-                      {event?.name}
-                    </h3>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> {event?.venue}, {event?.city}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />{' '}
-                        {new Date(event?.date).toLocaleDateString()}
-                      </span>
-                    </div>
-
-                    {/* Anti-Scalping Rules Box */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Original Price</span>
-                        <span className="font-mono text-slate-900 font-bold">
-                          Rs. {Number(t.price).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span className="flex items-center gap-1 text-[#16a34a] font-semibold">
-                          <ShieldCheck className="w-3.5 h-3.5 text-[#16a34a]" /> On-Chain Resale Cap
-                        </span>
-                        <span className="font-mono text-[#16a34a] font-bold">
-                          Rs. {Number(t.resalePriceCap).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 pt-0.5">
-                        Smart contract prevents predatory scalping (enforced max 110%).
-                      </div>
-                    </div>
-
-                    {/* Blockchain Metadata Box */}
-                    <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-[11px] space-y-2 font-mono">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Transaction</span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-slate-800 font-semibold truncate max-w-[130px]">
-                            {blockchain?.txHash}
-                          </span>
-                          <button
-                            onClick={() => copyToClipboard(blockchain?.txHash, t.id)}
-                            className="text-slate-400 hover:text-slate-700"
-                            title="Copy Tx Hash"
-                          >
-                            {copiedTx === t.id ? (
-                              <Check className="w-3 h-3 text-[#16a34a]" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Owner Wallet</span>
-                        <span className="text-slate-700 truncate max-w-[140px]">
-                          {blockchain?.ownerWallet}
-                        </span>
-                      </div>
-
-                      {/* In-App Blockchain Explorer Trigger */}
-                      <div className="pt-2 border-t border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTicketForExplorer(t)}
-                          className="w-full py-1.5 px-2.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-[11px] flex items-center justify-center gap-1.5 transition shadow-sm"
-                        >
-                          <Search className="w-3 h-3 text-slate-500" />
-                          <span>View On-Chain Explorer Receipt</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
-                    <span className="text-[10px] text-slate-500 flex items-center gap-1 font-medium">
-                      <QrCode className="w-3.5 h-3.5 text-[#16a34a]" /> Rotating QR Ready
-                    </span>
-                    {t.activeResaleListing ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                          Listed: Rs. {Number(t.activeResaleListing.resalePrice).toLocaleString()}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleCancelListing(t.activeResaleListing.id)}
-                          disabled={cancellingListingId === t.activeResaleListing.id}
-                          className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-semibold transition"
-                        >
-                          {cancellingListingId === t.activeResaleListing.id ? 'Cancelling...' : 'Cancel'}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenResaleModal(t)}
-                        className="btn-eventfrog text-xs py-2 px-3 shadow-sm flex items-center gap-1"
-                      >
-                        <Tag className="w-3.5 h-3.5" />
-                        <span>List for Resale</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="tl-nfts">
+          {tickets.map((t) => (
+            <NftTicketCard
+              key={t.id}
+              ticket={t}
+              onList={() => handleOpenResaleModal(t)}
+              onCancelListing={handleCancelListing}
+              cancelling={cancellingListingId === t.activeResaleListing?.id}
+              onExplorer={() => setSelectedTicketForExplorer(t)}
+            />
+          ))}
         </div>
       )}
 

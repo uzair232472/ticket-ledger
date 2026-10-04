@@ -25,7 +25,7 @@ export const EVENT_VISUALS = {
     shortLabel: 'Festival',
     badgeClass: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
     accentColor: '#d946ef',
-    defaultImage: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1200&q=85',
+    defaultImage: '../assets/music-festival-banner.avif',
     altImage: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=1200&q=85',
   },
   FOOTBALL_MATCH: {

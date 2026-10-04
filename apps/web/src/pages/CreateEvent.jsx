@@ -5,6 +5,9 @@ import api from '../utils/api';
 import { getEventVisual } from '../utils/eventMedia';
 import ImageField, { emptyImageValue, imageValueSrc } from '../components/event-form/ImageField';
 import GalleryField, { galleryItemsFromSaved } from '../components/event-form/GalleryField';
+import SetupStepper, { SETUP_STEPS } from '../components/dash/SetupStepper';
+import LocationPicker, { googleMapsUrl } from '../components/event-form/LocationPicker';
+import { useDialog } from '../components/ui/DialogProvider';
 import {
   AlertCircle,
   ArrowLeft,
@@ -30,23 +33,27 @@ import {
   Send,
   Sparkles,
   Save,
+  MapPinned,
+  Eye,
+  ArrowUpRight,
+  HelpCircle,
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const CITIES = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar', 'Quetta'];
 const CATEGORIES = [
-  ['CRICKET_MATCH', '🏏 Cricket Match (PSL)'],
-  ['MUSIC_CONCERT', '🎵 Music Concert'],
-  ['MUSIC_FESTIVAL', '🎪 Music Festival'],
-  ['KABADDI', '🤼 Kabaddi Match'],
-  ['FOOTBALL_MATCH', '⚽ Football Match'],
-  ['BOXING', '🥊 Boxing Match'],
-  ['HOCKEY_MATCH', '🏑 Hockey Match'],
-  ['QAWWALI', '🪘 Qawwali Night'],
-  ['THEATRE', '🎭 Theatre'],
-  ['CONFERENCE', '🎤 Conference'],
-  ['GENERAL_ADMISSION', '🎟️ General Admission'],
+  ['CRICKET_MATCH', ' Cricket Match (PSL)'],
+  ['MUSIC_CONCERT', ' Music Concert'],
+  ['MUSIC_FESTIVAL', ' Music Festival'],
+  ['KABADDI', ' Kabaddi Match'],
+  ['FOOTBALL_MATCH', ' Football Match'],
+  ['BOXING', ' Boxing Match'],
+  ['HOCKEY_MATCH', ' Hockey Match'],
+  ['QAWWALI', ' Qawwali Night'],
+  ['THEATRE', ' Theatre'],
+  ['CONFERENCE', ' Conference'],
+  ['GENERAL_ADMISSION', ' General Admission'],
 ];
 
 const emptyImages = (event) => ({
@@ -107,18 +114,20 @@ function Tips({ title, intro, items, note }) {
 }
 
 /**
- * Create a new event in three steps (details → images → tickets & pricing), or edit one at
- * /organizer/events/:id/edit. Every step stays mounted, so going back shows exactly what was entered;
+ * Create a new event: details → images → tickets & pricing here, then the seating plan (venue editor) and
+ * Review & submit (sent to admins for approval). Or edit one at /organizer/events/:id/edit. Every step stays mounted, so going back shows exactly what was entered;
  * "Next" only moves on once the current step is valid.
  */
 export default function CreateEvent() {
+  const dialog = useDialog();
   const navigate = useNavigate();
   const { token } = useAuth();
   const { id: editId } = useParams();
   const isEdit = Boolean(editId);
 
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(null); // 'PRELAUNCH_ANALYSIS' | 'PUBLISHED' | 'SAVE' | null
+  const [submitting, setSubmitting] = useState(null); // 'PRELAUNCH_ANALYSIS' | 'DRAFT' | 'SAVE' | null
+  const [eventStatus, setEventStatus] = useState(null); // edit mode: the saved event's status
   const [company, setCompany] = useState(null);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -140,6 +149,9 @@ export default function CreateEvent() {
   const [gallery, setGallery] = useState([]);
   const [savedGallery, setSavedGallery] = useState([]);
   const [loadError, setLoadError] = useState('');
+
+  // Exact venue location (map pin); optional, the event falls back to its city centre
+  const [location, setLocation] = useState({ latitude: null, longitude: null, locationAddress: null });
 
   const [tiers, setTiers] = useState([
     { name: 'General Enclosure', price: 1500, totalQuantity: 500 },
@@ -172,6 +184,7 @@ export default function CreateEvent() {
       .then((res) => {
         if (!alive) return;
         const ev = res.data.data.event;
+        setEventStatus(ev.status);
         setEventData({
           name: ev.name,
           description: ev.description,
@@ -183,6 +196,7 @@ export default function CreateEvent() {
           bannerUrl: ev.bannerUrl || '',
         });
         setTiers(ev.tiers.map((t) => ({ name: t.name, price: Number(t.price), totalQuantity: t.totalQuantity })));
+        setLocation({ latitude: ev.latitude ?? null, longitude: ev.longitude ?? null, locationAddress: ev.locationAddress ?? null });
         setImages(emptyImages(ev));
         const saved = galleryItemsFromSaved(ev.galleryImages);
         setGallery(saved);
@@ -281,6 +295,11 @@ export default function CreateEvent() {
       ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
       formData.append('status', status);
       formData.append('tiers', JSON.stringify(tiers));
+      if (location.latitude != null) {
+        formData.append('latitude', String(location.latitude));
+        formData.append('longitude', String(location.longitude));
+        if (location.locationAddress) formData.append('locationAddress', location.locationAddress);
+      }
       if (images.banner.file) formData.append('banner', images.banner.file);
       if (images.cardImage.file) formData.append('cardImage', images.cardImage.file);
       if (images.galleryWide.file) formData.append('galleryWide', images.galleryWide.file);
@@ -294,8 +313,8 @@ export default function CreateEvent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to create event');
 
-      if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${data.data.event.id}`);
-      // Next part of setup: the venue plan attendees book from
+      // The event is saved unpublished. With a forecast: adjust prices first; either way step 4 is seating.
+      if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${data.data.event.id}&setup=1`);
       else navigate(`/organizer/events/${data.data.event.id}/venue?setup=1`);
     } catch (err) {
       setError(err.message);
@@ -319,6 +338,11 @@ export default function CreateEvent() {
     try {
       const formData = new FormData();
       ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
+      if (location.latitude != null) {
+        formData.append('latitude', String(location.latitude));
+        formData.append('longitude', String(location.longitude));
+        if (location.locationAddress) formData.append('locationAddress', location.locationAddress);
+      }
       Object.entries(images).forEach(([field, value]) => {
         if (value.file) formData.append(field, value.file);
         else if (value.removed) formData.append(`${field}Action`, 'remove');
@@ -332,6 +356,7 @@ export default function CreateEvent() {
       formData.append('galleryOrder', JSON.stringify(order));
 
       await api.put(`/events/${editId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await dialog.alert({ tone: 'success', title: 'Changes saved', message: `“${eventData.name}” has been updated.` });
       navigate(`/events/${editId}`);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to save changes');
@@ -371,11 +396,13 @@ export default function CreateEvent() {
     );
   }
 
-  const STEPS = [
-    { label: 'Event details', text: 'Tell attendees about your event.' },
-    { label: 'Event images', text: 'Add images for your event.' },
-    { label: 'Tickets & pricing', text: isEdit ? 'Review ticket tiers and save your changes.' : 'Set ticket tiers and choose your next step.' },
+  const STEP_TEXT = [
+    'Tell attendees about your event.',
+    'Add images for your event.',
+    isEdit ? 'Review ticket tiers and save your changes.' : 'Set ticket tiers, then continue with or without a demand forecast.',
   ];
+  // New events show all five setup steps (seating and review come after the event is created)
+  const STEPS = isEdit ? SETUP_STEPS.slice(0, 3) : SETUP_STEPS;
   const err = (key) => fieldErrors[key];
   const backHref = isEdit ? `/events/${editId}` : '/organizer/dashboard';
 
@@ -386,31 +413,34 @@ export default function CreateEvent() {
         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
         {isEdit ? <Link to={`/events/${editId}`}>{eventData.name}</Link> : <span style={{ color: 'var(--st-green)' }}>Create event</span>}
         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <span aria-current="page">{STEPS[step].label}</span>
+        <span aria-current="page">{isEdit ? 'Edit event' : STEPS[step].label}</span>
       </nav>
 
-      <header className="tl-wz-head">
-        <div>
-          <h1 className="tl-wz-title">{isEdit ? 'Edit event' : 'Create event'}</h1>
-          <p className="tl-wz-step-text">Step {step + 1} of 3 · {STEPS[step].text}</p>
-        </div>
-        <ol className="tl-wz-steps" aria-label="Steps">
-          {STEPS.map((s, i) => (
-            <li key={s.label} style={{ display: 'grid' }}>
-              <button
-                type="button"
-                className={`tl-wz-step${i === step ? ' is-current' : i < step ? ' is-done' : ''}`}
-                onClick={() => goTo(i)}
-                disabled={i === step}
-                aria-current={i === step ? 'step' : undefined}
-              >
-                <span className="tl-wz-dot">{i < step ? <Check className="w-4 h-4" /> : i + 1}</span>
-                {s.label}
-              </button>
-            </li>
-          ))}
-        </ol>
-      </header>
+      {isEdit ? (
+        <>
+          {/* Edit: title, event name and a way to the live page; the stepper sits in a mint band */}
+          <header className="tl-ed-head">
+            <div>
+              <h1 className="tl-wz-title">Edit event</h1>
+              <p className="tl-ed-sub">{eventData.name}</p>
+            </div>
+            <Link to={`/events/${editId}`} className="tl-ed-view">
+              <span className="tl-ed-view-eye"><Eye className="w-4 h-4" /></span> View event <ArrowUpRight className="w-4 h-4" />
+            </Link>
+          </header>
+          <div className="tl-ed-band">
+            <SetupStepper steps={STEPS} current={step} onSelect={goTo} isSelectable={(i) => i !== step && i < 3} />
+          </div>
+        </>
+      ) : (
+        <header className="tl-wz-head">
+          <div>
+            <h1 className="tl-wz-title">Create event</h1>
+            <p className="tl-wz-step-text">Step {step + 1} of {STEPS.length} · {STEP_TEXT[step]}</p>
+          </div>
+          <SetupStepper steps={STEPS} current={step} onSelect={goTo} isSelectable={(i) => i !== step && i < 3} />
+        </header>
+      )}
 
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
 
@@ -447,7 +477,23 @@ export default function CreateEvent() {
                 </Field>
                 <Field id="ev-venue" label="Venue / Stadium" error={err('venue')} wide>
                   <input id="ev-venue" className="tl-wz-input" type="text" value={eventData.venue} onChange={update('venue')} placeholder="e.g. Gaddafi Stadium" aria-invalid={Boolean(err('venue'))} />
+                  {eventData.venue.trim() && (
+                    <p className="tl-lp-typed">
+                      <a href={googleMapsUrl({ ...location, venue: eventData.venue, city: eventData.city })} target="_blank" rel="noreferrer" aria-label="Open the venue in Google Maps" title="Open in Google Maps">
+                        <MapPinned className="w-4 h-4" />
+                      </a>
+                      <span>{eventData.venue}, {eventData.city}{location.latitude != null ? ' · pinned' : ''}</span>
+                    </p>
+                  )}
                 </Field>
+                <div className="tl-wz-field is-wide">
+                  <LocationPicker
+                    value={location}
+                    onChange={setLocation}
+                    venue={eventData.venue.trim()}
+                    city={eventData.city}
+                  />
+                </div>
                 <Field id="ev-date" label="Date" error={err('date')}>
                   <input id="ev-date" className="tl-wz-input" type="date" value={eventData.date} min={isEdit ? undefined : todayIso()} onChange={update('date')} aria-invalid={Boolean(err('date'))} />
                 </Field>
@@ -507,21 +553,60 @@ export default function CreateEvent() {
           <div className="tl-wz-main">
             {isEdit ? (
               <section className="tl-wz-card">
-                <div className="tl-wz-card-head">
+                <div className="tl-wz-card-head is-plain">
                   <div>
-                    <h2>Ticket tiers</h2>
-                    <p>Tiers are set when an event is created.</p>
+                    <h2>Tickets &amp; pricing</h2>
+                    <p>Review your ticket setup before saving.</p>
                   </div>
                 </div>
-                <ul className="tl-tier-readonly">
-                  {tiers.map((tier) => (
-                    <li key={tier.name}><span>{tier.name}</span><span>PKR {tier.price.toLocaleString()} · {tier.totalQuantity} seats</span></li>
-                  ))}
-                </ul>
-                <p className="tl-wz-note">
-                  Seats, sections and tier quantities are set in <Link to={`/organizer/events/${editId}/venue`}>Venue &amp; seating</Link>. Adjust prices
-                  from the <Link to={`/demand-forecast?eventId=${editId}`}>Demand forecast</Link>.
-                </p>
+                <table className="tl-ed-table">
+                  <thead>
+                    <tr><th scope="col">Ticket tier</th><th scope="col">Price</th><th scope="col">Capacity</th></tr>
+                  </thead>
+                  <tbody>
+                    {tiers.map((tier) => (
+                      <tr key={tier.name}>
+                        <td><span className="tl-ed-tier-icon" aria-hidden="true"><Tag className="w-4 h-4" /></span>{tier.name}</td>
+                        <td>PKR {Number(tier.price).toLocaleString('en-PK')}</td>
+                        <td>{Number(tier.totalQuantity).toLocaleString('en-PK')} seats</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td>{tiers.length} ticket tier{tiers.length === 1 ? '' : 's'}</td>
+                      <td colSpan={2}>Total capacity <strong>{totalCapacity.toLocaleString('en-PK')}</strong></td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <p className="tl-ed-info"><Info className="w-5 h-5" aria-hidden="true" /> Ticket tiers are managed separately. Use the tools below to update seating or pricing.</p>
+                <div className="tl-ed-tools">
+                  <Link to={`/organizer/events/${editId}/venue`} className="tl-ed-tool is-seating">
+                    <svg className="tl-ed-art" viewBox="0 0 200 120" aria-hidden="true">
+                      <ellipse cx="120" cy="62" rx="74" ry="50" />
+                      <ellipse cx="120" cy="62" rx="56" ry="36" />
+                      <rect x="96" y="44" width="48" height="36" rx="3" />
+                      {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((a) => (
+                        <line key={a} x1={120 + 56 * Math.cos((a * Math.PI) / 180)} y1={62 + 36 * Math.sin((a * Math.PI) / 180)} x2={120 + 74 * Math.cos((a * Math.PI) / 180)} y2={62 + 50 * Math.sin((a * Math.PI) / 180)} />
+                      ))}
+                    </svg>
+                    <span className="tl-ed-tool-icon"><Armchair className="w-6 h-6" /></span>
+                    <strong>Venue &amp; seating</strong>
+                    <span>Edit sections and ticket quantities</span>
+                    <span className="tl-ed-tool-go" aria-hidden="true"><ArrowRight className="w-4 h-4" /></span>
+                  </Link>
+                  <Link to={`/demand-forecast?eventId=${editId}`} className="tl-ed-tool is-forecast">
+                    <svg className="tl-ed-art" viewBox="0 0 200 120" aria-hidden="true">
+                      <polyline points="20,100 60,88 95,70 130,78 165,40 190,22" />
+                      {[[60, 88], [95, 70], [130, 78], [165, 40]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="5" />)}
+                      <polyline points="178,20 190,22 186,34" />
+                    </svg>
+                    <span className="tl-ed-tool-icon"><BarChart3 className="w-6 h-6" /></span>
+                    <strong>Demand forecast</strong>
+                    <span>Review and adjust ticket prices</span>
+                    <span className="tl-ed-tool-go" aria-hidden="true"><ArrowRight className="w-4 h-4" /></span>
+                  </Link>
+                </div>
               </section>
             ) : (
               <>
@@ -563,34 +648,71 @@ export default function CreateEvent() {
                   <div className="tl-wz-card-head is-plain">
                     <div>
                       <h2>Ready for the next step?</h2>
-                      <p>Choose how you’d like to proceed. You can preview demand and adjust prices, or publish directly.</p>
+                      <p>Your event is saved privately. Preview demand and adjust prices first, or go straight to the seating plan. It goes on sale once a TicketLedger admin approves it.</p>
                     </div>
                   </div>
                   <div className="tl-next-options">
-                    <div className="tl-next-option is-recommended">
+                    <button type="button" className="tl-next-option is-recommended" onClick={() => createEvent('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting)}>
                       <span aria-hidden="true"><BarChart3 className="w-6 h-6" /></span>
-                      <strong>Demand forecast</strong>
-                      <p>Preview expected demand and adjust prices before publishing.</p>
-                    </div>
-                    <div className="tl-next-option">
+                      <strong>{submitting === 'PRELAUNCH_ANALYSIS' ? 'Saving event…' : 'With demand forecast'}</strong>
+                      <p>Preview expected demand and adjust prices, then set up seating.</p>
+                    </button>
+                    <button type="button" className="tl-next-option" onClick={() => createEvent('DRAFT')} disabled={Boolean(submitting)}>
                       <span aria-hidden="true"><Send className="w-6 h-6" /></span>
-                      <strong>Direct publishing</strong>
-                      <p>Publish with the tier prices entered above. Seating comes next.</p>
-                    </div>
+                      <strong>{submitting === 'DRAFT' ? 'Saving event…' : 'Without forecast'}</strong>
+                      <p>Keep the tier prices above and go straight to the seating plan.</p>
+                    </button>
                   </div>
                 </section>
               </>
             )}
           </div>
+          {isEdit ? (
+            <aside className="tl-ed-side" aria-label="Before you save">
+              <section className="tl-wz-card">
+                <h2>Before you save</h2>
+                <p className="tl-ed-side-intro">Take a moment to review the key details for your event.</p>
+                <ul className="tl-ed-checks">
+                  <li>
+                    <button type="button" onClick={() => goTo(0)}>
+                      <span className="tl-ed-check-icon"><FileText className="w-5 h-5" /></span>
+                      <span><strong>Review event details</strong><small>Make sure your event information is correct.</small></span>
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" onClick={() => goTo(1)}>
+                      <span className="tl-ed-check-icon"><ImageIcon className="w-5 h-5" /></span>
+                      <span><strong>Check event images</strong><small>Confirm your event images look good.</small></span>
+                    </button>
+                  </li>
+                  <li>
+                    <div>
+                      <span className="tl-ed-check-icon"><Tag className="w-5 h-5" /></span>
+                      <span><strong>Confirm price and capacity</strong><small>Verify ticket prices and total capacity.</small></span>
+                    </div>
+                  </li>
+                </ul>
+                <p className="tl-ed-fine">Saving updates your existing event.</p>
+              </section>
+              <section className="tl-ed-help">
+                <span aria-hidden="true"><HelpCircle className="w-6 h-6" /></span>
+                <div>
+                  <strong>Need to change a tier?</strong>
+                  <p>Manage capacity in Venue &amp; seating and prices in Demand forecast.</p>
+                </div>
+              </section>
+            </aside>
+          ) : (
           <Tips
             title="Ticket setup tips"
             intro="A few quick tips to help you set up your ticket tiers and move forward."
             items={[
               { icon: Tag, title: 'Set clear tier names', text: 'Use simple, descriptive names such as General Enclosure, VIP Pavilion or Early Bird so attendees understand their options.' },
               { icon: Tags, title: 'Check prices and quantities', text: 'Double-check ticket prices and total quantities. Make sure they match your event plan and venue capacity.' },
-              { icon: Armchair, title: 'Seating comes next', text: 'Preview demand and adjust prices, or publish directly. Seating and layout are set up after this step.' },
+              { icon: Armchair, title: 'Seating comes next', text: 'After this step you set up the seating plan, then review your event and send it to TicketLedger for approval.' },
             ]}
           />
+          )}
         </div>
 
         {/* ---------- Footer: back / next ---------- */}
@@ -604,6 +726,11 @@ export default function CreateEvent() {
           )}
 
           <div className="tl-wz-foot-right">
+            {isEdit && ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(eventStatus) && (
+              <Link to={`/organizer/events/${editId}/submit`} className="tl-wz-btn">
+                <Send className="w-4 h-4" /> Review &amp; submit
+              </Link>
+            )}
             {step < 2 && (
               <button type="submit" className="tl-wz-btn tl-wz-btn--green">
                 Next: {STEPS[step + 1].label} <ArrowRight className="w-4 h-4" />
@@ -617,10 +744,10 @@ export default function CreateEvent() {
             {step === 2 && !isEdit && (
               <>
                 <button type="button" className="tl-wz-btn tl-wz-btn--forecast" onClick={() => createEvent('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting)}>
-                  <Sparkles className="w-4 h-4" /> {submitting === 'PRELAUNCH_ANALYSIS' ? 'Creating…' : 'Pre-launch demand forecast & pricing'}
+                  <Sparkles className="w-4 h-4" /> {submitting === 'PRELAUNCH_ANALYSIS' ? 'Saving event…' : 'Continue with demand forecast'}
                 </button>
-                <button type="button" className="tl-wz-btn tl-wz-btn--publish" onClick={() => createEvent('PUBLISHED')} disabled={Boolean(submitting)}>
-                  <Send className="w-4 h-4" /> {submitting === 'PUBLISHED' ? 'Creating event…' : 'Publish directly without forecast'}
+                <button type="button" className="tl-wz-btn tl-wz-btn--publish" onClick={() => createEvent('DRAFT')} disabled={Boolean(submitting)}>
+                  <Armchair className="w-4 h-4" /> {submitting === 'DRAFT' ? 'Saving event…' : 'Next: Seating plan (no forecast)'}
                 </button>
               </>
             )}

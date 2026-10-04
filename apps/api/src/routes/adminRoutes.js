@@ -12,6 +12,7 @@ import {
   getAuditLogs,
   getOrganizerDashboard,
 } from '../controllers/adminController.js';
+import { listEventsForReview, reviewEvent } from '../controllers/eventReviewController.js';
 
 const router = Router();
 
@@ -24,6 +25,9 @@ router.get('/metrics', superAdminGuard, getSuperAdminMetrics);
 router.get('/users', superAdminGuard, getUsersList);
 router.put('/users/:id/status', superAdminGuard, updateUserStatus);
 router.get('/events', superAdminGuard, getAllEventsAdmin);
+// Event approvals: queue of submitted events, and approve / reject (with comment)
+router.get('/event-reviews', superAdminGuard, listEventsForReview);
+router.post('/event-reviews/:id', superAdminGuard, reviewEvent);
 router.get('/transactions', superAdminGuard, getAllTransactionsAdmin);
 router.get('/blockchain-logs', superAdminGuard, getBlockchainLogs);
 router.get('/fraud-alerts', superAdminGuard, getFraudAlerts);

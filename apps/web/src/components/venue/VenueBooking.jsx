@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { ArrowLeft, List, Maximize2, Minus, Plus, RefreshCw, Users } from 'lucide-react';
+import { ArrowLeft, List, Minus, Plus, RefreshCw, Users } from 'lucide-react';
 import { tablesOf } from '@venue-core';
 import VenueMap from './VenueMap';
 import MyTicketsPanel, { MyTicketsButton } from './BookingSummary';
@@ -26,7 +26,10 @@ function LegendSeat({ state }) {
   return (
     <svg viewBox="-8 -8 16 16" aria-hidden="true" className={`tl-vm-svg is-legend`}>
       <g className={`tl-vm-seat is-${state}`} style={{ '--tier': '#16a34a' }}>
-        <circle r="6.5" />
+        <g className="tl-vm-chair">
+          <rect className="tl-vm-chair-back" x="-6" y="-6.6" width="12" height="2.8" rx="1.3" />
+          <rect className="tl-vm-chair-seat" x="-5.5" y="-3.4" width="11" height="8.9" rx="2" />
+        </g>
         {sym && <path className="tl-vm-sym" d={sym} style={{ strokeWidth: 1.6 }} />}
       </g>
     </svg>
@@ -554,7 +557,7 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
         {focused && (
           <div className="tl-vb-mapnav">
             <button type="button" onClick={backToVenue} className="tl-vb-backlink" aria-label={`Back to full venue (leave ${focused.name})`}>
-              <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Full venue
+              <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Full venue view
             </button>
             {focused.booking === 'ga' && (
               <div className="tl-vb-stepper" role="group" aria-label={`Tickets for ${focused.name}`}>
@@ -571,9 +574,6 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
         )}
         {/* Anchored to the map viewport (not the drawing), so they stay put while the plan pans or zooms */}
         <div className="tl-vb-zoom" role="group" aria-label="Map zoom">
-          <button type="button" className="tl-vb-fit" onClick={() => (focused ? mapRef.current?.fitSection(focused.id) : mapRef.current?.fitAll())} aria-label={focused ? 'Fit section to view' : 'Fit venue to view'} title="Fit to view">
-            <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
-          </button>
           <div className="tl-vb-zoom-pair">
             <button type="button" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in" title="Zoom in"><Plus className="w-4 h-4" aria-hidden="true" /></button>
             <button type="button" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out" title="Zoom out"><Minus className="w-4 h-4" aria-hidden="true" /></button>

@@ -267,3 +267,9 @@
   .tl-dt-hero--skeleton { animation: none; }
   .tl-dt-cta, .tl-dt-cta svg { transition: none; }
 }
+
+/* Venue: opens the exact location in Google Maps */
+.tl-dt-maplink { display: inline-flex; align-items: flex-start; gap: 6px; color: inherit; text-decoration: underline; text-decoration-color: currentColor; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.tl-dt-maplink svg { flex: 0 0 auto; margin-top: 2px; }
+.tl-dt-maplink:hover { opacity: 0.8; }
+.tl-dt-addr { display: block; margin-top: 4px; font-size: 0.85em; opacity: 0.7; }

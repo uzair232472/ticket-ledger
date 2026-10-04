@@ -20,6 +20,8 @@ import {
 import { authenticateJWT, requireRole, optionalAuth } from '../middlewares/auth.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 
+import { getSubmissionStatus, submitEventForReview } from '../controllers/eventReviewController.js';
+
 const router = express.Router();
 
 const upload = multer({
@@ -90,6 +92,10 @@ router.get(
   requireRole('ORGANIZER', 'SUPER_ADMIN'),
   getOrganizerEvents
 );
+
+// Review & submit: readiness check, and sending the event to admins for approval
+router.get('/:id/submission', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), getSubmissionStatus);
+router.post('/:id/submit', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), submitEventForReview);
 
 router.patch(
   '/:id/status',

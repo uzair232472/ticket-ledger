@@ -1,0 +1,124 @@
+/*
+ * Dropdowns (native <select>) across the app: one designed chevron, room for it, a hover and a focus
+ * state, themed per page. Native selects keep keyboard, screen-reader and mobile pickers working.
+ * Chevrons: ink on paper pages, green in the organizer / admin studio, light on dark sections.
+ */
+:root {
+  --sel-chev-ink: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%230b1a10' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --sel-chev-green: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%2315803d' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --sel-chev-light: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' stroke='%2386efac' stroke-width='1.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+html select:not([multiple]):not([size]) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: var(--sel-chev-ink);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+  padding-right: 36px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+html select:not([multiple]):not([size]):disabled { cursor: not-allowed; opacity: 0.6; }
+html select:not([multiple]):not([size]):focus-visible { outline: 2px solid #16a34a; outline-offset: 2px; }
+html select option { background: #ffffff; color: #0b1a10; }
+html select option:disabled { color: #8a978f; }
+
+/* Organizer / admin studio and the venue editor: green chevron, green hover and focus */
+html .tl-dash--studio select:not([multiple]):not([size]),
+html .tl-ve-panel select:not([multiple]):not([size]),
+html .tl-lp select:not([multiple]):not([size]) { background-image: var(--sel-chev-green); }
+html .tl-dash--studio select:not([multiple]):not([size]):hover,
+html .tl-ve-panel select:not([multiple]):not([size]):hover { border-color: #86c79a; }
+html .tl-dash--studio select:not([multiple]):not([size]):focus,
+html .tl-ve-panel select:not([multiple]):not([size]):focus { border-color: #15803d; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.15); outline: none; }
+
+/* Dark sections: homepage map filters, account pages' dark sections */
+html .tl-pill select:not([multiple]):not([size]),
+html .tl-acct-section--dark select:not([multiple]):not([size]),
+html .tl-dlg--dark select:not([multiple]):not([size]) { background-image: var(--sel-chev-light); background-position: right 2px center; padding-right: 22px; }
+
+/* Paper pages (Explore, booking, basic account pages): ink chevron and an ink focus ring */
+html .tl-explore select:not([multiple]):not([size]):focus,
+html .tl-book select:not([multiple]):not([size]):focus,
+html .tl-basic select:not([multiple]):not([size]):focus { outline: none; box-shadow: 0 0 0 2px rgba(11, 11, 11, 0.85); }
+
+/* Selects that draw their own chevron icon next to them */
+html .tl-st-select select:not([multiple]):not([size]) { background-image: none; padding-right: 22px; }
+
+/* ---------- Designed dropdown list (SelectEnhancer) ---------- */
+.tl-sel-list {
+  --sl-bg: #ffffff;
+  --sl-line: #e2e8e1;
+  --sl-text: #0b1a10;
+  --sl-muted: #5b6b61;
+  --sl-hover: #eef7ef;
+  --sl-sel: #15803d;
+  --sl-sel-bg: #dcfce7;
+  position: fixed;
+  z-index: 2000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--sl-line);
+  border-radius: 12px;
+  background: var(--sl-bg);
+  color: var(--sl-text);
+  box-shadow: 0 18px 44px rgba(11, 26, 16, 0.18), 0 2px 6px rgba(11, 26, 16, 0.06);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  animation: tl-sel-in 0.16s ease;
+}
+.tl-sel--paper {
+  --sl-bg: #fbfbf9;
+  --sl-line: rgba(11, 11, 11, 0.16);
+  --sl-text: #0b0b0b;
+  --sl-muted: rgba(11, 11, 11, 0.55);
+  --sl-hover: rgba(11, 11, 11, 0.06);
+  --sl-sel: #0b0b0b;
+  --sl-sel-bg: rgba(22, 163, 74, 0.14);
+  border-radius: 4px;
+}
+.tl-sel--dark {
+  --sl-bg: rgba(14, 26, 19, 0.97);
+  --sl-line: rgba(74, 222, 128, 0.28);
+  --sl-text: #f3f7f4;
+  --sl-muted: rgba(243, 247, 244, 0.6);
+  --sl-hover: rgba(255, 255, 255, 0.08);
+  --sl-sel: #4ade80;
+  --sl-sel-bg: rgba(34, 197, 94, 0.16);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.tl-sel-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  cursor: pointer;
+  user-select: none;
+}
+.tl-sel--paper .tl-sel-opt { border-radius: 2px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.02em; }
+.tl-sel-opt span { min-width: 0; overflow-wrap: anywhere; }
+.tl-sel-opt.is-active { background: var(--sl-hover); }
+.tl-sel-opt.is-selected { background: var(--sl-sel-bg); color: var(--sl-sel); font-weight: 700; }
+.tl-sel-opt.is-selected.is-active { filter: brightness(0.97); }
+.tl-sel-opt svg { flex: 0 0 auto; color: var(--sl-sel); }
+.tl-sel-opt.is-disabled { opacity: 0.45; cursor: not-allowed; }
+.tl-sel-group { padding: 10px 12px 4px; font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--sl-muted); }
+.tl-sel-list::-webkit-scrollbar { width: 8px; }
+.tl-sel-list::-webkit-scrollbar-thumb { border-radius: 8px; background: var(--sl-line); }
+@keyframes tl-sel-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .tl-sel-list { animation: none; } }
+/* Touch screens: roomier options */
+@media (pointer: coarse) {
+  .tl-sel-opt { min-height: 46px; font-size: 15px; }
+}

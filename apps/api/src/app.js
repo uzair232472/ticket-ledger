@@ -20,6 +20,7 @@ import intentAnalyticsRoutes from './routes/intentAnalyticsRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import staffRoutes from './routes/staffRoutes.js';
 import venueRoutes from './routes/venueRoutes.js';
+import wishlistRoutes from './routes/wishlistRoutes.js';
 
 dotenv.config();
 
@@ -73,6 +74,7 @@ app.use('/api/behavior', behaviorRoutes);
 app.use('/api/analytics', intentAnalyticsRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/venues', venueRoutes);
+app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/organizer', adminRoutes);
 

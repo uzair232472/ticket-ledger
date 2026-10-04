@@ -6,7 +6,8 @@ import { getEventVisual } from '../../utils/eventMedia';
 import { categoryName } from './homeData';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
 
-// Events have a city but no coordinates, so markers sit at the city's location.
+// City centres, for events without an exact map pin (pinned events use their own coordinates).
+export const hasPin = (e) => Number.isFinite(e?.latitude) && Number.isFinite(e?.longitude);
 export const CITY_COORDS = {
   lahore: [31.5204, 74.3587],
   karachi: [24.8607, 67.0011],
@@ -28,17 +29,17 @@ const PAKISTAN_BOUNDS = [
 ];
 
 const CATEGORY_ICON = {
-  CRICKET_MATCH: '🏏',
-  MUSIC_CONCERT: '🎤',
-  MUSIC_FESTIVAL: '🎪',
-  FOOTBALL_MATCH: '⚽',
-  KABADDI: '🤼',
-  BOXING: '🥊',
-  HOCKEY_MATCH: '🏑',
-  QAWWALI: '🪘',
-  THEATRE: '🎭',
-  CONFERENCE: '🎤',
-  GENERAL_ADMISSION: '🎟️',
+  CRICKET_MATCH: '',
+  MUSIC_CONCERT: '',
+  MUSIC_FESTIVAL: '',
+  FOOTBALL_MATCH: '',
+  KABADDI: '',
+  BOXING: '',
+  HOCKEY_MATCH: '',
+  QAWWALI: '',
+  THEATRE: '',
+  CONFERENCE: '',
+  GENERAL_ADMISSION: '',
 };
 
 const formatDate = (date) => formatEventDate(date, { weekday: 'short', day: 'numeric', month: 'short' });
@@ -100,7 +101,8 @@ export default function EventMap({ events }) {
       attributionControl: true,
       minZoom: 4,
       zoomSnap: 0.25,
-      maxZoom: 12,
+      // Deep zoom, so pinned venues can be seen at their exact building
+      maxZoom: 18,
       maxBounds: L.latLngBounds(PAKISTAN_BOUNDS).pad(0.35),
     });
     // Leave room for the title and filter bar floating over the top of the map
@@ -133,23 +135,25 @@ export default function EventMap({ events }) {
     if (!layer) return;
     layer.clearLayers();
 
+    // Pinned events sit at their exact venue; the rest are grouped at their city centre and fanned out
     const byCity = new Map();
     events.forEach((e) => {
-      const key = (e.city || '').trim().toLowerCase();
-      if (!CITY_COORDS[key]) return;
+      const key = hasPin(e) ? `pin:${e.id}` : (e.city || '').trim().toLowerCase();
+      if (!hasPin(e) && !CITY_COORDS[key]) return;
       if (!byCity.has(key)) byCity.set(key, []);
       byCity.get(key).push(e);
     });
 
     byCity.forEach((list, key) => {
       list.forEach((event, i) => {
+        const at = hasPin(event) ? [event.latitude, event.longitude] : CITY_COORDS[key];
         const icon = L.divIcon({
           className: 'tl-map-marker',
           html: `<span aria-hidden="true">${CATEGORY_ICON[event.type] || '🎟️'}</span>`,
           iconSize: [44, 44],
           iconAnchor: anchorFor(i, list.length),
         });
-        const marker = L.marker(CITY_COORDS[key], {
+        const marker = L.marker(at, {
           icon,
           keyboard: true,
           title: `${event.name}, ${event.city}`,

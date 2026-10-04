@@ -74,6 +74,8 @@ enum VenueLayoutStatus {
 enum EventStatus {
   DRAFT
   PRELAUNCH_ANALYSIS
+  PENDING_APPROVAL // sent to TicketLedger admins; not public until approved
+  REJECTED // returned by an admin with a comment; the organizer can fix and resubmit
   PUBLISHED
   PAUSED
   COMPLETED
@@ -154,6 +156,7 @@ model User {
   scansPerformed GateScan[]
   behaviorEvents BehaviorEvent[]
   notifications  Notification[]
+  wishlistItems  WishlistItem[]
   auditLogs      AuditLog[]
   resaleListings ResaleListing[] @relation("SellerListings")
   transfersSent      TicketTransferHistory[] @relation("TransfersSent")
@@ -261,10 +264,20 @@ model Event {
   time        String
   city        String
   venue       String
+  // Exact venue location picked on the map by the organizer (home map pin, "Open in Google Maps")
+  latitude        Float?
+  longitude       Float?
+  locationAddress String?
   bannerUrl   String?
   // Organizer-managed media (all optional; the web app falls back to bannerUrl / category artwork)
   cardImageUrl   String?
   galleryWideUrl String?
+  // Admin review: set when the organizer submits and when an admin approves or rejects
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  reviewComment  String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -274,6 +287,7 @@ model Event {
   seats          Seat[]
   orders         Order[]
   tickets        Ticket[]
+  wishlistItems  WishlistItem[]
   behaviorEvents BehaviorEvent[]
   waitlist       Waitlist[]
   staffInvites     StaffInvite[]
@@ -533,4 +547,17 @@ model Waitlist {
   @@unique([eventId, userId])
   @@index([eventId])
   @@index([userId])
+}
+
+// Events a user saved with the heart (each user sees and edits only their own)
+model WishlistItem {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId, createdAt])
 }

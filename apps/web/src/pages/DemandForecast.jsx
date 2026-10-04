@@ -34,6 +34,8 @@ export default function DemandForecast() {
 
   const [organizerEvents, setOrganizerEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState(paramEventId || searchParams.get('eventId') || '');
+  // New-event setup (step 3 → forecast → step 4 seating): the save button continues to the seating plan
+  const setup = searchParams.get('setup') === '1';
 
   const [eventDetails, setEventDetails] = useState(null);
   const [tiers, setTiers] = useState([]);
@@ -44,7 +46,7 @@ export default function DemandForecast() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [error, setError] = useState('');
 
-  // 1. The organizer's events (falls back to public events)
+  // 1. The organizer's own events only (Super Admins see every event)
   useEffect(() => {
     async function fetchEvents() {
       try {
@@ -55,13 +57,6 @@ export default function DemandForecast() {
         if (json.success && json.data.events.length > 0) {
           setOrganizerEvents(json.data.events);
           if (!selectedEventId) setSelectedEventId(json.data.events[0].id);
-        } else {
-          const pubRes = await fetch(`${API_BASE}/events?limit=10`);
-          const pubJson = await pubRes.json();
-          if (pubJson.success && pubJson.data.events.length > 0) {
-            setOrganizerEvents(pubJson.data.events);
-            if (!selectedEventId) setSelectedEventId(pubJson.data.events[0].id);
-          }
         }
       } catch (err) {
         console.error('Failed to load organizer events:', err);
@@ -166,14 +161,18 @@ export default function DemandForecast() {
       });
       const json = await res.json();
       if (res.ok && json.success) {
-        setSuccessMessage(`"${json.data.event.name}" is published and on sale.`);
-        setEventDetails((prev) => ({ ...prev, status: 'PUBLISHED' }));
+        if (setup || !['PUBLISHED', 'PAUSED'].includes(json.data.event.status)) {
+          // Prices saved; the event goes on sale only after seating and admin approval
+          navigate(`/organizer/events/${selectedEventId}/venue?setup=1`);
+          return;
+        }
+        setSuccessMessage(json.message || `Prices for "${json.data.event.name}" are saved.`);
         setTimeout(() => setSuccessMessage(null), 6000);
       } else {
-        setError(json.message || 'Failed to publish event');
+        setError(json.message || 'Failed to save prices');
       }
     } catch (err) {
-      setError(`Error publishing event: ${err.message}`);
+      setError(`Error saving prices: ${err.message}`);
     } finally {
       setPublishing(false);
     }
@@ -314,7 +313,8 @@ export default function DemandForecast() {
                 {savingPrices ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Check className="w-4 h-4" />} Save prices only
               </button>
               <button type="button" className="tl-st-btn tl-st-btn--green" onClick={handlePublishEvent} disabled={publishing || tiers.length === 0}>
-                {publishing ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />} Save price &amp; publish event
+                {publishing ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />}{' '}
+                {['PUBLISHED', 'PAUSED'].includes(eventDetails?.status) && !setup ? 'Save prices' : 'Save prices & continue to seating'}
               </button>
             </div>
           </div>

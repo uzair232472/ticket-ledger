@@ -73,6 +73,7 @@ export const getMyNFTTickets = async (req, res) => {
             time: true,
             type: true,
             bannerUrl: true,
+            cardImageUrl: true,
           },
         },
         seat: {
@@ -127,6 +128,7 @@ export const getMyNFTTickets = async (req, res) => {
             section: t.seat.section,
             row: t.seat.row,
             seatNumber: t.seat.seatNumber,
+            kind: t.seat.kind,
             tierName: t.seat.tier.name,
           },
           blockchain: {
@@ -236,6 +238,7 @@ export const getCustomerWallet = async (req, res) => {
             time: true,
             type: true,
             bannerUrl: true,
+            cardImageUrl: true,
           },
         },
         seat: {
@@ -297,6 +300,7 @@ export const getCustomerWallet = async (req, res) => {
             section: t.seat.section,
             row: t.seat.row,
             seatNumber: t.seat.seatNumber,
+            kind: t.seat.kind,
             tierName: t.seat.tier.name,
           },
           nft: {

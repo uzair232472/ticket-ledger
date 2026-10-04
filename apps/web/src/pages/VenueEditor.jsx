@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  AlertCircle, AlertTriangle, ArrowLeft, CheckCircle2, Circle, Eye, FolderOpen, ImagePlus, LayoutTemplate, Maximize2, Minus,
-  MousePointer2, PenTool, Plus, Redo2, RefreshCw, Save, Send, Square, Table2, Trash2, Undo2, Users, X,
+  AlertCircle, AlertTriangle, ArrowLeft, Ban, CheckCircle2, ChevronRight, Circle, Eye, FolderOpen, Hexagon, ImagePlus, LayoutGrid,
+  LayoutTemplate, Minus, MousePointer2, PenTool, Plus, Redo2, RefreshCw, Save, Send, Square, Table2, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
 import api from '../utils/api';
 import { TEMPLATES, assignTiers, buildTemplate, layoutInventory, newSectionId, round, validateLayout } from '@venue-core';
@@ -17,6 +17,8 @@ import { formatPkr, generated, tierPalette } from '../components/venue/venueThem
 import { ACCEPT_ATTR, readImageSize } from '../utils/eventImageSpecs';
 import '../components/venue/venue.css';
 import { DashHead, Status } from '../components/dash/DashShell';
+import SetupStepper from '../components/dash/SetupStepper';
+import { useDialog } from '../components/ui/DialogProvider';
 
 const PLAN = { recommended: [3000, 2000], min: [1000, 600], maxBytes: 10 * 1024 * 1024 };
 const PLAN_HELP = 'Recommended: 3000 × 2000 px · Ratio: any (kept as uploaded) · Maximum: 10 MB · Formats: JPG, PNG, WebP';
@@ -103,10 +105,18 @@ function PlanSources({ suggested, onTemplate, onReuse, onUpload, uploading }) {
   );
 }
 
+/** Icon for a section in the list: its booking type, or its shape for seated blocks. */
+function SectionIcon({ section }) {
+  const Icon = section.booking === 'ga' ? Users : section.booking === 'tables' ? Table2 : section.shape?.type === 'arc' ? Circle : section.shape?.type === 'polygon' ? Hexagon : Square;
+  return <Icon className="w-4 h-4" aria-hidden="true" />;
+}
+
 export default function VenueEditor() {
+  const dialog = useDialog();
   const { id: eventId } = useParams();
   const [params] = useSearchParams();
   const setup = params.get('setup') === '1';
+  const navigate = useNavigate();
   const mapRef = useRef(null);
 
   const [payload, setPayload] = useState(null);
@@ -125,6 +135,7 @@ export default function VenueEditor() {
   const [reuse, setReuse] = useState(null);
   const [showSources, setShowSources] = useState(false);
   const [check, setCheck] = useState(null);
+  const [levelFilter, setLevelFilter] = useState('all'); // sections list: all levels or one level
   const history = useRef({ past: [], future: [] });
   const coalesce = useRef({ key: null, t: 0 });
   const dragBase = useRef(null);
@@ -457,10 +468,14 @@ export default function VenueEditor() {
       return;
     }
     setConfirm({
-      title: published ? `Publish version ${published.version + 1}?` : 'Publish this venue plan?',
+      title: published ? `Publish version ${published.version + 1}?` : 'Save this seating plan?',
       body: (
         <>
-          <p>Attendees will choose sections and seats from exactly this plan. Seats that are held or booked are kept unchanged.</p>
+          <p>
+            {published
+              ? 'Attendees will choose sections and seats from exactly this plan. Seats that are held or booked are kept unchanged.'
+              : 'The seats are created from exactly this plan, so attendees can choose them once the event is on sale.'}
+          </p>
           <p className="font-semibold text-slate-900">Ticket quantities will be set from the plan:</p>
           <ul className="space-y-0.5">
             {tierTotals.filter((t) => t.plan > 0 || t.totalQuantity > 0).map((t) => (
@@ -473,7 +488,7 @@ export default function VenueEditor() {
           {check.warnings.length > 0 && <p className="text-amber-800">{check.warnings.length} warning{check.warnings.length === 1 ? '' : 's'} (not blocking).</p>}
         </>
       ),
-      confirmLabel: 'Publish',
+      confirmLabel: published ? 'Publish' : setup ? 'Save & continue' : 'Save seating plan',
       onConfirm: async () => {
         setConfirm(null);
         if (dirty && !(await saveDraft({ quiet: true }))) return;
@@ -482,7 +497,13 @@ export default function VenueEditor() {
           const res = await api.post(`/venues/event/${eventId}/publish`);
           applyPayload(res.data.data.editor, { keepLayout: true });
           setSavedJson(json(layout));
+          // New event setup: step 5 (Review & submit) comes next
+          if (setup) {
+            navigate(`/organizer/events/${eventId}/submit?setup=1`);
+            return;
+          }
           setStatus({ tone: 'ok', text: res.data.message });
+          dialog.alert({ tone: 'success', title: 'Seating saved', message: res.data.message });
         } catch (err) {
           const d = err.response?.data || {};
           const list = d.conflicts || d.errors?.map((e) => e.message) || [];
@@ -572,9 +593,9 @@ export default function VenueEditor() {
         segment={
           <span className="tl-dash-actions" style={{ paddingBottom: 6 }}>
             {published ? (
-              <Status value="PUBLISHED" label={`Published v${published.version}`} />
+              <Status value="PUBLISHED" label={`Seating saved · v${published.version}`} />
             ) : (
-              <Status value="DRAFT" label="Not published yet" />
+              <Status value="DRAFT" label="No seating saved yet" />
             )}
             {dirty ? (
               <Status value="PENDING" label="Unsaved changes" />
@@ -588,29 +609,43 @@ export default function VenueEditor() {
         intro={`${ev.name} · ${ev.venue}, ${ev.city}${published ? ` · last published ${new Date(published.publishedAt).toLocaleString()}` : ''}`}
         actions={layout && (
           <>
-            <button type="button" className="tl-dash-icon-btn" onClick={undo} disabled={!history.current.past.length} aria-label="Undo"><Undo2 className="w-4 h-4" /></button>
-            <button type="button" className="tl-dash-icon-btn" onClick={redo} disabled={!history.current.future.length} aria-label="Redo"><Redo2 className="w-4 h-4" /></button>
             {(draftPending || dirty) && published && (
               <button type="button" onClick={discard} className="tl-dash-btn">Discard changes</button>
             )}
-            <button type="button" onClick={() => setPreviewKey((k) => k + 1)} className="tl-dash-btn">
+            <button type="button" onClick={() => setPreviewKey((k) => k + 1)} className="tl-dash-btn tl-ve-previewbtn">
               <Eye className="w-4 h-4" /> Attendee preview
             </button>
-            <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy} className="tl-dash-btn">
-              <Save className="w-4 h-4" /> {busy === 'save' ? 'Saving…' : 'Save draft'}
-            </button>
-            <button type="button" onClick={publish} disabled={busy || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
-              <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish'}
-            </button>
+            {published ? (
+              <>
+                <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy} className="tl-dash-btn" title="Saves your work without changing the seats attendees see">
+                  <Save className="w-4 h-4" /> {busy === 'save' ? 'Saving…' : 'Save draft'}
+                </button>
+                <button type="button" onClick={publish} disabled={busy || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
+                  <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish changes'}
+                </button>
+              </>
+            ) : (
+              // No plan yet: saving creates the seats, so attendees can see them (a draft alone shows nothing)
+              <button type="button" onClick={publish} disabled={busy || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
+                <Save className="w-4 h-4" /> {busy === 'publish' ? 'Saving…' : setup ? 'Save & continue' : 'Save seating plan'}
+              </button>
+            )}
+            {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status)) && (
+              <Link to={`/organizer/events/${eventId}/submit${setup ? '?setup=1' : ''}`} className="tl-dash-btn tl-dash-btn--green">
+                Next: Review &amp; submit
+              </Link>
+            )}
           </>
         )}
       />
 
       {setup && (
-        <Banner tone="info" icon={LayoutTemplate}>
-          <p><strong>Step 2 of 2: Venue &amp; Seating.</strong> Your event is created. Choose a plan, set each section’s seats and price tier, then publish it so attendees can pick seats.</p>
-          <p><Link to={`/events/${eventId}`} className="font-semibold text-[#16a34a] hover:underline">Skip for now</Link>. Until a plan is published the event shows “Tickets coming soon”.</p>
-        </Banner>
+        <>
+          <SetupStepper current={3} />
+          <Banner tone="info" icon={LayoutTemplate}>
+            <p><strong>Step 4 of 5: Seating plan.</strong> Your event is saved privately. Choose a plan, set each section’s seats and price tier, then press <strong>Save &amp; continue</strong> to review your event and send it for approval.</p>
+          </Banner>
+        </>
       )}
       {payload.legacy?.seats > 0 && (
         <Banner tone={payload.legacy.booked ? 'warn' : 'info'}>
@@ -652,11 +687,61 @@ export default function VenueEditor() {
           <PlanSources suggested={suggested} onTemplate={chooseTemplate} onReuse={openReuse} onUpload={uploadPlan} uploading={busy === 'upload'} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-          {/* Map + tools */}
-          <div className="xl:col-span-8 space-y-3">
-            <div className="bg-white rounded-3xl p-3 border border-slate-200/90 shadow-sm space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <>
+        <div className="tl-ve-shell">
+          {/* ---------- Left: sections ---------- */}
+          <aside className="tl-ve-panel tl-ve-sections" aria-label="Sections">
+            <h2>Sections</h2>
+            <label className="tl-ve-level">
+              <span className="sr-only">Show sections on</span>
+              <select value={levelFilter} onChange={(e) => setLevelFilter(e.target.value)}>
+                <option value="all">All levels</option>
+                <option value="1">Ground / lower</option>
+                <option value="2">Level 2</option>
+                <option value="3">Level 3</option>
+              </select>
+            </label>
+            <ul>
+              {layout.feature && layout.feature.kind !== 'none' && (
+                <li>
+                  <button type="button" className={featureSelected ? 'is-active' : ''} onClick={() => { setSelectedId(null); setFeatureSelected(true); setTool('select'); }}>
+                    <span className="tl-ve-sec-icon"><LayoutTemplate className="w-4 h-4" aria-hidden="true" /></span>
+                    <span className="tl-ve-sec-text"><strong>{layout.feature.label || 'Stage'}</strong><small>Stage / playing area</small></span>
+                    <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </li>
+              )}
+              {layout.sections
+                .filter((sec) => levelFilter === 'all' || String(sec.level || 1) === levelFilter)
+                .map((sec) => {
+                  const st = generated(sec).stats;
+                  const hasError = issuesBySection[sec.id]?.some((i) => i.level === 'error');
+                  return (
+                    <li key={sec.id}>
+                      <button
+                        type="button"
+                        className={sec.id === selectedId ? 'is-active' : ''}
+                        aria-current={sec.id === selectedId ? 'true' : undefined}
+                        onClick={() => { setSelectedId(sec.id); setFeatureSelected(false); mapRef.current?.fitSection(sec.id); }}
+                      >
+                        <span className="tl-ve-sec-icon" style={{ color: palette[sec.tierId]?.color || '#94a3b8' }}><SectionIcon section={sec} /></span>
+                        <span className="tl-ve-sec-text">
+                          <strong>{sec.name}</strong>
+                          <small>{sec.booking === 'ga' ? 'Standing' : sec.booking === 'tables' ? `${st.tables} tables` : 'Seats'} · {st.sellable.toLocaleString('en-PK')}</small>
+                        </span>
+                        {hasError && <AlertTriangle className="w-4 h-4 text-rose-500" aria-label="Has problems" />}
+                        <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+            {!layout.sections.length && <p className="tl-ve-empty">No sections yet. Add one from the toolbar.</p>}
+          </aside>
+
+          {/* ---------- Centre: toolbar and plan ---------- */}
+          <section className="tl-ve-panel tl-ve-canvas" aria-label="Plan">
+            <div className="tl-ve-toolbar">
                 <div className="flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Editing tools">
                   {tools.map((t) => (
                     <button
@@ -679,15 +764,19 @@ export default function VenueEditor() {
                   <button type="button" className="tl-vm-btn" onClick={() => addSection('ga')}><Users className="w-4 h-4" aria-hidden="true" /> Standing</button>
                   <button type="button" className="tl-vm-btn" onClick={() => addSection('tables')}><Table2 className="w-4 h-4" aria-hidden="true" /> Tables</button>
                 </div>
+              <div className="tl-ve-toolbar-end">
+                <button type="button" className="tl-vm-btn" onClick={undo} disabled={!history.current.past.length} aria-label="Undo"><Undo2 className="w-4 h-4" /></button>
+                <button type="button" className="tl-vm-btn" onClick={redo} disabled={!history.current.future.length} aria-label="Redo"><Redo2 className="w-4 h-4" /></button>
                 <button type="button" className="tl-vm-btn" onClick={() => setShowSources(true)}><LayoutTemplate className="w-4 h-4" aria-hidden="true" /> Change plan</button>
               </div>
+            </div>
               {tool === 'draw' && drawPoints.length >= 3 && (
                 <div className="flex gap-2 text-xs">
                   <button type="button" className="px-3 py-1.5 btn-eventfrog text-xs" onClick={() => finishDrawing()}>Finish shape ({drawPoints.length} points)</button>
                   <button type="button" className="px-3 py-1.5 rounded-xl border border-slate-200 font-semibold" onClick={() => setDrawPoints([])}>Clear</button>
                 </div>
               )}
-              <div className="relative" style={{ height: 'clamp(440px, 66vh, 760px)' }}>
+              <div className="tl-ve-stage">
                 <VenueMap
                   ref={mapRef}
                   layout={layout}
@@ -741,73 +830,22 @@ export default function VenueEditor() {
                 <div className="tl-vm-controls">
                   <button type="button" className="tl-vm-btn" onClick={() => mapRef.current?.zoomIn()} aria-label="Zoom in"><Plus className="w-4 h-4" /></button>
                   <button type="button" className="tl-vm-btn" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out"><Minus className="w-4 h-4" /></button>
-                  <button type="button" className="tl-vm-btn" onClick={() => (selected ? mapRef.current?.fitSection(selected.id) : mapRef.current?.fitAll())} aria-label="Fit to view"><Maximize2 className="w-4 h-4" /></button>
                 </div>
                 <span className="tl-vm-hint hidden md:inline">
                   {tool === 'block' ? 'Click seats to block or unblock them' : tool === 'draw' ? `Drawing: ${drawPoints.length} point${drawPoints.length === 1 ? '' : 's'}` : 'Click a section to configure it · drag to move · Ctrl + scroll to zoom'}
                 </span>
               </div>
-            </div>
+          </section>
 
-            {/* Totals and problems */}
-            <div className="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-sm space-y-3 text-xs">
-              {totals && (
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {[
-                    ['Total positions', totals.positions],
-                    ['Blocked', totals.blocked],
-                    ['Sellable', totals.sellable],
-                    ['Tables', totals.tables],
-                    ['Standing capacity', gaCapacity],
-                  ].map(([label, v]) => (
-                    <div key={label} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="text-[10px] text-slate-500">{label}</div>
-                      <div className={`text-base font-black ${label === 'Sellable' ? 'text-[#16a34a]' : 'text-slate-900'}`}>{Number(v).toLocaleString('en-PK')}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div>
-                <p className="font-semibold text-slate-700 mb-1">Ticket inventory by tier</p>
-                <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
-                  {tierTotals.map((t) => (
-                    <li key={t.id} className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} aria-hidden="true" />{t.name} · {formatPkr(t.price)}</span>
-                      <span className="font-mono"><strong>{t.plan.toLocaleString('en-PK')}</strong> <span className="text-slate-400">(now {t.totalQuantity})</span></span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-[10px] text-slate-400 mt-1">On publish, each tier’s ticket quantity becomes its seats/places in this plan, so nothing is counted twice.</p>
-              </div>
-              {errorCount > 0 || check?.warnings?.length ? (
-                <details open={errorCount > 0} className="rounded-xl border border-slate-200">
-                  <summary className="px-3 py-2 cursor-pointer font-semibold text-slate-700">
-                    {errorCount ? `${errorCount} problem${errorCount === 1 ? '' : 's'} to fix before publishing` : 'No blocking problems'}
-                    {check?.warnings?.length ? ` · ${check.warnings.length} warning${check.warnings.length === 1 ? '' : 's'}` : ''}
-                  </summary>
-                  <ul className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
-                    {[...(check?.conflicts || []), ...(check?.errors || [])].map((e, i) => (
-                      <li key={`e${i}`}>
-                        <button type="button" className="text-left text-rose-700 hover:underline" onClick={() => e.sectionId && (setSelectedId(e.sectionId), setFeatureSelected(false), mapRef.current?.fitSection(e.sectionId))}>• {e.message}</button>
-                      </li>
-                    ))}
-                    {(check?.warnings || []).map((w, i) => (
-                      <li key={`w${i}`} className="text-amber-800">• {w.message}</li>
-                    ))}
-                  </ul>
-                </details>
-              ) : (
-                check && <p className="text-emerald-800 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> The plan is ready to publish.</p>
-              )}
-            </div>
-          </div>
-
-          {/* Inspector */}
-          <aside className="xl:col-span-4 xl:sticky xl:top-24 bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto" aria-label="Inspector">
+          {/* ---------- Right: section settings ---------- */}
+          <aside className="tl-ve-panel tl-ve-inspector" aria-label="Section settings">
             {selected ? (
               <>
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-slate-900">Section</h2>
+                <div className="tl-ve-inspector-head">
+                  <div>
+                    <h2>{selected.name}</h2>
+                    <p>Section settings</p>
+                  </div>
                   <button type="button" className="tl-vm-btn" onClick={() => setSelectedId(null)} aria-label="Close section settings"><X className="w-4 h-4" /></button>
                 </div>
                 <SectionInspector
@@ -888,29 +926,74 @@ export default function VenueEditor() {
                     </>
                   )}
                 </section>
-                <section className="space-y-1.5 pt-3 border-t border-slate-100">
-                  <h3 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Sections ({layout.sections.length})</h3>
-                  <ul className="max-h-64 overflow-y-auto divide-y divide-slate-100">
-                    {layout.sections.map((s) => (
-                      <li key={s.id}>
-                        <button type="button" onClick={() => { setSelectedId(s.id); mapRef.current?.fitSection(s.id); }} className="w-full flex items-center justify-between gap-2 py-1.5 text-left hover:text-[#16a34a]">
-                          <span className="flex items-center gap-1.5 min-w-0">
-                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: palette[s.tierId]?.color || '#cbd5e1' }} aria-hidden="true" />
-                            <span className="truncate font-semibold">{s.name}</span>
-                          </span>
-                          <span className="text-[10px] text-slate-500 shrink-0">
-                            {issuesBySection[s.id]?.some((i) => i.level === 'error') && <AlertTriangle className="w-3 h-3 text-rose-500 inline mr-1" aria-label="Has problems" />}
-                            {s.booking === 'ga' ? 'Standing' : s.booking === 'tables' ? 'Tables' : 'Seats'} · {generated(s).stats.sellable}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
               </div>
             )}
           </aside>
         </div>
+
+        {/* ---------- Totals bar ---------- */}
+        {totals && (
+          <div className="tl-ve-stats">
+            {[
+              [LayoutGrid, 'Total capacity', totals.positions],
+              [Ticket, 'Sellable', totals.sellable],
+              [Ban, 'Blocked', totals.blocked],
+              [Table2, 'Tables', totals.tables],
+            ].map(([Icon, label, v]) => (
+              <div key={label} className="tl-ve-stat">
+                <Icon className="w-5 h-5" aria-hidden="true" />
+                <div>
+                  <small>{label}</small>
+                  <strong className={label === 'Sellable' ? 'is-green' : ''}>{Number(v).toLocaleString('en-PK')}</strong>
+                </div>
+              </div>
+            ))}
+            <div className={`tl-ve-ready ${errorCount ? 'is-bad' : dirty ? 'is-warn' : 'is-ok'}`}>
+              {errorCount ? <AlertTriangle className="w-5 h-5" aria-hidden="true" /> : <CheckCircle2 className="w-5 h-5" aria-hidden="true" />}
+              <div>
+                <strong>{errorCount ? `${errorCount} problem${errorCount === 1 ? '' : 's'} to fix` : dirty ? 'Unsaved changes' : published ? 'Seating saved' : 'Ready to save'}</strong>
+                <small>{errorCount ? 'See the list below.' : dirty ? 'Save to keep your changes.' : 'All changes saved.'}</small>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ---------- Tier inventory and problems ---------- */}
+        <div className="tl-ve-panel tl-ve-details text-xs space-y-3">
+              <div>
+                <p className="font-semibold text-slate-700 mb-1">Ticket inventory by tier</p>
+                <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                  {tierTotals.map((t) => (
+                    <li key={t.id} className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} aria-hidden="true" />{t.name} · {formatPkr(t.price)}</span>
+                      <span className="font-mono"><strong>{t.plan.toLocaleString('en-PK')}</strong> <span className="text-slate-400">(now {t.totalQuantity})</span></span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[10px] text-slate-400 mt-1">On publish, each tier’s ticket quantity becomes its seats/places in this plan, so nothing is counted twice.</p>
+              </div>
+              {errorCount > 0 || check?.warnings?.length ? (
+                <details open={errorCount > 0} className="rounded-xl border border-slate-200">
+                  <summary className="px-3 py-2 cursor-pointer font-semibold text-slate-700">
+                    {errorCount ? `${errorCount} problem${errorCount === 1 ? '' : 's'} to fix before publishing` : 'No blocking problems'}
+                    {check?.warnings?.length ? ` · ${check.warnings.length} warning${check.warnings.length === 1 ? '' : 's'}` : ''}
+                  </summary>
+                  <ul className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
+                    {[...(check?.conflicts || []), ...(check?.errors || [])].map((e, i) => (
+                      <li key={`e${i}`}>
+                        <button type="button" className="text-left text-rose-700 hover:underline" onClick={() => e.sectionId && (setSelectedId(e.sectionId), setFeatureSelected(false), mapRef.current?.fitSection(e.sectionId))}>• {e.message}</button>
+                      </li>
+                    ))}
+                    {(check?.warnings || []).map((w, i) => (
+                      <li key={`w${i}`} className="text-amber-800">• {w.message}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : (
+                check && <p className="text-emerald-800 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> The plan is ready to publish.</p>
+              )}
+        </div>
+        </>
       )}
 
       {reuse && (
@@ -938,14 +1021,16 @@ export default function VenueEditor() {
       )}
 
       {previewKey > 0 && preview && (
-        <div className="fixed inset-0 z-[110] bg-slate-100/95 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Attendee preview">
-          <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3 bg-white rounded-2xl border border-slate-200 p-3">
-              <p className="text-xs text-slate-700">
-                <strong className="text-slate-900">Attendee preview</strong>, using your current changes. Holds here are simulated: nothing is reserved and checkout is disabled.
-              </p>
-              <button type="button" className="tl-vm-btn" onClick={() => setPreviewKey(0)}><X className="w-4 h-4" /> Close preview</button>
+        <div className="fixed inset-0 z-[110] bg-[#f2f3ef] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Attendee preview">
+          {/* Green bar, always visible: what this is, and the way back to the plan */}
+          <div className="tl-ve-previewbar">
+            <div>
+              <strong><Eye className="w-4 h-4" aria-hidden="true" /> Attendee preview</strong>
+              <span>Using your current changes. Holds are simulated: nothing is reserved and checkout is disabled.</span>
             </div>
+            <button type="button" onClick={() => setPreviewKey(0)}><ArrowLeft className="w-4 h-4" /> Back to plan</button>
+          </div>
+          <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
             <VenueBooking key={previewKey} adapter={preview} preview eventId={eventId} />
           </div>
         </div>

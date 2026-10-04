@@ -4,6 +4,12 @@
 const unsplash = (id, w, h) =>
   `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}${h ? `&h=${h}` : ''}&q=70`;
 
+// Hero background film: 1080p H.264 encoded from "public/web visuals/ticket ledger.mp4" (index at the
+// front so it starts streaming at once); the photo below is its poster while it loads
+export const HERO_VIDEO = encodeURI('/web visuals/ticketledger-hero.mp4');
+// Phones: 9:16 centre crop of the same film at its native 608×1080 (no upscaling)
+export const HERO_VIDEO_MOBILE = encodeURI('/web visuals/ticketledger-hero-mobile.mp4');
+
 export const HERO_IMAGE = {
   src: unsplash('1540747913346-19e32dc3e97e', 1920),
   srcSet: [960, 1440, 1920].map((w) => `${unsplash('1540747913346-19e32dc3e97e', w)} ${w}w`).join(', '),

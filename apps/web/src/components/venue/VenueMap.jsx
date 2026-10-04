@@ -8,6 +8,64 @@ import { resolveMediaUrl } from '../../utils/eventMedia';
 // Level of detail, from the on-screen seat radius in pixels
 const lodFor = (seatPx) => (seatPx >= 7.5 ? 3 : seatPx >= 4.5 ? 2 : seatPx >= 2 ? 1 : 0);
 
+// Up to this many seats, every section's seats are drawn on the overview (CAD-style plan);
+// larger venues show section shapes until a section is opened
+const OVERVIEW_SEAT_LIMIT = 6000;
+
+/**
+ * Facing of each seat (degrees), so chairs point at the front row: the row direction comes from the seat's
+ * neighbours, and the front is the side of the section's first row.
+ */
+function seatAngles(g) {
+  const rows = new Map();
+  for (const s of g.seats) {
+    if (s.tableKey) continue;
+    if (!rows.has(s.rowIndex)) rows.set(s.rowIndex, []);
+    rows.get(s.rowIndex).push(s);
+  }
+  const centre = (list) => list.reduce((c, s) => ({ x: c.x + s.x / list.length, y: c.y + s.y / list.length }), { x: 0, y: 0 });
+  const order = [...rows.keys()].sort((a, b) => a - b);
+  const centres = new Map(order.map((k) => [k, centre(rows.get(k))]));
+  const angles = {};
+  order.forEach((k, idx) => {
+    const list = rows.get(k).sort((a, b) => a.position - b.position);
+    const here = centres.get(k);
+    // Towards the front: the first row's centre (for the first row itself, away from the second)
+    const ref = idx > 0 ? centres.get(order[0]) : order.length > 1 ? centres.get(order[1]) : null;
+    const front = ref ? (idx > 0 ? { x: ref.x - here.x, y: ref.y - here.y } : { x: here.x - ref.x, y: here.y - ref.y }) : { x: 0, y: -1 };
+    list.forEach((seat, i) => {
+      const a = list[Math.max(0, i - 1)];
+      const b = list[Math.min(list.length - 1, i + 1)];
+      let tx = b.x - a.x;
+      let ty = b.y - a.y;
+      if (!tx && !ty) {
+        tx = 1;
+        ty = 0;
+      }
+      // Normal to the row, on the front side
+      let nx = -ty;
+      let ny = tx;
+      if (nx * front.x + ny * front.y < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
+      // The chair is drawn facing +y (front), so rotate +y onto the normal
+      angles[seat.key] = Math.round((Math.atan2(ny, nx) * 180) / Math.PI - 90);
+    });
+  });
+  return angles;
+}
+
+/** A chair in plan view: backrest behind, cushion in front (facing local +y). `r` is the seat radius. */
+function Chair({ r, angle }) {
+  return (
+    <g className="tl-vm-chair" transform={angle ? `rotate(${angle})` : undefined}>
+      <rect className="tl-vm-chair-back" x={-r * 0.9} y={-r * 0.98} width={r * 1.8} height={r * 0.42} rx={r * 0.2} />
+      <rect className="tl-vm-chair-seat" x={-r * 0.82} y={-r * 0.5} width={r * 1.64} height={r * 1.32} rx={r * 0.3} />
+    </g>
+  );
+}
+
 function SeatSymbol({ state, r }) {
   const k = r * 0.5;
   if (state === 'mine') return <path className="tl-vm-sym" d={`M${-k} 0 L${-k * 0.25} ${k * 0.7} L${k} ${-k * 0.6}`} />;
@@ -18,13 +76,17 @@ function SeatSymbol({ state, r }) {
   return null;
 }
 
-/** Seats (or tables) of one section. Memoised: re-renders only when its states or detail level change. */
-const SectionDetail = memo(function SectionDetail({ section, states, lod, rovingKey, color, describeSeat, tableStates, mode }) {
+/**
+ * Seats (or tables) of one section. Memoised: re-renders only when its states or detail level change.
+ * `overview`: drawn as part of the whole plan (not clickable; a click opens the section instead).
+ */
+const SectionDetail = memo(function SectionDetail({ section, states, lod, rovingKey, color, describeSeat, tableStates, mode, overview = false }) {
   const g = generated(section);
   const r = g.seatRadius;
-  const interactive = mode === 'book' || mode === 'blocking';
+  const angles = useMemo(() => seatAngles(g), [g]);
+  const interactive = !overview && (mode === 'book' || mode === 'blocking');
   return (
-    <g className="tl-vm-detail" style={{ '--tier': color }}>
+    <g className={`tl-vm-detail${overview ? ' is-overview' : ''}`} style={{ '--tier': color }} aria-hidden={overview ? 'true' : undefined}>
       {lod >= 1 &&
         g.rowLabels.map((row) => (
           <g key={row.label} className="tl-vm-rowlabel" aria-hidden="true">
@@ -62,9 +124,11 @@ const SectionDetail = memo(function SectionDetail({ section, states, lod, roving
             aria-label={seatInteractive ? describeSeat?.({ seat: s, state }) : undefined}
             aria-pressed={seatInteractive && mode === 'book' ? state === 'mine' : undefined}
           >
-            <circle r={r} />
-            {lod >= 2 && <SeatSymbol state={state} r={r} />}
-            {lod >= 3 && (state === 'available' || state === 'pending') && (
+            {/* Invisible hit area keeps the whole seat footprint clickable */}
+            <circle className="tl-vm-hit" r={r * 1.05} />
+            <Chair r={r} angle={angles[s.key]} />
+            {!overview && lod >= 2 && <SeatSymbol state={state} r={r} />}
+            {!overview && lod >= 3 && (state === 'available' || state === 'pending') && (
               <text className="tl-vm-seatnum" fontSize={r * 0.95} aria-hidden="true">{s.number}</text>
             )}
           </g>
@@ -160,6 +224,11 @@ const VenueMap = forwardRef(function VenueMap(
   }), [camera, content, layout, toClient]);
 
   const sectionById = useMemo(() => Object.fromEntries(layout.sections.map((s) => [s.id, s])), [layout]);
+  // Whether the overview draws every seat (small and mid-size venues)
+  const overviewSeats = useMemo(
+    () => layout.sections.reduce((n, s) => n + (s.booking === 'ga' ? 0 : generated(s).seats.length), 0) <= OVERVIEW_SEAT_LIMIT,
+    [layout]
+  );
 
   const handleClick = (e) => {
     if (camera.wasDrag() || e.target.closest('[data-handle]')) return;
@@ -221,11 +290,15 @@ const VenueMap = forwardRef(function VenueMap(
           <rect className="tl-vm-site" x={0} y={0} width={layout.coordinate.width} height={layout.coordinate.height} rx={28} />
         )}
 
-        {/* Concourse: a soft band around every stand, so sections read as built structures */}
+        {/* Walls: a thick ink pass, then a thinner paper pass on top, leaves an outer line around every
+            stand; with the section's own edge that reads as a double-line wall on a CAD plan */}
         {!background && (
           <g className="tl-vm-concourse" aria-hidden="true">
             {layout.sections.map((s) => (
-              <path key={s.id} d={shapePath(s.shape)} />
+              <path key={s.id} className="is-outer" d={shapePath(s.shape)} />
+            ))}
+            {layout.sections.map((s) => (
+              <path key={s.id} className="is-inner" d={shapePath(s.shape)} />
             ))}
           </g>
         )}
@@ -262,8 +335,10 @@ const VenueMap = forwardRef(function VenueMap(
                     }
                   }}
                 />
+                {s.booking === 'ga' && <path className="tl-vm-standing" d={shapePath(s.shape)} fill={`url(#${uid}-standing)`} aria-hidden="true" />}
                 {meta.status === 'soldout' && <path className="tl-vm-hatch" d={shapePath(s.shape)} fill={`url(#${uid}-hatch)`} aria-hidden="true" />}
-                {(!isFocus || lod < 1) && (
+                {/* Seated sections drawn with their seats get a label tag above the seating instead */}
+                {!(overviewSeats && s.booking !== 'ga') && (!isFocus || lod < 1 || s.booking === 'ga') && (
                   <g className="tl-vm-label" transform={`translate(${anchor.x} ${anchor.y}) rotate(${anchor.angle})`} aria-hidden="true">
                     <text className="tl-vm-name" fontSize={fs} y={meta.sub ? -fs * 0.25 : fs * 0.1}>{s.name}</text>
                     {meta.sub && <text className="tl-vm-sub" fontSize={subFs} y={fs * 0.45 + subFs * 0.7}>{meta.sub}</text>}
@@ -273,6 +348,50 @@ const VenueMap = forwardRef(function VenueMap(
             );
           })}
         </g>
+
+        {overviewSeats &&
+          layout.sections
+            .filter((s) => s.id !== focusId && s.booking !== 'ga')
+            .map((s) => (
+              <SectionDetail
+                key={s.id}
+                section={s}
+                states={seatStates}
+                lod={1}
+                color={tiers[s.tierId]?.color || '#94a3b8'}
+                mode={mode}
+                overview
+              />
+            ))}
+
+        {/* Label tags for seated sections: a small paper plate with an ink border, like a CAD callout */}
+        {overviewSeats && (
+          <g className="tl-vm-tags" aria-hidden="true">
+            {layout.sections
+              .filter((s) => s.booking !== 'ga' && !(s.id === focusId && lod >= 1))
+              .map((s) => {
+                const meta = sectionMeta?.(s) || {};
+                const anchor = shapeAnchor(s.shape);
+                const space = labelSpace(s);
+                const fs = Math.max(4, Math.min(11, space.h * 0.09, (space.w * 0.8) / (s.name.length * 0.8)));
+                const subFs = fs * 0.8;
+                const name = s.name.toUpperCase();
+                const w = Math.max(name.length * fs * 0.8, meta.sub ? meta.sub.length * subFs * 0.68 : 0) + fs * 1.6;
+                const h = meta.sub ? fs * 2.9 : fs * 1.8;
+                return (
+                  <g
+                    key={s.id}
+                    className={`tl-vm-tag${s.id === focusId ? ' is-focus' : ''}`}
+                    transform={`translate(${anchor.x} ${anchor.y}) rotate(${anchor.angle})`}
+                  >
+                    <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={fs * 0.2} />
+                    <text className="tl-vm-tag-name" fontSize={fs} y={meta.sub ? -fs * 0.5 : 0}>{name}</text>
+                    {meta.sub && <text className="tl-vm-tag-sub" fontSize={subFs} y={fs * 0.75}>{meta.sub}</text>}
+                  </g>
+                );
+              })}
+          </g>
+        )}
 
         {focused && (
           <SectionDetail

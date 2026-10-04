@@ -8,6 +8,7 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { trackClientBehavior } from '../utils/api';
+import { useDialog } from '../components/ui/DialogProvider';
 import {
   Ticket,
   Clock,
@@ -89,6 +90,7 @@ export default function SeatMap() {
 }
 
 function LegacySeatMap() {
+  const dialog = useDialog();
   const { id: eventId } = useParams();
   const navigate = useNavigate();
   const { user, token, isAuthenticated } = useAuth();
@@ -235,7 +237,7 @@ function LegacySeatMap() {
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0) {
       if (timeLeft === 0 && myLockedSeats.length > 0) {
-        alert('Your 10-minute seat reservation has expired. Please select your seats again.');
+        dialog.alert({ tone: 'warning', title: 'Reservation expired', message: 'Your 10-minute seat reservation has ended. Please select your seats again.' });
         setMyLockedSeats([]);
         fetchSeatMap();
       }
@@ -258,23 +260,23 @@ function LegacySeatMap() {
   // 4. Toggle Seat Lock / Unlock
   const handleSeatClick = async (seat) => {
     if (!isAuthenticated) {
-      alert('Please sign in to select and reserve seats.');
+      dialog.alert({ tone: 'info', title: 'Sign in to choose seats', message: 'Please sign in to select and reserve seats.' });
       navigate('/login', { state: { from: `/events/${eventId}/seats` } });
       return;
     }
 
     if (seat.status === 'SOLD') {
-      alert('This seat is already sold and minted as an NFT ticket on the Polygon blockchain.');
+      dialog.alert({ tone: 'info', title: 'Seat sold', message: 'This seat has already been sold.' });
       return;
     }
 
     if (seat.status === 'BLOCKED') {
-      alert('This seat is blocked by stadium venue security.');
+      dialog.alert({ tone: 'info', title: 'Seat not on sale', message: 'This seat is blocked by the venue.' });
       return;
     }
 
     if (seat.status === 'LOCKED' && !seat.isLockedByMe) {
-      alert('This seat is currently held under a 10-minute temporary reservation by another customer.');
+      dialog.alert({ tone: 'info', title: 'Seat on hold', message: 'Another customer is holding this seat for up to 10 minutes. Try again shortly.' });
       return;
     }
 
@@ -328,7 +330,7 @@ function LegacySeatMap() {
       }
     } catch (err) {
       const msg = err.response?.data?.message || 'Seat lock action failed.';
-      alert(`⚠️ Lock Notice: ${msg}`);
+      dialog.alert({ tone: 'warning', title: 'Couldn’t hold the seat', message: msg });
       // Refresh to ensure client is in sync with Redis
       fetchSeatMap();
     } finally {

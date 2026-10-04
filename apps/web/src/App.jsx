@@ -10,6 +10,8 @@ import CompanyRegistration from './pages/CompanyRegistration';
 import AdminCompanies from './pages/AdminCompanies';
 import Events from './pages/Events';
 import Categories from './pages/Categories';
+import EventSubmit from './pages/EventSubmit';
+import AdminEventApprovals from './pages/AdminEventApprovals';
 import EventDetails from './pages/EventDetails';
 import CreateEvent from './pages/CreateEvent';
 import VenueEditor from './pages/VenueEditor';
@@ -57,6 +59,11 @@ import {
 } from 'lucide-react';
 import BrandLogo from './components/brand/BrandLogo';
 import DashShell from './components/dash/DashShell';
+import { DialogProvider } from './components/ui/DialogProvider';
+import { WishlistProvider } from './context/WishlistContext';
+import Wishlist from './pages/Wishlist';
+import './components/ui/selects.css';
+import SelectEnhancer from './components/ui/SelectEnhancer';
 
 function Navbar() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -425,7 +432,7 @@ function SiteChrome({ children }) {
   const accountPage = /^\/(profile|notifications)\/?$/.test(pathname) && Boolean(user);
   // Organizer, Super Admin and gate staff consoles use DashShell (header, console nav, footer)
   const consolePage = /^\/((admin|organizer)\/|(scanner|staff\/events|demand-forecast|analytics\/intent)(\/|$))/.test(pathname);
-  return pathname === '/' || consolePage || pathname === '/company' || pathname === '/events' || pathname === '/categories' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
+  return pathname === '/' || consolePage || pathname === '/company' || pathname === '/events' || pathname === '/categories' || pathname === '/wishlist' || /^\/events\/[^/]+\/?$/.test(pathname) || customerPage || accountPage || bookingFlow ? null : children;
 }
 
 /**
@@ -451,6 +458,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <DialogProvider>
+        <WishlistProvider>
+        <SelectEnhancer />
         <ScrollToTop />
         <RouteLoader />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
@@ -460,6 +470,7 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/events" element={<Events />} />
               <Route path="/categories" element={<Categories />} />
+              <Route path="/wishlist" element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
               <Route path="/events/:id" element={<EventDetails />} />
               <Route path="/events/:id/seats" element={<SeatMap />} />
               <Route path="/events/:id/checkout" element={<Checkout />} />
@@ -494,10 +505,12 @@ export default function App() {
               <Route path="/organizer/create-event" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="create" /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/events/:id/venue" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><VenueEditor /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/events/:id/edit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="edit" /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/submit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><EventSubmit /></ProtectedRoute></DashShell>} />
 
               {/* Protected Super Admin Governance */}
               <Route path="/admin/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute></DashShell>} />
               <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/event-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminEventApprovals /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
               <Route path="/admin/demand-forecast" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><DemandForecast /></ProtectedRoute></DashShell>} />
               <Route path="/demand-forecast" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><DemandForecast /></ProtectedRoute></DashShell>} />
@@ -514,6 +527,8 @@ export default function App() {
           <SiteChrome><Footer /></SiteChrome>
           <HoldBar />
         </div>
+        </WishlistProvider>
+        </DialogProvider>
       </AuthProvider>
     </BrowserRouter>
   );

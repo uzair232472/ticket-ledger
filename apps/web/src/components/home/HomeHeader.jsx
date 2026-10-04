@@ -58,6 +58,7 @@ function useMenuGroups(onCategories) {
       items: [
         { label: 'Admin Dashboard', to: '/admin/dashboard' },
         { label: 'Organizer Approvals', to: '/admin/companies' },
+        { label: 'Event Approvals', to: '/admin/event-approvals' },
         { label: 'Fraud Watchlist', to: '/admin/fraud-watchlist' },
         { label: 'Demand Forecast', to: '/admin/demand-forecast' },
       ],
@@ -72,6 +73,7 @@ function useMenuGroups(onCategories) {
     items: isAuthenticated
       ? [
           { label: 'Notifications', to: '/notifications', badge: 'notifications' },
+          { label: 'Wishlist', to: '/wishlist' },
           { label: 'Profile & Settings', to: '/profile' },
           { label: 'Log Out', action: 'logout' },
         ]

@@ -168,6 +168,14 @@ export const publish = async (req, res) => {
   try {
     const event = await managedEvent(req, { write: true });
     const result = await publishDraft(event.id, req.user.id);
+    await prisma.notification.create({
+      data: {
+        userId: req.user.id,
+        type: 'EVENT_SEATING_SAVED',
+        title: `Seating saved: ${event.name}`,
+        message: `Seating plan version ${result.layout.version} is saved (${result.created} added, ${result.removed} removed, ${result.updated} updated).`,
+      },
+    });
     res.json({
       success: true,
       message: `Venue plan v${result.layout.version} is live: ${result.created} seat(s) added, ${result.removed} removed, ${result.updated} updated.`,

@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import BasicShell from '../components/basic/BasicShell';
+import { useDialog } from '../components/ui/DialogProvider';
+import ChangePasswordCard from '../components/account/ChangePasswordCard';
+import '../components/account/overview.css';
 import {
   User,
   Wallet,
@@ -36,21 +39,33 @@ import {
   Clock,
   HelpCircle,
   Camera,
-  Check
+  Check,
+  Home,
+  UserRound,
+  BarChart3,
+  KeyRound,
+  FileText,
+  Pencil,
+  ArrowRight,
+  Boxes,
+  Zap,
+  CalendarDays,
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const POLYGON_AMOY_CHAIN_ID = '0x13882'; // 80002 in hex
 
 export default function Profile() {
+  const dialog = useDialog();
   const { token, user: authUser } = useAuth();
 
   // Navigation tabs matching Eventfrog structure
-  const [activeTab, setActiveTab] = useState('my-data');
+  const [activeTab, setActiveTab] = useState('overview');
   // 'my-data' | 'security' | 'notifications' | 'intent' | 'preferred-website' | 'api-keys' | 'privacy' | 'overview'
 
-  const [myTicketsExpanded, setMyTicketsExpanded] = useState(true);
-  const [settingsExpanded, setSettingsExpanded] = useState(true);
+  // Phones start with the navigation groups collapsed, so the overview is visible first
+  const [myTicketsExpanded, setMyTicketsExpanded] = useState(() => !window.matchMedia('(max-width: 860px)').matches);
+  const [settingsExpanded, setSettingsExpanded] = useState(() => !window.matchMedia('(max-width: 860px)').matches);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,6 +75,7 @@ export default function Profile() {
   const [profile, setProfile] = useState(null);
   const [stats, setStats] = useState({});
   const [history, setHistory] = useState([]);
+  const [recentTickets, setRecentTickets] = useState(null); // overview: latest tickets (null while loading)
 
   // Form states matching Eventfrog fields
   const [salutation, setSalutation] = useState(localStorage.getItem('tl_salutation') || 'Mr');
@@ -202,6 +218,7 @@ export default function Profile() {
       if (!res.ok) throw new Error(data.message || 'Update failed');
 
       setMessage({ text: 'Profile details saved successfully!', type: 'success' });
+      dialog.alert({ tone: 'success', title: 'Details saved', message: 'Your profile details were updated. We’ve sent a confirmation to your email.' });
       await loadProfile();
       await loadHistory();
     } catch (err) {
@@ -297,7 +314,7 @@ export default function Profile() {
 
   // Disconnect wallet
   const handleDisconnectWallet = async () => {
-    if (!window.confirm('Are you sure you want to unlink this MetaMask wallet from TicketLedger?')) return;
+    if (!(await dialog.confirm({ title: 'Unlink this wallet?', message: 'Your tickets stay in your TicketLedger custodial vault.', confirmLabel: 'Unlink wallet', tone: 'warning' }))) return;
     await saveWalletToBackend(null);
   };
 
@@ -327,6 +344,30 @@ export default function Profile() {
     }
   };
 
+  useEffect(() => {
+    if (activeTab !== 'overview' || recentTickets) return;
+    fetch(`${API_URL}/api/tickets/wallet`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => setRecentTickets((d?.data?.tickets || []).slice(0, 3)))
+      .catch(() => setRecentTickets([]));
+  }, [activeTab, recentTickets, token]);
+
+  const goTab = (tab) => {
+    setActiveTab(tab);
+    setMessage({ text: '', type: '' });
+  };
+  const roleLabel = { CUSTOMER: 'Customer', ORGANIZER: 'Organizer', SUPER_ADMIN: 'Admin', GATE_STAFF: 'Gate staff' }[profile?.role] || 'Member';
+  const initials = (profile?.name || profile?.email || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+  const SETTINGS_TABS = [
+    ['my-data', 'My data', UserRound],
+    ['security', 'Security', ShieldCheck],
+    ['notifications', 'Notifications', Bell],
+    ['intent', 'AI Intent & Telemetry', BarChart3],
+    ['preferred-website', 'Preferred Website', Globe],
+    ['api-keys', 'API keys', KeyRound],
+    ['privacy', 'Privacy', FileText],
+  ];
+
   const getBreadcrumbLabel = () => {
     switch (activeTab) {
       case 'my-data': return 'My data';
@@ -343,15 +384,19 @@ export default function Profile() {
 
   return (
     <BasicShell
-      eyebrow="User account"
-      title={loading ? 'Account' : getBreadcrumbLabel()}
-      intro={loading ? 'Loading your account…' : `Signed in as ${profile?.name || profile?.email || 'you'}.`}
+      eyebrow={<span className="tl-ov-crumbs">Account <span aria-hidden="true">/</span> <b>{getBreadcrumbLabel()}</b></span>}
+      title={loading ? 'Account' : activeTab === 'overview' ? 'Account overview' : getBreadcrumbLabel()}
+      intro={loading ? 'Loading your account…' : activeTab === 'overview' ? 'Manage your profile, tickets and connected wallet.' : `Signed in as ${profile?.name || profile?.email || 'you'}.`}
       actions={
-        !loading && activeTab !== 'overview' && (
-          <button type="button" onClick={() => setActiveTab('overview')} className="tl-btn tl-btn--ghost">
+        !loading && (activeTab === 'overview' ? (
+          <button type="button" onClick={() => goTab('my-data')} className="tl-ov-edit">
+            <Pencil className="w-4 h-4" aria-hidden="true" /> Edit profile
+          </button>
+        ) : (
+          <button type="button" onClick={() => goTab('overview')} className="tl-btn tl-btn--ghost">
             Account overview
           </button>
-        )
+        ))
       }
     >
     {loading ? (
@@ -359,154 +404,52 @@ export default function Profile() {
     ) : (
     <div className="tl-basic-skin tl-pf text-slate-800">
 
-      {/* Main Split Layout: Left Sidebar + Right Content */}
-      <div className="flex flex-col md:flex-row gap-8 items-start">
+      {/* Left navigation + content */}
+      <div className="tl-ov-layout">
 
-        {/* Left Navigation Sidebar (Eventfrog Style) */}
-        <aside className="w-full md:w-60 shrink-0 space-y-5 select-none">
+        {/* Left navigation */}
+        <aside className="tl-ov-nav" aria-label="Account sections">
+          <button type="button" className={`tl-ov-nav-top${activeTab === 'overview' ? ' is-active' : ''}`} aria-current={activeTab === 'overview' ? 'page' : undefined} onClick={() => goTab('overview')}>
+            <Home className="w-5 h-5" aria-hidden="true" /> Overview
+          </button>
 
-          {/* OVERVIEW */}
-          <div>
-            <button
-              onClick={() => { setActiveTab('overview'); setMessage({ text: '', type: '' }); }}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-xs uppercase font-extrabold tracking-wider transition rounded-xl ${activeTab === 'overview'
-                ? 'bg-slate-100 text-[#008459]'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-            >
-              <LayoutGrid className="w-4 h-4 text-slate-500" />
-              <span>OVERVIEW</span>
+          <div className="tl-ov-nav-group">
+            <button type="button" className="tl-ov-nav-head" aria-expanded={myTicketsExpanded} onClick={() => setMyTicketsExpanded(!myTicketsExpanded)}>
+              <span><Ticket className="w-4 h-4" aria-hidden="true" /> My tickets</span>
+              {myTicketsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
+            {myTicketsExpanded && (
+              <div className="tl-ov-nav-list">
+                <Link to="/wallet"><Ticket className="w-4 h-4" aria-hidden="true" /> My tickets</Link>
+                <Link to="/my-bookings"><Clock className="w-4 h-4" aria-hidden="true" /> Order history</Link>
+              </div>
+            )}
           </div>
 
-          <div className="border-t border-slate-200/80 pt-4 space-y-4">
-
-            {/* MY TICKETS Section */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setMyTicketsExpanded(!myTicketsExpanded)}
-                className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-600 px-3 py-1.5 hover:text-slate-900 transition"
-              >
-                <span className="flex items-center gap-3">
-                  <Ticket className="w-4 h-4 text-slate-500" />
-                  <span>MY TICKETS</span>
-                </span>
-                {myTicketsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {myTicketsExpanded && (
-                <div className="mt-1 pl-10 space-y-1">
-                  <Link
-                    to="/wallet"
-                    className="block text-xs py-1.5 text-slate-600 hover:text-[#008459] font-medium transition"
-                  >
-                    My tickets
-                  </Link>
-                  <Link
-                    to="/my-bookings"
-                    className="block text-xs py-1.5 text-slate-600 hover:text-[#008459] font-medium transition"
-                  >
-                    Order history
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* SETTINGS Section */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setSettingsExpanded(!settingsExpanded)}
-                className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-600 px-3 py-1.5 hover:text-slate-900 transition"
-              >
-                <span className="flex items-center gap-3">
-                  <Settings className="w-4 h-4 text-slate-500" />
-                  <span>SETTINGS</span>
-                </span>
-                {settingsExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {settingsExpanded && (
-                <div className="mt-1 pl-10 space-y-1">
-                  <button
-                    onClick={() => { setActiveTab('my-data'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'my-data'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    My data
+          <div className="tl-ov-nav-group">
+            <button type="button" className="tl-ov-nav-head" aria-expanded={settingsExpanded} onClick={() => setSettingsExpanded(!settingsExpanded)}>
+              <span><Settings className="w-4 h-4" aria-hidden="true" /> Settings</span>
+              {settingsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            {settingsExpanded && (
+              <div className="tl-ov-nav-list">
+                {SETTINGS_TABS.map(([key, label, Icon]) => (
+                  <button key={key} type="button" className={activeTab === key ? 'is-active' : ''} aria-current={activeTab === key ? 'page' : undefined} onClick={() => goTab(key)}>
+                    <Icon className="w-4 h-4" aria-hidden="true" /> {label}
                   </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-                  <button
-                    onClick={() => { setActiveTab('security'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'security'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Security
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('notifications'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'notifications'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Notifications
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('intent'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'intent'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    AI Intent & Telemetry
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('preferred-website'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'preferred-website'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Preferred Website
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('api-keys'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'api-keys'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    API keys
-                  </button>
-
-                  <button
-                    onClick={() => { setActiveTab('privacy'); setMessage({ text: '', type: '' }); }}
-                    className={`block w-full text-left text-xs py-1.5 transition ${activeTab === 'privacy'
-                      ? 'text-[#008459] font-bold'
-                      : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                  >
-                    Privacy
-                  </button>
-                </div>
-              )}
-            </div>
-
+          <div className="tl-ov-nav-user">
+            <span className="tl-ov-avatar is-sm">{avatarUrl ? <img src={avatarUrl} alt="" /> : initials}</span>
+            <span><strong>{profile?.name || profile?.email}</strong><small>{roleLabel}</small></span>
           </div>
         </aside>
 
         {/* Right Main Content Area */}
-        <main className="flex-1 w-full space-y-6">
+        <main className="tl-ov-main">
 
           {/* Feedback Banner */}
           {message.text && (
@@ -767,9 +710,11 @@ export default function Profile() {
               <div>
                 <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Security</h1>
                 <p className="text-xs text-slate-500 mt-1">
-                  Manage your Web3 MetaMask wallet link, authentication credentials, and security audit log.
+                  Change your password, manage your wallet link and review your account activity.
                 </p>
               </div>
+
+              <ChangePasswordCard />
 
               {/* Wallet Integration Card */}
               <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-6">
@@ -1294,62 +1239,108 @@ export default function Profile() {
           {/* TAB: OVERVIEW (ACCOUNT SUMMARY)                                           */}
           {/* ========================================================================= */}
           {activeTab === 'overview' && (
-            <div className="space-y-6 max-w-3xl">
-              <div>
-                <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Account Overview</h1>
-                <p className="text-xs text-slate-500 mt-1">
-                  Summary of your account permissions, credentials, and active bookings.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Account Role</span>
-                  <div className="text-lg font-extrabold text-[#212b36]">{profile?.role}</div>
-                  <span className="text-[10px] text-[#008459] font-bold">Active Member</span>
+            <div className="tl-ov">
+              <section className="tl-ov-hero">
+                <span className="tl-ov-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : initials}</span>
+                <div>
+                  <h2>{profile?.name || profile?.email}</h2>
+                  <p>{roleLabel} account</p>
+                  <span className="tl-ov-pill"><i aria-hidden="true" /> Active member</span>
                 </div>
+              </section>
 
-                <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Total Tickets</span>
-                  <div className="text-lg font-extrabold text-[#212b36]">{stats.ticketCount ?? 0} Tickets</div>
-                  <Link to="/wallet" className="text-[10px] text-[#008459] hover:underline font-bold">
-                    View in Wallet &rarr;
-                  </Link>
-                </div>
-
-                <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Web3 Status</span>
-                  <div className="text-lg font-extrabold text-[#212b36]">
-                    {profile?.walletAddress ? 'Polygon Linked' : 'Custodian'}
+              <div className="tl-ov-stats">
+                <section className="tl-ov-stat">
+                  <h3>Account role</h3>
+                  <div className="tl-ov-stat-row">
+                    <span className="tl-ov-stat-icon"><UserRound className="w-5 h-5" aria-hidden="true" /></span>
+                    <div>
+                      <strong>{roleLabel}</strong>
+                      <span className="tl-ov-pill is-sm"><i aria-hidden="true" /> Active member</span>
+                    </div>
                   </div>
-                  <button onClick={() => setActiveTab('security')} className="text-[10px] text-[#008459] hover:underline font-bold">
-                    Manage Wallet &rarr;
-                  </button>
-                </div>
+                  <UserRound className="tl-ov-art" aria-hidden="true" />
+                </section>
+                <section className="tl-ov-stat">
+                  <h3>My tickets</h3>
+                  <div className="tl-ov-stat-row">
+                    <span className="tl-ov-stat-icon"><Ticket className="w-5 h-5" aria-hidden="true" /></span>
+                    <strong>{(stats.ticketCount ?? 0).toLocaleString()}</strong>
+                  </div>
+                  <Link to="/wallet" className="tl-ov-link">View my passes <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
+                  <Ticket className="tl-ov-art" aria-hidden="true" />
+                </section>
+                <section className="tl-ov-stat">
+                  <h3>Connected wallet</h3>
+                  <div className="tl-ov-stat-row">
+                    <span className="tl-ov-stat-icon"><Wallet className="w-5 h-5" aria-hidden="true" /></span>
+                    <strong>{profile?.walletAddress ? 'Polygon linked' : 'Custodial vault'}</strong>
+                  </div>
+                  <button type="button" className="tl-ov-outline" onClick={() => goTab('security')}>Manage wallet <ArrowRight className="w-4 h-4" aria-hidden="true" /></button>
+                  <Boxes className="tl-ov-art" aria-hidden="true" />
+                </section>
               </div>
 
-              <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-3">
-                <h3 className="font-extrabold text-[#212b36] text-base">Quick Actions</h3>
-                <div className="flex flex-wrap gap-2.5 text-xs font-bold">
-                  <button
-                    onClick={() => setActiveTab('my-data')}
-                    className="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 transition"
-                  >
-                    Edit Profile Details
-                  </button>
-                  <Link
-                    to="/wallet"
-                    className="px-4 py-2 rounded-full bg-[#008459] hover:bg-[#00704c] text-white transition shadow-sm"
-                  >
-                    View My Passes
-                  </Link>
-                  <Link
-                    to="/events"
-                    className="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 transition"
-                  >
-                    Explore Events
-                  </Link>
-                </div>
+              <div className="tl-ov-split">
+                <section className="tl-ov-panel" aria-labelledby="ov-tickets">
+                  <div className="tl-ov-panel-head">
+                    <h3 id="ov-tickets"><Ticket className="w-5 h-5" aria-hidden="true" /> Your tickets</h3>
+                    <Link to="/my-bookings" className="tl-ov-link">Order history <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
+                  </div>
+                  {recentTickets === null ? (
+                    <p className="tl-ov-muted">Loading your tickets…</p>
+                  ) : recentTickets.length === 0 ? (
+                    <div className="tl-ov-empty">
+                      <span className="tl-ov-empty-art" aria-hidden="true"><Ticket className="w-10 h-10" /></span>
+                      <strong>No tickets yet</strong>
+                      <p>Tickets you book will appear here.</p>
+                      <Link to="/events" className="tl-ov-edit">Explore events <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
+                    </div>
+                  ) : (
+                    <ul className="tl-ov-tickets">
+                      {recentTickets.map((t) => (
+                        <li key={t.id}>
+                          <Link to="/wallet">
+                            <span className="tl-ov-stat-icon"><Ticket className="w-5 h-5" aria-hidden="true" /></span>
+                            <span className="tl-ov-ticket-text">
+                              <strong>{t.event?.name}</strong>
+                              <small>{t.event?.date ? new Date(t.event.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}{t.seat?.tierName ? ` · ${t.seat.tierName}` : ''}</small>
+                            </span>
+                            <span className={`tl-ov-status is-${(t.status || '').toLowerCase()}`}>{t.status}</span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section className="tl-ov-panel" aria-labelledby="ov-actions">
+                  <div className="tl-ov-panel-head">
+                    <h3 id="ov-actions"><Zap className="w-5 h-5" aria-hidden="true" /> Quick actions</h3>
+                  </div>
+                  <div className="tl-ov-actions">
+                    <button type="button" onClick={() => goTab('my-data')}>
+                      <span className="tl-ov-stat-icon"><Pencil className="w-5 h-5" aria-hidden="true" /></span>
+                      <span><strong>Edit profile details</strong><small>Update your account information</small></span>
+                      <ArrowRight className="w-5 h-5" aria-hidden="true" />
+                    </button>
+                    <Link to="/wallet">
+                      <span className="tl-ov-stat-icon"><Ticket className="w-5 h-5" aria-hidden="true" /></span>
+                      <span><strong>View my passes</strong><small>Open your ticket wallet</small></span>
+                      <ArrowRight className="w-5 h-5" aria-hidden="true" />
+                    </Link>
+                    <button type="button" onClick={() => goTab('security')}>
+                      <span className="tl-ov-stat-icon"><KeyRound className="w-5 h-5" aria-hidden="true" /></span>
+                      <span><strong>Change password</strong><small>Keep your account secure</small></span>
+                      <ArrowRight className="w-5 h-5" aria-hidden="true" />
+                    </button>
+                    <Link to="/events">
+                      <span className="tl-ov-stat-icon"><CalendarDays className="w-5 h-5" aria-hidden="true" /></span>
+                      <span><strong>Explore events</strong><small>Find your next experience</small></span>
+                      <ArrowRight className="w-5 h-5" aria-hidden="true" />
+                    </Link>
+                  </div>
+                </section>
               </div>
             </div>
           )}

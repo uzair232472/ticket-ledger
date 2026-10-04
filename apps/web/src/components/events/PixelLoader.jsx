@@ -15,8 +15,9 @@ export default function PixelLoader({ onDone }) {
   const rootRef = useRef(null);
   const [done, setDone] = useState(false);
   const grid = useMemo(() => {
-    const cols = Math.ceil(window.innerWidth / CELL);
-    const rows = Math.ceil(window.innerHeight / CELL);
+    // Sized to the larger of the window and the screen, so a resize mid-transition never leaves gaps
+    const cols = Math.ceil(Math.max(window.innerWidth, window.screen?.width || 0) / CELL);
+    const rows = Math.ceil(Math.max(window.innerHeight, window.screen?.height || 0) / CELL);
     return { cols, rows, count: cols * rows };
   }, []);
 

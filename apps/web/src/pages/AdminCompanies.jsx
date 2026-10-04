@@ -19,10 +19,12 @@ import {
 } from 'lucide-react';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, ApStat, UnderlineTabs, RecordCard, Badge } from '../components/dash/Studio';
+import { useDialog } from '../components/ui/DialogProvider';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AdminCompanies() {
+  const dialog = useDialog();
   const { token } = useAuth();
 
   const [companies, setCompanies] = useState([]);
@@ -65,7 +67,7 @@ export default function AdminCompanies() {
 
   // Handle Approve
   const handleApprove = async (companyId, companyName) => {
-    if (!window.confirm(`Are you sure you want to approve "${companyName}"? This will allow them to publish live events.`)) return;
+    if (!(await dialog.confirm({ title: `Approve ${companyName}?`, message: 'They will be able to create events and send them for approval.', confirmLabel: 'Approve', tone: 'success' }))) return;
 
     setActionLoading(companyId);
     setMessage({ text: '', type: '' });
@@ -93,7 +95,7 @@ export default function AdminCompanies() {
 
   // Handle Suspend
   const handleSuspend = async (companyId, companyName) => {
-    if (!window.confirm(`Are you sure you want to suspend "${companyName}"?`)) return;
+    if (!(await dialog.confirm({ title: `Suspend ${companyName}?`, message: 'The organizer loses access to the studio until the company is reinstated.', confirmLabel: 'Suspend', tone: 'error' }))) return;
 
     setActionLoading(companyId);
     setMessage({ text: '', type: '' });

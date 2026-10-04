@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, UserRound } from 'lucide-react';
+import { Heart, LogOut, UserRound } from 'lucide-react';
+import { useWishlist } from '../../context/WishlistContext';
 import api from '../../utils/api';
 import { TicketBellIcon, TicketUserIcon } from './HeaderIcons';
 
@@ -22,6 +23,7 @@ export default function HeaderAccount({ menuOpen, onOpen, onLogout }) {
   const [latest, setLatest] = useState(null); // null while loading
   const [unread, setUnread] = useState(0);
   const rootRef = useRef(null);
+  const { count: savedCount } = useWishlist();
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -128,6 +130,10 @@ export default function HeaderAccount({ menuOpen, onOpen, onLogout }) {
           <div id="tl-hacc-account" className="tl-hacc-pop" role="region" aria-label="Account">
             <Link to="/profile" className="tl-hacc-action">
               <UserRound className="w-4 h-4" aria-hidden="true" /> View profile
+            </Link>
+            <Link to="/wishlist" className="tl-hacc-action">
+              <Heart className="w-4 h-4" aria-hidden="true" /> Wishlist
+              {savedCount > 0 && <span className="tl-hacc-count">{savedCount}</span>}
             </Link>
             <button type="button" className="tl-hacc-action" onClick={onLogout}>
               <LogOut className="w-4 h-4" aria-hidden="true" /> Log out

@@ -41,13 +41,17 @@ const createEventSchema = z.object({
     'COMPLETED',
     'CANCELLED',
   ]).optional().default('PUBLISHED'),
+  // Exact location from the organizer's map pick (multipart sends strings; empty means not set)
+  latitude: z.preprocess((v) => (v === '' || v == null ? undefined : Number(v)), z.number().min(-90).max(90).optional()),
+  longitude: z.preprocess((v) => (v === '' || v == null ? undefined : Number(v)), z.number().min(-180).max(180).optional()),
+  locationAddress: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.string().max(300).optional()),
   // Only stored image references (absolute http(s) or root-relative paths), never blob:/data: preview URLs
   bannerUrl: z.string().regex(/^(https?:\/\/|\/)/, 'Banner URL must be an http(s) URL or a site path').optional(),
 });
 
 // Editable event details (status, tiers and pricing keep their own endpoints)
 const updateEventDetailsSchema = createEventSchema
-  .pick({ name: true, description: true, type: true, date: true, time: true, city: true, venue: true })
+  .pick({ name: true, description: true, type: true, date: true, time: true, city: true, venue: true, latitude: true, longitude: true, locationAddress: true })
   .partial();
 
 const SINGLE_IMAGE_FIELDS = [
@@ -119,11 +123,16 @@ export const createEvent = async (req, res) => {
           name: validatedData.name,
           description: validatedData.description,
           type: validatedData.type,
-          status: validatedData.status,
+          // Organizers' events start unpublished and go on sale only after admin approval
+          status: req.user.role === 'SUPER_ADMIN' ? validatedData.status : validatedData.status === 'PRELAUNCH_ANALYSIS' ? 'PRELAUNCH_ANALYSIS' : 'DRAFT',
+          ...(req.user.role === 'SUPER_ADMIN' && validatedData.status === 'PUBLISHED' ? { approvedAt: new Date() } : {}),
           date: new Date(validatedData.date),
           time: validatedData.time,
           city: validatedData.city,
           venue: validatedData.venue,
+          latitude: validatedData.latitude ?? null,
+          longitude: validatedData.longitude ?? null,
+          locationAddress: validatedData.locationAddress ?? null,
           bannerUrl,
           cardImageUrl,
           galleryWideUrl,
@@ -171,6 +180,15 @@ export const createEvent = async (req, res) => {
       });
     });
 
+    await prisma.notification.create({
+      data: {
+        userId: req.user.id,
+        type: 'EVENT_CREATED',
+        title: `Event created: ${createdEvent.name}`,
+        message: `“${createdEvent.name}” is saved privately. Set up seating, then send it to TicketLedger for approval to put it on sale.`,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: 'Event and ticket tiers created successfully.',
@@ -205,12 +223,8 @@ export const getEvents = async (req, res) => {
 
     const where = {};
 
-    // By default, public users discover PUBLISHED events
-    if (status) {
-      where.status = status;
-    } else {
-      where.status = 'PUBLISHED';
-    }
+    // Discovery only lists public events (unapproved or draft events stay private)
+    where.status = ['PUBLISHED', 'COMPLETED', 'PAUSED'].includes(status) ? status : 'PUBLISHED';
 
     if (type) {
       where.type = type;
@@ -338,6 +352,15 @@ export const getEventById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
+    // Draft, pending and rejected events: only the organizer and admins can open them (as a preview)
+    const isPublic = ['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status);
+    if (!isPublic) {
+      if (!(await canManageEvent(req.user, event))) {
+        return res.status(404).json({ success: false, message: 'Event not found' });
+      }
+      return res.status(200).json({ success: true, data: { event, preview: true } });
+    }
+
     behaviorService.trackBehavior({
       req,
       action: BEHAVIOR_ACTIONS.EVENT_VIEW,
@@ -365,16 +388,18 @@ export const getOrganizerEvents = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const company = await prisma.company.findUnique({
-      where: { userId },
-    });
-
-    if (!company) {
-      return res.status(200).json({ success: true, data: { events: [] } });
+    // Organizers see only their company's events; Super Admins see every event
+    let where = {};
+    if (req.user.role !== 'SUPER_ADMIN') {
+      const company = await prisma.company.findUnique({ where: { userId } });
+      if (!company) {
+        return res.status(200).json({ success: true, data: { events: [] } });
+      }
+      where = { companyId: company.id };
     }
 
     const events = await prisma.event.findMany({
-      where: { companyId: company.id },
+      where,
       include: {
         tiers: true,
         _count: {
@@ -441,9 +466,22 @@ export const updateEventStatus = async (req, res) => {
       }
     }
 
+    // Organizers can pause and resume live sales, cancel or complete, but going on sale needs admin approval
+    if (req.user.role !== 'SUPER_ADMIN') {
+      if (status === 'PUBLISHED' && event.status !== 'PAUSED') {
+        return res.status(403).json({ success: false, message: 'Send the event for approval: it goes on sale once a TicketLedger admin approves it.' });
+      }
+      if (status === 'PAUSED' && event.status !== 'PUBLISHED') {
+        return res.status(400).json({ success: false, message: 'Only an event that is on sale can be paused.' });
+      }
+      if (['DRAFT', 'PRELAUNCH_ANALYSIS'].includes(status) && !['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(event.status)) {
+        return res.status(400).json({ success: false, message: 'This event can’t go back to draft.' });
+      }
+    }
+
     const updated = await prisma.event.update({
       where: { id },
-      data: { status },
+      data: { status, ...(req.user.role === 'SUPER_ADMIN' && status === 'PUBLISHED' && !event.approvedAt ? { approvedAt: new Date() } : {}) },
       include: { tiers: true },
     });
 
@@ -701,18 +739,18 @@ export const publishEventWithPricing = async (req, res) => {
       }
     }
 
-    // Set status to PUBLISHED
-    const published = await prisma.event.update({
+    // Prices are saved; an event goes on sale only through admin approval (a live event stays live)
+    const published = await prisma.event.findUnique({
       where: { id },
-      data: { status: 'PUBLISHED' },
       include: { tiers: { orderBy: { price: 'asc' } } },
     });
+    const live = ['PUBLISHED', 'PAUSED'].includes(published.status);
 
     // Record audit log
     await prisma.auditLog.create({
       data: {
         userId: req.user.id,
-        action: 'EVENT_PUBLISHED_AFTER_PRELAUNCH_ANALYSIS',
+        action: live ? 'EVENT_PRICES_UPDATED' : 'EVENT_PRICES_SET_AFTER_PRELAUNCH_ANALYSIS',
         targetType: 'Event',
         targetId: id,
         details: {
@@ -725,7 +763,9 @@ export const publishEventWithPricing = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Event "${published.name}" has been PUBLISHED and is now live for public ticket sales!`,
+      message: live
+        ? `Prices for "${published.name}" are saved.`
+        : `Prices for "${published.name}" are saved. Set up seating next, then send the event for approval.`,
       data: { event: published },
     });
   } catch (error) {
@@ -885,6 +925,15 @@ export const updateEvent = async (req, res) => {
           galleryImages: { orderBy: { position: 'asc' }, select: { id: true, url: true, position: true } },
         },
       });
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: req.user.id,
+        type: 'EVENT_UPDATED',
+        title: `Event updated: ${updated.name}`,
+        message: `Your changes to “${updated.name}” were saved.`,
+      },
     });
 
     return res.status(200).json({ success: true, message: 'Event updated successfully.', data: { event: updated } });
