@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StatCard, Panel, Badge, Avatar } from '../components/dash/Studio';
+import { useDialog } from '../components/ui/DialogProvider';
 import {
   Users,
   BarChart3,
@@ -55,6 +56,7 @@ function Journey({ item }) {
 }
 
 export default function AbandonedIntentDashboard() {
+  const dialog = useDialog();
   const [searchParams, setSearchParams] = useSearchParams();
   const { token } = useAuth();
 
@@ -164,7 +166,7 @@ export default function AbandonedIntentDashboard() {
       setError('No registered users in this list to send reminders to.');
       return;
     }
-    if (!confirm(`Send recovery reminders with coupon "${discountCode}" to ${registeredUsers.length} people?`)) return;
+    if (!(await dialog.confirm({ title: 'Send recovery reminders?', message: `Reminders with the coupon “${discountCode}” go to ${registeredUsers.length} ${registeredUsers.length === 1 ? 'person' : 'people'}.`, confirmLabel: 'Send reminders', tone: 'info' }))) return;
 
     setBatchSending(true);
     setActionSuccessMsg(null);

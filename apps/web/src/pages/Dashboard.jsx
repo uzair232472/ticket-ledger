@@ -1,16 +1,17 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowDown, ArrowUpRight, Search, RefreshCw, CalendarDays, Wallet, MapPin, Tag, List } from 'lucide-react';
+import { ArrowDown, ArrowUpRight, Search, RefreshCw, CalendarDays, Wallet, MapPin, Tag, List, SlidersHorizontal, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useWishlist } from '../context/WishlistContext';
 import api from '../utils/api';
 import markUrl from '../assets/ticketledger-mark.svg';
 import HomeHeader from '../components/home/HomeHeader';
 import EventCard from '../components/home/EventCard';
 import CategoryCard from '../components/home/CategoryCard';
 import SiteFooter, { organizerAction } from '../components/home/SiteFooter';
-import EventMap, { CITY_COORDS } from '../components/home/EventMap';
+import EventMap, { CITY_COORDS, hasPin } from '../components/home/EventMap';
 import { initHomeMotion, refreshScrollScenes, TICKET_HOLE_RADIUS } from '../components/home/homeMotion';
-import { HERO_IMAGE, COLLAGE_IMAGES, STAGE_IMAGE, CATEGORIES, STRIP_COUNT, TRAIL_SIZES } from '../components/home/homeData';
+import { HERO_IMAGE, HERO_VIDEO, HERO_VIDEO_MOBILE, COLLAGE_IMAGES, STAGE_IMAGE, CATEGORIES, STRIP_COUNT, TRAIL_SIZES } from '../components/home/homeData';
 import '../components/home/home.css';
 
 const INTRO_WORDS = 'brings Pakistan’s matches, concerts and festivals into one place. Choose your seats on a live map, carry a rotating QR ticket on your phone, and resell fairly if plans change.'.split(' ');
@@ -31,9 +32,19 @@ export default function Dashboard() {
   const pageRef = useRef(null);
   const featureHeadingRef = useRef(null);
 
+  // Hero film: portrait (9:16) on phones, landscape (16:9) elsewhere; follows the window size
+  const phoneQuery = '(max-width: 767px)';
+  const [isPhone, setIsPhone] = useState(() => window.matchMedia(phoneQuery).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(phoneQuery);
+    const onChange = (e) => setIsPhone(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('loading'); // loading | ready | error
-  const [favorites, setFavorites] = useState({});
+  const { isSaved, toggle: toggleFavorite } = useWishlist();
   const [filters, setFilters] = useState({ search: '', when: '', type: '', maxPrice: '', city: '' });
 
   const loadEvents = useCallback(async () => {
@@ -103,7 +114,6 @@ export default function Dashboard() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [upcoming]);
 
-  const toggleFavorite = (id) => setFavorites((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const skipIntro = () => {
     const el = featureHeadingRef.current;
@@ -135,8 +145,25 @@ export default function Dashboard() {
       return new Date(e.date).getTime() <= limit;
     });
   }, [upcoming, filters]);
-  const unmapped = mapEvents.filter((e) => !CITY_COORDS[(e.city || '').trim().toLowerCase()]).length;
-  const setFilter = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }));
+  const unmapped = mapEvents.filter((e) => !hasPin(e) && !CITY_COORDS[(e.city || '').trim().toLowerCase()]).length;
+  // Phones: the filter bar folds into a "Filters" button; picking a value folds it back
+  const [mapFiltersOpen, setMapFiltersOpen] = useState(false);
+  const foldOnPhones = () => window.matchMedia('(max-width: 767px)').matches && setMapFiltersOpen(false);
+  // A tap outside the open filters (e.g. on the map) folds them too
+  useEffect(() => {
+    if (!mapFiltersOpen) return undefined;
+    const onDown = (e) => {
+      if (!e.target.closest('#tl-map-filters, .tl-filter-toggle')) setMapFiltersOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [mapFiltersOpen]);
+  const setFilter = (key) => (e) => {
+    setFilters((f) => ({ ...f, [key]: e.target.value }));
+    if (key !== 'search') foldOnPhones();
+  };
+  const activeFilterCount = ['search', 'when', 'type', 'maxPrice', 'city'].filter((k) => filters[k].trim()).length;
+  const clearMapFilters = () => setFilters({ search: '', when: '', type: '', maxPrice: '', city: '' });
 
   const submitSearch = (e) => {
     e.preventDefault();
@@ -167,7 +194,18 @@ export default function Dashboard() {
             </div>
 
             <div className="tl-hero-panel">
-              <img src={HERO_IMAGE.src} srcSet={HERO_IMAGE.srcSet} sizes="100vw" alt={HERO_IMAGE.alt} fetchpriority="high" onError={hideBroken} />
+              <video
+                key={isPhone ? 'portrait' : 'landscape'}
+                className="tl-hero-media"
+                src={isPhone ? HERO_VIDEO_MOBILE : HERO_VIDEO}
+                poster={HERO_IMAGE.src}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="auto"
+                aria-hidden="true"
+              />
               <div className="tl-hero-panel-shade" />
               <div className="tl-hero-panel-dim" />
             </div>
@@ -183,7 +221,6 @@ export default function Dashboard() {
                   </Link>
                 </div>
               </div>
-              <span className="tl-wordmark" aria-hidden="true">TicketLedger</span>
             </div>
 
             <div className="tl-hero-intro">
@@ -275,7 +312,7 @@ export default function Dashboard() {
                 {status === 'ready' && featured.length > 0 && (
                   <div className="tl-cards">
                     {featured.map((event, i) => (
-                      <EventCard key={event.id} event={event} index={i} isFavorite={favorites[event.id]} onToggleFavorite={toggleFavorite} />
+                      <EventCard key={event.id} event={event} index={i} isFavorite={isSaved(event.id)} onToggleFavorite={toggleFavorite} />
                     ))}
                   </div>
                 )}
@@ -303,12 +340,48 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                <form className="tl-filter-bar" onSubmit={submitSearch} role="search" aria-label="Filter events on the map">
+                <div className="tl-filter-toggle">
+                  <button
+                    type="button"
+                    className="tl-filter-toggle-btn"
+                    aria-expanded={mapFiltersOpen}
+                    aria-controls="tl-map-filters"
+                    onClick={() => setMapFiltersOpen((o) => !o)}
+                  >
+                    <SlidersHorizontal className="w-4 h-4" aria-hidden="true" /> Filters
+                    {activeFilterCount > 0 && <span className="tl-filter-toggle-count">{activeFilterCount}</span>}
+                  </button>
+                  {activeFilterCount > 0 && (
+                    <button type="button" className="tl-filter-toggle-clear" onClick={clearMapFilters}>
+                      <X className="w-4 h-4" aria-hidden="true" /> Clear filters
+                    </button>
+                  )}
+                </div>
+
+                <form
+                  id="tl-map-filters"
+                  className={`tl-filter-bar${mapFiltersOpen ? ' is-open' : ''}`}
+                  onSubmit={submitSearch}
+                  role="search"
+                  aria-label="Filter events on the map"
+                >
                   <label className="tl-pill tl-pill--wide">
                     <Search className="w-4 h-4" aria-hidden="true" />
                     <span className="tl-pill-text">
                       <span className="tl-pill-label">search</span>
-                      <input type="search" value={filters.search} onChange={setFilter('search')} placeholder="event or venue" />
+                      <input
+                        type="search"
+                        value={filters.search}
+                        onChange={setFilter('search')}
+                        onKeyDown={(e) => {
+                          // Enter on phones applies the search and folds the bar (instead of opening the list)
+                          if (e.key === 'Enter' && window.matchMedia('(max-width: 767px)').matches) {
+                            e.preventDefault();
+                            setMapFiltersOpen(false);
+                          }
+                        }}
+                        placeholder="event or venue"
+                      />
                     </span>
                   </label>
                   <label className="tl-pill">

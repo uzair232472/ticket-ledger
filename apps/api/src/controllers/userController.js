@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
+import { readRefreshCookie, sha256 } from '../services/tokenService.js';
 import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
@@ -85,6 +87,13 @@ export const getProfile = async (req, res) => {
       roleStats = { totalUsers, pendingCompanies };
     }
 
+    // Everyone can hold tickets (organizers and admins buy tickets too)
+    const [ticketCount, orderCount] = await Promise.all([
+      prisma.ticket.count({ where: { userId, status: { not: 'CANCELLED' } } }),
+      prisma.order.count({ where: { userId } }),
+    ]);
+    roleStats = { ...roleStats, ticketCount, orderCount };
+
     return res.status(200).json({
       success: true,
       data: {
@@ -129,6 +138,15 @@ export const updateProfile = async (req, res) => {
       },
     });
 
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'PROFILE_UPDATED',
+        title: 'Your profile was updated',
+        message: `Your TicketLedger account details were changed (${Object.keys(validated).join(', ') || 'details'}). If this wasn’t you, change your password right away.`,
+      },
+    });
+
     // Record audit log
     await prisma.auditLog.create({
       data: {
@@ -163,6 +181,58 @@ export const updateProfile = async (req, res) => {
 /**
  * Connect or update MetaMask wallet address
  */
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Enter your current password'),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .regex(/[A-Za-z]/, 'Password must contain at least 1 letter')
+      .regex(/\d/, 'Password must contain at least 1 number'),
+  })
+  .refine((v) => v.currentPassword !== v.newPassword, { message: 'Choose a password different from your current one.', path: ['newPassword'] });
+
+/**
+ * Change password while signed in: checks the current password, then signs out every other device
+ * (this session stays signed in). The user is notified in the app and by email.
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { id: true, passwordHash: true } });
+    if (!user?.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      return res.status(400).json({ success: false, message: 'Your current password is incorrect.' });
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(newPassword, 10) } });
+
+    // End other sessions; keep the one making this request
+    const current = readRefreshCookie(req);
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null, ...(current ? { tokenHash: { not: sha256(current) } } : {}) },
+      data: { revokedAt: new Date() },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        type: 'PASSWORD_CHANGED',
+        title: 'Your password was changed',
+        message: 'Your TicketLedger password was changed and other devices were signed out. If this wasn’t you, reset your password now and contact support.',
+      },
+    });
+    await prisma.auditLog.create({ data: { userId: user.id, action: 'PASSWORD_CHANGED', targetType: 'User', targetId: user.id, details: {} } });
+
+    return res.status(200).json({ success: true, message: 'Password changed. Other devices have been signed out.' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Invalid password' });
+    }
+    console.error('Change password failed:', error);
+    return res.status(500).json({ success: false, message: 'Failed to change the password.' });
+  }
+};
+
 export const updateWallet = async (req, res) => {
   try {
     const { walletAddress } = updateWalletSchema.parse(req.body);
@@ -220,6 +290,17 @@ export const updateWallet = async (req, res) => {
         metadata: { walletAddress: normalizedAddress },
       });
     }
+
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'WALLET_UPDATED',
+        title: normalizedAddress ? 'Wallet linked to your account' : 'Wallet unlinked from your account',
+        message: normalizedAddress
+          ? `The wallet ${normalizedAddress.slice(0, 6)}…${normalizedAddress.slice(-4)} is now linked to your TicketLedger account.`
+          : 'Your wallet was unlinked. Your tickets stay in your TicketLedger custodial vault.',
+      },
+    });
 
     return res.status(200).json({
       success: true,

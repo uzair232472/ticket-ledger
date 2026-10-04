@@ -1,5 +1,5 @@
 /* Page-entry pixel transition (PixelLoader), shown on every navigation from App */
-.tl-px { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
+.tl-px { position: fixed; inset: 0; z-index: 100; overflow: hidden; pointer-events: none; }
 .tl-px-base { position: absolute; inset: 0; background: #f2f3ef; }
 .tl-px-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols), 82px); grid-auto-rows: 82px; }
 .tl-px-cell { background: #22c55e; opacity: 0; }

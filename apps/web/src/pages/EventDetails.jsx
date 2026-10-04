@@ -3,15 +3,16 @@ import { Link, useLocation, useNavigate, useNavigationType, useParams } from 're
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
-import { ArrowLeft, ArrowRight, Bell, Check, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, Check, MapPin, RefreshCw } from 'lucide-react';
+import { googleMapsUrl } from '../utils/maps';
 import api, { trackClientBehavior } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { useWishlist } from '../context/WishlistContext';
 import { getEventVisual } from '../utils/eventMedia';
 import { EVENT_TIMEZONE_LABEL, eventDayEnd, formatEventDate, formatEventTime } from '../utils/eventTime';
 import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
-import PixelLoader from '../components/events/PixelLoader';
 import EventGallery from '../components/event-detail/EventGallery';
 import { categoryName } from '../components/home/homeData';
 import markUrl from '../assets/ticketledger-mark.svg';
@@ -25,7 +26,7 @@ const VERTICAL_EASE = CustomEase.create('tlVertical', '0.625,0.05,0,1');
 
 const RETURN_KEY = 'tl-explore-return'; // written by Explore when a tile is opened
 const LOW_AVAILABILITY = 50;
-const LOADER_MS = 1400; // PixelLoader duration; content rises as it clears
+const LOADER_MS = 1400; // App-wide PixelLoader duration; content rises as it clears
 const RELATED_COUNT = 3;
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -38,6 +39,14 @@ function getSaleState(event) {
   if (event.status === 'CANCELLED') return { key: 'cancelled', label: 'Cancelled', note: 'This event has been cancelled. Tickets are no longer on sale.' };
   if (event.status === 'COMPLETED' || eventDayEnd(event.date) < Date.now()) return { key: 'ended', label: 'Event ended', note: 'This event has already taken place.' };
   if (event.status === 'PAUSED') return { key: 'paused', label: 'Sales paused', note: 'The organizer has paused ticket sales. Check back later.' };
+  // Organizer / admin preview of an event that isn't approved yet (the API hides these from everyone else)
+  const preview = {
+    PENDING_APPROVAL: 'Preview · awaiting approval',
+    REJECTED: 'Preview · changes requested',
+    DRAFT: 'Preview · not submitted',
+    PRELAUNCH_ANALYSIS: 'Preview · not submitted',
+  }[event.status];
+  if (preview) return { key: 'unpublished', label: preview, note: 'Preview: only you and TicketLedger admins can see this page. Tickets go on sale once an admin approves the event.' };
   if (event.status !== 'PUBLISHED') return { key: 'unpublished', label: 'Not on sale yet', note: 'Tickets for this event are not on sale yet.' };
   if (!tiers.length || !event._count?.seats) return { key: 'unavailable', label: 'Tickets coming soon', note: 'Seating for this event has not been released for online booking yet.' };
   if (available === 0) return { key: 'soldout', label: 'Sold out', note: 'Every ticket has been sold.' };
@@ -96,7 +105,7 @@ function EventDetailsPage({ id }) {
   const [related, setRelated] = useState([]);
   const [resale, setResale] = useState(null);
   const [waitlist, setWaitlist] = useState({ on: false, count: null, busy: false, message: '' });
-  const [favorites, setFavorites] = useState({});
+  const { isSaved, toggle: toggleFavorite } = useWishlist();
 
   // Back to Explore: step back through history when we came from it (Explore then restores its
   // filters, batch and scroll position); otherwise open it with the last filters used.
@@ -315,7 +324,7 @@ function EventDetailsPage({ id }) {
 
   return (
     <div ref={rootRef} className="tl-home tl-detail">
-      <PixelLoader />
+      {/* The page-entry loader plays from App (every navigation) */}
       <HomeHeader pageRef={pageRef} onCategories={toCategories} tone="dark" />
 
       <div ref={pageRef}>
@@ -370,8 +379,14 @@ function EventDetailsPage({ id }) {
                       <div>
                         <dt>Location:</dt>
                         <dd>
-                          {event.venue}
-                          {event.city && !venueHasCity && <><br />{event.city}</>}
+                          <a className="tl-dt-maplink" href={googleMapsUrl({ ...event, venue: event.venue, city: event.city })} target="_blank" rel="noreferrer" title="Open in Google Maps">
+                            <MapPin className="w-4 h-4" aria-hidden="true" />
+                            <span>
+                              {event.venue}
+                              {event.city && !venueHasCity && <><br />{event.city}</>}
+                            </span>
+                            <span className="tl-dt-sr"> (opens in Google Maps)</span>
+                          </a>
                         </dd>
                       </div>
                       <div>
@@ -476,7 +491,16 @@ function EventDetailsPage({ id }) {
                     <div><dt>Category</dt><dd>{categoryName(event.type)}</dd></div>
                     <div><dt>Date</dt><dd>{formatEventDate(event.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</dd></div>
                     {time && <div><dt>Time</dt><dd>{time} <span className="tl-dt-tz">{EVENT_TIMEZONE_LABEL}</span></dd></div>}
-                    <div><dt>Venue</dt><dd>{event.venue}</dd></div>
+                    <div>
+                      <dt>Venue</dt>
+                      <dd>
+                        <a className="tl-dt-maplink" href={googleMapsUrl(event)} target="_blank" rel="noreferrer" title="Open in Google Maps">
+                          <MapPin className="w-4 h-4" aria-hidden="true" /> <span>{event.venue}</span>
+                          <span className="tl-dt-sr"> (opens in Google Maps)</span>
+                        </a>
+                        {event.locationAddress && <small className="tl-dt-addr">{event.locationAddress}</small>}
+                      </dd>
+                    </div>
                     {event.city && <div><dt>City</dt><dd>{event.city}</dd></div>}
                     {organizer && <div><dt>Organizer</dt><dd>{organizer}</dd></div>}
                   </dl>
@@ -504,8 +528,8 @@ function EventDetailsPage({ id }) {
                         <EventTile
                           event={item}
                           index={i}
-                          isFavorite={favorites[item.id]}
-                          onToggleFavorite={(fid) => setFavorites((f) => ({ ...f, [fid]: !f[fid] }))}
+                          isFavorite={isSaved(item.id)}
+                          onToggleFavorite={toggleFavorite}
                           linkState={relatedLinkState}
                         />
                       </div>

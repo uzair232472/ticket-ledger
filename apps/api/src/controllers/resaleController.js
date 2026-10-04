@@ -154,6 +154,15 @@ export const listTicketForResale = async (req, res) => {
       },
     });
 
+    await prisma.notification.create({
+      data: {
+        userId: req.user.id,
+        type: 'RESALE_LISTED',
+        title: `Ticket listed for resale: ${ticket.event.name}`,
+        message: `Your ${ticket.seat.tier.name} ticket is listed on TicketLedger fan resale for Rs. ${resalePrice.toLocaleString()}. You’ll be notified when it sells.`,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: `Ticket successfully listed on secondary marketplace for Rs. ${resalePrice.toLocaleString()} (Compliant with 110% Anti-Scalping Rule).`,
@@ -198,6 +207,15 @@ export const cancelResaleListing = async (req, res) => {
     const updated = await prisma.resaleListing.update({
       where: { id: listingId },
       data: { status: 'CANCELLED' },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: req.user.id,
+        type: 'RESALE_CANCELLED',
+        title: 'Resale listing cancelled',
+        message: 'Your resale listing was cancelled and the ticket is back in your wallet as an active pass.',
+      },
     });
 
     return res.status(200).json({

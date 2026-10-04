@@ -63,7 +63,15 @@ export const getTransporter = () => {
 /**
  * Generate formatted HTML template based on notification type
  */
-export const generateEmailHTML = ({ type, title, message, data = {} }) => {
+/** Escapes text for the HTML email body (titles and messages can carry user-written comments). */
+export const escapeHtml = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/**
+ * `action` ({ label, url }) sets the email's button; without it the button opens the ticket wallet.
+ */
+export const generateEmailHTML = ({ type, title, message, data = {}, action }) => {
+  const button = action || { label: 'Open Ticket Wallet', url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet` };
   const brandColor = '#059669'; // Emerald
   const darkBg = '#0f172a'; // Slate 900
   
@@ -109,8 +117,8 @@ export const generateEmailHTML = ({ type, title, message, data = {} }) => {
           ` : ''}
 
           <div style="text-align: center; margin-top: 24px;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet" class="btn">
-              Open Ticket Wallet
+            <a href="${button.url}" class="btn">
+              ${button.label}
             </a>
           </div>
         </div>
@@ -127,15 +135,15 @@ export const generateEmailHTML = ({ type, title, message, data = {} }) => {
 /**
  * Send an email notification using Nodemailer
  */
-export const sendEmailNotification = async ({ to, subject, type, title, message, data = {} }) => {
+export const sendEmailNotification = async ({ to, subject, type, title, message, data = {}, action }) => {
   const mailTransporter = getTransporter();
-  const htmlContent = generateEmailHTML({ type, title, message, data });
+  const htmlContent = generateEmailHTML({ type, title, message, data, action });
 
   const mailOptions = {
     from: process.env.EMAIL_FROM || '"TicketLedger Alerts" <no-reply@ticketledger.pk>',
     to,
     subject: subject || title,
-    text: `${title}\n\n${message}\n\nView details: ${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet`,
+    text: `${title}\n\n${message}\n\nView details: ${action?.url || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/wallet`}`,
     html: htmlContent,
   };
 

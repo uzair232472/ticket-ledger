@@ -161,8 +161,6 @@ export function initHomeMotion(root) {
       const stage = q('.tl-hero-stage');
       const panel = q('.tl-hero-panel');
       const centerCell = q('.tl-collage-center');
-      const wordmark = q('.tl-wordmark');
-      const headerLogo = header?.querySelector('[data-header-logo]');
       const lead = q('.tl-hero-lead');
       const intro = q('.tl-hero-intro');
       const introWords = qa('.tl-intro-word');
@@ -179,19 +177,6 @@ export function initHomeMotion(root) {
         return `inset(${t}% ${r}% ${b}% ${l}%)`;
       };
 
-      // Where the giant wordmark lands: over the name in the header logo
-      const logoTarget = () => {
-        const name = headerLogo?.querySelector('[data-logo-text]');
-        if (!name) return { x: 0, y: -200, scale: 0.2 };
-        const lr = name.getBoundingClientRect();
-        const scale = lr.width / wordmark.offsetWidth;
-        return {
-          x: lr.left - wordmark.offsetLeft,
-          y: lr.top - wordmark.offsetTop,
-          scale,
-        };
-      };
-
       const hero = gsap.timeline({
         defaults: { ease: 'none' },
         scrollTrigger: {
@@ -205,24 +190,22 @@ export function initHomeMotion(root) {
       hero
         .to(lead, { opacity: 0, y: -48, duration: 0.16, ease: 'power1.in' }, 0)
         .fromTo(panel, { clipPath: 'inset(0% 0% 0% 0%)' }, { clipPath: panelInset, duration: 0.5, ease: 'power2.inOut' }, 0.04)
-        .fromTo('.tl-hero-panel img', { scale: 1.12 }, { scale: 1, duration: 0.5, ease: 'power1.out' }, 0.04)
         .fromTo('.tl-hero-panel-dim', { opacity: 0 }, { opacity: 0.62, duration: 0.4 }, 0.16)
         .fromTo('.tl-collage-tile img', { scale: 1.3 }, { scale: 1, duration: 0.58, ease: 'power1.out' }, 0.04)
         .fromTo('.tl-collage-shade', { opacity: 0.85 }, { opacity: 0.3, duration: 0.5 }, 0.08)
-        .to(
-          wordmark,
-          { x: () => logoTarget().x, y: () => logoTarget().y, scale: () => logoTarget().scale, duration: 0.34, ease: 'power2.inOut' },
-          0.06
-        )
         // The intro composition appears inside the shrunken panel, then brightens word by word
         .fromTo(intro, { opacity: 0 }, { opacity: 1, duration: 0.08 }, 0.36);
       staggerTo(hero, introWords, { opacity: 0.14 }, { opacity: 1, duration: 0.06, stagger: 0.011 }, 0.42);
       hero
         // autoAlpha: the button is also unclickable and unfocusable until it is visible
         .fromTo(introCta, { autoAlpha: 0, y: 18 }, { autoAlpha: 1, y: 0, duration: 0.06 }, 0.42 + 0.011 * introWords.length)
-        .to(wordmark, { opacity: 0, duration: 0.04 }, 0.38)
         // Hold the finished composition before the next scene scrolls in
         .to({}, { duration: 0.18 });
+
+      // The hero film eases out of a slight zoom on larger screens; phones show it whole (never zoomed)
+      if (window.matchMedia('(min-width: 768px)').matches) {
+        hero.fromTo('.tl-hero-panel .tl-hero-media', { scale: 1.06 }, { scale: 1, duration: 0.5, ease: 'power1.out' }, 0.04);
+      }
 
       // Focus inside a faded group moves the scene to where that group is readable
       onFocusIn(lead, () => jumpToProgress(hero.scrollTrigger, 0));
@@ -359,7 +342,7 @@ export function initHomeMotion(root) {
         onToggle: (self) => setTone('closing', self.isActive),
       });
 
-      // Measurements depend on fonts (wordmark width) and on the layout switch above
+      // Measurements depend on fonts and on the layout switch above
       document.fonts?.ready.then(() => ScrollTrigger.refresh());
 
       return () => {

@@ -83,26 +83,10 @@ export const dispatchNotification = async ({
     console.warn('[NotificationService] Socket.io emission skipped/failed:', socketErr.message);
   }
 
-  // 4. Nodemailer Email Dispatch
+  // 4. Email: sent for every in-app notification by the Prisma hook in config/prisma.js (honours the
+  //    user's email preference), so it is not sent again here
   if (sendEmail && user.emailNotifications && user.email) {
-    try {
-      const emailResult = await emailService.sendEmailNotification({
-        to: user.email,
-        subject: `[TicketLedger] ${title}`,
-        type,
-        title,
-        message,
-        data,
-      });
-      responseSummary.channels.email = {
-        success: true,
-        messageId: emailResult.messageId,
-        recipient: user.email,
-      };
-    } catch (emailErr) {
-      console.warn('[NotificationService] Email delivery failed:', emailErr.message);
-      responseSummary.channels.email = { success: false, error: emailErr.message };
-    }
+    responseSummary.channels.email = { success: true, recipient: user.email, via: 'notification hook' };
   }
 
   // 5. Firebase Cloud Messaging (FCM) Push Abstraction

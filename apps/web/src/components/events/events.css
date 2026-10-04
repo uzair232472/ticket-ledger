@@ -254,14 +254,20 @@
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 2px;
-  background: rgba(242, 243, 239, 0.9);
-  color: #0b0b0b;
+  background: none;
+  color: #ffffff;
   cursor: pointer;
-  transition: background-color 0.2s ease;
 }
-.tl-tile-fav:hover { background: #fff; }
-.tl-tile-fav[aria-pressed='true'] { color: #16a34a; }
+/* Just the heart: white with a soft shadow so it reads on any photo */
+.tl-tile-fav svg { width: 26px; height: 26px; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55)); transition: transform 0.2s ease, color 0.2s ease; }
+.tl-tile-fav:hover svg { transform: scale(1.12); }
+.tl-tile-fav:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; border-radius: 4px; }
+.tl-tile-fav:hover svg { color: #e11d48; }
+/* Saved (wishlist): a red heart with a short pop */
+.tl-tile-fav[aria-pressed='true'] { color: #e11d48; }
+.tl-tile-fav[aria-pressed='true'] svg { animation: tl-fav-pop 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes tl-fav-pop { 0% { transform: scale(0.6); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .tl-tile-fav[aria-pressed='true'] svg { animation: none; } }
 
 /* Loading placeholders keep the final layout */
 .tl-tile--skeleton { animation: none; }
@@ -322,3 +328,10 @@
   .tl-tile, .tl-ex-grid.is-leaving .tl-tile { animation: none; transition: none; }
   .tl-tile-media, .tl-tile-img { transition: none; }
 }
+
+/* ---------- Wishlist (same layout as Explore Events) ---------- */
+.tl-wl-count { display: inline-flex; align-items: center; gap: 8px; justify-self: end; padding-bottom: 6px; font: 500 12px/1 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.04em; }
+.tl-wl-count svg { color: #e11d48; }
+.tl-wl-empty-icon { display: grid; place-items: center; width: 72px; height: 72px; border: 1px solid rgba(11, 11, 11, 0.14); border-radius: 50%; color: #e11d48; }
+.tl-wl-hint { margin-top: -8px; font-size: 14px; color: rgba(11, 11, 11, 0.6); }
+@media (max-width: 767px) { .tl-wl-count { justify-self: start; } }

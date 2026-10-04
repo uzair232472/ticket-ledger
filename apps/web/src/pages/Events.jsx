@@ -5,6 +5,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Search, X, RefreshCw, ChevronDown, Check } from 'lucide-react';
 import api, { trackClientBehavior } from '../utils/api';
 import HomeHeader from '../components/home/HomeHeader';
+import { useWishlist } from '../context/WishlistContext';
 import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
 import { ALL_CATEGORIES, categoryName } from '../components/home/homeData';
@@ -83,7 +84,7 @@ export default function Events() {
   const [leaving, setLeaving] = useState(false);
   const [version, setVersion] = useState(0);
   const [visible, setVisible] = useState(saved?.visible || BATCH);
-  const [favorites, setFavorites] = useState({});
+  const { isSaved, toggle: toggleFavorite } = useWishlist();
 
   const setFilter = useCallback(
     (key, value) => {
@@ -360,8 +361,8 @@ export default function Events() {
                   key={event.id}
                   event={event}
                   index={i}
-                  isFavorite={favorites[event.id]}
-                  onToggleFavorite={(id) => setFavorites((f) => ({ ...f, [id]: !f[id] }))}
+                  isFavorite={isSaved(event.id)}
+                  onToggleFavorite={toggleFavorite}
                   onOpen={rememberPosition}
                   linkState={EXPLORE_LINK_STATE}
                 />

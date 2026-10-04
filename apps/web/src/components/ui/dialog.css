@@ -1,0 +1,104 @@
+/*
+ * In-app dialogs (DialogProvider): replace the browser's alert / confirm. Three themes follow the page:
+ * dark (home, events, account pages), studio (organizer / admin consoles), paper (booking flow).
+ */
+.tl-dlg-overlay {
+  --dlg-bg: #0f2117;
+  --dlg-line: rgba(74, 222, 128, 0.3);
+  --dlg-text: #f3f7f4;
+  --dlg-muted: rgba(243, 247, 244, 0.72);
+  --dlg-btn: #22c55e;
+  --dlg-btn-text: #052e16;
+  --dlg-ghost-line: rgba(255, 255, 255, 0.25);
+  --dlg-scrim: rgba(2, 8, 5, 0.6);
+  --dlg-radius: 16px;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--dlg-scrim);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: tl-dlg-fade 0.2s ease;
+}
+.tl-dlg--studio {
+  --dlg-bg: #ffffff;
+  --dlg-line: #e2e8e1;
+  --dlg-text: #0b1a10;
+  --dlg-muted: #5b6b61;
+  --dlg-btn: #15803d;
+  --dlg-btn-text: #ffffff;
+  --dlg-ghost-line: #d9e3d8;
+  --dlg-scrim: rgba(11, 26, 16, 0.35);
+  --dlg-radius: 14px;
+}
+.tl-dlg--paper {
+  --dlg-bg: #fbfbf9;
+  --dlg-line: rgba(11, 11, 11, 0.16);
+  --dlg-text: #0b0b0b;
+  --dlg-muted: rgba(11, 11, 11, 0.62);
+  --dlg-btn: #0b0b0b;
+  --dlg-btn-text: #ffffff;
+  --dlg-ghost-line: rgba(11, 11, 11, 0.28);
+  --dlg-scrim: rgba(11, 11, 11, 0.35);
+  --dlg-radius: 4px;
+}
+
+.tl-dlg {
+  width: min(440px, 100%);
+  padding: 26px 24px 20px;
+  border: 1px solid var(--dlg-line);
+  border-radius: var(--dlg-radius);
+  background: var(--dlg-bg);
+  color: var(--dlg-text);
+  text-align: center;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+  animation: tl-dlg-rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tl-dlg-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.14);
+  color: #16a34a;
+}
+.tl-dlg.is-error .tl-dlg-icon { background: rgba(225, 29, 72, 0.12); color: #e11d48; }
+.tl-dlg.is-warning .tl-dlg-icon { background: rgba(217, 119, 6, 0.14); color: #d97706; }
+.tl-dlg.is-info .tl-dlg-icon { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+.tl-dlg--dark .tl-dlg.is-success .tl-dlg-icon { color: #4ade80; }
+.tl-dlg-title { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+.tl-dlg--paper .tl-dlg-title { font-weight: 600; letter-spacing: -0.03em; }
+.tl-dlg-msg { margin-top: 8px; font-size: 14.5px; line-height: 1.55; color: var(--dlg-muted); white-space: pre-line; overflow-wrap: anywhere; }
+.tl-dlg-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+.tl-dlg-btn {
+  flex: 1 1 140px;
+  min-height: 46px;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--dlg-radius) - 6px);
+  background: var(--dlg-btn);
+  color: var(--dlg-btn-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s ease, background-color 0.15s ease;
+}
+.tl-dlg--paper .tl-dlg-btn { font-family: 'JetBrains Mono', monospace; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+.tl-dlg-btn:hover { filter: brightness(1.08); }
+.tl-dlg-btn:focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
+.tl-dlg-btn--ghost { background: transparent; border-color: var(--dlg-ghost-line); color: var(--dlg-text); }
+.tl-dlg-btn--danger { background: #e11d48; color: #fff; }
+
+@keyframes tl-dlg-fade { from { opacity: 0; } }
+@keyframes tl-dlg-rise { from { opacity: 0; transform: translateY(16px) scale(0.97); } }
+@media (prefers-reduced-motion: reduce) { .tl-dlg-overlay, .tl-dlg { animation: none; } }
+@media (max-width: 479px) {
+  .tl-dlg { padding: 22px 18px 16px; }
+  .tl-dlg-btn { flex-basis: 100%; }
+}

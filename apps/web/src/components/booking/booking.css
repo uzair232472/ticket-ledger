@@ -121,23 +121,28 @@ fieldset.tl-bk-panel { min-width: 0; margin-inline: 0; }
 
 /* Inside a section: minimal "Full venue" link and the standing-zone quantity picker, over the map's
    top-left corner (fixed to the map viewport, clear of the zoom controls bottom-right) */
-.tl-vb-mapnav { position: absolute; left: 0; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.tl-vb-mapnav { position: absolute; left: 10px; top: 10px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+/* Always-visible way back from a section to the whole plan */
 .tl-vb-backlink {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 0 10px 0 6px;
+  min-height: 44px;
+  padding: 0 16px 0 12px;
   border: 0;
-  border-radius: 2px;
-  background: rgba(242, 243, 239, 0.88);
-  color: var(--bk-ink);
-  font: 500 12px/1 var(--bk-mono);
+  border-radius: 8px;
+  background: #16a34a;
+  color: #fff;
+  font: 700 12px/1 var(--bk-mono);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  box-shadow: 0 6px 18px rgba(22, 163, 74, 0.35);
   cursor: pointer;
+  animation: tl-vb-back-in 0.3s ease both;
 }
-.tl-vb-backlink:hover { text-decoration: underline; text-underline-offset: 4px; }
+.tl-vb-backlink:hover { background: #15803d; }
+.tl-vb-backlink:focus-visible { outline: 2px solid #0b0b0b; outline-offset: 2px; }
+@keyframes tl-vb-back-in { from { opacity: 0; transform: translateY(-6px); } }
 .tl-vb-stepper { display: flex; align-items: center; gap: 6px; padding: 2px; border-radius: 2px; background: rgba(242, 243, 239, 0.88); }
 .tl-vb-stepper button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 2px; background: var(--bk-ink); color: #fff; cursor: pointer; }
 .tl-vb-stepper button:disabled { opacity: 0.35; cursor: not-allowed; }

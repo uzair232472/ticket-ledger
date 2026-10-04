@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
 import { HERO_IMAGE } from '../components/home/homeData';
+import WalletPass from '../components/account/WalletPass';
+import '../components/account/passes.css';
+import { useDialog } from '../components/ui/DialogProvider';
 import {
   Wallet,
   QrCode,
@@ -37,6 +40,7 @@ import {
 const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
 
 export default function DigitalWallet() {
+  const dialog = useDialog();
   const { user, token } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +144,7 @@ export default function DigitalWallet() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err) {
-      alert(`Download Error: ${err.message}`);
+      dialog.alert({ tone: 'error', title: 'Download failed', message: err.message });
     } finally {
       setDownloadingId(null);
     }
@@ -204,6 +208,7 @@ export default function DigitalWallet() {
       }
 
       setSuccessMessage(`✓ Ticket successfully transferred to ${data.data?.newOwner?.name || recipientEmail}! Gate pass has been revoked and reissued.`);
+      dialog.alert({ tone: 'success', title: 'Ticket transferred', message: `The ticket now belongs to ${data.data?.newOwner?.name || recipientEmail}. Your old QR code no longer works; they’ve received a new one.` });
       setTransferModalTicket(null);
       setRecipientEmail('');
       fetchWallet();
@@ -250,6 +255,7 @@ export default function DigitalWallet() {
       }
 
       setSuccessMessage(`✓ Ticket listed on secondary marketplace for Rs. ${price.toLocaleString()}! Fans on the waitlist have received instant notifications.`);
+      dialog.alert({ tone: 'success', title: 'Listed for resale', message: `Your ticket is on fan resale for Rs. ${price.toLocaleString()}. We’ll email you when it sells.` });
       setResaleModalTicket(null);
       setResalePriceInput('');
       fetchWallet();
@@ -464,329 +470,32 @@ export default function DigitalWallet() {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {displayedTickets.map((t) => {
-                const isActive = t.status === 'ACTIVE';
-                const isResoldOrTransferred = t.status === 'RESOLD' || t.status === 'TRANSFERRED';
-                const isScanned = t.status === 'SCANNED';
-                const isPayloadExpanded = expandedPayloadId === t.id;
-                const origPrice = Number(t.price);
-                const maxResaleCeiling = Math.floor(origPrice * 1.10);
-
-                return (
-                  <div
-                    key={t.id}
-                    data-reveal
-                    className={`rounded-3xl bg-white border ${isActive
-                      ? 'border-emerald-300 shadow-sm hover:shadow-md'
-                      : isScanned
-                        ? 'border-slate-200 opacity-80'
-                        : 'border-rose-200 opacity-80'
-                      } overflow-hidden transition-all flex flex-col`}
-                  >
-                    {/* Top Status & Event Banner */}
-                    <div className="relative p-5 bg-slate-50/80 border-b border-slate-100 flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${isActive
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                            : isScanned
-                              ? 'bg-slate-200 text-slate-700 border border-slate-300'
-                              : 'bg-rose-100 text-rose-800 border border-rose-300'
-                            }`}>
-                            {t.status}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono">
-                            Pass #{t.id.slice(0, 8)}
-                          </span>
-                        </div>
-                        <h3 className="text-lg font-bold text-slate-900 leading-tight mt-1">
-                          {t.event?.name}
-                        </h3>
-                        <div className="flex items-center gap-2 text-xs text-slate-500 pt-0.5">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                            {t.event?.venue}, {t.event?.city}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {t.event?.date ? new Date(t.event.date).toLocaleDateString('en-PK', { dateStyle: 'medium' }) : 'TBD'} • {t.event?.time}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* NFT Ownership Badge */}
-                      <div className="text-right shrink-0">
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-[11px] font-bold">
-                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                          <span>NFT #{t.nft?.tokenId || '1024'}</span>
-                        </div>
-                        <div className="text-[9px] text-purple-600 mt-1 font-mono">
-                          Polygon Amoy Verified
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Middle Section: Seat Info & QR Pass Side-by-Side */}
-                    <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
-
-                      {/* Left: Seat Coordinates & Pricing */}
-                      <div className="space-y-4">
-                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-2.5">
-                          <div className="flex justify-between items-center text-slate-600">
-                            <span>Category / Tier</span>
-                            <span className="font-bold text-slate-900">{t.seat?.tierName}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-slate-600">
-                            <span>Section</span>
-                            <span className="font-semibold text-slate-800">{t.seat?.section}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-slate-600">
-                            <span>Row & Seat #</span>
-                            <span className="font-mono font-bold text-emerald-700 text-sm">
-                              Row {t.seat?.row} • #{t.seat?.seatNumber}
-                            </span>
-                          </div>
-                          <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-                            <span className="text-slate-600 text-xs">Paid Face Value:</span>
-                            <span className="font-mono font-black text-slate-900 text-sm">
-                              PKR {origPrice.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* On-Chain Web3 Details */}
-                        <div className="p-3 rounded-2xl bg-purple-50/50 border border-purple-100 text-[11px] font-mono space-y-1.5">
-                          <div className="flex justify-between items-center text-slate-600">
-                            <span>Contract:</span>
-                            <span className="text-purple-700 truncate max-w-[130px]">
-                              {t.nft?.contractAddress}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-slate-600">
-                            <span>Tx Hash:</span>
-                            <div className="flex items-center gap-1">
-                              <span className="text-purple-700 truncate max-w-[110px]">
-                                {t.nft?.txHash}
-                              </span>
-                              <button
-                                onClick={() => copyToClipboard(t.nft?.txHash, `tx-${t.id}`)}
-                                className="text-slate-400 hover:text-slate-800"
-                                title="Copy Tx Hash"
-                              >
-                                {copiedField === `tx-${t.id}` ? (
-                                  <Check className="w-3 h-3 text-emerald-600" />
-                                ) : (
-                                  <Copy className="w-3 h-3" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                          <div className="flex justify-between items-center text-slate-600">
-                            <span>Owner Wallet:</span>
-                            <span className="text-slate-700 truncate max-w-[120px]">
-                              {t.nft?.ownerWallet}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right: Cryptographic QR Code Gate Pass */}
-                      <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50 border border-slate-200 relative group">
-                        {isScanned && (
-                          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-2xl z-10 flex flex-col items-center justify-center p-4 text-center">
-                            <CheckCircle2 className="w-9 h-9 text-slate-500 mb-1" />
-                            <div className="text-xs font-bold text-slate-800">PASS ALREADY SCANNED</div>
-                            <div className="text-[10px] text-slate-500 mt-1">
-                              Admitted at turnstile gate. Cannot be transferred or reused.
-                            </div>
-                          </div>
-                        )}
-
-                        {isResoldOrTransferred && (
-                          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-2xl z-10 flex flex-col items-center justify-center p-4 text-center">
-                            <AlertTriangle className="w-8 h-8 text-rose-500 mb-1" />
-                            <div className="text-xs font-bold text-rose-700">QR INVALIDATED</div>
-                            <div className="text-[10px] text-slate-500 mt-1">
-                              This ticket was resold/transferred. The gate pass nonce has expired.
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="mb-2 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-bold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                          <span>Rotating TOTP • Refreshes in {secondsLeft}s</span>
-                        </div>
-
-                        <div className="tl-qr-frame bg-white p-3 rounded-2xl shadow-sm border border-slate-200">
-                          <img
-                            src={t.qr?.qrCodeDataUrl}
-                            alt="Ticket QR Code"
-                            className="w-40 h-40 object-contain"
-                          />
-                        </div>
-
-                        <div className="text-center mt-2.5 space-y-0.5">
-                          <div className="text-[11px] font-bold text-slate-900 flex items-center justify-center gap-1">
-                            <QrCode className="w-3.5 h-3.5 text-[#16a34a]" />
-                            <span>Scan at Stadium Gate</span>
-                          </div>
-                          <div className="text-[9px] text-slate-500 font-mono">
-                            Nonce: {t.qr?.nonce?.slice(0, 16)}...
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expandable Signed QR Cryptographic Payload Accordion */}
-                    <div className="px-6 py-2.5 bg-slate-50 border-t border-slate-100 text-xs">
-                      <button
-                        onClick={() => setExpandedPayloadId(isPayloadExpanded ? null : t.id)}
-                        className="w-full flex items-center justify-between text-slate-600 hover:text-slate-900 transition py-1"
-                      >
-                        <span className="flex items-center gap-1.5 font-semibold text-[11px] text-emerald-800">
-                          <Lock className="w-3 h-3 text-emerald-600" />
-                          <span>QR Payload Details ({isPayloadExpanded ? 'Hide' : 'Show Signed JSON'})</span>
-                        </span>
-                        {isPayloadExpanded ? (
-                          <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
-                        ) : (
-                          <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                        )}
-                      </button>
-
-                      {isPayloadExpanded && (
-                        <div className="mt-2 p-3 rounded-xl bg-white border border-slate-200 font-mono text-[10px] text-slate-700 space-y-1 overflow-x-auto">
-                          <div><span className="text-emerald-700 font-bold">"ticketId":</span> "{t.qr?.payload?.ticketId}"</div>
-                          <div><span className="text-emerald-700 font-bold">"eventId":</span> "{t.qr?.payload?.eventId}"</div>
-                          <div><span className="text-emerald-700 font-bold">"tokenId":</span> {t.qr?.payload?.tokenId}</div>
-                          <div><span className="text-emerald-700 font-bold">"nonce":</span> "{t.qr?.payload?.nonce}"</div>
-                          <div><span className="text-emerald-700 font-bold">"issuedAt":</span> {t.qr?.payload?.issuedAt}</div>
-                          <div><span className="text-emerald-700 font-bold">"qrVersion":</span> "{t.qr?.payload?.qrVersion}"</div>
-                          <div><span className="text-purple-700 font-bold">"signature":</span> "{t.qr?.payload?.signature}"</div>
-                          <div className="pt-2 text-[9px] text-slate-500 font-sans flex items-center gap-1">
-                            <Info className="w-3 h-3 text-slate-400" />
-                            HMAC-SHA256 signature generated by server secret key. Any alteration invalidates gate pass.
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Gate Scan Simulation Banner if triggered */}
-                    {qrVerifyResult && qrVerifyResult.ticketId === t.id && (
-                      <div className={`p-3.5 mx-6 my-2 rounded-2xl text-xs flex items-center gap-3 ${qrVerifyResult.valid
-                        ? 'bg-emerald-50 border border-emerald-300 text-emerald-900'
-                        : 'bg-rose-50 border border-rose-300 text-rose-900'
-                        }`}>
-                        {qrVerifyResult.valid ? (
-                          <CheckCircle2 className="w-5 h-5 text-[#16a34a] shrink-0" />
-                        ) : (
-                          <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
-                        )}
-                        <div>
-                          <div className="font-bold">{qrVerifyResult.message}</div>
-                          <div className="text-[10px] text-slate-600 font-mono">
-                            {qrVerifyResult.valid
-                              ? 'Turnstile green light activated. Seat coordinates confirmed.'
-                              : `Rejection code: ${qrVerifyResult.reason}`}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Module 11 Action Bar: Direct Transfer, Resale & Provenance */}
-                    <div className="p-4 bg-slate-50/80 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 px-6">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {isActive ? (
-                          <>
-                            {/* Prominent Direct Transfer Button */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTransferModalTicket(t);
-                                setRecipientEmail('');
-                                setTransferError('');
-                              }}
-                              className="btn-eventfrog text-xs py-2 px-4 shadow-sm"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                              <span>Transfer Pass</span>
-                            </button>
-
-                            {/* List for Secondary Resale */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setResaleModalTicket(t);
-                                setResalePriceInput(String(t.price));
-                                setResaleError('');
-                              }}
-                              className="py-2 px-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-bold text-xs transition flex items-center gap-1.5 shadow-sm"
-                            >
-                              <Tag className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Resale (≤110%)</span>
-                            </button>
-                          </>
-                        ) : (
-                          <div className="py-1.5 px-3 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 text-xs font-semibold flex items-center gap-1.5 cursor-not-allowed">
-                            <Lock className="w-3 h-3 text-slate-400" />
-                            <span>Cannot Transfer ({t.status})</span>
-                          </div>
-                        )}
-
-                        {/* Provenance / Custody Chain */}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenTicketHistory(t)}
-                          className="py-2 px-3 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs transition flex items-center gap-1 font-semibold shadow-sm"
-                          title="View complete transfer & resale chain"
-                        >
-                          <History className="w-3.5 h-3.5 text-slate-500" />
-                          <span>History</span>
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {/* Download PDF using PDFKit */}
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadPDF(t)}
-                          disabled={downloadingId === t.id}
-                          className="py-2 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition flex items-center gap-1.5 disabled:opacity-50 shadow-sm"
-                        >
-                          {downloadingId === t.id ? (
-                            <>
-                              <RefreshCw className="w-3 h-3 animate-spin" />
-                              <span>PDF...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-3 h-3" />
-                              <span>PDF Pass</span>
-                            </>
-                          )}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSimulateGateScan(t)}
-                          disabled={verifyingId === t.id}
-                          className="p-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 transition shadow-sm"
-                          title="Simulate Turnstile Gate Scan"
-                        >
-                          {verifyingId === t.id ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="tl-passes">
+              {displayedTickets.map((t) => (
+                <WalletPass
+                  key={t.id}
+                  ticket={t}
+                  secondsLeft={secondsLeft}
+                  downloading={downloadingId === t.id}
+                  verifying={verifyingId === t.id}
+                  verifyResult={qrVerifyResult?.ticketId === t.id ? qrVerifyResult : null}
+                  payloadOpen={expandedPayloadId === t.id}
+                  onDownload={() => handleDownloadPDF(t)}
+                  onTransfer={() => {
+                    setTransferModalTicket(t);
+                    setRecipientEmail('');
+                    setTransferError('');
+                  }}
+                  onResale={() => {
+                    setResaleModalTicket(t);
+                    setResalePriceInput(String(t.price));
+                    setResaleError('');
+                  }}
+                  onHistory={() => handleOpenTicketHistory(t)}
+                  onVerify={() => handleSimulateGateScan(t)}
+                  onTogglePayload={() => setExpandedPayloadId(expandedPayloadId === t.id ? null : t.id)}
+                />
+              ))}
             </div>
           </div>
         )}
