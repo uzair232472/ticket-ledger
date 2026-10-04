@@ -29,6 +29,7 @@ import Notifications from './pages/Notifications';
 import NotificationBell from './components/NotificationBell';
 import HoldBar from './components/HoldBar';
 import PixelLoader from './components/events/PixelLoader';
+import SplashScreen from './components/motion/SplashScreen';
 import BehaviorProfile from './pages/BehaviorProfile';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
@@ -480,6 +481,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <SplashScreen />
         <ScrollToTop />
         <RouteLoader />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
