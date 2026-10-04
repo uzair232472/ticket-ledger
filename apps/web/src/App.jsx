@@ -1,6 +1,7 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, useNavigationType, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import NavbarCart from './components/cart/NavbarCart';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -21,6 +22,7 @@ import BookingSuccess from './pages/BookingSuccess';
 import MyBookings from './pages/MyBookings';
 import MyNFTTickets from './pages/MyNFTTickets';
 import ResaleMarketplace from './pages/ResaleMarketplace';
+import Cart from './pages/Cart';
 import DigitalWallet from './pages/DigitalWallet';
 import GateScanner from './pages/GateScanner';
 import AdminFraudWatchlist from './pages/AdminFraudWatchlist';
@@ -29,6 +31,7 @@ import Notifications from './pages/Notifications';
 import NotificationBell from './components/NotificationBell';
 import HoldBar from './components/HoldBar';
 import PixelLoader from './components/events/PixelLoader';
+import SplashScreen from './components/motion/SplashScreen';
 import BehaviorProfile from './pages/BehaviorProfile';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
@@ -73,6 +76,30 @@ function Navbar() {
   const [adminMenu, setAdminMenu] = useState(false);
   const [userMenu, setUserMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [scrollHidden, setScrollHidden] = useState(false);
+  const lastScrollYRef = useRef(0);
+
+  // Smooth auto-hide navbar when scrolling down; only reveal when getting back to the top
+  useEffect(() => {
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const currentY = window.scrollY;
+        if (organizerMenu || adminMenu || userMenu || currentY <= 80) {
+          setScrollHidden(false);
+        } else if (currentY > 120) {
+          setScrollHidden(true);
+        }
+        lastScrollYRef.current = currentY;
+        ticking = false;
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [organizerMenu, adminMenu, userMenu]);
 
   const handleLogout = async () => {
     setUserMenu(false);
@@ -94,7 +121,7 @@ function Navbar() {
   if (location.pathname === '/') return null;
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+    <header className={`sticky top-0 z-50 bg-white border-b border-slate-200/90 shadow-[0_1px_4px_rgba(0,0,0,0.04)] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${scrollHidden ? '-translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between gap-4">
 
         {/* Left: Brand Logo & Integrated Header Search (matching Eventfrog in Image 3) */}
@@ -263,6 +290,9 @@ function Navbar() {
             Create event
           </Link>
 
+          {/* Ticket Cart Button for held seats */}
+          <NavbarCart />
+
           {/* Notification Bell */}
           {isAuthenticated && <NotificationBell />}
 
@@ -423,8 +453,8 @@ function Footer() {
 function SiteChrome({ children }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
-  // Pages with their own full-bleed header, menu and footer (including the whole booking flow)
-  const bookingFlow = /^\/(events\/[^/]+\/(seats|checkout)|checkout|booking-success\/[^/]+|bookings\/[^/]+\/confirmation)\/?$/.test(pathname);
+  // Pages with their own full-bleed header, menu and footer (including the whole booking flow and cart)
+  const bookingFlow = /^\/(events\/[^/]+\/(seats|checkout)|checkout|cart|booking-success\/[^/]+|bookings\/[^/]+\/confirmation)\/?$/.test(pathname);
   // Fan resale and the ticket pages have their own chrome for the roles that can open them; other roles keep
   // this navbar around the access notice
   const customerPage = /^\/(resale|wallet|my-nfts|my-bookings)\/?$/.test(pathname) && ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role);
@@ -461,6 +491,7 @@ export default function App() {
         <DialogProvider>
         <WishlistProvider>
         <SelectEnhancer />
+        <SplashScreen />
         <ScrollToTop />
         <RouteLoader />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
@@ -475,6 +506,7 @@ export default function App() {
               <Route path="/events/:id/seats" element={<SeatMap />} />
               <Route path="/events/:id/checkout" element={<Checkout />} />
               <Route path="/checkout" element={<Checkout />} />
+              <Route path="/cart" element={<Cart />} />
               <Route path="/booking-success/:orderId" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/booking-success/:id" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/bookings/:orderId/confirmation" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />

@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
-import { layoutInventory, validateLayout } from '../../../venue-core/src/index.js';
+import { buildTemplate, layoutInventory, suggestTemplate, validateLayout } from '../../../venue-core/src/index.js';
 
 /** Existing reservation length (10 minutes) and per-booking ticket limit, unchanged. */
 export const HOLD_SECONDS = 600;
@@ -238,6 +238,104 @@ export async function releaseHolds(eventId, keys, userId) {
   return { released: releasing.length, inCheckout };
 }
 
+/**
+ * Automatically provisions and publishes a venue layout for an event based on its event type
+ * and ticket tiers if no published layout exists.
+ */
+export async function autoProvisionVenueLayout(eventId) {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: { tiers: true },
+  });
+  if (!event || !event.tiers || event.tiers.length === 0) return null;
+
+  const templateKey = suggestTemplate(event.type);
+  const layoutData = buildTemplate(templateKey, { tiers: event.tiers });
+  const check = validateLayout(layoutData, { tierIds: event.tiers.map((t) => t.id), requireTiers: true });
+  if (check.errors.length) return null;
+
+  const inventory = layoutInventory(layoutData);
+
+  const existingTickets = await prisma.ticket.findMany({
+    where: { eventId },
+    include: { seat: true },
+  });
+
+  await prisma.venueLayout.updateMany({
+    where: { eventId, status: 'PUBLISHED' },
+    data: { status: 'ARCHIVED' },
+  });
+
+  const layout = await prisma.venueLayout.create({
+    data: {
+      eventId,
+      status: 'PUBLISHED',
+      version: 1,
+      template: templateKey,
+      data: layoutData,
+      publishedAt: new Date(),
+    },
+  });
+
+  await prisma.seat.deleteMany({
+    where: { eventId, ticket: { is: null } },
+  });
+
+  const rows = inventory.map((w) => ({
+    eventId,
+    tierId: w.tierId,
+    section: w.sectionName,
+    row: w.row,
+    seatNumber: w.number,
+    status: w.blocked ? 'BLOCKED' : 'AVAILABLE',
+    layoutKey: w.key,
+    sectionKey: w.sectionId,
+    kind: w.kind,
+    tableKey: w.tableKey,
+    wholeTable: w.wholeTable,
+  }));
+
+  for (let i = 0; i < rows.length; i += 5000) {
+    await prisma.seat.createMany({ data: rows.slice(i, i + 5000) });
+  }
+
+  if (existingTickets.length > 0) {
+    const createdSeats = await prisma.seat.findMany({
+      where: { eventId, layoutKey: { not: null }, kind: 'SEAT' },
+      take: existingTickets.length * 2,
+    });
+    for (let i = 0; i < existingTickets.length; i++) {
+      const ticket = existingTickets[i];
+      const targetSeat = createdSeats[i];
+      if (targetSeat) {
+        const oldSeatId = ticket.seatId;
+        await prisma.seat.update({
+          where: { id: targetSeat.id },
+          data: { status: 'SOLD' },
+        });
+        await prisma.ticket.update({
+          where: { id: ticket.id },
+          data: { seatId: targetSeat.id },
+        });
+        if (oldSeatId && oldSeatId !== targetSeat.id) {
+          await prisma.seat.delete({ where: { id: oldSeatId } }).catch(() => {});
+        }
+      }
+    }
+  }
+
+  for (const tier of event.tiers) {
+    const total = await prisma.seat.count({ where: { eventId, tierId: tier.id, status: { not: 'BLOCKED' } } });
+    const taken = await prisma.seat.count({ where: { eventId, tierId: tier.id, ticket: { isNot: null } } });
+    await prisma.ticketTier.update({
+      where: { id: tier.id },
+      data: { totalQuantity: total, availableQuantity: Math.max(0, total - taken) },
+    });
+  }
+
+  return layout;
+}
+
 /** Published plan plus live availability. Only non-free seats are listed (by key) to keep it small. */
 export async function getAvailability(eventId, userId) {
   const event = await prisma.event.findUnique({
@@ -286,18 +384,53 @@ export async function getAvailability(eventId, userId) {
 
 /**
  * The caller's live seat holds across every event, grouped per event with the earliest expiry
- * (drives the site-wide "My tickets" countdown).
+ * and seat details (drives the cart, checkout link, and site-wide "My tickets" countdown).
  */
 export async function activeHoldsForUser(userId) {
   const now = new Date();
   const seats = await prisma.seat.findMany({
     where: { status: 'LOCKED', lockedByUserId: userId, lockedUntil: { gt: now } },
-    select: { eventId: true, lockedUntil: true, event: { select: { name: true } } },
+    select: {
+      id: true,
+      layoutKey: true,
+      section: true,
+      row: true,
+      seatNumber: true,
+      eventId: true,
+      lockedUntil: true,
+      event: { select: { id: true, name: true, city: true, venue: true, bannerUrl: true, date: true, time: true } },
+      tier: { select: { id: true, name: true, price: true } },
+    },
+    orderBy: { lockedUntil: 'asc' },
   });
   const byEvent = new Map();
   for (const s of seats) {
-    const h = byEvent.get(s.eventId) || { eventId: s.eventId, eventName: s.event?.name || 'Your event', count: 0, expiresAt: s.lockedUntil };
+    const h = byEvent.get(s.eventId) || {
+      eventId: s.eventId,
+      eventName: s.event?.name || 'Your event',
+      venue: s.event?.venue,
+      city: s.event?.city,
+      bannerUrl: s.event?.bannerUrl,
+      date: s.event?.date,
+      time: s.event?.time,
+      count: 0,
+      totalPrice: 0,
+      seats: [],
+      keys: [],
+      expiresAt: s.lockedUntil,
+    };
     h.count++;
+    h.totalPrice += Number(s.tier?.price || 0);
+    h.seats.push({
+      id: s.id,
+      key: s.layoutKey,
+      section: s.section,
+      row: s.row,
+      seatNumber: s.seatNumber,
+      tierName: s.tier?.name,
+      price: s.tier?.price,
+    });
+    if (s.layoutKey) h.keys.push(s.layoutKey);
     if (s.lockedUntil < h.expiresAt) h.expiresAt = s.lockedUntil;
     byEvent.set(s.eventId, h);
   }

@@ -103,6 +103,30 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   const timelineRef = useRef(null);
   const savedScrollRef = useRef(0);
   const restoreScrollRef = useRef(true);
+  const [scrollHidden, setScrollHidden] = useState(false);
+  const lastScrollYRef = useRef(0);
+
+  // Smooth auto-hide header when scrolling down; only reveal when getting back to the top
+  useEffect(() => {
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        const currentY = window.scrollY;
+        if (open || currentY <= 80) {
+          setScrollHidden(false);
+        } else if (currentY > 120) {
+          setScrollHidden(true);
+        }
+        lastScrollYRef.current = currentY;
+        ticking = false;
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [open]);
 
   const goToCategories = useCallback(() => {
     restoreScrollRef.current = true;
@@ -234,24 +258,24 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
 
   return (
     <>
-      <header ref={headerRef} className="tl-header" data-tone={tone} data-home-header>
+      <header ref={headerRef} className="tl-header" data-tone={tone} data-home-header data-scroll-hidden={scrollHidden ? 'true' : 'false'}>
         <Link to="/" className="tl-header-logo" aria-label="TicketLedger home" data-header-logo>
           <BrandLogo />
         </Link>
 
         <div className="tl-header-actions">
-        {isAuthenticated && <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />}
-        <button
-          ref={buttonRef}
-          type="button"
-          className="tl-menu-btn"
-          aria-expanded={open}
-          aria-controls="tl-site-menu"
-          aria-label={open ? 'Close menu' : 'Open menu'}
-          onClick={() => (open ? close(true) : setOpen(true))}
-        >
-          <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
-        </button>
+          <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />
+          <button
+            ref={buttonRef}
+            type="button"
+            className="tl-menu-btn"
+            aria-expanded={open}
+            aria-controls="tl-site-menu"
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            onClick={() => (open ? close(true) : setOpen(true))}
+          >
+            <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
+          </button>
         </div>
 
         <div ref={backdropRef} className="tl-menu-backdrop" aria-hidden="true" onClick={() => close(true)} />
