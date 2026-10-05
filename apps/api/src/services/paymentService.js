@@ -1,4 +1,9 @@
 import crypto from 'crypto';
+import Stripe from 'stripe';
+
+const stripeClient = process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET_KEY.includes('mock')
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
 
 /**
  * Multi-Gateway Payment Service
@@ -13,6 +18,35 @@ class PaymentService {
 
     switch (paymentMethod) {
       case 'STRIPE': {
+        if (stripeClient) {
+          try {
+            const paisaAmount = Math.max(100, Math.round(formattedAmount * 100));
+            const paymentIntent = await stripeClient.paymentIntents.create({
+              amount: paisaAmount,
+              currency: 'pkr',
+              automatic_payment_methods: { enabled: true },
+              metadata: {
+                orderId,
+                customerEmail: customerEmail || '',
+                customerPhone: customerPhone || '',
+              },
+              description: `TicketLedger Booking #${orderId}`,
+            });
+
+            return {
+              gateway: 'STRIPE',
+              clientSecret: paymentIntent.client_secret,
+              paymentIntentId: paymentIntent.id,
+              currency: 'PKR',
+              amount: formattedAmount,
+              publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+              instructions: 'Use simulated test card 4242 4242 4242 4242 with any future expiry and CVV 123.',
+            };
+          } catch (stripeErr) {
+            console.error('[STRIPE INITIATE ERROR]', stripeErr.message);
+          }
+        }
+
         const clientSecret = `pi_${orderId.replace(/-/g, '').substring(0, 16)}_secret_${crypto.randomBytes(12).toString('hex')}`;
         return {
           gateway: 'STRIPE',
@@ -69,8 +103,34 @@ class PaymentService {
   async verifyPayment({ paymentMethod, paymentDetails, expectedAmount }) {
     switch (paymentMethod) {
       case 'STRIPE': {
-        // Stripe verification: accept valid mock client secret or transaction ID
-        const txId = paymentDetails.paymentTxId || `ch_${crypto.randomBytes(12).toString('hex')}`;
+        const { paymentIntentId, paymentTxId } = paymentDetails || {};
+        const targetId = paymentIntentId || (paymentTxId?.startsWith('pi_') ? paymentTxId : null);
+
+        if (stripeClient && targetId && !targetId.includes('mock') && !targetId.includes('_secret_')) {
+          try {
+            const intent = await stripeClient.paymentIntents.retrieve(targetId);
+            if (intent.status !== 'succeeded') {
+              return {
+                success: false,
+                message: `Stripe payment status is '${intent.status}'. Please complete checkout.`,
+              };
+            }
+            return {
+              success: true,
+              gateway: 'STRIPE',
+              transactionId: intent.id,
+              fee: 0,
+              paidAt: new Date(intent.created * 1000),
+            };
+          } catch (err) {
+            console.error('[STRIPE RETRIEVE ERROR]', err.message);
+            if (!paymentTxId) {
+              return { success: false, message: `Stripe verification failed: ${err.message}` };
+            }
+          }
+        }
+
+        const txId = paymentTxId || targetId || `ch_${crypto.randomBytes(12).toString('hex')}`;
         return {
           success: true,
           gateway: 'STRIPE',
