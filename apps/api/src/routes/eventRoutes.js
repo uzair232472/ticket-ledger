@@ -10,7 +10,8 @@ import {
   updateEventPricing,
   publishEventWithPricing,
   getEventForEdit,
-  updateEvent
+  updateEvent,
+  deleteEvent,
 } from '../controllers/eventController.js';
 import { EVENT_IMAGE_SPECS, LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
 import {
@@ -96,6 +97,9 @@ router.get(
 // Review & submit: readiness check, and sending the event to admins for approval
 router.get('/:id/submission', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), getSubmissionStatus);
 router.post('/:id/submit', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), submitEventForReview);
+
+// Delete an event (owning organizer or Super Admin; refused while tickets are sold or being paid for)
+router.delete('/:id', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), deleteEvent);
 
 router.patch(
   '/:id/status',

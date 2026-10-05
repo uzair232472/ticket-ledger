@@ -6,6 +6,8 @@ import {
   verifyTicketQR,
   buildTicketPDF,
 } from '../services/qrTicketService.js';
+import { passFor } from '../services/qrPassService.js';
+import { evaluate } from '../services/checkinService.js';
 
 /**
  * 1. Explicitly mint NFT tickets for an order
@@ -226,6 +228,8 @@ export const getCustomerWallet = async (req, res) => {
     const tickets = await prisma.ticket.findMany({
       where: {
         userId,
+        // Paid tickets only (an unfinished checkout's placeholder tickets have no valid pass)
+        order: { status: 'SUCCESSFUL' },
       },
       include: {
         event: {
@@ -278,14 +282,9 @@ export const getCustomerWallet = async (req, res) => {
           }
         }
 
-        // Signed QR payload with all mandatory fields
-        const qrPayload = createSignedQRPayload({
-          ...t,
-          tokenId,
-        });
-
-        // Base64 QR code data URL
-        const qrCodeDataUrl = await generateQRDataUrl(qrPayload);
+        // Signed gate pass (TL1…) and its manual code; generated on demand, never stored
+        const pass = await passFor(t);
+        const qrCodeDataUrl = await generateQRDataUrl(pass.code);
         const originalPrice = Number(t.price);
         const resalePriceCap = Math.floor((originalPrice * 110) / 100);
 
@@ -319,13 +318,13 @@ export const getCustomerWallet = async (req, res) => {
             polygonscanUrl: txHash ? `https://amoy.polygonscan.com/tx/${txHash}` : null,
           },
           qr: {
-            payload: qrPayload,
+            code: pass.code,
+            manualCode: pass.manualCode,
+            qrVersion: pass.qrVersion,
             qrCodeDataUrl,
-            nonce: t.qrNonce,
-            issuedAt: qrPayload.issuedAt,
-            qrVersion: qrPayload.qrVersion,
-            signature: qrPayload.signature,
           },
+          checkedInAt: t.checkedInAt,
+          gate: t.gate,
           activeResaleListing: t.resaleListings?.[0] || null,
           createdAt: t.createdAt,
         };
@@ -396,6 +395,7 @@ export const getTicketQR = async (req, res) => {
       include: {
         event: true,
         seat: { include: { tier: true } },
+        order: { select: { status: true } },
       },
     });
 
@@ -403,20 +403,28 @@ export const getTicketQR = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
-    if (ticket.userId !== userId && req.user.role !== 'SUPER_ADMIN') {
+    // The pass is shown to its owner only (wallet and PDF)
+    if (ticket.userId !== userId) {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
+    if (ticket.order?.status !== 'SUCCESSFUL') {
+      return res.status(409).json({ success: false, message: 'This ticket has not been paid for yet.' });
+    }
 
-    const payload = createSignedQRPayload(ticket);
-    const qrCodeDataUrl = await generateQRDataUrl(payload);
+    const pass = await passFor(ticket);
+    const qrCodeDataUrl = await generateQRDataUrl(pass.code);
 
     return res.status(200).json({
       success: true,
       data: {
         ticketId: ticket.id,
         status: ticket.status,
-        payload,
+        code: pass.code,
+        manualCode: pass.manualCode,
+        qrVersion: pass.qrVersion,
         qrCodeDataUrl,
+        checkedInAt: ticket.checkedInAt,
+        gate: ticket.gate,
       },
     });
   } catch (error) {
@@ -434,10 +442,15 @@ export const verifyTicketQRPost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing QR payload to verify' });
     }
 
-    const result = await verifyTicketQR(payload);
-    return res.status(result.valid ? 200 : 400).json({
-      success: result.valid,
-      ...result,
+    // Read-only check of a pass (the wallet's "check my pass"); nothing is marked used
+    const verdict = await evaluate(typeof payload === 'string' ? payload : payload.code, null);
+    const valid = verdict.result === 'GREEN';
+    return res.status(200).json({
+      success: valid,
+      valid,
+      result: verdict.result,
+      reason: verdict.result,
+      message: valid ? 'Valid pass: it will be admitted at the gate.' : verdict.reason,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

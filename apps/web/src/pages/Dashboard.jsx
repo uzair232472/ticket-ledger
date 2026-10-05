@@ -11,13 +11,95 @@ import CategoryCard from '../components/home/CategoryCard';
 import SiteFooter, { organizerAction } from '../components/home/SiteFooter';
 import EventMap, { CITY_COORDS, hasPin } from '../components/home/EventMap';
 import { initHomeMotion, refreshScrollScenes, TICKET_HOLE_RADIUS } from '../components/home/homeMotion';
-import { HERO_IMAGE, HERO_VIDEO, HERO_VIDEO_MOBILE, COLLAGE_IMAGES, STAGE_IMAGE, CATEGORIES, STRIP_COUNT, TRAIL_SIZES } from '../components/home/homeData';
+import { HERO_IMAGE, HERO_VIDEO, HERO_VIDEO_MOBILE, COLLAGE_IMAGES, COLLAGE_VIDEOS, STAGE_IMAGE, CATEGORIES, STRIP_COUNT, TRAIL_SIZES } from '../components/home/homeData';
 import '../components/home/home.css';
 
 const INTRO_WORDS = 'brings Pakistan’s matches, concerts and festivals into one place. Choose your seats on a live map, carry a rotating QR ticket on your phone, and resell fairly if plans change.'.split(' ');
 const CLOSING_WORDS = 'Host your next event on TicketLedger.'.split(' ');
 const FEATURED_LIMIT = 6;
 const hideBroken = (e) => e.currentTarget.classList.add('is-broken');
+
+// A collage tile: a still photo, with a clip on top that plays while the tile is hovered (tapped on phones)
+const CollageTile = ({ src, index }) => {
+  const clipInfo = COLLAGE_VIDEOS[index];
+  return (
+    <div className="tl-collage-tile">
+      <img src={src} alt="" loading="lazy" decoding="async" onError={hideBroken} />
+      {clipInfo && (
+        <video
+          className="tl-collage-clip"
+          data-src={clipInfo.src}
+          style={clipInfo.crop !== 1 ? { '--crop': clipInfo.crop } : undefined}
+          muted
+          loop
+          playsInline
+          preload="none"
+          onError={(e) => e.currentTarget.closest('.tl-collage-tile')?.classList.remove('is-playing')}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
+ * Plays a collage tile's clip while the pointer is over it (mouse) or after a tap (touch). Hit-testing is done
+ * on the stage, so the hero layers above the tiles don't get in the way; a tile still covered by the full-size
+ * hero film (before it shrinks into the centre) doesn't react. Clips load on first use only.
+ */
+function useCollageClips(rootRef) {
+  useEffect(() => {
+    const stage = rootRef.current?.querySelector('.tl-hero-stage');
+    if (!stage) return undefined;
+    const tiles = [...stage.querySelectorAll('.tl-collage-tile')];
+    const panel = stage.querySelector('.tl-hero-panel');
+    let active = null;
+
+    const tileAt = (x, y) => {
+      if (document.elementsFromPoint(x, y).includes(panel)) return null; // the film still covers it
+      return tiles.find((t) => {
+        const r = t.getBoundingClientRect();
+        return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+      }) || null;
+    };
+    const stop = () => {
+      if (!active) return;
+      active.classList.remove('is-playing');
+      active.querySelector('video')?.pause();
+      active = null;
+    };
+    const start = (tile) => {
+      if (tile === active) return;
+      stop();
+      const v = tile?.querySelector('video');
+      if (!v) return;
+      if (!v.getAttribute('src')) v.src = v.dataset.src;
+      active = tile;
+      tile.classList.add('is-playing');
+      v.play().catch(() => tile.classList.remove('is-playing'));
+    };
+
+    const onMove = (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const t = tileAt(e.clientX, e.clientY);
+      if (t) start(t); else stop();
+    };
+    const onUp = (e) => {
+      if (e.pointerType === 'mouse') return;
+      const t = tileAt(e.clientX, e.clientY);
+      if (!t || t === active) stop(); else start(t);
+    };
+    stage.addEventListener('pointermove', onMove);
+    const onLeave = (e) => e.pointerType === 'mouse' && stop();
+    stage.addEventListener('pointerleave', onLeave);
+    stage.addEventListener('pointerup', onUp);
+    return () => {
+      stop();
+      stage.removeEventListener('pointermove', onMove);
+      stage.removeEventListener('pointerleave', onLeave);
+      stage.removeEventListener('pointerup', onUp);
+    };
+  }, [rootRef]);
+}
 
 const Strips = ({ count }) =>
   Array.from({ length: count }, (_, i) => (
@@ -29,6 +111,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const rootRef = useRef(null);
+  useCollageClips(rootRef);
   const pageRef = useRef(null);
   const featureHeadingRef = useRef(null);
 
@@ -183,13 +266,9 @@ export default function Dashboard() {
         <section className="tl-hero-track" aria-label="Welcome">
           <div className="tl-hero-stage">
             <div className="tl-collage" aria-hidden="true">
-              {COLLAGE_IMAGES.slice(0, 4).map((src) => (
-                <div key={src} className="tl-collage-tile"><img src={src} alt="" loading="lazy" decoding="async" onError={hideBroken} /></div>
-              ))}
+              {COLLAGE_IMAGES.slice(0, 4).map((src, i) => <CollageTile key={src} src={src} index={i} />)}
               <div className="tl-collage-center" />
-              {COLLAGE_IMAGES.slice(4).map((src) => (
-                <div key={src} className="tl-collage-tile"><img src={src} alt="" loading="lazy" decoding="async" onError={hideBroken} /></div>
-              ))}
+              {COLLAGE_IMAGES.slice(4).map((src, i) => <CollageTile key={src} src={src} index={i + 4} />)}
               <div className="tl-collage-shade" style={{ gridArea: '1 / 1 / -1 / -1' }} />
             </div>
 

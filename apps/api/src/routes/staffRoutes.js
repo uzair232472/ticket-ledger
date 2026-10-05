@@ -6,6 +6,8 @@ import {
   resendInvite,
   cancelInvite,
   deactivateStaff,
+  reactivateStaff,
+  revokeEventAccess,
   getMyGateEvents,
 } from '../controllers/staffController.js';
 import { authenticateJWT, requireRole } from '../middlewares/auth.js';
@@ -26,5 +28,7 @@ router.post('/invites', manager, createInvite);
 router.post('/invites/:id/resend', manager, resendInvite);
 router.delete('/invites/:id', manager, cancelInvite);
 router.patch('/:id/deactivate', manager, deactivateStaff);
+router.patch('/:id/reactivate', manager, reactivateStaff);
+router.delete('/:id/events/:eventId', manager, revokeEventAccess);
 
 export default router;

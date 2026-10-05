@@ -104,7 +104,8 @@ export const jumpToProgress = (trigger, progress) => {
  * Sets up every scroll-driven scene of the homepage inside `root`.
  * Returns the gsap.matchMedia instance; call .revert() on unmount.
  *
- * All transformations are scrubbed by scroll distance (ScrollTrigger scrub): scrolling down advances,
+ * All transformations are scrubbed by scroll distance (ScrollTrigger scrub: true, following the Lenis
+ * smooth scroll directly, so every scene moves at the page's pace): scrolling down advances,
  * stopping holds, scrolling up reverses. Stages are pinned with CSS `position: sticky` inside tall tracks,
  * so the page keeps native document scrolling.
  */
@@ -170,11 +171,16 @@ export function initHomeMotion(root) {
       const panelInset = () => {
         const w = stage.offsetWidth;
         const h = stage.offsetHeight;
-        const t = (centerCell.offsetTop / h) * 100;
-        const l = (centerCell.offsetLeft / w) * 100;
-        const b = ((h - centerCell.offsetTop - centerCell.offsetHeight) / h) * 100;
-        const r = ((w - centerCell.offsetLeft - centerCell.offsetWidth) / w) * 100;
-        return `inset(${t}% ${r}% ${b}% ${l}%)`;
+        // The cell's offsets are relative to the collage grid, which phones inset from the stage edges
+        const grid = centerCell.offsetParent === stage ? null : centerCell.offsetParent;
+        const top = centerCell.offsetTop + (grid?.offsetTop || 0);
+        const left = centerCell.offsetLeft + (grid?.offsetLeft || 0);
+        const t = (top / h) * 100;
+        const l = (left / w) * 100;
+        const b = ((h - top - centerCell.offsetHeight) / h) * 100;
+        const r = ((w - left - centerCell.offsetWidth) / w) * 100;
+        const round = parseFloat(getComputedStyle(centerCell).borderTopLeftRadius) || 0;
+        return `inset(${t}% ${r}% ${b}% ${l}% round ${round}px)`;
       };
 
       const hero = gsap.timeline({
@@ -183,13 +189,13 @@ export function initHomeMotion(root) {
           trigger: heroTrack,
           start: 'top top',
           end: () => `+=${heroTrack.offsetHeight - 2 * window.innerHeight}`,
-          scrub: 0.6,
+          scrub: true,
           invalidateOnRefresh: true,
         },
       });
       hero
         .to(lead, { opacity: 0, y: -48, duration: 0.16, ease: 'power1.in' }, 0)
-        .fromTo(panel, { clipPath: 'inset(0% 0% 0% 0%)' }, { clipPath: panelInset, duration: 0.5, ease: 'power2.inOut' }, 0.04)
+        .fromTo(panel, { clipPath: 'inset(0% 0% 0% 0% round 0px)' }, { clipPath: panelInset, duration: 0.5, ease: 'power2.inOut' }, 0.04)
         .fromTo('.tl-hero-panel-dim', { opacity: 0 }, { opacity: 0.62, duration: 0.4 }, 0.16)
         .fromTo('.tl-collage-tile img', { scale: 1.3 }, { scale: 1, duration: 0.58, ease: 'power1.out' }, 0.04)
         .fromTo('.tl-collage-shade', { opacity: 0.85 }, { opacity: 0.3, duration: 0.5 }, 0.08)
@@ -223,7 +229,7 @@ export function initHomeMotion(root) {
           opacity: 1,
           ease: 'power2.out',
           stagger: 0.06,
-          scrollTrigger: { trigger: '.tl-category-grid', start: 'top 92%', end: 'top 55%', scrub: 0.5 },
+          scrollTrigger: { trigger: '.tl-category-grid', start: 'top 92%', end: 'top 55%', scrub: true },
         }
       );
 
@@ -250,7 +256,7 @@ export function initHomeMotion(root) {
             trigger: feature,
             start: 'top top',
             end: () => `+=${window.innerHeight * 0.85}`,
-            scrub: 0.4,
+            scrub: true,
             invalidateOnRefresh: true,
           },
         }
@@ -270,7 +276,7 @@ export function initHomeMotion(root) {
           opacity: 1,
           ease: 'power2.out',
           stagger: 0.08,
-          scrollTrigger: { trigger: '.tl-feature-head', start: 'top 95%', end: 'top 60%', scrub: 0.5 },
+          scrollTrigger: { trigger: '.tl-feature-head', start: 'top 95%', end: 'top 60%', scrub: true },
         }
       );
 
@@ -302,7 +308,7 @@ export function initHomeMotion(root) {
           trigger: closingTrack,
           start: 'top top',
           end: () => `+=${closingTrack.offsetHeight - 2 * window.innerHeight}`,
-          scrub: 0.6,
+          scrub: true,
           invalidateOnRefresh: true,
         },
       });

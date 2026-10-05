@@ -1,8 +1,9 @@
+import { useDialog } from './ui/DialogProvider';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { API_URL } from '../lib/session';
 import { validateEmail } from '../lib/validation';
-import { Plus, Send, RefreshCw, XCircle, UserX, Mail, AlertCircle, CheckCircle2, Users, UserPlus, CalendarDays, Info } from 'lucide-react';
+import { Plus, Send, RefreshCw, XCircle, UserX, UserCheck, Mail, AlertCircle, CheckCircle2, Users, UserPlus, CalendarDays, Info } from 'lucide-react';
 import { DashCard, Notice, Status } from './dash/DashShell';
 
 const Badge = ({ status }) => <Status value={status} />;
@@ -15,6 +16,7 @@ const formatDate = (value) => new Date(value).toLocaleDateString(undefined, { da
  * The API enforces the same scoping, so this only shapes the UI.
  */
 export default function StaffManager({ layout } = {}) {
+  const dialog = useDialog();
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN';
 
@@ -69,6 +71,19 @@ export default function StaffManager({ layout } = {}) {
   useEffect(() => {
     if (token) load();
   }, [token, load]);
+
+  // Take one event away from a staff member: their scanner stops working for it, online and offline
+  const revokeEvent = async (s, ev) => {
+    const ok = await dialog.confirm({
+      tone: 'error',
+      title: `Remove ${s.name} from ${ev.name}?`,
+      message: 'They will no longer be able to scan tickets for this event, online or offline. The event’s offline ticket list is deleted from their scanner the next time it connects.',
+      confirmLabel: 'Revoke access',
+      cancelLabel: 'Keep access',
+    });
+    if (!ok) return;
+    run(`${s.id}:${ev.id}`, () => request(`/${s.id}/events/${ev.id}`, { method: 'DELETE' }));
+  };
 
   const run = async (id, action, successMessage) => {
     setError('');
@@ -154,7 +169,20 @@ export default function StaffManager({ layout } = {}) {
                       ) : (
                         <ul>
                           {s.staffAssignments.map((a) => (
-                            <li key={a.event.id || a.event.name}><span aria-hidden="true"><CalendarDays className="w-4 h-4" /></span>{a.event.name}</li>
+                            <li key={a.event.id || a.event.name}>
+                              <span aria-hidden="true"><CalendarDays className="w-4 h-4" /></span>
+                              <span className="tl-sf-event-name">{a.event.name}</span>
+                              <button
+                                type="button"
+                                className="tl-sf-revoke"
+                                disabled={busyId === `${s.id}:${a.event.id}`}
+                                onClick={() => revokeEvent(s, a.event)}
+                                aria-label={`Revoke ${s.name}'s access to ${a.event.name}`}
+                                title="Revoke access to this event"
+                              >
+                                {busyId === `${s.id}:${a.event.id}` ? <RefreshCw className="w-3.5 h-3.5 tl-dash-spin" /> : <XCircle className="w-3.5 h-3.5" />} Revoke
+                              </button>
+                            </li>
                           ))}
                         </ul>
                       )}
@@ -167,6 +195,16 @@ export default function StaffManager({ layout } = {}) {
                         onClick={() => run(s.id, () => request(`/${s.id}/deactivate`, { method: 'PATCH' }))}
                       >
                         {busyId === s.id ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <UserX className="w-4 h-4" />} Deactivate staff
+                      </button>
+                    )}
+                    {s.status === 'DEACTIVATED' && (
+                      <button
+                        type="button"
+                        className="tl-sf-deactivate tl-sf-reactivate"
+                        disabled={busyId === s.id}
+                        onClick={() => run(s.id, () => request(`/${s.id}/reactivate`, { method: 'PATCH' }))}
+                      >
+                        {busyId === s.id ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <UserCheck className="w-4 h-4" />} Reactivate staff
                       </button>
                     )}
                   </article>
@@ -302,7 +340,26 @@ export default function StaffManager({ layout } = {}) {
                   <div style={{ minWidth: 0 }}>
                     <div className="tl-staff-name"><span>{s.name}</span><Badge status={s.status} /></div>
                     <p>{s.email}{isAdmin && s.memberOfCompany ? ` · ${s.memberOfCompany.companyName}` : ''}</p>
-                    <p>Gate staff · {s.staffAssignments.map((a) => a.event.name).join(', ') || 'No events'}</p>
+                    {s.staffAssignments.length ? (
+                      <ul className="tl-staff-events" aria-label={`Events ${s.name} can scan`}>
+                        {s.staffAssignments.map((a) => (
+                          <li key={a.event.id}>
+                            {a.event.name}
+                            <button
+                              type="button"
+                              onClick={() => revokeEvent(s, a.event)}
+                              disabled={busyId === `${s.id}:${a.event.id}`}
+                              aria-label={`Revoke ${s.name}'s access to ${a.event.name}`}
+                              title="Revoke access to this event"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p>Gate staff · No events</p>
+                    )}
                   </div>
                   {s.status === 'ACTIVE' && (
                     <div className="tl-staff-actions">
@@ -315,6 +372,20 @@ export default function StaffManager({ layout } = {}) {
                         title="Deactivate"
                       >
                         <UserX className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  {s.status === 'DEACTIVATED' && (
+                    <div className="tl-staff-actions">
+                      <button
+                        type="button"
+                        disabled={busyId === s.id}
+                        onClick={() => run(s.id, () => request(`/${s.id}/reactivate`, { method: 'PATCH' }))}
+                        className="tl-staff-icon is-good"
+                        aria-label={`Reactivate ${s.name}`}
+                        title="Reactivate"
+                      >
+                        <UserCheck className="w-4 h-4" />
                       </button>
                     </div>
                   )}

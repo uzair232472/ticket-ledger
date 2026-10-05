@@ -551,3 +551,15 @@ fieldset.tl-bk-panel { min-width: 0; margin-inline: 0; }
   .tl-co-progress::after { animation: none; width: 100%; opacity: 0.4; }
   .tl-bk-btn, .tl-vb-badge, .tl-co-method, .tl-vb-zoom-pair button { transition: none; }
 }
+
+/* Remove a ticket / discard the whole reservation */
+.tl-co-line { align-items: center; }
+.tl-co-line .tl-co-line-end { display: inline-flex; align-items: center; gap: 10px; }
+.tl-co-line.is-removing { opacity: 0.45; }
+.tl-co-remove { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--bk-line); border-radius: 50%; background: none; color: var(--bk-dim); cursor: pointer; transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease; }
+.tl-co-remove:hover:not(:disabled) { color: #dc2626; border-color: #fca5a5; background: rgba(220, 38, 38, 0.08); }
+.tl-co-remove:focus-visible, .tl-co-discard:focus-visible { outline: 2px solid #22c55e; outline-offset: 2px; }
+.tl-co-remove:disabled, .tl-co-discard:disabled { opacity: 0.5; cursor: default; }
+.tl-co-ticket-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.tl-co-discard { display: inline-flex; align-items: center; gap: 6px; padding: 6px 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: #dc2626; cursor: pointer; }
+.tl-co-discard:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }

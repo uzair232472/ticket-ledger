@@ -67,3 +67,15 @@ export function TicketUserIcon({ className }) {
     </svg>
   );
 }
+
+/**
+ * Menu button: a ticket outline with three menu lines, drawn with thin strokes (scales with the button).
+ */
+export function MenuTicketIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 96 48" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M8 3h80a5 5 0 0 1 5 5v9.5a6.5 6.5 0 0 0 0 13V40a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5v-9.5a6.5 6.5 0 0 0 0-13V8a5 5 0 0 1 5-5Z" strokeWidth="2.2" />
+      <path d="M33 16.5h30M33 24h30M33 31.5h30" strokeWidth="3" />
+    </svg>
+  );
+}

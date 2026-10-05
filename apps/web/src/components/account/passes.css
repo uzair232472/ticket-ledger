@@ -858,3 +858,8 @@
     flex: 1 1 100%;
   }
 }
+
+/* Manual entry code under the QR (typed at the gate when the camera can't read it) */
+.tl-pass-code { margin-top: 10px; font: 700 17px/1 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-align: center; color: #0b1510; }
+.tl-pass.is-muted .tl-pass-code { opacity: 0.45; text-decoration: line-through; }
+.tl-pass-payload { white-space: pre-wrap; word-break: break-all; }

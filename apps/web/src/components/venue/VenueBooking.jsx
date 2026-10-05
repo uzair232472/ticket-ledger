@@ -13,6 +13,9 @@ import '../booking/booking.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const MAX_TICKETS = 10;
+// A seat picked while signed out is held after signing in (same event, within 30 minutes)
+const PENDING_KEY = 'tl-pending-hold';
+const PENDING_TTL_MS = 30 * 60 * 1000;
 const CODE = { S: 'sold', H: 'held', B: 'blocked' };
 
 function LegendSeat({ state }) {
@@ -241,10 +244,18 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     [focused, tiers]
   );
 
-  const requireLogin = () => {
+  // Signed-out visitors: remember what they picked, sign in, then it is held for them on return
+  const requireLogin = (pendingHold) => {
     if (preview || isAuthenticated) return false;
-    say('Sign in to hold seats. Your choice of section is kept.', 'info');
-    navigate('/login', { state: { from: location.pathname } });
+    if (pendingHold && eventId) {
+      try {
+        sessionStorage.setItem(PENDING_KEY, JSON.stringify({ eventId, ...pendingHold, at: Date.now() }));
+      } catch {
+        // storage unavailable: they just pick again after signing in
+      }
+    }
+    say('Sign in to hold seats. Your selection is kept.', 'info');
+    navigate('/login', { state: { from: location.pathname, notice: pendingHold ? `Sign in to reserve ${pendingHold.label}.` : undefined } });
     return true;
   };
 
@@ -345,9 +356,9 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
 
   const selectFromPop = async () => {
     if (!popInfo) return;
-    if (requireLogin()) return;
-    if (mine.length + popInfo.keys.length > MAX_TICKETS) return say(`You can hold at most ${MAX_TICKETS} tickets at a time.`, 'warn');
     const body = pop.type === 'table' ? { tableKey: pop.key } : { key: pop.key };
+    if (requireLogin({ body, label: popInfo.label })) return;
+    if (mine.length + popInfo.keys.length > MAX_TICKETS) return say(`You can hold at most ${MAX_TICKETS} tickets at a time.`, 'warn');
     await run(pop.key, () => adapter.hold(body), `${popInfo.label} added to My tickets.`);
     closePop();
   };
@@ -359,9 +370,30 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
   };
 
   const setGa = (section, quantity) => {
-    if (requireLogin()) return;
+    if (requireLogin({ body: { sectionId: section.id, quantity }, label: `${quantity} place${quantity === 1 ? '' : 's'} in ${section.name}` })) return;
     run(`ga:${section.id}`, () => adapter.hold({ sectionId: section.id, quantity }), quantity ? `${quantity} place${quantity === 1 ? '' : 's'} held in ${section.name}.` : `Places in ${section.name} released.`);
   };
+
+  // Back from sign-in: hold what was picked before (unless someone else took it meanwhile)
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (preview || !isAuthenticated || !data || resumed.current) return;
+    resumed.current = true;
+    let pending = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem(PENDING_KEY) || 'null');
+      sessionStorage.removeItem(PENDING_KEY);
+    } catch {
+      pending = null;
+    }
+    if (!pending || pending.eventId !== eventId || Date.now() - pending.at > PENDING_TTL_MS || !pending.body) return;
+    const section = pending.body.sectionId
+      ? sectionById[pending.body.sectionId]
+      : sectionById[(pending.body.key || pending.body.tableKey || '').split('/')[0]];
+    if (section) openSection(section);
+    run(`resume:${pending.label}`, () => adapter.hold(pending.body), `${pending.label} reserved for you.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, isAuthenticated, data, eventId]);
 
   // ---------- Navigation between overview and a section ----------
   const openSection = useCallback(

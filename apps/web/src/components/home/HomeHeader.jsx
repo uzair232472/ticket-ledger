@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import BrandLogo from '../brand/BrandLogo';
 import HeaderAccount from './HeaderAccount';
-import menuIcon from '../../assets/menu-ticket.png';
+import { MenuTicketIcon } from './HeaderIcons';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])';
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -90,7 +90,7 @@ function useMenuGroups(onCategories) {
  * `tone` is the starting logo colour: 'dark' scenes get a white logo, 'light' pages a dark one.
  * `pageRef` is the page content, made inert while the menu is open.
  */
-export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
+export default function HomeHeader({ pageRef, onCategories, tone = 'dark', minimal = false }) {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   const [open, setOpen] = useState(false);
@@ -106,7 +106,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   const [scrollHidden, setScrollHidden] = useState(false);
   const lastScrollYRef = useRef(0);
 
-  // Smooth auto-hide header when scrolling down; only reveal when getting back to the top
+  // Scrolling down hides the logo (the icons and menu stay); it returns near the top
   useEffect(() => {
     let ticking = false;
     const handleScroll = () => {
@@ -259,12 +259,15 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
   return (
     <>
       <header ref={headerRef} className="tl-header" data-tone={tone} data-home-header data-scroll-hidden={scrollHidden ? 'true' : 'false'}>
-        <Link to="/" className="tl-header-logo" aria-label="TicketLedger home" data-header-logo>
-          <BrandLogo />
-        </Link>
+        {/* minimal: only the menu button (sign-in and sign-up screens) */}
+        {minimal ? <span aria-hidden="true" /> : (
+          <Link to="/" className="tl-header-logo" aria-label="TicketLedger home" data-header-logo>
+            <BrandLogo />
+          </Link>
+        )}
 
         <div className="tl-header-actions">
-          <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />
+          {!minimal && <HeaderAccount menuOpen={open} onOpen={() => open && close(false)} onLogout={onLogout} />}
           <button
             ref={buttonRef}
             type="button"
@@ -274,7 +277,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark' }) {
             aria-label={open ? 'Close menu' : 'Open menu'}
             onClick={() => (open ? close(true) : setOpen(true))}
           >
-            <img className="tl-menu-btn-img" src={menuIcon} alt="" width="91" height="46" draggable="false" />
+            <MenuTicketIcon className="tl-menu-btn-img" />
           </button>
         </div>
 

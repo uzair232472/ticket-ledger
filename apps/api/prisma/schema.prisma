@@ -116,6 +116,12 @@ enum GateScanResult {
   INVALID_SCAN
 }
 
+enum CheckInResult {
+  GREEN
+  YELLOW
+  RED
+}
+
 enum ResaleStatus {
   ACTIVE
   SOLD
@@ -154,6 +160,8 @@ model User {
   assignmentsCreated  StaffEventAssignment[] @relation("AssignmentsCreated")
   tickets        Ticket[]
   scansPerformed GateScan[]
+  checkInsPerformed CheckIn[] @relation("StaffCheckIns")
+  ticketsCheckedIn  Ticket[]  @relation("TicketCheckIns")
   behaviorEvents BehaviorEvent[]
   notifications  Notification[]
   wishlistItems  WishlistItem[]
@@ -268,6 +276,8 @@ model Event {
   latitude        Float?
   longitude       Float?
   locationAddress String?
+  // Where attendees reach the organizer about this event (falls back to the organizer's company email)
+  contactEmail    String?
   bannerUrl   String?
   // Organizer-managed media (all optional; the web app falls back to bannerUrl / category artwork)
   cardImageUrl   String?
@@ -417,13 +427,21 @@ model Ticket {
   qrNonce         String        @default(uuid())
   qrIssuedAt      DateTime      @default(now())
   qrSignature     String?
-  qrVersion       Int           @default(1)
+  qrVersion       Int           @default(1) // +1 on every transfer / resale: the old owner's QR stops working
+  // Short code printed under the QR for when the camera fails (rotated with qrVersion)
+  manualCode      String?       @unique
+  // Gate check-in (status ACTIVE = valid, SCANNED = used)
+  checkedInAt     DateTime?
+  checkedInById   String?
+  checkedInBy     User?         @relation("TicketCheckIns", fields: [checkedInById], references: [id])
+  gate            String?
   pdfUrl          String?
   
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
   scans          GateScan[]
+  checkIns       CheckIn[]
   resaleListings ResaleListing[]
   transferHistory TicketTransferHistory[]
 
@@ -461,6 +479,29 @@ model GateScan {
   gateNumber String?
   notes      String?
 
+  @@index([ticketId])
+  @@index([staffId])
+}
+
+/// Every gate scan, admitted or not (audit trail and fraud evidence). ticketId is null for junk QRs.
+model CheckIn {
+  id        String        @id @default(uuid())
+  ticketId  String?
+  ticket    Ticket?       @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  eventId   String
+  staffId   String
+  staff     User          @relation("StaffCheckIns", fields: [staffId], references: [id])
+  deviceId  String?
+  gate      String?
+  result    CheckInResult
+  reason    String
+  offline   Boolean       @default(false)
+  conflict  Boolean       @default(false) // two devices admitted the same ticket while offline
+  scannedAt DateTime      @default(now())
+  syncedAt  DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([eventId, scannedAt])
   @@index([ticketId])
   @@index([staffId])
 }

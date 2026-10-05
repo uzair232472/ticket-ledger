@@ -17,16 +17,33 @@ export const HERO_IMAGE = {
 };
 
 // Eight tiles around the hero panel (3×3 grid, centre cell reserved for the panel)
+// Hero collage stills (the app's own event photos), each matching the clip that plays over it:
+// top row (3), left, right, bottom row (3)
 export const COLLAGE_IMAGES = [
-  '1501386761578-eac5c94b800a',
-  '1514525253161-7a46d19cd819',
-  '1470229722913-7c0e2dbbafd3',
-  '1531415074968-036ba1b575da',
-  '1549719386-74dfcbf7dbed',
-  '1459749411175-04bf5292ceea',
-  '1470225620780-dba8ba36b745',
-  '1540039155733-5bb30b53aa14',
-].map((id) => unsplash(id, 640, 480));
+  'festival.jpg',
+  'concert-crowd.jpg',
+  'stage.jpg',
+  'concert.jpg', // left: concert
+  'qawwali.jpg', // right: qawwali
+  'youth-club.jpg',
+  'cricket.jpg',
+  'football.jpg',
+].map((f) => `/hero/${f}`);
+
+// Clips that play over the collage tiles on hover (tap on phones), in COLLAGE_IMAGES order:
+// top row (3), left, right, bottom row (3). `crop` zooms past letterbox bars baked into a clip.
+const clip = (name, crop = 1) => ({ src: `/web visuals/${encodeURIComponent(name)}.mp4`, crop });
+const INCLUSION_ROCKS = 'LAHORE, THIS WEEKEND. ❤️The final stop of Inclusion Rocks is here.Catch two generations of music';
+export const COLLAGE_VIDEOS = [
+  clip('Video Project 6'),
+  clip(INCLUSION_ROCKS),
+  clip('Video Project 5'),
+  clip('asim azhar'), // left
+  clip('qawali', 1.36), // right
+  clip('yc', 1.42),
+  clip('PSL V Promo', 1.45),
+  clip('Precision on Point in Phantom GX 🎯 _ Erling Haaland _  Nike Football'),
+];
 
 // Shared background of the featured-events and closing scenes (kept identical so the handoff is seamless)
 export const STAGE_IMAGE = unsplash('1470229722913-7c0e2dbbafd3', 1920);

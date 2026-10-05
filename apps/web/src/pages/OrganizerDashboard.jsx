@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { io } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StaffManager from '../components/StaffManager';
 import { DashHead, DashCard, Kpi, Chip, Tile, Notice, DashState } from '../components/dash/DashShell';
 import { ColumnChart, LineChart, Legend, Ring, Meter, SERIES, NEUTRAL, compactPkr, formatPkr } from '../components/dash/charts';
 import { getEventVisual } from '../utils/eventMedia';
+import api from '../utils/api';
+import { useDialog } from '../components/ui/DialogProvider';
 import {
   Ticket,
   Scan,
@@ -66,7 +69,7 @@ function totalsByEvent(tiers) {
 }
 
 /** Event card: photo with status, title, date and venue, revenue / tickets box, quick links. */
-function EventCard({ event, index, totals, selected, onStats }) {
+function EventCard({ event, index, totals, selected, onStats, onDelete }) {
   const image = getEventVisual(event, index).image;
   const [badge, badgeClass] = STATUS_BADGE[event.status] || [event.status, ''];
   return (
@@ -103,6 +106,7 @@ function EventCard({ event, index, totals, selected, onStats }) {
           {!['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status) && (
             <Link to={`/organizer/events/${event.id}/submit`}>{event.status === 'PENDING_APPROVAL' ? 'Preview' : 'Preview & submit'}</Link>
           )}
+          <button type="button" className="tl-st-ev-delete" onClick={onDelete}>Delete</button>
           <Link to={`/events/${event.id}`} className="tl-st-ev-open" aria-label={`Open the ${event.name} event page`}>
             <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
           </Link>
@@ -113,6 +117,26 @@ function EventCard({ event, index, totals, selected, onStats }) {
 }
 
 export default function OrganizerDashboard() {
+  const dialog = useDialog();
+  // Delete an event: ask first, then report the outcome in the app's dialog
+  const deleteEvent = async (ev, after) => {
+    const ok = await dialog.confirm({
+      tone: 'error',
+      title: `Delete “${ev.name}”?`,
+      message: 'This permanently removes the event, its tickets setup, seating plan and images. It can’t be undone.\nEvents with sold tickets can’t be deleted; cancel them instead.',
+      confirmLabel: 'Delete event',
+      cancelLabel: 'Keep event',
+    });
+    if (!ok) return;
+    try {
+      const res = await api.delete(`/events/${ev.id}`);
+      await dialog.alert({ tone: 'success', title: 'Event deleted', message: res.data.message });
+      after?.();
+    } catch (err) {
+      dialog.alert({ tone: 'error', title: 'Couldn’t delete the event', message: err.response?.data?.message || 'Please try again.' });
+    }
+  };
+
   const { user, token } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -156,6 +180,27 @@ export default function OrganizerDashboard() {
   useEffect(() => {
     if (token) fetchDashboard();
   }, [selectedEventId, token]);
+
+  // Live entry counter: each admission at a gate refreshes the turnout figures (quietly, at most every 2 s)
+  const liveRef = useRef({ eventId: selectedEventId, timer: null });
+  liveRef.current.eventId = selectedEventId;
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    const socket = io(import.meta.env.VITE_SOCKET_URL || API_URL, { transports: ['websocket', 'polling'] });
+    socket.on('connect', () => socket.emit('join_user_room', user.id));
+    socket.on('checkin:stats', (stats) => {
+      const scope = liveRef.current.eventId;
+      if (scope !== 'ALL' && scope !== stats.eventId) return;
+      clearTimeout(liveRef.current.timer);
+      liveRef.current.timer = setTimeout(() => {
+        load(liveRef.current.eventId).then(setDashboardData).catch(() => {});
+      }, 2000);
+    });
+    return () => {
+      clearTimeout(liveRef.current.timer);
+      socket.disconnect();
+    };
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const metrics = dashboardData?.metrics || {};
   const liveGate = dashboardData?.liveGatePacing || {};
@@ -363,6 +408,7 @@ export default function OrganizerDashboard() {
                   totals={eventTotals.get(ev.name)}
                   selected={ev.id === selectedEventId}
                   onStats={() => changeEvent(ev.id === selectedEventId ? 'ALL' : ev.id)}
+                  onDelete={() => deleteEvent(ev, fetchDashboard)}
                 />
               ))}
             </div>
@@ -370,7 +416,7 @@ export default function OrganizerDashboard() {
           {listedEvents.length > EVENTS_SHOWN && (
             <div className="tl-st-more">
               <button type="button" className="tl-st-btn tl-st-btn--outline tl-st-btn--sm" onClick={() => setShowAllEvents((v) => !v)}>
-                {showAllEvents ? 'Show fewer' : `Show all ${listedEvents.length}`}
+                {showAllEvents ? 'Show fewer' : `Show ${listedEvents.length - EVENTS_SHOWN} more event${listedEvents.length - EVENTS_SHOWN === 1 ? '' : 's'}`}
               </button>
             </div>
           )}
@@ -465,7 +511,7 @@ export default function OrganizerDashboard() {
                   {sortedTiers.length > TIERS_SHOWN && (
                     <div className="tl-st-more">
                       <button type="button" className="tl-st-btn tl-st-btn--outline tl-st-btn--sm" onClick={() => setShowAllTiers((v) => !v)}>
-                        {showAllTiers ? 'Show top tiers only' : `Show all ${sortedTiers.length} tiers`}
+                        {showAllTiers ? 'Show top tiers only' : `Show ${sortedTiers.length - TIERS_SHOWN} more tier${sortedTiers.length - TIERS_SHOWN === 1 ? '' : 's'}`}
                       </button>
                     </div>
                   )}

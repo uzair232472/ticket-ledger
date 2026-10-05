@@ -45,13 +45,18 @@ const createEventSchema = z.object({
   latitude: z.preprocess((v) => (v === '' || v == null ? undefined : Number(v)), z.number().min(-90).max(90).optional()),
   longitude: z.preprocess((v) => (v === '' || v == null ? undefined : Number(v)), z.number().min(-180).max(180).optional()),
   locationAddress: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.string().max(300).optional()),
+  // Attendee contact email for this event; empty clears it (the organizer's own email is used instead)
+  contactEmail: z.preprocess(
+    (v) => (typeof v === 'string' ? (v.trim() === '' ? null : v.trim().toLowerCase()) : v),
+    z.string().email('Enter a valid contact email').max(200).nullable().optional(),
+  ),
   // Only stored image references (absolute http(s) or root-relative paths), never blob:/data: preview URLs
   bannerUrl: z.string().regex(/^(https?:\/\/|\/)/, 'Banner URL must be an http(s) URL or a site path').optional(),
 });
 
 // Editable event details (status, tiers and pricing keep their own endpoints)
 const updateEventDetailsSchema = createEventSchema
-  .pick({ name: true, description: true, type: true, date: true, time: true, city: true, venue: true, latitude: true, longitude: true, locationAddress: true })
+  .pick({ name: true, description: true, type: true, date: true, time: true, city: true, venue: true, latitude: true, longitude: true, locationAddress: true, contactEmail: true })
   .partial();
 
 const SINGLE_IMAGE_FIELDS = [
@@ -133,6 +138,7 @@ export const createEvent = async (req, res) => {
           latitude: validatedData.latitude ?? null,
           longitude: validatedData.longitude ?? null,
           locationAddress: validatedData.locationAddress ?? null,
+          contactEmail: validatedData.contactEmail ?? null,
           bannerUrl,
           cardImageUrl,
           galleryWideUrl,
@@ -340,6 +346,7 @@ export const getEventById = async (req, res) => {
             phone: true,
             city: true,
             status: true,
+            user: { select: { email: true } },
           },
         },
         _count: {
@@ -351,6 +358,10 @@ export const getEventById = async (req, res) => {
     if (!event) {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
+
+    // "Contact organizer": the event's own contact email, else the organizer's company / account email
+    event.organizerContactEmail = event.contactEmail || event.company?.email || event.company?.user?.email || null;
+    if (event.company) delete event.company.user;
 
     // Draft, pending and rejected events: only the organizer and admins can open them (as a preview)
     const isPublic = ['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status);
@@ -949,3 +960,57 @@ export const updateEvent = async (req, res) => {
   }
 };
 
+
+/**
+ * Delete an event (its organizer or a Super Admin). Refused while anyone holds tickets or is mid-payment
+ * (paid tickets must not vanish; cancel the event instead). Failed / abandoned orders go with the event;
+ * tiers, seats, plans, gallery, wishlists and the rest are removed by the database cascades.
+ */
+export const deleteEvent = async (req, res) => {
+  try {
+    const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    if (!(await canManageEvent(req.user, event))) {
+      return res.status(403).json({ success: false, message: 'You can only delete your own events.' });
+    }
+
+    const [sold, paying] = await Promise.all([
+      prisma.order.count({ where: { eventId: event.id, status: 'SUCCESSFUL' } }),
+      prisma.order.count({ where: { eventId: event.id, status: 'PENDING' } }),
+    ]);
+    if (sold || paying) {
+      return res.status(409).json({
+        success: false,
+        message: sold
+          ? `This event has ${sold} paid order${sold === 1 ? '' : 's'}, so it can’t be deleted. Cancel the event instead, so ticket holders keep their records.`
+          : 'A customer is paying for tickets to this event right now. Try again in a few minutes, or cancel the event instead.',
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Abandoned / failed orders (their tickets go with them), then the event and its cascades
+      await tx.order.deleteMany({ where: { eventId: event.id } });
+      await tx.event.delete({ where: { id: event.id } });
+    });
+
+    await prisma.auditLog.create({
+      data: { userId: req.user.id, action: 'EVENT_DELETED', targetType: 'Event', targetId: event.id, details: { eventName: event.name, companyId: event.companyId } },
+    });
+    // The organizer is told (and emailed) when an admin removes their event
+    if (event.company && event.company.userId !== req.user.id) {
+      await prisma.notification.create({
+        data: {
+          userId: event.company.userId,
+          type: 'EVENT_DELETED',
+          title: `Event removed: ${event.name}`,
+          message: `“${event.name}” was deleted by a TicketLedger admin. Contact support if you have questions.`,
+        },
+      });
+    }
+
+    return res.json({ success: true, message: `“${event.name}” was deleted.` });
+  } catch (error) {
+    console.error('Delete event failed:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete the event.' });
+  }
+};

@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate, useNavigationType, useParams } from 're
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
-import { ArrowLeft, ArrowRight, Bell, Check, MapPin, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, MapPin, RefreshCw, Share2, Users } from 'lucide-react';
+import { useDialog } from '../components/ui/DialogProvider';
 import { googleMapsUrl } from '../utils/maps';
 import api, { trackClientBehavior } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +15,7 @@ import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
 import EventGallery from '../components/event-detail/EventGallery';
+import ContactOrganizer from '../components/event-detail/ContactOrganizer';
 import { categoryName } from '../components/home/homeData';
 import markUrl from '../assets/ticketledger-mark.svg';
 import '../components/home/home.css';
@@ -106,6 +108,7 @@ function EventDetailsPage({ id }) {
   const [resale, setResale] = useState(null);
   const [waitlist, setWaitlist] = useState({ on: false, count: null, busy: false, message: '' });
   const { isSaved, toggle: toggleFavorite } = useWishlist();
+  const dialog = useDialog();
 
   // Back to Explore: step back through history when we came from it (Explore then restores its
   // filters, batch and scroll position); otherwise open it with the last filters used.
@@ -298,10 +301,30 @@ function EventDetailsPage({ id }) {
   const venueHasCity = event && event.city && event.venue?.toLowerCase().includes(event.city.toLowerCase());
   const loginState = { from: location.pathname };
 
+  // Share: the device's share sheet where available, otherwise copy the link
+  const shareEvent = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: event?.name, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      dialog.alert({ tone: 'success', title: 'Link copied', message: 'The event link is on your clipboard, ready to share.' });
+    } catch (err) {
+      if (err?.name !== 'AbortError') dialog.alert({ tone: 'info', title: 'Share this event', message: url });
+    }
+  };
+
   const backLink = (
-    <Link to={backHref} onClick={onBack} className="tl-dt-back">
-      <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Explore events
-    </Link>
+    <div className="tl-dt-topbar">
+      <Link to={backHref} onClick={onBack} className="tl-dt-back">
+        <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Explore events
+      </Link>
+      <button type="button" className="tl-dt-share" onClick={shareEvent} aria-label="Share this event">
+        <Share2 className="w-5 h-5" aria-hidden="true" />
+      </button>
+    </div>
   );
 
   const bookingAction = (where) => {
@@ -377,7 +400,8 @@ function EventDetailsPage({ id }) {
                   <div className="tl-dt-hero-side">
                     <dl className="tl-dt-facts">
                       <div>
-                        <dt>Location:</dt>
+                        <span className="tl-dt-fact-icon" aria-hidden="true"><MapPin className="w-6 h-6" /></span>
+                        <dt>Location</dt>
                         <dd>
                           <a className="tl-dt-maplink" href={googleMapsUrl({ ...event, venue: event.venue, city: event.city })} target="_blank" rel="noreferrer" title="Open in Google Maps">
                             <MapPin className="w-4 h-4" aria-hidden="true" />
@@ -390,7 +414,8 @@ function EventDetailsPage({ id }) {
                         </dd>
                       </div>
                       <div>
-                        <dt>Date:</dt>
+                        <span className="tl-dt-fact-icon" aria-hidden="true"><CalendarDays className="w-6 h-6" /></span>
+                        <dt>Date &amp; time</dt>
                         <dd>
                           <time dateTime={new Date(event.date).toISOString().slice(0, 10)}>{formatEventDate(event.date)}</time>
                           {time && <><br />{time} PKT</>}
@@ -398,7 +423,8 @@ function EventDetailsPage({ id }) {
                       </div>
                       {organizer && (
                         <div>
-                          <dt>Organizer:</dt>
+                          <span className="tl-dt-fact-icon" aria-hidden="true"><Users className="w-6 h-6" /></span>
+                          <dt>Organizer</dt>
                           <dd>{organizer}</dd>
                         </div>
                       )}
@@ -406,18 +432,19 @@ function EventDetailsPage({ id }) {
                     <div className="tl-dt-book">
                       {startingPrice && (
                         <p className="tl-dt-price">
-                          <span>{startingPrice === 'Free' ? 'Price' : 'From'}</span> {startingPrice}
+                          <span>{startingPrice === 'Free' ? 'Price' : 'Tickets from'}</span> {startingPrice}
                         </p>
                       )}
                       {bookingAction('hero') || <p className="tl-dt-book-note">{sale.note}</p>}
                     </div>
+                    <ContactOrganizer email={event.organizerContactEmail} eventName={event.name} organizer={organizer} />
                   </div>
                 </div>
               </section>
 
               <div className="tl-dt-body">
                 {description && (
-                  <Row label="Overview">
+                  <Row label="About the event">
                     <p className="tl-dt-desc">{description}</p>
                   </Row>
                 )}

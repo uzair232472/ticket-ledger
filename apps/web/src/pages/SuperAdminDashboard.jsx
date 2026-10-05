@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../utils/api';
 import StaffManager from '../components/StaffManager';
+import { useDialog } from '../components/ui/DialogProvider';
 import { DashHead, DashCard, Kpi, Chip, Figure, Tile, Segmented, Status, Notice, DashState, EventTile, EventThumb } from '../components/dash/DashShell';
 import { TabStats, Directory, Avatar } from '../components/dash/Studio';
 import { ColumnChart, LineChart, Legend, Ring, ArcGauge, Meter, SERIES, NEUTRAL, byDay, compactPkr, formatPkr } from '../components/dash/charts';
@@ -83,6 +85,26 @@ function Table({ head, children, empty }) {
 }
 
 export default function SuperAdminDashboard() {
+  const dialog = useDialog();
+  // Delete an event: ask first, then report the outcome in the app's dialog
+  const deleteEvent = async (ev, after) => {
+    const ok = await dialog.confirm({
+      tone: 'error',
+      title: `Delete “${ev.name}”?`,
+      message: 'This permanently removes the event, its tickets setup, seating plan and images. It can’t be undone.\nEvents with sold tickets can’t be deleted; cancel them instead.',
+      confirmLabel: 'Delete event',
+      cancelLabel: 'Keep event',
+    });
+    if (!ok) return;
+    try {
+      const res = await api.delete(`/events/${ev.id}`);
+      await dialog.alert({ tone: 'success', title: 'Event deleted', message: res.data.message });
+      after?.();
+    } catch (err) {
+      dialog.alert({ tone: 'error', title: 'Couldn’t delete the event', message: err.response?.data?.message || 'Please try again.' });
+    }
+  };
+
   const { user, token } = useAuth();
   const authHeader = { Authorization: `Bearer ${token}` };
 
@@ -610,7 +632,7 @@ export default function SuperAdminDashboard() {
             toolbar={<>{searchBox('Search event, venue or city')}<button type="button" className="tl-dash-btn tl-dash-btn--ink" onClick={runSearch}>Search</button></>}
           >
             {loadingTab && !eventsData.events?.length ? <Loading>Loading events…</Loading> : (
-              <Table head={['Event', 'Organizer', 'Date', 'Status', { label: 'Sold / capacity', num: true }, 'Fill']} empty={!eventsData.events?.length && 'No events found.'}>
+              <Table head={['Event', 'Organizer', 'Date', 'Status', { label: 'Sold / capacity', num: true }, 'Fill', { label: 'Actions', right: true }]} empty={!eventsData.events?.length && 'No events found.'}>
                 {eventsData.events?.map((ev) => (
                   <tr key={ev.id}>
                     <td>
@@ -627,6 +649,18 @@ export default function SuperAdminDashboard() {
                     <td><Status value={ev.status} /></td>
                     <td className="is-num is-mono">{ev.soldTickets} / {ev.totalCapacity}</td>
                     <td><Meter value={ev.occupancyRate} /></td>
+                    <td className="is-right">
+                      <span className="tl-dir-actions">
+                        <Link to={`/events/${ev.id}`} className="tl-dash-btn">View</Link>
+                        <button
+                          type="button"
+                          className="tl-dash-btn tl-dir-delete"
+                          onClick={() => deleteEvent(ev, () => setEventsData((d) => ({ ...d, events: d.events.filter((x) => x.id !== ev.id), total: Math.max(0, (d.total || 1) - 1) })))}
+                        >
+                          Delete
+                        </button>
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </Table>

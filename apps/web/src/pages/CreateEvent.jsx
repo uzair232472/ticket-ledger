@@ -141,6 +141,7 @@ export default function CreateEvent() {
     time: '7:00 PM PKT',
     city: 'Lahore',
     venue: '',
+    contactEmail: '',
     bannerUrl: '',
   });
 
@@ -193,6 +194,7 @@ export default function CreateEvent() {
           time: ev.time,
           city: ev.city,
           venue: ev.venue,
+          contactEmail: ev.contactEmail || '',
           bannerUrl: ev.bannerUrl || '',
         });
         setTiers(ev.tiers.map((t) => ({ name: t.name, price: Number(t.price), totalQuantity: t.totalQuantity })));
@@ -244,6 +246,7 @@ export default function CreateEvent() {
       else if (!isEdit && eventData.date < todayIso()) errs.date = 'The date can’t be in the past.';
       if (!toTimeInput(eventData.time)) errs.time = 'Choose the start time.';
       if (eventData.description.trim().length < 10) errs.description = 'Add a short description (at least 10 characters).';
+      if (eventData.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(eventData.contactEmail.trim())) errs.contactEmail = 'Enter a valid email address, or leave it empty.';
     }
     if (index === 2 && !isEdit) {
       tiers.forEach((t, i) => {
@@ -292,7 +295,7 @@ export default function CreateEvent() {
     setSubmitting(status);
     try {
       const formData = new FormData();
-      ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
+      ['name', 'description', 'type', 'date', 'time', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
       formData.append('status', status);
       formData.append('tiers', JSON.stringify(tiers));
       if (location.latitude != null) {
@@ -337,7 +340,7 @@ export default function CreateEvent() {
     setSubmitting('SAVE');
     try {
       const formData = new FormData();
-      ['name', 'description', 'type', 'date', 'time', 'city', 'venue'].forEach((key) => formData.append(key, eventData[key]));
+      ['name', 'description', 'type', 'date', 'time', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
       if (location.latitude != null) {
         formData.append('latitude', String(location.latitude));
         formData.append('longitude', String(location.longitude));
@@ -502,6 +505,10 @@ export default function CreateEvent() {
                 </Field>
                 <Field id="ev-description" label="Event description & lineup" error={err('description')} wide>
                   <textarea id="ev-description" className="tl-wz-input" rows={3} value={eventData.description} onChange={update('description')} placeholder="Provide event overview, team rosters, or musical schedule…" aria-invalid={Boolean(err('description'))} />
+                </Field>
+                <Field id="ev-contact" label="Contact email for attendees (optional)" error={err('contactEmail')} wide>
+                  <input id="ev-contact" className="tl-wz-input" type="email" autoComplete="email" value={eventData.contactEmail} onChange={update('contactEmail')} placeholder={company?.email || 'events@yourcompany.pk'} aria-invalid={Boolean(err('contactEmail'))} aria-describedby="ev-contact-hint" />
+                  <p id="ev-contact-hint" className="tl-wz-hint">Shown on the event page as “Contact organizer”. Leave empty to use your company email{company?.email ? ` (${company.email})` : ''}.</p>
                 </Field>
               </div>
             </section>

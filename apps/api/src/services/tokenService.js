@@ -5,6 +5,7 @@ import {
   getJwtSecret,
   ACCESS_TOKEN_TTL,
   REFRESH_TOKEN_TTL_MS,
+  SESSION_IDLE_TIMEOUT_MS,
   REFRESH_COOKIE_NAME,
 } from '../config/auth.js';
 
@@ -109,6 +110,12 @@ export const rotateRefreshToken = async (req, res) => {
 
   const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: sha256(raw) } });
   if (!stored || stored.expiresAt < new Date()) return null;
+
+  // Idle sign-out: nothing has refreshed this session for 30 minutes
+  if (!stored.revokedAt && Date.now() - stored.createdAt.getTime() > SESSION_IDLE_TIMEOUT_MS) {
+    await prisma.refreshToken.updateMany({ where: { id: stored.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return null;
+  }
 
   if (stored.revokedAt) {
     if (Date.now() - stored.revokedAt.getTime() > ROTATION_GRACE_MS) {

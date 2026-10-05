@@ -29,6 +29,14 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Live gate entry counters for one event (scanners, organizer dashboard)
+  socket.on('join_event_room', (eventId) => {
+    if (typeof eventId === 'string' && eventId.length < 64) socket.join(`event_${eventId}`);
+  });
+  socket.on('leave_event_room', (eventId) => {
+    if (typeof eventId === 'string') socket.leave(`event_${eventId}`);
+  });
+
   socket.on('disconnect', () => {
     console.log(`🔌 Socket client disconnected: ${socket.id}`);
   });

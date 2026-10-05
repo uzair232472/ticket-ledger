@@ -13,6 +13,9 @@ export const getJwtSecret = () => {
 
 export const ACCESS_TOKEN_TTL = '15m';
 export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// A session not refreshed for this long is over (inactivity sign-out). Active tabs refresh about every
+// 14 minutes, well inside it; the web app also signs out after the same idle time on its side.
+export const SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 export const REFRESH_COOKIE_NAME = 'tl_refresh';
 
 export const OTP_TTL_MS = 10 * 60 * 1000;

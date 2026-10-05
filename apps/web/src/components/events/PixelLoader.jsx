@@ -1,66 +1,65 @@
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import gsap from 'gsap';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import markUrl from '../../assets/ticketledger-mark.svg';
 import './pixelloader.css';
 
 const CELL = 82; // the reference grid uses ~82px squares
+const TOTAL_MS = 1600;
 
 /**
- * Page-entry transition modelled on the reference loader: a grid of squares fills with the brand colour
- * in random order while a percentage counter runs, the logo badge appears, then the squares clear in
- * random order to reveal the page. Shortened to ~1.4s; skipped for reduced motion.
- * It is decorative: aria-hidden, and it never blocks content from assistive technology.
+ * Page-entry transition: a grid of squares fills with the brand colour in random order while a
+ * percentage counter runs, the logo badge appears, then the squares clear in random order.
+ * Every square is a CSS animation (compositor-driven opacity), so it stays smooth while the new page
+ * mounts underneath; only the counter uses a tiny requestAnimationFrame loop. Skipped for reduced motion.
+ * Decorative: aria-hidden, never blocks content from assistive technology.
  */
 export default function PixelLoader({ onDone }) {
-  const rootRef = useRef(null);
-  const [done, setDone] = useState(false);
-  const grid = useMemo(() => {
-    // Sized to the larger of the window and the screen, so a resize mid-transition never leaves gaps
+  const countRef = useRef(null);
+  const [done, setDone] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  // Random start offsets per square (fill in over 0.55s, clear over 0.4s)
+  const cells = useMemo(() => {
     const cols = Math.ceil(Math.max(window.innerWidth, window.screen?.width || 0) / CELL);
     const rows = Math.ceil(Math.max(window.innerHeight, window.screen?.height || 0) / CELL);
-    return { cols, rows, count: cols * rows };
+    return { cols, list: Array.from({ length: cols * rows }, () => [Math.random() * 0.55, Math.random() * 0.4]) };
   }, []);
 
-  useLayoutEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setDone(true);
+  useEffect(() => {
+    if (done) {
       onDone?.();
       return undefined;
     }
-    const ctx = gsap.context(() => {
-      const cells = gsap.utils.toArray('.tl-px-cell', rootRef.current);
-      const counter = rootRef.current.querySelector('.tl-px-count');
-      const badge = rootRef.current.querySelector('.tl-px-badge');
-      const progress = { v: 0 };
-      gsap
-        .timeline({
-          onComplete: () => {
-            setDone(true);
-            onDone?.();
-          },
-        })
-        .to(cells, { opacity: 1, duration: 0.18, ease: 'none', stagger: { amount: 0.55, from: 'random' } }, 0)
-        .to(progress, { v: 100, duration: 0.7, ease: 'power1.inOut', onUpdate: () => { counter.textContent = `${Math.round(progress.v)}%`; } }, 0)
-        .to(counter, { opacity: 0, duration: 0.1 }, 0.72)
-        .fromTo(badge, { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.18, ease: 'power2.out' }, 0.72)
-        .to(rootRef.current.querySelector('.tl-px-base'), { opacity: 0, duration: 0.01 }, 0.95)
-        .to(badge, { opacity: 0, duration: 0.15 }, 1)
-        .to(cells, { opacity: 0, duration: 0.16, ease: 'none', stagger: { amount: 0.4, from: 'random' } }, 0.95);
-    }, rootRef);
-    return () => ctx.revert();
+    let raf;
+    const start = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - start) / 700);
+      // ease in-out, like the original counter
+      const eased = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2;
+      if (countRef.current) countRef.current.textContent = `${Math.round(eased * 100)}%`;
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    const t = setTimeout(() => {
+      setDone(true);
+      onDone?.();
+    }, TOTAL_MS);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (done) return null;
   return (
-    <div ref={rootRef} className="tl-px" aria-hidden="true" style={{ '--cols': grid.cols }}>
+    <div className="tl-px" aria-hidden="true" style={{ '--cols': cells.cols }}>
       <div className="tl-px-base" />
       <div className="tl-px-grid">
-        {Array.from({ length: grid.count }, (_, i) => (
-          <span key={i} className="tl-px-cell" />
+        {cells.list.map(([inAt, outAt], i) => (
+          <span key={i} className="tl-px-cell" style={{ '--in': `${inAt.toFixed(3)}s`, '--out': `${outAt.toFixed(3)}s` }} />
         ))}
       </div>
       <div className="tl-px-center">
-        <span className="tl-px-count">0%</span>
+        <span ref={countRef} className="tl-px-count">0%</span>
         <span className="tl-px-badge" style={{ backgroundImage: `url(${markUrl})` }} />
       </div>
     </div>
