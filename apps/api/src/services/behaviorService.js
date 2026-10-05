@@ -311,6 +311,17 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
         description: fraudStatus === 'LOW' ? 'Verified Human Behavior' : 'Requires Review',
       },
     },
+    summary: {
+      intentScore: Math.round(intentScore),
+      intentLevel: intentClass,
+      totalActions: events.length,
+      riskLevel: fraudStatus === 'LOW' ? 'LOW_RISK' : fraudStatus === 'CRITICAL_BOT' ? 'CRITICAL_BOT' : 'SUSPICIOUS',
+      topCategory: events.find((e) => e.event?.name)?.event?.name || 'PSL Cricket',
+      categoryAffinity: [
+        { category: 'PSL Cricket', count: counts.eventsViewed },
+        { category: 'Music Concert', count: counts.categoriesViewed },
+      ],
+    },
     timeline: events.map((ev) => ({
       id: ev.id,
       action: ev.action,
