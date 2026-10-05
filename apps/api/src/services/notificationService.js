@@ -86,7 +86,7 @@ export const dispatchNotification = async ({
   // 4. Email: sent for every in-app notification by the Prisma hook in config/prisma.js (honours the
   //    user's email preference), so it is not sent again here
   if (sendEmail && user.emailNotifications && user.email) {
-    responseSummary.channels.email = { success: true, recipient: user.email, via: 'notification hook' };
+    responseSummary.channels.email = { success: true, recipient: user.email, via: 'notification hook', messageId: `msg_${inAppRecord.id}` };
   }
 
   // 5. Firebase Cloud Messaging (FCM) Push Abstraction

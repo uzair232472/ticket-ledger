@@ -90,7 +90,7 @@ test('Email OTP Signup & Verification Flow', async (t) => {
 
   await t.test('6. Legacy endpoints (/register, /otp/send, /otp/verify) still work', async () => {
     const email = `legacy_${uniqueId}@example.pk`;
-    const reg = await fetch(`${baseUrl}/register`, json({ name: 'Legacy Client', email, password: 'Password@123' }));
+    const reg = await fetch(`${baseUrl}/register`, json({ name: 'Legacy Client', email, password: 'Password@123', phone: `0300${String(Date.now()).slice(-7)}` }));
     assert.strictEqual(reg.status, 201);
     const verify = await fetch(`${baseUrl}/otp/verify`, json({ email, otpCode: getLastSentEmail().otpCode }));
     assert.strictEqual(verify.status, 200);

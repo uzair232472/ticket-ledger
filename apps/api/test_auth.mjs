@@ -71,7 +71,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
   });
 
   await t.test('2. Duplicate email gets the brief wording', async () => {
-    const res = await fetch(`${baseUrl}/signup`, json({ name: 'Duplicate Guy', email: testEmail, password: 'Password123' }));
+    const res = await fetch(`${baseUrl}/signup`, json({ name: 'Duplicate Guy', email: testEmail, password: 'Password123', phone: '03112223344' }));
     const body = await res.json();
     assert.strictEqual(res.status, 409);
     assert.strictEqual(body.message, 'An account with this email already exists. Try logging in.');
@@ -109,7 +109,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
 
   await t.test('5. Five wrong attempts lock the code', async () => {
     const email = `locked_${Date.now()}@example.com`;
-    await fetch(`${baseUrl}/signup`, json({ name: 'Locked User', email, password: 'Password123' }));
+    await fetch(`${baseUrl}/signup`, json({ name: 'Locked User', email, password: 'Password123', phone: '03115556677' }));
     const code = getLastSentEmail().otpCode;
     const wrongCode = code === '000000' ? '111111' : '000000';
 
@@ -129,7 +129,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
   });
 
   await t.test('6. Organizer signup lands with companyStatus NONE', async () => {
-    await fetch(`${baseUrl}/signup`, json({ name: 'New Organizer', email: organizerEmail, password: 'Password123', accountType: 'organizer' }));
+    await fetch(`${baseUrl}/signup`, json({ name: 'New Organizer', email: organizerEmail, password: 'Password123', accountType: 'organizer', phone: '03118889900' }));
     const res = await fetch(`${baseUrl}/verify-otp`, json({ email: organizerEmail, code: getLastSentEmail().otpCode }));
     const body = await res.json();
     assert.strictEqual(res.status, 200);

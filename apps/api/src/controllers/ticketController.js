@@ -321,8 +321,16 @@ export const getCustomerWallet = async (req, res) => {
             code: pass.code,
             manualCode: pass.manualCode,
             qrVersion: pass.qrVersion,
+            nonce: t.qrNonce,
+            payload: createSignedQRPayload({
+              id: t.id,
+              eventId: t.eventId,
+              tokenId: tokenId || 0,
+              qrNonce: t.qrNonce,
+            }),
             qrCodeDataUrl,
           },
+          qrNonce: t.qrNonce,
           checkedInAt: t.checkedInAt,
           gate: t.gate,
           activeResaleListing: t.resaleListings?.[0] || null,
@@ -442,15 +450,38 @@ export const verifyTicketQRPost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing QR payload to verify' });
     }
 
-    // Read-only check of a pass (the wallet's "check my pass"); nothing is marked used
-    const verdict = await evaluate(typeof payload === 'string' ? payload : payload.code, null);
-    const valid = verdict.result === 'GREEN';
-    return res.status(200).json({
-      success: valid,
-      valid,
-      result: verdict.result,
-      reason: verdict.result,
-      message: valid ? 'Valid pass: it will be admitted at the gate.' : verdict.reason,
+    if (typeof payload === 'string' && payload.startsWith('TL1:')) {
+      const verdict = await evaluate(payload, null);
+      const valid = verdict.result === 'GREEN';
+      return res.status(valid ? 200 : 400).json({
+        success: valid,
+        valid,
+        result: verdict.result,
+        reason: verdict.result,
+        message: valid ? 'Valid pass: it will be admitted at the gate.' : verdict.reason,
+      });
+    }
+
+    if (payload?.code && typeof payload.code === 'string') {
+      const verdict = await evaluate(payload.code, null);
+      const valid = verdict.result === 'GREEN';
+      return res.status(valid ? 200 : 400).json({
+        success: valid,
+        valid,
+        result: verdict.result,
+        reason: verdict.result,
+        message: valid ? 'Valid pass: it will be admitted at the gate.' : verdict.reason,
+      });
+    }
+
+    // HMAC object payload verification (backwards compatible)
+    const verification = await verifyTicketQR(payload);
+    return res.status(verification.valid ? 200 : 400).json({
+      success: verification.valid,
+      valid: verification.valid,
+      result: verification.valid ? 'VALID' : 'INVALID',
+      reason: verification.reason,
+      message: verification.message,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

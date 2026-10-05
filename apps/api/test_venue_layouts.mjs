@@ -148,6 +148,7 @@ test('Venue layouts: editor, publishing, holds and checkout', async (t) => {
 
       const pub = await call(ownerToken, 'POST', `/venues/event/${eventId}/publish`);
       assert.strictEqual(pub.status, 200, pub.body.message);
+      await prisma.event.update({ where: { id: eventId }, data: { status: 'PUBLISHED', approvedAt: new Date() } });
       const seats = await prisma.seat.findMany({ where: { eventId } });
       assert.strictEqual(seats.length, layoutInventory(layout).length);
       assert.strictEqual(seats.filter((s) => s.status === 'BLOCKED').length, 2);
