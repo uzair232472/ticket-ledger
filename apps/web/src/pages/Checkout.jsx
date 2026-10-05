@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Trash2, X } from 'lucide-react';
+import { useDialog } from '../components/ui/DialogProvider';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
@@ -29,7 +30,7 @@ const normalizePhone = (v) => {
 async function loadReservation(eventId) {
   const { data } = await api.get(`/venues/event/${eventId}`);
   const d = data.data;
-  if (d.layout) return { event: d.event, mine: d.mine || [], serverTime: d.serverTime };
+  if (d.layout) return { event: d.event, mine: d.mine || [], serverTime: d.serverTime, legacy: false };
   // Events still on the older seat grid
   const legacy = (await api.get(`/seats/event/${eventId}`)).data.data;
   return {
@@ -38,6 +39,7 @@ async function loadReservation(eventId) {
       .filter((s) => s.isLockedByMe)
       .map((s) => ({ id: s.id, key: s.id, sectionId: s.section, section: s.section, row: s.row, seatNumber: s.seatNumber, kind: 'SEAT', lockedUntil: s.lockedUntil, tier: s.tier })),
     serverTime: new Date().toISOString(),
+    legacy: true,
   };
 }
 
@@ -87,6 +89,8 @@ export default function Checkout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const dialog = useDialog();
+  const [removing, setRemoving] = useState(null); // line id being removed, or 'all'
   const eventId = paramId || location.state?.eventId || new URLSearchParams(location.search).get('event');
 
   const [status, setStatus] = useState('loading'); // loading | ready | error
@@ -167,6 +171,38 @@ export default function Checkout() {
   if (!authLoading && !isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location.pathname, notice: 'Log in to complete your order. Your seats stay reserved until the timer ends.' }} />;
   }
+
+  // Remove tickets from the order: the seats go back on sale (an unpaid checkout for them is retired)
+  const release = async (lineKeys, id) => {
+    if (removing || phase !== 'idle') return;
+    setRemoving(id);
+    setProblem(null);
+    try {
+      if (snap?.legacy) {
+        for (const seatId of lineKeys) await api.post('/seats/unlock', { seatId });
+      } else {
+        await api.post(`/venues/event/${eventId}/holds/release`, { keys: lineKeys });
+      }
+      orderRef.current = null; // the next Confirm order prices a fresh order
+      window.dispatchEvent(new Event('tl:holds-changed'));
+      await refresh();
+    } catch (err) {
+      setProblem({ tone: 'error', kind: 'remove', text: err.response?.data?.message || 'We couldn’t remove that ticket. Please try again.' });
+    } finally {
+      setRemoving(null);
+    }
+  };
+  const removeLine = (l) => release(l.keys, l.id);
+  const discardAll = async () => {
+    const ok = await dialog.confirm({
+      tone: 'error',
+      title: 'Discard all tickets?',
+      message: `Your ${mine.length} reserved ticket${mine.length === 1 ? '' : 's'} will be released for other fans. You can choose seats again any time.`,
+      confirmLabel: 'Discard tickets',
+      cancelLabel: 'Keep them',
+    });
+    if (ok) release(lines.flatMap((l) => l.keys), 'all');
+  };
 
   const setField = (k) => (e) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -338,15 +374,32 @@ export default function Checkout() {
                 <div key={g.key} className="tl-co-group">
                   <p className="tl-vb-group-name">{g.name} <span>{g.qty} × {formatPkr(g.unit)}</span></p>
                   {g.lines.map((l) => (
-                    <p key={l.id} className="tl-co-line">
+                    <p key={l.id} className={`tl-co-line${removing === l.id || removing === 'all' ? ' is-removing' : ''}`}>
                       <span><b>{lineTitle(l)}</b>{l.qty > 1 && <span className="tl-co-qty"> · {l.qty} × {formatPkr(l.unit)}</span>}</span>
-                      <span>{formatPkr(l.total)}</span>
+                      <span className="tl-co-line-end">
+                        {formatPkr(l.total)}
+                        <button
+                          type="button"
+                          className="tl-co-remove"
+                          onClick={() => removeLine(l)}
+                          disabled={Boolean(removing) || busy}
+                          aria-label={`Remove ${lineTitle(l)}${l.qty > 1 ? ` (${l.qty} tickets)` : ''}`}
+                          title="Remove"
+                        >
+                          <X className="w-4 h-4" aria-hidden="true" />
+                        </button>
+                      </span>
                     </p>
                   ))}
                 </div>
               ))}
             </div>
-            <Link to={seatsHref} className="tl-bk-link">Change seats</Link>
+            <div className="tl-co-ticket-actions">
+              <Link to={seatsHref} className="tl-bk-link">Change seats</Link>
+              <button type="button" className="tl-co-discard" onClick={discardAll} disabled={Boolean(removing) || busy}>
+                <Trash2 className="w-4 h-4" aria-hidden="true" /> {removing === 'all' ? 'Discarding…' : 'Discard all'}
+              </button>
+            </div>
           </section>
 
           {/* Attendee */}

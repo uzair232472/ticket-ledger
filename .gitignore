@@ -59,3 +59,6 @@ yarn-error.log*
 .vs/
 node_modules/
 .env
+
+# QR pass signing key (development; production uses QR_SIGNING_PRIVATE_KEY)
+apps/api/.keys/

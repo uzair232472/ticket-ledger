@@ -444,6 +444,9 @@ export const buyResaleTicket = async (req, res) => {
           // Generate new QR nonce so old seller's screenshot/QR pass is destroyed
           qrNonce: newNonce,
           qrIssuedAt: new Date(),
+          // The previous owner's QR and manual code stop working
+          qrVersion: { increment: 1 },
+          manualCode: null,
         },
         include: {
           event: true,

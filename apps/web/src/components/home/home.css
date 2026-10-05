@@ -44,8 +44,9 @@
   transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.45s ease;
 }
 
-.tl-header[data-scroll-hidden='true'] {
-  transform: translateY(-100%);
+/* Scrolled down: only the logo steps away; the menu, cart, notification and profile icons stay on every section */
+.tl-header[data-scroll-hidden='true'] .tl-header-logo {
+  transform: translateY(-14px);
   opacity: 0;
   pointer-events: none;
 }
@@ -74,7 +75,7 @@
 }
 
 .tl-header-logo {
-  transition: visibility 0s linear 0s;
+  transition: visibility 0s linear 0s, opacity 0.3s ease, transform 0.3s ease;
 }
 
 .tl-header[data-at-footer='true'] .tl-header-logo {
@@ -440,49 +441,47 @@
 
 }
 
-/* Menu button: the ticket-menu image itself (black PNG; inverted to white over dark scenes) */
+/* Menu button: thin-line ticket (SVG, coloured by the header tone) */
 .tl-menu-btn {
   position: relative;
   /* Above the dimming backdrop while the menu is open */
   z-index: 59;
   display: inline-grid;
   place-items: center;
-  width: 132px;
-  height: 48px;
+  width: 118px;
+  height: 58px;
   padding: 0;
   background: none;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
+  color: #ffffff;
   cursor: pointer;
 }
 .tl-menu-btn-img {
   display: block;
-  width: auto;
-  height: 46px;
-  /* Black icon on a transparent background (cropped from the provided image) */
-  filter: invert(1) drop-shadow(0 1px 6px rgba(0, 0, 0, 0.35));
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease;
+  width: 108px;
+  height: 54px;
+  filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.35));
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease, color 0.2s ease;
   pointer-events: none;
-  user-select: none;
 }
+.tl-header[data-tone='light'] .tl-menu-btn { color: #0b0b0b; }
 .tl-header[data-tone='light'] .tl-menu-btn-img { filter: none; }
 /* White again over the dark footer and while the menu is open over the dimmed page */
+.tl-header[data-at-footer='true'] .tl-menu-btn,
+.tl-menu-btn[aria-expanded='true'] { color: #ffffff; }
 .tl-header[data-at-footer='true'] .tl-menu-btn-img,
-.tl-menu-btn[aria-expanded='true'] .tl-menu-btn-img { filter: invert(1) drop-shadow(0 0 8px rgba(34, 197, 94, 0.55)); }
-.tl-menu-btn:hover .tl-menu-btn-img { transform: scale(1.06); }
-.tl-menu-btn[aria-expanded='true'] .tl-menu-btn-img { transform: scale(0.92); }
+.tl-menu-btn[aria-expanded='true'] .tl-menu-btn-img { filter: drop-shadow(0 0 8px rgba(34, 197, 94, 0.55)); }
+.tl-menu-btn:hover .tl-menu-btn-img { transform: scale(1.05); }
+.tl-menu-btn[aria-expanded='true'] .tl-menu-btn-img { transform: scale(0.94); }
 .tl-menu-btn:focus-visible { outline: 3px solid #4ade80; outline-offset: 2px; }
 @media (max-width: 639px) {
-  .tl-menu-btn { width: 108px; height: 44px; }
-  .tl-menu-btn-img { height: 40px; }
-}
-@media (max-width: 479px) {
-  .tl-menu-btn { width: 80px; }
-  .tl-menu-btn-img { height: 34px; }
+  .tl-menu-btn { width: 96px; height: 48px; }
+  .tl-menu-btn-img { width: 88px; height: 44px; }
 }
 @media (max-width: 389px) {
-  .tl-menu-btn { width: 70px; }
-  .tl-menu-btn-img { height: 30px; }
+  .tl-menu-btn { width: 80px; }
+  .tl-menu-btn-img { width: 74px; height: 37px; }
 }
 
 .tl-menu-backdrop {
@@ -1900,7 +1899,7 @@
 
 .tl-footer-top {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.8fr) repeat(4, minmax(0, 1fr));
   gap: 24px 32px;
 }
 
@@ -2259,4 +2258,150 @@
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
+}
+
+/* Site header / footer on pages without their own chrome (App SiteChrome) */
+.tl-home.tl-chrome { background: none; overflow: visible; }
+.tl-chrome + main { padding-top: calc(var(--tl-header-h, 76px) + 12px); }
+
+/* Map hover card: floats above the map's title and filter bar (z-index over the overlay) */
+.tl-map-float {
+  position: absolute;
+  z-index: 1100;
+  transform: translate(-50%, -100%) translateY(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.2s ease;
+}
+.tl-map-float[data-side='below'] { transform: translate(-50%, 0) translateY(-6px); }
+.tl-map-float.is-shown { opacity: 1; transform: translate(-50%, -100%); }
+.tl-map-float.is-shown[data-side='below'] { transform: translate(-50%, 0); }
+
+/* How to zoom / pan; an outline marks the active map */
+.tl-map-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 1001;
+  transform: translateX(-50%);
+  max-width: calc(100% - 120px);
+  padding: 7px 14px;
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  border-radius: 999px;
+  background: rgba(10, 18, 13, 0.82);
+  color: rgba(255, 255, 255, 0.85);
+  font: 500 12px/1.3 'JetBrains Mono', monospace;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Phones: menu button on the left, logo centred, cart / notifications / profile on the right */
+@media (max-width: 639px) {
+  .tl-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 6px; }
+  .tl-header-actions { display: contents; }
+  .tl-header .tl-menu-btn { grid-column: 1; grid-row: 1; justify-self: start; width: 70px; height: 44px; }
+  .tl-header .tl-menu-btn-img { width: 66px; height: 33px; }
+  .tl-header .tl-header-logo { grid-column: 2; grid-row: 1; justify-self: center; }
+  .tl-header > span[aria-hidden='true'] { display: none; }
+  .tl-header .tl-hacc { grid-column: 3; grid-row: 1; justify-self: end; margin-right: 0; }
+  /* A solid translucent bar, so page content never shows behind the icons */
+  .tl-header { background: rgba(8, 16, 12, 0.88); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .tl-header[data-tone='light'] { background: rgba(244, 246, 242, 0.92); }
+  .tl-header .tl-header-logo .tl-brand { font-size: 16px; }
+  .tl-header .tl-hacc-btn { width: 38px; height: 38px; }
+  .tl-header .tl-hacc { gap: 4px; }
+  .tl-header .tl-menu-backdrop, .tl-header .tl-menu-panel { grid-column: auto; }
+}
+
+/* ---------- Collage clips: the photo stays; its clip fades in and plays on hover (tap on phones) ---------- */
+.tl-collage-clip {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(var(--crop, 1));
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+.tl-collage-tile { transition: box-shadow 0.35s ease; }
+.tl-collage-tile.is-playing { z-index: 2; box-shadow: 0 0 0 2px var(--tl-green, #22c55e), 0 12px 40px rgba(0, 0, 0, 0.5); }
+.tl-collage-tile.is-playing .tl-collage-clip { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .tl-home--motion .tl-hero-stage { cursor: default; }
+}
+
+/* ---------- Phones: framed mosaic (3 tiles, side / centre / side, 3 tiles) below the header ---------- */
+@media (max-width: 639px) {
+  .tl-collage {
+    inset: calc(var(--tl-header-h, 76px) + 4px) 12px 14px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: 21% minmax(0, 1fr) 23%;
+    gap: 8px;
+  }
+  .tl-collage-tile, .tl-collage-center { border-radius: 8px; }
+  .tl-collage-tile { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+  .tl-collage-tile img { border-radius: inherit; }
+  .tl-collage-tile:nth-child(1) { grid-area: 1 / 1 / 2 / 3; }
+  .tl-collage-tile:nth-child(2) { grid-area: 1 / 3 / 2 / 5; }
+  .tl-collage-tile:nth-child(3) { grid-area: 1 / 5 / 2 / 7; }
+  .tl-collage-tile:nth-child(4) { grid-area: 2 / 1 / 3 / 2; }
+  .tl-collage-center { grid-area: 2 / 2 / 3 / 6; }
+  .tl-collage-tile:nth-child(6) { grid-area: 2 / 6 / 3 / 7; }
+  .tl-collage-tile:nth-child(7) { grid-area: 3 / 1 / 4 / 3; }
+  .tl-collage-tile:nth-child(8) { grid-area: 3 / 3 / 4 / 5; }
+  .tl-collage-tile:nth-child(9) { grid-area: 3 / 5 / 4 / 7; }
+  .tl-collage-shade { border-radius: 8px; }
+
+  /* The intro sits inside the centre cell */
+  .tl-home--motion .tl-hero-intro {
+    top: calc(var(--tl-header-h, 76px) + 4px + (100% - var(--tl-header-h, 76px) - 18px) * 0.21 + 8px + 20px);
+    bottom: calc(14px + (100% - var(--tl-header-h, 76px) - 18px) * 0.23 + 8px + 20px);
+    left: calc(12px + (100% - 64px) / 6 + 8px + 14px);
+    right: calc(12px + (100% - 64px) / 6 + 8px + 14px);
+  }
+  .tl-hero-intro-text { font-size: clamp(17px, 5.2vw, 22px); line-height: 1.25; }
+  .tl-hero-intro-cta { margin-top: 18px; }
+  .tl-hero-intro-cta .tl-btn { min-height: 48px; padding: 0 22px; }
+}
+
+/* ---------- Header icons: bare glyphs, no box (like the ticket menu button) ---------- */
+.tl-hacc-btn,
+.tl-header[data-tone='light'] .tl-hacc-btn,
+.tl-header[data-at-footer='true'] .tl-hacc-btn,
+.tl-hacc-btn:hover,
+.tl-header[data-tone='light'] .tl-hacc-btn:hover,
+.tl-hacc-btn[aria-expanded='true'] {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.tl-hacc-btn:hover { transform: translateY(-1px); opacity: 0.8; }
+.tl-hacc-btn[aria-expanded='true'] { transform: none; color: var(--tl-green, #22c55e); }
+.tl-hacc-btn .tl-hacc-icon { width: 26px; height: 26px; }
+
+/* Keep each still's subject in frame (narrow side tiles crop hard) */
+.tl-collage-tile:nth-child(4) img { object-position: 36% 50%; } /* concert singer */
+.tl-collage-tile:nth-child(6) img { object-position: 26% 50%; } /* qawwal */
+.tl-collage-tile:nth-child(7) img { object-position: 85% 50%; } /* youth club speaker */
+
+/* Footer: the wordmark and logo are home links; legal links sit in the bottom bar */
+.tl-footer a.tl-footer-wordmark { display: block; width: max-content; max-width: 100%; min-height: 0; font-size: clamp(48px, 8vw, 128px); color: #f1f5f2; text-decoration: none; }
+.tl-footer a.tl-footer-wordmark:hover { text-decoration: none; color: #fff; }
+.tl-footer a.tl-footer-wordmark:hover span { color: #4ade80; }
+.tl-footer a.tl-footer-logo { min-height: 0; }
+.tl-footer a.tl-footer-logo:hover { text-decoration: none; opacity: 0.85; }
+.tl-footer a.tl-footer-wordmark:focus-visible, .tl-footer a.tl-footer-logo:focus-visible { outline: 2px solid #4ade80; outline-offset: 4px; border-radius: 6px; }
+.tl-footer-legal { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.tl-footer .tl-footer-legal a { min-height: 0; font-size: 12px; color: rgba(255, 255, 255, 0.7); }
+.tl-footer-bottom { align-items: center; }
+@media (max-width: 1023px) {
+  .tl-footer-top { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tl-footer-brand { grid-column: 1 / -1; }
+}
+@media (max-width: 599px) {
+  .tl-footer-top { grid-template-columns: 1fr 1fr; gap: 22px 24px; }
 }

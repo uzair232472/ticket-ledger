@@ -82,6 +82,9 @@ export const transferTicketDirectly = async (req, res) => {
           ownerWallet: recipient.walletAddress || ticket.ownerWallet,
           qrNonce: newNonce,
           qrIssuedAt: new Date(),
+          // The previous owner's QR and manual code stop working
+          qrVersion: { increment: 1 },
+          manualCode: null,
         },
         include: {
           event: true,

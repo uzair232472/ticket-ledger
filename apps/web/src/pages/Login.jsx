@@ -100,14 +100,14 @@ export default function Login() {
 
   return (
     <AuthShell
-      title="Sign In to TicketLedger"
-      subtitle="Customers, organizers, gate staff and admins all sign in here"
+      title="Welcome back"
+      subtitle="Sign in to manage your tickets and account."
       footer={
         <>
-          Don't have an account yet?{' '}
+          New to TicketLedger?{' '}
           <Link
             to="/signup"
-            className="text-[#16a34a] hover:underline font-bold ml-1"
+            className="ml-1"
           >
             Create account
           </Link>
@@ -117,7 +117,7 @@ export default function Login() {
       <Alert tone="notice">{location.state?.notice}</Alert>
       <Alert>{error}</Alert>
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit} noValidate>
         <Field
           label="Email Address"
           icon={Mail}
@@ -141,11 +141,10 @@ export default function Login() {
             placeholder="••••••••"
           />
 
-          <div className="text-right mt-1.5">
+          <div className="tl-auth-forgot">
             <Link
               to="/forgot-password"
               state={{ email }}
-              className="text-[11px] font-semibold text-[#16a34a] hover:underline"
             >
               Forgot password?
             </Link>
@@ -162,15 +161,15 @@ export default function Login() {
       </form>
 
       {/* Demo accounts for the project examiners */}
-      <div className="pt-2 border-t border-slate-100">
+      <div className="tl-auth-demo">
         <button
           type="button"
           onClick={() => setShowExaminerPreset((previous) => !previous)}
           aria-expanded={showExaminerPreset}
-          className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-600 transition"
+          className="tl-auth-demo-toggle"
         >
-          <span className="flex items-center gap-1.5 font-medium">
-            <Sparkles className="w-3 h-3 text-[#22c55e]" />
+          <span>
+            <Sparkles className="w-4 h-4" aria-hidden="true" />
             <span>FYP Examiner Demo Logins</span>
           </span>
 

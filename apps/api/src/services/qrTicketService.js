@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import PDFDocument from 'pdfkit';
 import { drawTicketPdf, loadEventPhoto } from './ticketPdf.js';
 import prisma from '../config/prisma.js';
+import { passFor } from './qrPassService.js';
 
 const QR_SECRET = process.env.QR_HMAC_SECRET || process.env.JWT_SECRET || 'ticketledger_qr_master_secret_key_2026_fyp';
 
@@ -40,7 +41,7 @@ export const createSignedQRPayload = (ticket) => {
  * 2. Generate Base64 Data URL for Frontend Display
  */
 export const generateQRDataUrl = async (payload) => {
-  return await QRCode.toDataURL(JSON.stringify(payload), {
+  return await QRCode.toDataURL(typeof payload === 'string' ? payload : JSON.stringify(payload), {
     errorCorrectionLevel: 'H',
     margin: 2,
     width: 320,
@@ -55,7 +56,7 @@ export const generateQRDataUrl = async (payload) => {
  * 3. Generate PNG Buffer for PDFKit Embedding
  */
 export const generateQRBuffer = async (payload) => {
-  return await QRCode.toBuffer(JSON.stringify(payload), {
+  return await QRCode.toBuffer(typeof payload === 'string' ? payload : JSON.stringify(payload), {
     errorCorrectionLevel: 'H',
     margin: 2,
     width: 300,
@@ -362,10 +363,12 @@ export const buildTicketPDF = async (ticket, res) => {
   });
 
   // Prepare everything before streaming, so a failure can still return a JSON error
-  const qrBuffer = await generateQRBuffer(createSignedQRPayload(ticket));
+  // The same signed pass the wallet shows, plus the manual code for when the camera fails
+  const pass = await passFor(ticket);
+  const qrBuffer = await generateQRBuffer(pass.code);
   const photo = await loadEventPhoto(ticket.event);
 
   doc.pipe(res);
-  drawTicketPdf(doc, ticket, { qrBuffer, photo });
+  drawTicketPdf(doc, ticket, { qrBuffer, photo, manualCode: pass.manualCode });
   doc.end();
 };

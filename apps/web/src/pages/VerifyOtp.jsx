@@ -121,8 +121,8 @@ export default function VerifyOtp() {
           Sign in with your email and password and we'll send you a fresh code, or create a new account.
         </p>
         <div className="flex gap-3 text-xs font-bold">
-          <Link to="/login" className="text-[#16a34a] hover:underline">Sign in →</Link>
-          <Link to="/signup" className="text-[#16a34a] hover:underline">Create account →</Link>
+          <Link to="/login" className="text-[#16a34a] hover:underline">Sign in </Link>
+          <Link to="/signup" className="text-[#16a34a] hover:underline">Create account </Link>
         </div>
       </AuthShell>
     );

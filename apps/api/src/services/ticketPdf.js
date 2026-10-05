@@ -136,7 +136,7 @@ const STATUS_STYLE = {
  * Draws the whole ticket on `doc` (A4, 595×842 pt). `qrBuffer` is the signed gate QR (PNG);
  * `photo` the event image buffer or null.
  */
-export function drawTicketPdf(doc, ticket, { qrBuffer, photo }) {
+export function drawTicketPdf(doc, ticket, { qrBuffer, photo, manualCode }) {
   const ev = ticket.event || {};
   const seat = ticket.seat || {};
   const W = 595;
@@ -258,9 +258,14 @@ export function drawTicketPdf(doc, ticket, { qrBuffer, photo }) {
   const qX = M + 50;
   doc.roundedRect(qX - 8, qY - 8, qS + 16, qS + 16, 6).fillAndStroke(C.white, C.line);
   doc.image(qrBuffer, qX, qY, { width: qS, height: qS });
-  doc.font('Helvetica').fontSize(9).fillColor(C.muted);
-  const cap = `Pass #${ticket.id.slice(0, 8).toUpperCase()}  •  Live QR rotates in the app`;
-  doc.text(cap, qX + qS / 2 - doc.widthOfString(cap) / 2, qY + qS + 14, { lineBreak: false });
+  // Manual code under the QR, for when the gate camera can't read it
+  if (manualCode) {
+    doc.font('Courier-Bold').fontSize(13).fillColor(C.ink);
+    doc.text(manualCode, qX + qS / 2 - doc.widthOfString(manualCode) / 2, qY + qS + 12, { lineBreak: false });
+  }
+  doc.font('Helvetica').fontSize(8).fillColor(C.muted);
+  const cap = 'Manual entry code  •  Turn screen brightness up';
+  doc.text(cap, qX + qS / 2 - doc.widthOfString(cap) / 2, qY + qS + (manualCode ? 30 : 14), { lineBreak: false });
 
   doc.moveTo(M + inner * 0.5, qY - 4).lineTo(M + inner * 0.5, qY + qS + 24).lineWidth(0.6).stroke(C.line);
 

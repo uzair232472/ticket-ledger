@@ -1,3 +1,4 @@
+import { io } from 'socket.io-client';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -51,7 +52,6 @@ export default function DigitalWallet() {
   const [copiedField, setCopiedField] = useState(null);
   const [qrVerifyResult, setQrVerifyResult] = useState(null);
   const [verifyingId, setVerifyingId] = useState(null);
-  const [secondsLeft, setSecondsLeft] = useState(30);
 
   // Active Tab Filter (defaults to 'ACTIVE' so users see transferable tickets immediately)
   const [filterTab, setFilterTab] = useState('ACTIVE');
@@ -78,12 +78,16 @@ export default function DigitalWallet() {
   const [myTransfersData, setMyTransfersData] = useState({ sent: [], received: [] });
   const [myTransfersLoading, setMyTransfersLoading] = useState(false);
 
+  // Live check-in: the pass greys out the moment it's scanned at the gate ("Used at 7:42 PM, Gate B")
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => (prev <= 1 ? 30 : prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!user?.id) return undefined;
+    const socket = io(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000', { transports: ['websocket', 'polling'] });
+    socket.on('connect', () => socket.emit('join_user_room', user.id));
+    socket.on('ticket:checked-in', ({ ticketId, checkedInAt, gate }) => {
+      setTickets((list) => list.map((t) => (t.id === ticketId ? { ...t, status: 'SCANNED', checkedInAt, gate } : t)));
+    });
+    return () => socket.disconnect();
+  }, [user?.id]);
 
   const fetchWallet = async () => {
     setLoading(true);
@@ -160,7 +164,7 @@ export default function DigitalWallet() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ payload: ticket.qr.payload }),
+        body: JSON.stringify({ payload: ticket.qr.code }),
       });
       const data = await res.json();
       setQrVerifyResult({
@@ -325,7 +329,7 @@ export default function DigitalWallet() {
     <AccountShell
       eyebrow="My account · Cryptographic gate passes"
       title={['Your', 'tickets']}
-      intro="Gate passes with a rotating QR code, ready to scan at the turnstile. Transfer a pass to a friend, list it for fan resale, or download it as a PDF."
+      intro="Signed gate passes, ready to scan at the turnstile. Transfer a pass to a friend, list it for fan resale, or download it as a PDF."
       image={HERO_IMAGE.src}
       stats={loading ? [] : [
         { value: activeTicketsCount, label: 'Active passes' },
@@ -359,7 +363,7 @@ export default function DigitalWallet() {
       id="tl-passes"
       kicker="Gate passes"
       title="Passes"
-      aside={`QR codes rotate every 30 seconds. Next refresh in ${secondsLeft}s.`}
+      aside="Each QR is signed by TicketLedger. A transfer or resale replaces it, so only the current holder’s pass works."
     >
     <div className="max-w-7xl space-y-8 text-slate-800">
       <div className="space-y-8">
@@ -466,7 +470,7 @@ export default function DigitalWallet() {
             <div className="flex items-center justify-between text-xs text-slate-500 px-1">
               <span>Showing <strong className="text-slate-900">{displayedTickets.length}</strong> passes ({filterTab} filter)</span>
               <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#16a34a]" /> All passes secured with HMAC dynamic rotation & 110% resale cap
+                <CheckCircle2 className="w-3.5 h-3.5 text-[#16a34a]" /> Signed passes · old QR stops working after a transfer · 110% resale cap
               </span>
             </div>
 
@@ -475,7 +479,6 @@ export default function DigitalWallet() {
                 <WalletPass
                   key={t.id}
                   ticket={t}
-                  secondsLeft={secondsLeft}
                   downloading={downloadingId === t.id}
                   verifying={verifyingId === t.id}
                   verifyResult={qrVerifyResult?.ticketId === t.id ? qrVerifyResult : null}
@@ -563,7 +566,7 @@ export default function DigitalWallet() {
               <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div className="text-[11px] leading-relaxed">
-                  <strong>Important:</strong> Once transferred, your gate pass and QR code will be <strong>permanently revoked</strong>. The recipient will receive a brand-new cryptographic rotating QR pass.
+                  <strong>Important:</strong> Once transferred, your gate pass and QR code will be <strong>permanently revoked</strong>. The recipient will receive a brand-new signed QR pass and entry code.
                 </div>
               </div>
 

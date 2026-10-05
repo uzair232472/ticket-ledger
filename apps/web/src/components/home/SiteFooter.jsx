@@ -19,47 +19,52 @@ export function organizerAction(user, isAuthenticated) {
 }
 
 /**
- * Shared footer (homepage and Explore Events): oversized wordmark plus link columns.
+ * Shared footer: oversized wordmark, brand blurb and four short link columns, then a slim bottom bar with the
+ * legal links. Both the wordmark and the logo go back to the home page.
  * `onCategories` scrolls to the page's own category section/navigation.
  */
 export default function SiteFooter({ onCategories }) {
   const { user, isAuthenticated } = useAuth();
   const organizer = organizerAction(user, isAuthenticated);
+  const fan = !isAuthenticated || ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role);
 
   return (
     <footer className="tl-footer">
-      <p className="tl-footer-wordmark" aria-hidden="true">
+      <Link to="/" className="tl-footer-wordmark" aria-label="TicketLedger home">
         Ticket<span>Ledger</span>
-      </p>
+      </Link>
       <div>
         <div className="tl-footer-top">
           <div className="tl-footer-brand">
-            <BrandLogo />
+            <Link to="/" className="tl-footer-logo" aria-label="TicketLedger home"><BrandLogo /></Link>
             <p>Tickets for cricket, concerts and festivals across Pakistan, with seat selection and QR entry.</p>
           </div>
           <nav aria-label="Discover">
             <h3>Discover</h3>
             <ul>
               <li><Link to="/events">Explore events</Link></li>
-              {onCategories && (
-                <li><button type="button" className="tl-footer-link" onClick={onCategories}>Categories</button></li>
-              )}
-              <li><Link to="/categories">All categories</Link></li>
-              {(!isAuthenticated || ['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role)) && <li><Link to="/resale">Fan resale</Link></li>}
+              <li>
+                {onCategories
+                  ? <button type="button" className="tl-footer-link" onClick={onCategories}>Categories</button>
+                  : <Link to="/categories">Categories</Link>}
+              </li>
+              {fan && <li><Link to="/resale">Fan resale</Link></li>}
             </ul>
           </nav>
           <nav aria-label="Your account">
-            <h3>Your account</h3>
+            <h3>Account</h3>
             <ul>
-              {!isAuthenticated && (
+              {isAuthenticated ? (
+                <>
+                  {['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role) && <li><Link to="/wallet">My tickets</Link></li>}
+                  <li><Link to="/profile">Profile</Link></li>
+                </>
+              ) : (
                 <>
                   <li><Link to="/login">Log in</Link></li>
                   <li><Link to="/signup">Sign up</Link></li>
                 </>
               )}
-              {['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role) && <li><Link to="/wallet">My tickets</Link></li>}
-              {isAuthenticated && <li><Link to="/notifications">Notifications</Link></li>}
-              {isAuthenticated && <li><Link to="/profile">Profile</Link></li>}
             </ul>
           </nav>
           <nav aria-label="Organizers">
@@ -69,10 +74,20 @@ export default function SiteFooter({ onCategories }) {
               {organizer.secondary && <li><Link to={organizer.secondary.to}>{organizer.secondary.label}</Link></li>}
             </ul>
           </nav>
+          <nav aria-label="Company">
+            <h3>Company</h3>
+            <ul>
+              <li><Link to="/about">About us</Link></li>
+              <li><Link to="/contact">Contact us</Link></li>
+            </ul>
+          </nav>
         </div>
         <div className="tl-footer-bottom">
-          <span>© {new Date().getFullYear()} TicketLedger</span>
-          <span>Made for fans in Pakistan</span>
+          <span>© {new Date().getFullYear()} TicketLedger · Made for fans in Pakistan</span>
+          <nav aria-label="Legal" className="tl-footer-legal">
+            <Link to="/terms">Terms of Service</Link>
+            <Link to="/privacy">Privacy Policy</Link>
+          </nav>
         </div>
       </div>
     </footer>

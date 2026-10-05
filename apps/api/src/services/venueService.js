@@ -222,6 +222,28 @@ export async function setGaQuantity(eventId, sectionKey, quantity, userId) {
 export async function releaseHolds(eventId, keys, userId) {
   const seats = await prisma.seat.findMany({ where: { eventId, layoutKey: { in: keys } } });
   const tableKeys = [...new Set(seats.filter((s) => s.wholeTable).map((s) => s.tableKey))];
+
+  // Seats already in this customer's unpaid checkout: retire that checkout (PENDING -> FAILED, so it can
+  // never race a payment confirmation), drop its placeholder tickets and restore the tier counts. Any other
+  // seats of that checkout stay held; the next "Confirm order" starts a fresh order for them.
+  const seatScope = { eventId, lockedByUserId: userId, OR: [{ layoutKey: { in: keys } }, ...(tableKeys.length ? [{ tableKey: { in: tableKeys } }] : [])] };
+  const pending = await prisma.order.findMany({
+    where: { eventId, userId, status: 'PENDING', tickets: { some: { seat: seatScope } } },
+    include: { tickets: { include: { seat: true } } },
+  });
+  for (const order of pending) {
+    await prisma.$transaction(async (tx) => {
+      const flipped = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING' }, data: { status: 'FAILED' } });
+      if (!flipped.count) return; // paid or cancelled meanwhile
+      await tx.ticket.deleteMany({ where: { orderId: order.id } });
+      const tierCounts = {};
+      for (const t of order.tickets) tierCounts[t.seat.tierId] = (tierCounts[t.seat.tierId] || 0) + 1;
+      for (const [tierId, count] of Object.entries(tierCounts)) {
+        await tx.ticketTier.update({ where: { id: tierId }, data: { availableQuantity: { increment: count } } });
+      }
+    });
+  }
+
   const where = {
     eventId,
     status: 'LOCKED',

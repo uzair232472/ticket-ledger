@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldOff, Mail } from 'lucide-react';
 
-const SUPPORT_EMAIL = 'support@ticketledger.pk';
+import { SUPPORT_EMAIL } from '../lib/site';
 
 export default function Suspended() {
   return (

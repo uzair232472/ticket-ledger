@@ -17,7 +17,7 @@ const timeAgo = (date) => {
 
 /**
  * Header icons:
- * - Permanent Cart button: links directly to /cart page showing booking completion & delete options.
+ * - Cart button: goes straight to checkout for the held seats (or the empty checkout when nothing is held).
  * - Notifications (latest three + "View all") and Account (profile / log out) when signed in.
  */
 export default function HeaderAccount({ menuOpen, onOpen, onLogout }) {
@@ -86,10 +86,10 @@ export default function HeaderAccount({ menuOpen, onOpen, onLogout }) {
 
   return (
     <div ref={rootRef} className="tl-hacc">
-      {/* Permanent Ticket Cart Button - Navigates directly to /cart page */}
+      {/* Cart: straight to checkout for the reserved seats */}
       <div className="tl-hacc-item">
         <Link
-          to="/cart"
+          to={hasItems ? `/events/${first.eventId}/checkout` : '/checkout'}
           className="tl-hacc-btn"
           aria-label={hasItems ? `Cart: ${totalCount} tickets reserved` : 'Ticket Cart'}
           title={hasItems ? `${totalCount} tickets held: Complete booking` : 'Ticket Cart'}

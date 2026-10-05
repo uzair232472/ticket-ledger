@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, Calendar, CheckCircle2, Clock, Download, History, Info, Lock, MapPin, MoreHorizontal,
-  RefreshCw, Send, ShieldCheck, Tag, Code2,
+  RefreshCw, Send, ShieldCheck, Tag, Code2, Sun,
 } from 'lucide-react';
 import { categoryName } from '../home/homeData';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
@@ -62,11 +62,11 @@ function MoreMenu({ items, className = '', compact = false }) {
 }
 
 /**
- * Wallet gate pass: event details on the left, the rotating QR stub on the right (stacked on phones),
+ * Wallet gate pass: event details on the left, the signed QR stub on the right (stacked on phones),
  * separated by a perforated tear line. Actions: download, transfer and a "More" menu.
  */
 export default function WalletPass({
-  ticket: t, secondsLeft, downloading, verifying, verifyResult, payloadOpen,
+  ticket: t, downloading, verifying, verifyResult, payloadOpen,
   onDownload, onTransfer, onResale, onHistory, onVerify, onTogglePayload,
 }) {
   const ev = t.event || {};
@@ -79,7 +79,7 @@ export default function WalletPass({
     isActive && { label: 'List for resale (≤110%)', icon: <Tag className="w-4 h-4" aria-hidden="true" />, onClick: onResale },
     { label: 'Ownership history', icon: <History className="w-4 h-4" aria-hidden="true" />, onClick: onHistory },
     { label: verifying ? 'Checking…' : 'Check at gate', icon: <ShieldCheck className="w-4 h-4" aria-hidden="true" />, onClick: onVerify, disabled: verifying },
-    { label: payloadOpen ? 'Hide signed QR data' : 'Show signed QR data', icon: <Code2 className="w-4 h-4" aria-hidden="true" />, onClick: onTogglePayload },
+    { label: payloadOpen ? 'Hide signed pass' : 'Show signed pass', icon: <Code2 className="w-4 h-4" aria-hidden="true" />, onClick: onTogglePayload },
   ];
 
   return (
@@ -120,7 +120,7 @@ export default function WalletPass({
         )}
 
         {payloadOpen && (
-          <pre className="tl-pass-payload">{JSON.stringify(t.qr?.payload || {}, null, 2)}</pre>
+          <pre className="tl-pass-payload">{t.qr?.code || ''}</pre>
         )}
 
       </div>
@@ -131,15 +131,24 @@ export default function WalletPass({
           {(isScanned || isInvalid) && (
             <div className="tl-pass-qr-cover">
               {isScanned ? <CheckCircle2 className="w-8 h-8" aria-hidden="true" /> : <AlertTriangle className="w-8 h-8" aria-hidden="true" />}
-              <strong>{isScanned ? 'Already scanned' : 'QR no longer valid'}</strong>
-              <span>{isScanned ? 'This pass was used at the gate.' : 'This ticket was resold or transferred.'}</span>
+              <strong>{isScanned ? 'Used' : 'QR no longer valid'}</strong>
+              <span>
+                {isScanned
+                  ? t.checkedInAt
+                    ? `Used at ${new Date(t.checkedInAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${t.gate ? `, ${t.gate}` : ''}`
+                    : 'This pass was used at the gate.'
+                  : 'This ticket was resold or transferred.'}
+              </span>
             </div>
           )}
         </div>
-        <p className="tl-pass-scan">Scan at entry</p>
+        {t.qr?.manualCode && (
+          <p className="tl-pass-code" aria-label={`Manual entry code ${t.qr.manualCode}`}>{t.qr.manualCode}</p>
+        )}
+        <p className="tl-pass-scan">{isActive ? 'Scan at entry' : isScanned ? 'Checked in' : 'Not valid for entry'}</p>
         <div className="tl-pass-badges">
           <p className="tl-pass-refresh">
-            <RefreshCw className="w-4 h-4" aria-hidden="true" /> Auto-refreshing{isActive ? ` · ${secondsLeft}s` : ''}
+            <Sun className="w-4 h-4" aria-hidden="true" /> Turn screen brightness up
           </p>
           <span className="tl-pass-dot" aria-hidden="true" />
           <p className="tl-pass-verified"><ShieldCheck className="w-6 h-6" aria-hidden="true" /> Verified ticket</p>

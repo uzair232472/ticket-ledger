@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
+import { getIO } from '../config/socket.js';
 import { sendStaffInviteEmail } from '../services/emailService.js';
 import { sha256, revokeAllRefreshTokens } from '../services/tokenService.js';
 import { getOwnedCompanyId, getScopedEventIds } from '../services/accessService.js';
@@ -98,8 +99,11 @@ export const createInvite = async (req, res) => {
       if (existing.companyId !== event.companyId) {
         return res.status(409).json({ success: false, message: 'This staff member belongs to another company.' });
       }
+      if (existing.status === 'DEACTIVATED') {
+        return res.status(409).json({ success: false, message: 'This staff member is deactivated. Reactivate them in your staff list first.' });
+      }
       if (existing.status !== 'ACTIVE') {
-        return res.status(409).json({ success: false, message: 'This staff account has been deactivated.' });
+        return res.status(409).json({ success: false, message: 'This staff account is blocked by TicketLedger. Contact support.' });
       }
 
       // Same company: assign the existing account to this event, no new invite needed
@@ -329,6 +333,109 @@ export const deactivateStaff = async (req, res) => {
     return res.status(200).json({ success: true, message: `${staff.name} has been deactivated.`, data: { staff: updated } });
   } catch (error) {
     return handleError(res, error, 'Deactivate staff');
+  }
+};
+
+/**
+ * DELETE /api/staff/:id/events/:eventId — takes one event away from a gate staff member. The API stops
+ * accepting their scans, offline packs and offline uploads for that event at once, and any scanner they
+ * have open is told to wipe its offline list (a device that is offline learns at its next connection).
+ */
+export const revokeEventAccess = async (req, res) => {
+  try {
+    const { id: staffId, eventId } = req.params;
+    const staff = await prisma.user.findUnique({ where: { id: staffId } });
+    if (!staff || staff.role !== 'GATE_STAFF') {
+      return res.status(404).json({ success: false, message: 'Staff member not found.' });
+    }
+    const scope = await resolveCompanyScope(req.user);
+    if (!canManageCompany(scope, staff.companyId)) {
+      return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
+    }
+    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, name: true, companyId: true } });
+    if (!event || !canManageCompany(scope, event.companyId)) {
+      return res.status(404).json({ success: false, message: 'Event not found.' });
+    }
+
+    const { count } = await prisma.staffEventAssignment.deleteMany({ where: { staffId, eventId } });
+    if (!count) {
+      return res.status(200).json({ success: true, message: `${staff.name} wasn’t assigned to ${event.name}.` });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'STAFF_EVENT_ACCESS_REVOKED',
+        targetType: 'User',
+        targetId: staffId,
+        details: { email: staff.email, eventId, eventName: event.name },
+      },
+    });
+    await prisma.notification.create({
+      data: {
+        userId: staffId,
+        type: 'STAFF_ACCESS_REVOKED',
+        title: `Scanner access removed: ${event.name}`,
+        message: `You can no longer scan tickets for ${event.name}. Contact your organizer if this is a mistake.`,
+      },
+    });
+    getIO()?.to(`user_${staffId}`).emit('staff:access-revoked', { eventId });
+
+    return res.status(200).json({ success: true, message: `${staff.name} can no longer scan tickets for ${event.name}.` });
+  } catch (error) {
+    return handleError(res, error, 'Revoke event access');
+  }
+};
+
+/**
+ * PATCH /api/staff/:id/reactivate — lets a staff member the organizer deactivated sign in again. Only undoes
+ * the organizer's own deactivation: accounts suspended or banned by TicketLedger stay blocked.
+ */
+export const reactivateStaff = async (req, res) => {
+  try {
+    const staff = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!staff || staff.role !== 'GATE_STAFF') {
+      return res.status(404).json({ success: false, message: 'Staff member not found.' });
+    }
+
+    const scope = await resolveCompanyScope(req.user);
+    if (!canManageCompany(scope, staff.companyId)) {
+      return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
+    }
+    if (staff.status === 'ACTIVE') {
+      return res.status(200).json({ success: true, message: `${staff.name} is already active.`, data: { staff } });
+    }
+    if (staff.status !== 'DEACTIVATED' && req.user.role !== 'SUPER_ADMIN') {
+      return res.status(409).json({ success: false, message: 'This account was blocked by TicketLedger and can only be restored by support.' });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: staff.id },
+      data: { status: 'ACTIVE' },
+      select: { id: true, name: true, email: true, status: true, companyId: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action: 'STAFF_REACTIVATED',
+        targetType: 'User',
+        targetId: staff.id,
+        details: { email: staff.email, companyId: staff.companyId },
+      },
+    });
+    await prisma.notification.create({
+      data: {
+        userId: staff.id,
+        type: 'STAFF_REACTIVATED',
+        title: 'Your gate staff account is active again',
+        message: 'You can sign in to TicketLedger and scan tickets for your assigned events.',
+      },
+    });
+
+    return res.status(200).json({ success: true, message: `${staff.name} has been reactivated.`, data: { staff: updated } });
+  } catch (error) {
+    return handleError(res, error, 'Reactivate staff');
   }
 };
 

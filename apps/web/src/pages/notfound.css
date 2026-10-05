@@ -1,0 +1,36 @@
+/* 404 page: dark green stage, looped-ticket "404", headline and actions. */
+.tl-home.tl-404 {
+  min-height: 100vh;
+  background:
+    radial-gradient(45% 40% at 50% 32%, rgba(34, 197, 94, 0.22), transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, rgba(22, 101, 52, 0.25), transparent 70%),
+    #07130c;
+  color: #f3f7f4;
+}
+.tl-404-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: calc(var(--tl-header-h) + 8px) 16px 28px;
+  text-align: center;
+}
+.tl-404-art { width: min(920px, 100%); height: auto; margin-top: 8px; }
+.tl-404-eyebrow { margin-top: 4px; font: 700 14px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.32em; text-transform: uppercase; color: #4ade80; }
+.tl-404-title { margin-top: 16px; font-size: clamp(32px, 4.6vw, 62px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; color: #ffffff; }
+.tl-404-text { margin-top: 14px; font-size: clamp(16px, 1.6vw, 21px); line-height: 1.5; color: rgba(243, 247, 244, 0.7); }
+.tl-404-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 30px; }
+.tl-404-btn { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 56px; padding: 0 44px; border: 1.5px solid rgba(255, 255, 255, 0.8); border-radius: 999px; color: #ffffff; font-size: 18px; font-weight: 700; transition: background-color 0.2s ease, transform 0.2s ease, color 0.2s ease; }
+.tl-404-btn:hover { background: rgba(255, 255, 255, 0.08); transform: translateY(-1px); }
+.tl-404-btn.is-primary { border-color: transparent; background: linear-gradient(135deg, #34d399, #22c55e); color: #052e16; box-shadow: 0 10px 30px rgba(34, 197, 94, 0.3); }
+.tl-404-btn.is-primary:hover { background: linear-gradient(135deg, #4ade80, #22c55e); }
+.tl-404-btn:focus-visible, .tl-404-back:focus-visible { outline: 2px solid #4ade80; outline-offset: 3px; }
+.tl-404-back { display: inline-flex; align-items: center; gap: 10px; margin-top: 26px; padding: 8px 12px; border: 0; background: none; font: inherit; font-size: 16px; color: rgba(243, 247, 244, 0.7); cursor: pointer; }
+.tl-404-back:hover { color: #ffffff; }
+.tl-404-foot { width: min(400px, 100%); margin-top: auto; padding-top: 44px; color: rgba(243, 247, 244, 0.55); font-size: 13px; letter-spacing: 0.04em; }
+.tl-404-mark { display: flex; align-items: center; gap: 22px; margin-bottom: 10px; font: 700 12px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.5em; color: #ffffff; }
+.tl-404-mark::before, .tl-404-mark::after { content: ''; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.2); }
+.tl-404-mark b { font-weight: inherit; color: #4ade80; }
+@media (max-width: 559px) {
+  .tl-404-btn { flex: 1 1 100%; padding: 0 24px; }
+}

@@ -43,7 +43,8 @@ const signupSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: passwordSchema,
-  phone: z.literal('').transform(() => undefined).or(phoneSchema).optional(),
+  // A Pakistani mobile number is required to sign up
+  phone: z.string({ required_error: 'Mobile number is required' }).trim().min(1, 'Mobile number is required').pipe(phoneSchema),
   accountType: z.enum(['customer', 'organizer']).optional().default('customer'),
   walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid Ethereum/Polygon wallet address').optional().or(z.literal('')),
 });

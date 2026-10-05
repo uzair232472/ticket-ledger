@@ -6,6 +6,23 @@ const AuthContext = createContext(null);
 
 // Refresh the access token this long before it expires
 const REFRESH_LEAD_MS = 60 * 1000;
+// Inactivity sign-out (matches the API's SESSION_IDLE_TIMEOUT_MS). Activity is shared across tabs.
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const ACTIVITY_KEY = 'tl_last_active';
+const readLastActive = () => {
+  try {
+    return Number(localStorage.getItem(ACTIVITY_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+};
+const writeLastActive = (t) => {
+  try {
+    localStorage.setItem(ACTIVITY_KEY, String(t));
+  } catch {
+    /* storage unavailable */
+  }
+};
 
 const tokenExpiry = (token) => {
   try {
@@ -102,6 +119,19 @@ export function AuthProvider({ children }) {
     }
 
     (async () => {
+      // Away longer than the idle limit (every tab closed or asleep): end the session instead of restoring it
+      const last = readLastActive();
+      if (last && Date.now() - last > IDLE_TIMEOUT_MS) {
+        try {
+          await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+        } catch {
+          /* the server ends idle sessions on its own too */
+        }
+        writeLastActive(Date.now());
+        setLoading(false);
+        return;
+      }
+      writeLastActive(Date.now());
       let restored = await refreshSession();
       if (!restored) {
         // Another tab may have rotated the cookie at the same moment; try once more
@@ -120,6 +150,41 @@ export function AuthProvider({ children }) {
     const timer = setTimeout(refreshSession, Math.max(0, expiresAt - Date.now() - REFRESH_LEAD_MS));
     return () => clearTimeout(timer);
   }, [token, refreshSession]);
+
+  // Inactivity sign-out: 30 minutes without a click, key, scroll or touch in any tab
+  const signedIn = !!user;
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    let lastWrite = 0;
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - lastWrite > 15000) {
+        lastWrite = now;
+        writeLastActive(now);
+      }
+    };
+    const check = async () => {
+      if (Date.now() - readLastActive() <= IDLE_TIMEOUT_MS) return;
+      try {
+        await fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+      } catch {
+        /* the server ends idle sessions on its own too */
+      }
+      clearSession();
+      navigate('/login', { replace: true, state: { from: window.location.pathname, notice: 'You were signed out after 30 minutes of inactivity. Log in again to continue.' } });
+    };
+    writeLastActive(Date.now());
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll', 'mousemove'];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true, capture: true }));
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    const id = setInterval(check, 15000);
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity, { capture: true }));
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(id);
+    };
+  }, [signedIn, clearSession, navigate]);
 
   const login = async (email, password) => {
     const data = await authRequest('/login', { body: { email, password } });

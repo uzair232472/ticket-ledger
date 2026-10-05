@@ -32,3 +32,13 @@ export const codeCheckRateLimiter = rateLimit({
   skip: isTestRun,
   handler: tooManyRequests,
 });
+
+// Contact form: 5 messages per 10 minutes per IP in production
+export const contactRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 5 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  handler: tooManyRequests,
+});
