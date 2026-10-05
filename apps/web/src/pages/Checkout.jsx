@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Trash2, X } from 'lucide-react';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useDialog } from '../components/ui/DialogProvider';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -11,12 +13,17 @@ import { formatPkr } from '../components/venue/venueTheme';
 import { getEventVisual } from '../utils/eventMedia';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 
+const stripePromise = loadStripe(
+  import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+  'pk_test_51UNHhM4Ve73zHzr5tqCqRRooaoF8dNMnKcv6aQyRV2d8tbZhf4QvO2q6w65A1YCr1lhVkcd1OOY0wZRwfDedBiUy00w2gURSW4'
+);
+
 // The payment options the API already supports (bookingController / paymentService)
 const METHODS = [
   { value: 'MOCK', label: 'Instant test payment', note: 'Sandbox · confirms immediately' },
   { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet · MPIN / OTP' },
   { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet · OTP' },
-  { value: 'STRIPE', label: 'Card', note: 'Visa / Mastercard via Stripe' },
+  { value: 'STRIPE', label: 'Card (Stripe Sandbox)', note: 'Visa / Mastercard test payment' },
 ];
 const WALLETS = new Set(['JAZZCASH', 'EASYPAISA']);
 const digits = (v) => v.replace(/\D/g, '');
@@ -46,7 +53,7 @@ async function loadReservation(eventId) {
 function paymentDetailsFor(method, params, form) {
   if (method === 'JAZZCASH') return { otpCode: form.otp, ppTxnRefNo: params.ppTxnRefNo };
   if (method === 'EASYPAISA') return { otpCode: form.otp, epOrderId: params.epOrderId };
-  if (method === 'STRIPE') return { clientSecret: params.clientSecret, paymentTxId: `ch_${Date.now()}`, cardLast4: digits(form.cardNumber).slice(-4) };
+  if (method === 'STRIPE') return { clientSecret: params.clientSecret, paymentIntentId: params.paymentIntentId, paymentTxId: params.paymentIntentId || `ch_${Date.now()}` };
   return { paymentTxId: params.mockTxId };
 }
 
@@ -59,11 +66,6 @@ function validate(method, form) {
   if (WALLETS.has(method) && !/^\d{6}$/.test(form.otp)) errors.otp = 'Enter the 6-digit code.';
   if (method === 'STRIPE') {
     if (!form.cardName.trim()) errors.cardName = 'Enter the name on the card.';
-    if (!/^\d{15,16}$/.test(digits(form.cardNumber))) errors.cardNumber = 'Enter a valid card number.';
-    const m = form.cardExpiry.match(/^\s*(\d{2})\s*\/\s*(\d{2})\s*$/);
-    const now = new Date();
-    if (!m || Number(m[1]) < 1 || Number(m[1]) > 12 || new Date(2000 + Number(m[2]), Number(m[1])) <= now) errors.cardExpiry = 'Enter a future expiry date as MM/YY.';
-    if (!/^\d{3,4}$/.test(form.cardCvc)) errors.cardCvc = 'Enter the 3 or 4 digit code.';
   }
   return errors;
 }
@@ -84,7 +86,10 @@ function Field({ id, label, error, hint, wide, ...input }) {
  * POST /bookings/initiate (server prices the order) → POST /bookings/confirm (payment verification,
  * seats sold, tickets issued). The confirmation page only reports success once the server says so.
  */
-export default function Checkout() {
+function CheckoutContent() {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [stripeFocused, setStripeFocused] = useState(false);
   const { id: paramId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -247,9 +252,46 @@ export default function Checkout() {
 
       stage = 'confirm';
       setPhase('paying');
+
+      let paymentDetails = paymentDetailsFor(method, order.params, form);
+
+      // Handle real Stripe Sandbox checkout if clientSecret is issued
+      if (method === 'STRIPE' && stripe && elements) {
+        const cardElement = elements.getElement(CardElement);
+        if (cardElement && order.params?.clientSecret && !order.params.clientSecret.includes('mock')) {
+          const stripeRes = await stripe.confirmCardPayment(order.params.clientSecret, {
+            payment_method: {
+              card: cardElement,
+              billing_details: {
+                name: form.cardName || user?.name || 'Customer',
+                email: user?.email,
+                phone: normalizePhone(form.phone) || undefined,
+              },
+            },
+          });
+
+          if (stripeRes.error) {
+            setProblem({
+              tone: 'error',
+              kind: 'payment',
+              text: stripeRes.error.message || 'Stripe card authorization failed. Please check the details and try again.',
+            });
+            inFlight.current = false;
+            setPhase('idle');
+            return;
+          }
+
+          paymentDetails = {
+            paymentIntentId: stripeRes.paymentIntent.id,
+            paymentTxId: stripeRes.paymentIntent.id,
+            cardLast4: stripeRes.paymentIntent.payment_method?.card?.last4 || '4242',
+          };
+        }
+      }
+
       let res;
       try {
-        res = await api.post('/bookings/confirm', { orderId: order.id, paymentDetails: paymentDetailsFor(method, order.params, form) }, { timeout: 45000 });
+        res = await api.post('/bookings/confirm', { orderId: order.id, paymentDetails }, { timeout: 45000 });
       } catch (err) {
         // No answer from the server: the payment's outcome is unknown, so show the order's live status
         if (!err.response) {
@@ -444,11 +486,41 @@ export default function Checkout() {
               </div>
             )}
             {method === 'STRIPE' && (
-              <div className="tl-co-gateway tl-co-fields">
-                <Field id="co-cardName" label="Name on card" autoComplete="cc-name" value={form.cardName} onChange={setField('cardName')} error={fieldErrors.cardName} wide />
-                <Field id="co-cardNumber" label="Card number" inputMode="numeric" autoComplete="cc-number" className="tl-co-mono" value={form.cardNumber} onChange={setField('cardNumber')} error={fieldErrors.cardNumber} wide hint="Stripe test mode: 4242 4242 4242 4242." />
-                <Field id="co-cardExpiry" label="Expiry (MM/YY)" autoComplete="cc-exp" className="tl-co-mono" value={form.cardExpiry} onChange={setField('cardExpiry')} error={fieldErrors.cardExpiry} />
-                <Field id="co-cardCvc" label="CVC" inputMode="numeric" autoComplete="cc-csc" className="tl-co-mono" maxLength={4} value={form.cardCvc} onChange={setField('cardCvc')} error={fieldErrors.cardCvc} />
+              <div className="tl-co-gateway">
+                <Field
+                  id="co-cardName"
+                  label="Name on card"
+                  autoComplete="cc-name"
+                  value={form.cardName}
+                  onChange={setField('cardName')}
+                  error={fieldErrors.cardName}
+                  wide
+                />
+                <label className="tl-co-field tl-co-field--wide" htmlFor="co-stripe-card">
+                  <span className="tl-bk-label">Card details (Stripe Sandbox)</span>
+                  <div className={`tl-stripe-element-wrapper${stripeFocused ? ' is-focused' : ''}`}>
+                    <CardElement
+                      id="co-stripe-card"
+                      onFocus={() => setStripeFocused(true)}
+                      onBlur={() => setStripeFocused(false)}
+                      options={{
+                        hidePostalCode: true,
+                        style: {
+                          base: {
+                            fontSize: '15px',
+                            color: '#0f172a',
+                            fontFamily: 'Inter, system-ui, sans-serif',
+                            '::placeholder': { color: '#94a3b8' },
+                          },
+                          invalid: { color: '#ef4444' },
+                        },
+                      }}
+                    />
+                  </div>
+                  <span className="tl-stripe-badge">
+                    ⚡ Sandbox Card: <strong>4242 4242 4242 4242</strong> · Any future MM/YY · CVC 123
+                  </span>
+                </label>
               </div>
             )}
             {method === 'MOCK' && <p className="tl-co-gateway tl-bk-muted">Sandbox payment for testing: the order is confirmed immediately without charging anything.</p>}
@@ -511,5 +583,13 @@ export default function Checkout() {
         <OrderConfirmedModal order={confirmed.order} receipt={confirmed.receipt} onClose={() => navigate(`/events/${eventId}`, { replace: true })} />
       )}
     </BookingShell>
+  );
+}
+
+export default function Checkout() {
+  return (
+    <Elements stripe={stripePromise}>
+      <CheckoutContent />
+    </Elements>
   );
 }

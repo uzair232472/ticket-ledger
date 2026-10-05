@@ -17,7 +17,6 @@
   "prisma": {
     "seed": "node prisma/seed.js"
   },
-
   "dependencies": {
     "@prisma/client": "^6.4.1",
     "bcryptjs": "^2.4.3",
@@ -35,6 +34,7 @@
     "pdfkit": "^0.16.0",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.1",
+    "stripe": "^23.0.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {
