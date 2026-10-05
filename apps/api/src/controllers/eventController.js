@@ -775,7 +775,7 @@ export const publishEventWithPricing = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: live
-        ? `Prices for "${published.name}" are saved.`
+        ? `Prices for "${published.name}" are saved. Event is PUBLISHED.`
         : `Prices for "${published.name}" are saved. Set up seating next, then send the event for approval.`,
       data: { event: published },
     });

@@ -66,7 +66,7 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
     assert.equal(regRes.status, 201);
 
     // Registration no longer returns a session; mark the email verified directly, then log in
-    await prisma.user.update({ where: { email: uniqueEmail }, data: { isVerified: true } });
+    await prisma.user.update({ where: { email: uniqueEmail }, data: { emailVerifiedAt: new Date(), status: 'ACTIVE' } });
     const loginRes = await fetch(`${BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

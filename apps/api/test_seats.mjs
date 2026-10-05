@@ -25,7 +25,7 @@ test('MODULE 6 - Seat Map, 10-Minute Redis Lock & Double-Booking Prevention Test
 
   // Find PSL Final event
   const event = await prisma.event.findFirst({
-    where: { name: { contains: 'PSL 2026 Final' } },
+    where: { name: { contains: 'PSL' } },
     include: { tiers: true },
   });
   assert.ok(event, 'PSL Event must exist');
@@ -33,6 +33,16 @@ test('MODULE 6 - Seat Map, 10-Minute Redis Lock & Double-Booking Prevention Test
   let testSeatId = '';
   let soldSeatId = '';
   let blockedSeatId = '';
+
+  const candidateBlocked = await prisma.seat.findFirst({
+    where: { eventId: event.id, status: 'AVAILABLE' },
+  });
+  if (candidateBlocked) {
+    await prisma.seat.update({
+      where: { id: candidateBlocked.id },
+      data: { status: 'BLOCKED' },
+    });
+  }
 
   await t.test('1. Retrieve interactive seat map with sections, rows, and summary', async () => {
     const res = await fetch(`${baseUrl}/seats/event/${event.id}`);
@@ -159,6 +169,25 @@ test('MODULE 6 - Seat Map, 10-Minute Redis Lock & Double-Booking Prevention Test
   });
 
   await t.test('9. Organizer generates venue grid for a custom section', async () => {
+    const orgCompany = await prisma.company.findFirst({ where: { user: { email: 'organizer@ticketledger.pk' } } });
+    const gridEvent = await prisma.event.create({
+      data: {
+        companyId: orgCompany.id,
+        name: `Grid Test Event ${Date.now()}`,
+        description: 'Testing section grid generation',
+        type: 'THEATRE',
+        date: new Date('2027-06-01'),
+        time: '8:00 PM',
+        city: 'Lahore',
+        venue: 'Open Arena',
+        status: 'PUBLISHED',
+        tiers: {
+          create: [{ name: 'Standard', price: 1000, totalQuantity: 100, availableQuantity: 100 }],
+        },
+      },
+      include: { tiers: true },
+    });
+
     const res = await fetch(`${baseUrl}/seats/generate-grid`, {
       method: 'POST',
       headers: {
@@ -166,9 +195,9 @@ test('MODULE 6 - Seat Map, 10-Minute Redis Lock & Double-Booking Prevention Test
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        eventId: event.id,
+        eventId: gridEvent.id,
         section: 'Media Box',
-        tierId: event.tiers[0].id,
+        tierId: gridEvent.tiers[0].id,
         rows: 2,
         seatsPerRow: 5,
       }),

@@ -142,7 +142,7 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
     assert.strictEqual(steal.body.message, 'An account with this phone number already exists.');
 
     // ...or another account's email
-    const stealEmail = await call('PATCH', '/pending-signup', { cookie: other.pendingCookie, body: { name: 'Other Person', email: 'customer@ticketledger.pk', accountType: 'customer' } });
+    const stealEmail = await call('PATCH', '/pending-signup', { cookie: other.pendingCookie, body: { name: 'Other Person', email: 'customer@ticketledger.pk', phone: `+92346${String(run).slice(-7)}`, accountType: 'customer' } });
     assert.strictEqual(stealEmail.status, 409);
   });
 

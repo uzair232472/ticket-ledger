@@ -9,10 +9,10 @@ async function registerVerifiedCustomer(details) {
   const regRes = await fetch(`${BASE_URL}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(details),
+    body: JSON.stringify({ phone: `0300${String(Date.now() + Math.floor(Math.random() * 1000)).slice(-7)}`, ...details }),
   });
   assert.equal(regRes.status, 201);
-  await prisma.user.update({ where: { email: details.email.toLowerCase() }, data: { isVerified: true } });
+  await prisma.user.update({ where: { email: details.email.toLowerCase() }, data: { emailVerifiedAt: new Date(), status: 'ACTIVE' } });
 
   const loginRes = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
@@ -63,6 +63,12 @@ test('MODULE 9 - P2P Resale Marketplace & Anti-Scalping Rules Tests', async (t) 
 
   // 3. Seller identifies an owned ticket
   await t.test('3. Seller identifies an owned active ticket', async () => {
+    // Reset seller tickets to ACTIVE for isolation from prior gate scan tests
+    await prisma.ticket.updateMany({
+      where: { user: { email: 'customer@ticketledger.pk' } },
+      data: { status: 'ACTIVE', checkedInAt: null, gate: null },
+    });
+
     const res = await fetch(`${BASE_URL}/tickets/my-nfts`, {
       headers: { Authorization: `Bearer ${sellerToken}` },
     });

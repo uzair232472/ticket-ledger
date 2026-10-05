@@ -103,7 +103,7 @@ async function main() {
   });
   console.log('✓ Pending Organizer seeded:', pendingCompany.companyName);
 
-  await prisma.user.upsert({
+  const pendingOrgUserUnderscore = await prisma.user.upsert({
     where: { email: 'pending_organizer@ticketledger.pk' },
     update: { passwordHash, status: 'ACTIVE', role: 'ORGANIZER' },
     create: {
@@ -116,6 +116,22 @@ async function main() {
       walletAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab',
       city: 'Lahore',
       emailVerifiedAt: new Date(),
+    },
+  });
+
+  await prisma.company.upsert({
+    where: { userId: pendingOrgUserUnderscore.id },
+    update: { status: 'PENDING', companyName: 'Karachi Kings Sports & Festivals' },
+    create: {
+      userId: pendingOrgUserUnderscore.id,
+      companyName: 'Karachi Kings Sports & Festivals',
+      ownerName: 'Ali Raza',
+      phone: '+923007778890',
+      email: 'lahore.live.pending@ticketledger.pk',
+      city: 'Lahore',
+      ntnCnic: '1234567-9',
+      documentUrl: '/uploads/company_docs/lahore_live_ntn.pdf',
+      status: 'PENDING',
     },
   });
 

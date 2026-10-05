@@ -180,6 +180,7 @@ test('Organizer-managed event details & images', async (t) => {
     });
 
     await t.test('public event endpoint returns ordered gallery', async () => {
+      await prisma.event.update({ where: { id: eventId }, data: { status: 'PUBLISHED', approvedAt: new Date() } });
       const res = await fetch(`${baseUrl}/events/${eventId}`);
       const body = await res.json();
       assert.strictEqual(body.data.event.galleryImages.length, 3);

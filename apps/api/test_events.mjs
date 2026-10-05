@@ -158,6 +158,8 @@ test('MODULE 5 - Event Management, Ticket Tiers & Multi-Criteria Discovery Tests
   });
 
   await t.test('10. Organizer updates event status to PAUSED and PUBLISHED', async () => {
+    await prisma.event.update({ where: { id: createdEventId }, data: { status: 'PUBLISHED', approvedAt: new Date() } });
+
     const res = await fetch(`${baseUrl}/events/${createdEventId}/status`, {
       method: 'PATCH',
       headers: {
