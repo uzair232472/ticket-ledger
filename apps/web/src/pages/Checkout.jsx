@@ -90,6 +90,16 @@ function CheckoutContent() {
   const stripe = useStripe();
   const elements = useElements();
   const [stripeFocused, setStripeFocused] = useState(false);
+  const [simulateScalperBot, setSimulateScalperBot] = useState(false);
+  const mountTime = useRef(Date.now());
+  const clickCount = useRef(0);
+
+  useEffect(() => {
+    const handleGlobalClick = () => { clickCount.current++; };
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
+
   const { id: paramId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -252,11 +262,29 @@ function CheckoutContent() {
       let order = orderRef.current;
       if (!order || order.method !== method || order.keys !== keys) {
         setPhase('reserving');
+        const durationSec = Math.max(1, (Date.now() - mountTime.current) / 1000);
+        const clicksPerMin = Math.round((clickCount.current / durationSec) * 60) || 28;
+
+        const telemetry = simulateScalperBot
+          ? {
+              checkoutDurationSeconds: 0.4,
+              clicksPerMinute: 240,
+              rapidSeatAttempts: 6,
+              deviceSwitches: 2,
+            }
+          : {
+              checkoutDurationSeconds: Number(durationSec.toFixed(1)),
+              clicksPerMinute: Math.min(80, clicksPerMin),
+              rapidSeatAttempts: 1,
+              deviceSwitches: 0,
+            };
+
         const { data } = await api.post('/bookings/initiate', {
           eventId,
           seatIds: mine.map((m) => m.id),
           paymentMethod: method,
           customerPhone: normalizePhone(form.phone) || undefined,
+          telemetry,
         });
         const d = data.data;
         order = { id: d.orderId, method, keys, total: Number(d.totalAmount), params: d.paymentParams };
@@ -333,7 +361,10 @@ function CheckoutContent() {
       if (!err.response) {
         setProblem({ tone: 'error', kind: 'network', text: 'We couldn’t reach TicketLedger. Check your connection and try again — nothing has been charged.' });
       } else if (stage === 'initiate') {
-        if (err.response?.data?.blockedByAI) setProblem({ tone: 'error', kind: 'blocked', text: msg });
+        if (err.response?.data?.blockedByAI) {
+          const anomalies = err.response?.data?.data?.anomalyFactors?.join(' • ') || '';
+          setProblem({ tone: 'error', kind: 'blocked', text: `🚨 ${msg} ${anomalies ? `(Signals: ${anomalies})` : ''}` });
+        }
         else if (code === 409) {
           setProblem({ tone: 'error', kind: 'reservation', text: msg });
           await refresh();
@@ -563,7 +594,22 @@ function CheckoutContent() {
             <p className="tl-co-total"><span>Total</span><strong>{formatPkr(total)}</strong></p>
 
             {problem && (
-              <div ref={problemRef} tabIndex={-1} className={`tl-bk-notice is-${problem.tone}`} role="alert">
+              <div
+                ref={problemRef}
+                tabIndex={-1}
+                className={`tl-bk-notice is-${problem.tone}`}
+                role="alert"
+                style={problem.kind === 'blocked' ? {
+                  background: '#fef2f2',
+                  border: '1.5px solid #ef4444',
+                  color: '#991b1b',
+                  padding: '14px',
+                  borderRadius: '8px',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                } : {}}
+              >
                 {problem.text}
                 {(problem.kind === 'expired' || problem.kind === 'reservation') && (
                   <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
@@ -575,6 +621,37 @@ function CheckoutContent() {
                 Your reservation ended and the seats were released. <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
               </div>
             )}
+
+            {/* Live AI Anti-Scalping Bot Simulation Control */}
+            <div style={{
+              margin: '16px 0',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              background: simulateScalperBot ? '#fef2f2' : '#f8fafc',
+              border: `1.5px dashed ${simulateScalperBot ? '#ef4444' : '#cbd5e1'}`,
+              transition: 'all 0.2s ease',
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  id="simulate-scalper-bot"
+                  checked={simulateScalperBot}
+                  onChange={(e) => {
+                    setSimulateScalperBot(e.target.checked);
+                    setProblem(null);
+                  }}
+                  style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: '#dc2626', cursor: 'pointer' }}
+                />
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: '13px', color: simulateScalperBot ? '#dc2626' : '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    🤖 Simulate AI Scalper Bot Attack (0.4s sniper)
+                  </span>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+                    Injects sub-second checkout (0.4s), superhuman click frequency (240 cpm), and 6 rapid seat sniping locks to test live AI blocking.
+                  </p>
+                </div>
+              </label>
+            </div>
 
             <div className="tl-co-confirm">
               <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired} aria-busy={busy}>
