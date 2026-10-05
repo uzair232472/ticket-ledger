@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
+import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { canManageEvent } from '../utils/eventAccess.js';
 import { MediaValidationError, validateEventImage } from '../services/eventMediaService.js';
 import { uploadFile } from '../utils/storage.js';
@@ -78,6 +79,23 @@ export const createHold = async (req, res) => {
     if ('key' in body) holds = await holdSeat(eventId, body.key, req.user.id);
     else if ('tableKey' in body) holds = await holdTable(eventId, body.tableKey, req.user.id);
     else holds = await setGaQuantity(eventId, body.sectionId, body.quantity, req.user.id);
+
+    // Track behavioral signals in telemetry
+    behaviorService.trackBehavior({
+      req,
+      userId: req.user.id,
+      action: BEHAVIOR_ACTIONS.SEAT_SELECTED,
+      eventId,
+      metadata: { body, holdCount: holds?.length || 1 },
+    });
+    behaviorService.trackBehavior({
+      req,
+      userId: req.user.id,
+      action: BEHAVIOR_ACTIONS.SEAT_LOCKED,
+      eventId,
+      metadata: { body, holdCount: holds?.length || 1 },
+    });
+
     res.json({ success: true, data: { holds } });
   } catch (error) {
     fail(res, error, 'Could not hold this selection');
@@ -88,6 +106,16 @@ export const releaseHold = async (req, res) => {
   try {
     const { keys } = z.object({ keys: z.array(z.string().min(3).max(200)).min(1).max(50) }).parse(req.body);
     const result = await releaseHolds(req.params.eventId, keys, req.user.id);
+
+    // Track checkout abandonment in telemetry when user discards / releases held seats
+    behaviorService.trackBehavior({
+      req,
+      userId: req.user.id,
+      action: BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED,
+      eventId: req.params.eventId,
+      metadata: { releasedKeys: keys, reason: 'seat_hold_released' },
+    });
+
     res.json({ success: true, data: result });
   } catch (error) {
     fail(res, error, 'Could not release this selection');

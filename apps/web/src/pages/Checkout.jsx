@@ -197,6 +197,18 @@ function CheckoutContent() {
       setRemoving(null);
     }
   };
+  const trackedCheckoutRef = useRef(false);
+  useEffect(() => {
+    if (eventId && mine.length > 0 && isAuthenticated && !trackedCheckoutRef.current) {
+      trackedCheckoutRef.current = true;
+      api.post('/behavior/track', {
+        action: 'checkout_started',
+        eventId,
+        metadata: { seatCount: mine.length, cartValue: total },
+      }).catch(() => {});
+    }
+  }, [eventId, mine.length, isAuthenticated, total]);
+
   const removeLine = (l) => release(l.keys, l.id);
   const discardAll = async () => {
     const ok = await dialog.confirm({
@@ -206,7 +218,14 @@ function CheckoutContent() {
       confirmLabel: 'Discard tickets',
       cancelLabel: 'Keep them',
     });
-    if (ok) release(lines.flatMap((l) => l.keys), 'all');
+    if (ok) {
+      api.post('/behavior/track', {
+        action: 'checkout_abandoned',
+        eventId,
+        metadata: { seatCount: mine.length, cartValue: total, reason: 'user_discarded_tickets' },
+      }).catch(() => {});
+      release(lines.flatMap((l) => l.keys), 'all');
+    }
   };
 
   const setField = (k) => (e) => {

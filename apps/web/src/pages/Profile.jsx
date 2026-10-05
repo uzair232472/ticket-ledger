@@ -993,11 +993,12 @@ export default function Profile() {
                 {/* Metric KPI Tiles */}
                 {(() => {
                   const summary = behaviorProfile?.summary || {};
-                  const intentScore = summary.intentScore ?? 45;
-                  const intentLevel = summary.intentLevel || (intentScore > 70 ? 'HIGH' : intentScore > 40 ? 'MEDIUM' : 'NORMAL');
-                  const totalActions = summary.totalActions ?? (behaviorProfile?.timeline?.length || 0);
+                  const scores = behaviorProfile?.scores || {};
+                  const intentScore = scores.purchaseIntent?.score ?? summary.intentScore ?? 45;
+                  const intentLevel = scores.purchaseIntent?.tier ?? summary.intentLevel ?? (intentScore > 70 ? 'HIGH' : intentScore > 40 ? 'MEDIUM' : 'NORMAL');
+                  const totalActions = behaviorProfile?.totalEventsTracked ?? summary.totalActions ?? (behaviorProfile?.timeline?.length || 0);
                   const topCategory = summary.categoryAffinity?.[0]?.category || summary.topCategory || 'PSL Cricket';
-                  const riskLevel = summary.riskLevel || 'LOW_RISK';
+                  const riskLevel = scores.fraudRisk?.level || summary.riskLevel || 'LOW_RISK';
 
                   return (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
