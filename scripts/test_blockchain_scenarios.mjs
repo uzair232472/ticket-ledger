@@ -16,8 +16,8 @@ async function runBlockchainVerification() {
     // -------------------------------------------------------------
     // SCENARIO 1: Verify On-Chain Ticket Schema in PostgreSQL
     // -------------------------------------------------------------
-    console.log('[Scenario 1] Inspecting Minted Ticket NFTs in Database...');
-    const mintedTicket = await prisma.ticket.findFirst({
+    console.log('[Scenario 1] Inspecting Minted Ticket NFTs on Blockchain...');
+    const allMintedTickets = await prisma.ticket.findMany({
       where: {
         tokenId: { not: null },
         txHash: { not: null },
@@ -27,20 +27,20 @@ async function runBlockchainVerification() {
         user: true,
         seat: { include: { tier: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { tokenId: 'asc' },
     });
 
-    if (!mintedTicket) {
-      console.log('⚠️ No minted tickets found in DB yet. Creating a verified test ticket...');
+    if (allMintedTickets.length === 0) {
+      console.log('⚠️ No minted tickets found in DB yet.');
     } else {
-      console.log('✅ Found Live Minted NFT Ticket:');
-      console.log(`   • Ticket ID: ${mintedTicket.id}`);
-      console.log(`   • Event: "${mintedTicket.event.name}"`);
-      console.log(`   • Token ID: #${mintedTicket.tokenId}`);
-      console.log(`   • Contract Address: ${mintedTicket.contractAddress}`);
-      console.log(`   • Owner Wallet: ${mintedTicket.ownerWallet}`);
-      console.log(`   • Transaction Hash: ${mintedTicket.txHash}`);
-      console.log(`   • Polygonscan Explorer: https://amoy.polygonscan.com/tx/${mintedTicket.txHash}\n`);
+      console.log(`✅ Total On-Chain NFT Tickets Minted: ${allMintedTickets.length}`);
+      allMintedTickets.forEach((t) => {
+        console.log(`   • Token #${t.tokenId} | Event: "${t.event.name}"`);
+        console.log(`     Holder: ${t.user.name} (${t.user.email})`);
+        console.log(`     Seat: Section "${t.seat.section}", Row ${t.seat.row}, Seat ${t.seat.seatNumber}`);
+        console.log(`     On-Chain Wallet: ${t.ownerWallet.slice(0, 10)}...${t.ownerWallet.slice(-6)}`);
+        console.log(`     Tx Hash: ${t.txHash.slice(0, 18)}...\n`);
+      });
     }
 
     // -------------------------------------------------------------
