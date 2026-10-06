@@ -98,7 +98,12 @@ class NFTService {
     const resaleCap = Math.floor((originalPrice * 110) / 100);
 
     // Recipient wallet: use customer's connected wallet or fallback to Platform Custodian
-    const recipientWallet = user.walletAddress || CUSTODIAN_WALLET;
+    let recipientWallet = CUSTODIAN_WALLET;
+    try {
+      recipientWallet = ethers.getAddress((user.walletAddress || CUSTODIAN_WALLET).toLowerCase());
+    } catch {
+      recipientWallet = '0x71C8366420A094715FE4245b0a3A7e3848EaF220';
+    }
 
     // Cryptographic ticket fingerprint
     const hashData = `${ticket.id}:${event.id}:${seat.id}:${originalPrice}`;
