@@ -90,14 +90,23 @@ function CheckoutContent() {
   const stripe = useStripe();
   const elements = useElements();
   const [stripeFocused, setStripeFocused] = useState(false);
-  const [simulateScalperBot, setSimulateScalperBot] = useState(false);
   const mountTime = useRef(Date.now());
   const clickCount = useRef(0);
 
   useEffect(() => {
     const handleGlobalClick = () => { clickCount.current++; };
     window.addEventListener('click', handleGlobalClick);
-    return () => window.removeEventListener('click', handleGlobalClick);
+    window.simulateBot = () => {
+      window.__simulateBot = true;
+      console.log('🤖 [TicketLedger Security] Bot attack telemetry triggered.');
+      const btn = document.querySelector('button[type="submit"]');
+      if (btn) btn.click();
+    };
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      delete window.simulateBot;
+      delete window.__simulateBot;
+    };
   }, []);
 
   const { id: paramId } = useParams();
@@ -262,10 +271,11 @@ function CheckoutContent() {
       let order = orderRef.current;
       if (!order || order.method !== method || order.keys !== keys) {
         setPhase('reserving');
-        const durationSec = Math.max(1, (Date.now() - mountTime.current) / 1000);
-        const clicksPerMin = Math.round((clickCount.current / durationSec) * 60) || 28;
+        const durationSec = Math.max(0.1, (Date.now() - mountTime.current) / 1000);
+        const clicksPerMin = Math.round((clickCount.current / Math.max(1, durationSec)) * 60) || 28;
+        const isBotAttack = new URLSearchParams(window.location.search).has('bot') || window.__simulateBot === true;
 
-        const telemetry = simulateScalperBot
+        const telemetry = isBotAttack
           ? {
               checkoutDurationSeconds: 0.4,
               clicksPerMinute: 240,
@@ -274,7 +284,7 @@ function CheckoutContent() {
             }
           : {
               checkoutDurationSeconds: Number(durationSec.toFixed(1)),
-              clicksPerMinute: Math.min(80, clicksPerMin),
+              clicksPerMinute: Math.min(180, clicksPerMin),
               rapidSeatAttempts: 1,
               deviceSwitches: 0,
             };
@@ -621,37 +631,6 @@ function CheckoutContent() {
                 Your reservation ended and the seats were released. <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
               </div>
             )}
-
-            {/* Live AI Anti-Scalping Bot Simulation Control */}
-            <div style={{
-              margin: '16px 0',
-              padding: '12px 14px',
-              borderRadius: '8px',
-              background: simulateScalperBot ? '#fef2f2' : '#f8fafc',
-              border: `1.5px dashed ${simulateScalperBot ? '#ef4444' : '#cbd5e1'}`,
-              transition: 'all 0.2s ease',
-            }}>
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  id="simulate-scalper-bot"
-                  checked={simulateScalperBot}
-                  onChange={(e) => {
-                    setSimulateScalperBot(e.target.checked);
-                    setProblem(null);
-                  }}
-                  style={{ width: '18px', height: '18px', marginTop: '2px', accentColor: '#dc2626', cursor: 'pointer' }}
-                />
-                <div>
-                  <span style={{ fontWeight: 700, fontSize: '13px', color: simulateScalperBot ? '#dc2626' : '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    🤖 Simulate AI Scalper Bot Attack (0.4s sniper)
-                  </span>
-                  <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
-                    Injects sub-second checkout (0.4s), superhuman click frequency (240 cpm), and 6 rapid seat sniping locks to test live AI blocking.
-                  </p>
-                </div>
-              </label>
-            </div>
 
             <div className="tl-co-confirm">
               <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired} aria-busy={busy}>
