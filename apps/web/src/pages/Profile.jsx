@@ -245,6 +245,7 @@ export default function Profile() {
     try {
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const address = accounts[0];
+      await switchToTicketLedgerNetwork();
       const chainId = await window.ethereum.request({ method: 'eth_chainId' });
 
       setWeb3Status({ connected: true, address, chainId });
@@ -253,6 +254,36 @@ export default function Profile() {
       setMessage({ text: err.message || 'Failed to connect MetaMask', type: 'error' });
     } finally {
       setIsConnectingMetaMask(false);
+    }
+  };
+
+  // Auto-Switch or Add TicketLedger Testnet to MetaMask
+  const switchToTicketLedgerNetwork = async () => {
+    if (!window.ethereum) return;
+    const LOCAL_CHAIN_ID = '0x7a69'; // 31337 in hex
+    try {
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: LOCAL_CHAIN_ID }],
+      });
+    } catch (switchError) {
+      if (switchError.code === 4902) {
+        try {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [
+              {
+                chainId: LOCAL_CHAIN_ID,
+                chainName: 'TicketLedger Testnet',
+                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                rpcUrls: ['http://127.0.0.1:8545'],
+              },
+            ],
+          });
+        } catch (addError) {
+          console.error('Failed to add TicketLedger Testnet:', addError);
+        }
+      }
     }
   };
 
@@ -778,6 +809,14 @@ export default function Profile() {
                   >
                     <Wallet className="w-4 h-4" />
                     <span>{isConnectingMetaMask ? 'Connecting...' : 'Connect MetaMask'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={switchToTicketLedgerNetwork}
+                    className="px-4 py-2 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 transition"
+                  >
+                    ⚡ Auto-Add TicketLedger Testnet
                   </button>
 
                   <button
