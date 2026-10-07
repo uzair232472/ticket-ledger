@@ -13,10 +13,11 @@
   min-height: 100vh;
   padding: calc(var(--tl-header-h) + 8px) clamp(14px, 3vw, 40px) 40px;
 }
+.tl-auth-wrap { width: min(1180px, 100%); }
 .tl-auth-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  width: min(1180px, 100%);
+  width: 100%;
   overflow: hidden;
   border-radius: 22px;
   background: #fbfcf9;
@@ -37,9 +38,16 @@
   color: #f3f7f4;
 }
 .tl-auth-eyebrow { font: 600 13px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(243, 247, 244, 0.85); }
-.tl-auth-headline { margin-top: 18px; font-family: 'Fraunces', Georgia, serif; font-size: clamp(42px, 5.4vw, 76px); font-weight: 700; line-height: 0.95; letter-spacing: -0.03em; color: #ffffff; }
-.tl-auth-headline em { font-style: italic; color: #4ade80; }
-.tl-auth-lead { margin-top: 16px; font-size: clamp(16px, 1.5vw, 20px); line-height: 1.4; color: rgba(243, 247, 244, 0.88); }
+/* TicketLedger × Air University lock-up */
+.tl-auth-cobrand { display: flex; align-items: center; gap: clamp(14px, 2vw, 24px); margin-top: clamp(20px, 2.6vw, 32px); }
+.tl-auth-cobrand-tl { display: grid; justify-items: end; gap: 10px; flex-shrink: 0; }
+.tl-auth-cobrand-word { display: flex; align-items: center; gap: 10px; font: 800 clamp(22px, 2.25vw, 34px)/1 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.04em; color: #ffffff; white-space: nowrap; }
+.tl-auth-cobrand-word b { font-weight: inherit; color: #22c55e; }
+.tl-auth-cobrand-mark { width: clamp(32px, 3.2vw, 46px); height: auto; flex-shrink: 0; }
+.tl-auth-cobrand-with { font: 700 clamp(8px, 0.72vw, 11px)/1 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.36em; text-transform: uppercase; color: rgba(255, 255, 255, 0.92); white-space: nowrap; }
+.tl-auth-cobrand-rule { align-self: stretch; width: 2px; min-height: 64px; border-radius: 2px; background: rgba(255, 255, 255, 0.75); }
+.tl-auth-cobrand-au { width: clamp(80px, 8.6vw, 128px); height: auto; flex-shrink: 0; }
+.tl-auth-lead { margin-top: clamp(20px, 2.4vw, 30px); font-size: clamp(16px, 1.5vw, 20px); line-height: 1.4; color: rgba(243, 247, 244, 0.88); }
 .tl-auth-art { display: block; width: 100%; max-width: 560px; height: auto; margin: 6px auto 0; }
 .tl-auth-steps { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 22px; margin-top: auto; padding-top: 12px; font-size: 17px; color: #f3f7f4; }
 .tl-auth-steps li { display: inline-flex; align-items: center; gap: 10px; }
@@ -49,9 +57,8 @@
 /* ---------- Form panel ---------- */
 .tl-auth-form { display: grid; align-items: center; padding: clamp(28px, 4vw, 56px) clamp(22px, 4vw, 56px); }
 .tl-auth-form-inner { width: 100%; max-width: 520px; margin: 0 auto; }
-.tl-auth-logo { font: 800 30px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.04em; color: #0b1a10; }
-.tl-auth-logo span { color: #16a34a; }
-.tl-auth-title { margin-top: 26px; font-family: 'Fraunces', Georgia, serif; font-size: clamp(36px, 4vw, 54px); font-weight: 700; line-height: 1; letter-spacing: -0.035em; color: #0b1a10; }
+.tl-auth-kicker { font: 700 13px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.24em; text-transform: uppercase; color: #16a34a; }
+.tl-auth-title { margin-top: 18px; font-family: 'Fraunces', Georgia, serif; font-size: clamp(36px, 4vw, 54px); font-weight: 800; line-height: 1; letter-spacing: -0.035em; color: #0b1533; }
 .tl-auth-sub { margin-top: 10px; font-size: clamp(15px, 1.3vw, 18px); color: #55645a; }
 .tl-auth-body { display: grid; gap: 18px; margin-top: 26px; }
 .tl-auth-body form { display: grid; gap: 18px; }
@@ -88,7 +95,7 @@
 
 /* ---------- Responsive ---------- */
 @media (max-width: 959px) {
-  .tl-auth-card { grid-template-columns: 1fr; }
+  .tl-auth-card { grid-template-columns: minmax(0, 1fr); }
   .tl-auth-promo { padding-bottom: 22px; }
   .tl-auth-art { max-width: 380px; }
 }
@@ -107,3 +114,44 @@
 .tl-auth-demo-toggle svg { color: #16a34a; }
 .tl-auth-demo-toggle:hover { color: #0b1a10; }
 .tl-auth-demo > div { padding-bottom: 14px; }
+
+/* Legal footer under the card */
+.tl-auth-legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 16px 6px 0; font-size: 13px; color: #7b897f; }
+.tl-auth-legal nav { display: flex; align-items: center; gap: 10px; }
+.tl-auth-legal a { color: #7b897f; }
+.tl-auth-legal a:hover { color: #15803d; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Demo logins box (login) */
+.tl-auth-demo.is-boxed { border: 1px solid #e3e9e1; border-radius: 10px; padding: 0 14px; background: #fbfcf9; }
+
+/* Account type cards (signup) */
+.tl-auth-types { border: 0; padding: 0; margin: 0; min-width: 0; }
+.tl-auth-types legend { margin-bottom: 8px; font-size: 15px; font-weight: 600; color: #0b1a10; }
+.tl-auth-types-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tl-auth-type { position: relative; display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px 14px; border: 1px solid #d9e3d8; border-radius: 10px; background: #fbfcf9; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease; }
+.tl-auth-type:hover { border-color: #b7cbb6; }
+.tl-auth-type.is-selected { border-color: #16a34a; background: #f2fbf4; box-shadow: 0 0 0 1px #16a34a; }
+.tl-auth-type:focus-within { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18); }
+.tl-auth-type > svg { flex-shrink: 0; color: #8a978f; }
+.tl-auth-type.is-selected > svg { color: #16a34a; }
+.tl-auth-type-text { flex: 1; min-width: 0; }
+.tl-auth-type-text strong { display: block; font-size: 15px; font-weight: 600; color: #0b1a10; }
+.tl-auth-type-text small { display: block; margin-top: 2px; font-size: 13px; color: #6b7a70; }
+.tl-auth-radio { flex-shrink: 0; width: 22px; height: 22px; border: 1.5px solid #b7c4b8; border-radius: 50%; display: grid; place-items: center; }
+.tl-auth-type.is-selected .tl-auth-radio { border-color: #16a34a; }
+.tl-auth-type.is-selected .tl-auth-radio::after { content: ''; width: 12px; height: 12px; border-radius: 50%; background: #16a34a; }
+.tl-auth-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.tl-auth-check { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #55645a; cursor: pointer; }
+.tl-auth-check input { width: 18px; height: 18px; margin-top: 1px; accent-color: #16a34a; flex-shrink: 0; }
+.tl-auth-check a { color: #15803d; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+
+@media (max-width: 559px) {
+  .tl-auth-cobrand { gap: 10px; }
+  .tl-auth-cobrand-word { gap: 6px; font-size: clamp(17px, 5.2vw, 22px); }
+  .tl-auth-cobrand-mark { width: clamp(24px, 7vw, 32px); }
+  .tl-auth-cobrand-with { font-size: clamp(6px, 1.9vw, 8px); letter-spacing: 0.3em; }
+  .tl-auth-cobrand-au { width: clamp(56px, 17vw, 76px); }
+  .tl-auth-cobrand-rule { min-height: 44px; }
+  .tl-auth-types-grid, .tl-auth-pair { grid-template-columns: 1fr; }
+  .tl-auth-legal { justify-content: center; text-align: center; }
+}

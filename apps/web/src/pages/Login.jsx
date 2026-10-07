@@ -11,7 +11,7 @@ import {
   Mail,
   ChevronDown,
   ChevronUp,
-  Sparkles,
+  Users,
 } from 'lucide-react';
 import AuthShell, {
   Alert,
@@ -100,6 +100,7 @@ export default function Login() {
 
   return (
     <AuthShell
+      eyebrow="Welcome to TicketLedger"
       title="Welcome back"
       subtitle="Sign in to manage your tickets and account."
       footer={
@@ -119,14 +120,14 @@ export default function Login() {
 
       <form onSubmit={handleSubmit} noValidate>
         <Field
-          label="Email Address"
+          label="Email address"
           icon={Mail}
           type="email"
           autoComplete="email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="name@gmail.com"
+          placeholder="you@example.com"
         />
 
         <div>
@@ -156,12 +157,12 @@ export default function Login() {
           loadingText="Signing in..."
           disabled={authLoading || !email.trim() || !password}
         >
-          <span>Sign In</span>
+          <span>Sign in</span>
         </SubmitButton>
       </form>
 
       {/* Demo accounts for the project examiners */}
-      <div className="tl-auth-demo">
+      <div className="tl-auth-demo is-boxed">
         <button
           type="button"
           onClick={() => setShowExaminerPreset((previous) => !previous)}
@@ -169,14 +170,14 @@ export default function Login() {
           className="tl-auth-demo-toggle"
         >
           <span>
-            <Sparkles className="w-4 h-4" aria-hidden="true" />
+            <Users className="w-4 h-4" aria-hidden="true" />
             <span>FYP Examiner Demo Logins</span>
           </span>
 
           {showExaminerPreset ? (
-            <ChevronUp className="w-3.5 h-3.5" />
+            <ChevronUp className="w-4 h-4" aria-hidden="true" />
           ) : (
-            <ChevronDown className="w-3.5 h-3.5" />
+            <ChevronDown className="w-4 h-4" aria-hidden="true" />
           )}
         </button>
 

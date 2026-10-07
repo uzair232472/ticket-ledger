@@ -24,6 +24,12 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+const MAX_DOCS = 4;
+const DOC_MAX_BYTES = 10 * 1024 * 1024;
+const DOC_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+/** All verification documents of a company (older records only have documentUrl). */
+const docsOnFile = (company) => (company?.documentUrls?.length ? company.documentUrls : [company?.documentUrl].filter(Boolean));
+
 export default function CompanyRegistration() {
   const { token, user, isAuthenticated, loading: authLoading, refreshUser } = useAuth();
 
@@ -42,7 +48,29 @@ export default function CompanyRegistration() {
     documentUrl: '',
   });
 
-  const [documentFile, setDocumentFile] = useState(null);
+  const [documentFiles, setDocumentFiles] = useState([]);
+  const [fileError, setFileError] = useState('');
+  const [dragOver, setDragOver] = useState(false);
+
+  // 1 to 4 verification documents (PDF, PNG, JPG or WebP, 10 MB each)
+  const addFiles = (list) => {
+    const picked = Array.from(list || []);
+    const bad = picked.find((f) => !DOC_TYPES.includes(f.type));
+    const big = picked.find((f) => f.size > DOC_MAX_BYTES);
+    if (bad) return setFileError(`"${bad.name}" is not a PDF, PNG, JPG or WebP file.`);
+    if (big) return setFileError(`"${big.name}" is larger than 10 MB.`);
+    setDocumentFiles((prev) => {
+      const next = [...prev];
+      for (const f of picked) if (!next.some((n) => n.name === f.name && n.size === f.size)) next.push(f);
+      if (next.length > MAX_DOCS) setFileError(`You can upload at most ${MAX_DOCS} documents; only the first ${MAX_DOCS} were kept.`);
+      else setFileError('');
+      return next.slice(0, MAX_DOCS);
+    });
+  };
+  const removeFile = (index) => {
+    setDocumentFiles((prev) => prev.filter((_, i) => i !== index));
+    setFileError('');
+  };
 
   // Load current company status
   const loadCompany = async () => {
@@ -100,11 +128,14 @@ export default function CompanyRegistration() {
       formPayload.append('city', formData.city);
       formPayload.append('ntnCnic', formData.ntnCnic);
 
-      if (documentFile) {
-        formPayload.append('document', documentFile);
-      } else if (formData.documentUrl) {
-        formPayload.append('documentUrl', formData.documentUrl);
+      const onFile = docsOnFile(company);
+      if (!documentFiles.length && !onFile.length) {
+        setFileError('Upload at least one verification document.');
+        setSubmitting(false);
+        return;
       }
+      // New files replace the documents on file; with none chosen, the server keeps the existing ones
+      documentFiles.forEach((f) => formPayload.append('documents', f));
 
       const res = await fetch(`${API_URL}/api/companies/register`, {
         method: 'POST',
@@ -116,6 +147,7 @@ export default function CompanyRegistration() {
       if (!res.ok) throw new Error(data.message || 'Failed to submit registration');
 
       setMessage({ text: data.message, type: 'success' });
+      setDocumentFiles([]);
       await loadCompany();
       await refreshUser();
     } catch (err) {
@@ -133,7 +165,7 @@ export default function CompanyRegistration() {
   // NTN/CNIC + document -> super admin review -> events with tiers, seating and forecast -> gate staff
   const steps = [
     { title: 'Sign up', copy: 'Create an account and choose Event Organizer as the account type, then verify your email with the code we send.' },
-    { title: 'Register', copy: 'Add your company name, contact details, headquarters city and NTN or CNIC, with a verification document (PDF, PNG or JPG).' },
+    { title: 'Register', copy: 'Add your company name, contact details, headquarters city and NTN or CNIC, with 1 to 4 verification documents (PDF, PNG, JPG or WebP).' },
     { title: 'Get approved', copy: 'A super admin reviews your application. You can create and publish events once your company is approved.' },
     { title: 'Create', copy: 'Set up ticket tiers and the seating plan, then run the pre-launch demand forecast or publish directly.' },
     { title: 'Run the gate', copy: 'Invite gate staff from your organizer dashboard. They scan rotating QR tickets at the door.' },
@@ -399,39 +431,67 @@ export default function CompanyRegistration() {
               </div>
             </div>
 
-            {/* Document Upload Area (Cloudinary Abstraction) */}
+            {/* Verification documents: 1 to 4 files */}
             <div className="pt-2">
-              <label className="block text-slate-700 font-semibold mb-2">
-                Verification Document (NTN Certificate, FBR Registration, or CNIC Scan)
+              <label htmlFor="company-docs" className="block text-slate-700 font-semibold mb-1">
+                Verification documents <span className="font-normal text-slate-500">(1 to {MAX_DOCS} files)</span>
               </label>
+              <p className="text-[11px] text-slate-500 mb-2">NTN certificate, FBR registration, CNIC scan (front and back) or a letter of authority. PDF, PNG, JPG or WebP, up to 10 MB each.</p>
 
-              <div className="p-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center hover:border-slate-300 transition">
-                <UploadCloud className="w-8 h-8 text-[#16a34a] mx-auto mb-2" />
+              <div
+                className={`p-4 rounded-2xl border border-dashed text-center transition ${dragOver ? 'border-[#16a34a] bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+              >
+                <UploadCloud className="w-8 h-8 text-[#16a34a] mx-auto mb-2" aria-hidden="true" />
                 <div className="text-xs text-slate-700 font-medium">
-                  {documentFile ? documentFile.name : 'Choose a PDF, PNG, or JPG file (Max 10MB)'}
+                  {documentFiles.length >= MAX_DOCS ? `${MAX_DOCS} of ${MAX_DOCS} documents added` : 'Drag files here, or choose them'}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">
-                  Stored securely using Cloudinary document abstraction
-                </div>
+                <div className="text-[10px] text-slate-400 mt-1">{documentFiles.length} of {MAX_DOCS} selected</div>
                 <input
+                  id="company-docs"
                   type="file"
-                  accept=".pdf,image/png,image/jpeg"
-                  onChange={(e) => setDocumentFile(e.target.files[0])}
-                  className="mt-3 text-xs text-slate-500 file:mr-3 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#16a34a] file:text-white hover:file:bg-[#15803d] cursor-pointer"
+                  multiple
+                  accept=".pdf,image/png,image/jpeg,image/webp"
+                  disabled={documentFiles.length >= MAX_DOCS}
+                  onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+                  className="mt-3 text-xs text-slate-500 file:mr-3 file:py-1 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#16a34a] file:text-white hover:file:bg-[#15803d] cursor-pointer disabled:opacity-50"
                 />
               </div>
 
-              {company?.documentUrl && (
-                <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
-                  <span>Current document on file:</span>
-                  <a
-                    href={company.documentUrl.startsWith('http') ? company.documentUrl : `${API_URL}${company.documentUrl}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[#16a34a] hover:underline flex items-center gap-1 font-mono font-semibold"
-                  >
-                    View Document <ExternalLink className="w-3 h-3" />
-                  </a>
+              {documentFiles.length > 0 && (
+                <ul className="mt-2 space-y-1.5">
+                  {documentFiles.map((f, i) => (
+                    <li key={`${f.name}-${f.size}`} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-[11px]">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-[#16a34a] flex-shrink-0" aria-hidden="true" />
+                        <span className="truncate text-slate-800 font-medium">{f.name}</span>
+                        <span className="text-slate-400 flex-shrink-0">{(f.size / 1024 / 1024).toFixed(1)} MB</span>
+                      </span>
+                      <button type="button" onClick={() => removeFile(i)} className="text-slate-500 hover:text-rose-600 font-semibold" aria-label={`Remove ${f.name}`}>Remove</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {fileError && <p className="mt-2 text-[11px] font-semibold text-rose-600" role="alert">{fileError}</p>}
+
+              {docsOnFile(company).length > 0 && (
+                <div className="mt-2 text-[11px] text-slate-500">
+                  <span>{documentFiles.length ? 'These will replace the documents on file:' : 'Documents on file (kept unless you add new ones):'}</span>
+                  <span className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                    {docsOnFile(company).map((url, i) => (
+                      <a
+                        key={url}
+                        href={url.startsWith('http') ? url : `${API_URL}${url}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#16a34a] hover:underline inline-flex items-center gap-1 font-mono font-semibold"
+                      >
+                        Document {i + 1} <ExternalLink className="w-3 h-3" aria-hidden="true" />
+                      </a>
+                    ))}
+                  </span>
                 </div>
               )}
             </div>

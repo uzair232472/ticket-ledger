@@ -66,6 +66,7 @@ import { DialogProvider } from './components/ui/DialogProvider';
 import { WishlistProvider } from './context/WishlistContext';
 import Wishlist from './pages/Wishlist';
 import NotFound from './pages/NotFound';
+import ComingSoon from './pages/ComingSoon';
 import Legal from './pages/Legal';
 import About from './pages/About';
 import Contact from './pages/Contact';
@@ -117,6 +118,15 @@ function RouteLoader() {
   if (skipFirst && pathname === firstPath.current) return null;
   return <PixelLoader key={pathname} />;
 }
+
+// Features still in development show the "Coming soon" page (same theme as the 404 page) instead of
+// their real page. The real pages and routes stay wired below: set the flag to false to bring one back.
+const COMING_SOON = {
+  demandForecast: true,
+  purchaseIntent: true,
+  behaviorAnalysis: true,
+};
+const soon = (flag, feature, page) => (COMING_SOON[flag] ? <ComingSoon feature={feature} /> : <DashShell>{page}</DashShell>);
 
 export default function App() {
   return (
@@ -186,12 +196,12 @@ export default function App() {
               <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
               <Route path="/admin/event-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminEventApprovals /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
-              <Route path="/admin/demand-forecast" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><DemandForecast /></ProtectedRoute></DashShell>} />
-              <Route path="/demand-forecast" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><DemandForecast /></ProtectedRoute></DashShell>} />
-              <Route path="/admin/behavior-profile" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><BehaviorProfile /></ProtectedRoute></DashShell>} />
-              <Route path="/admin/purchase-intent" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><PurchaseIntentAnalytics /></ProtectedRoute></DashShell>} />
-              <Route path="/analytics/intent/:id" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><PurchaseIntentAnalytics /></ProtectedRoute></DashShell>} />
-              <Route path="/analytics/intent" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><PurchaseIntentAnalytics /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
+              <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
+              <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviorProfile />)}</ProtectedRoute>} />
+              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
+              <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
+              <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
               <Route path="/admin/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><AbandonedIntentDashboard /></ProtectedRoute></DashShell>} />
 
               {/* Safe catch-all fallback */}

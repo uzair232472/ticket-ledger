@@ -80,12 +80,7 @@ function Field({ id, label, error, hint, wide, ...input }) {
   );
 }
 
-/**
- * Checkout: review the event, the reserved tickets (from the server), attendee details, payment method,
- * fees and total, with the reservation countdown. "Confirm order" runs the existing booking flow:
- * POST /bookings/initiate (server prices the order) → POST /bookings/confirm (payment verification,
- * seats sold, tickets issued). The confirmation page only reports success once the server says so.
- */
+
 function CheckoutContent() {
   const stripe = useStripe();
   const elements = useElements();
@@ -98,7 +93,7 @@ function CheckoutContent() {
     window.addEventListener('click', handleGlobalClick);
     window.simulateBot = () => {
       window.__simulateBot = true;
-      console.log('🤖 [TicketLedger Security] Bot attack telemetry triggered.');
+      console.log(' [TicketLedger Security] Bot attack telemetry triggered.');
       const btn = document.querySelector('button[type="submit"]');
       if (btn) btn.click();
     };
@@ -224,7 +219,7 @@ function CheckoutContent() {
         action: 'checkout_started',
         eventId,
         metadata: { seatCount: mine.length, cartValue: total },
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, [eventId, mine.length, isAuthenticated, total]);
 
@@ -242,7 +237,7 @@ function CheckoutContent() {
         action: 'checkout_abandoned',
         eventId,
         metadata: { seatCount: mine.length, cartValue: total, reason: 'user_discarded_tickets' },
-      }).catch(() => {});
+      }).catch(() => { });
       release(lines.flatMap((l) => l.keys), 'all');
     }
   };
@@ -277,17 +272,17 @@ function CheckoutContent() {
 
         const telemetry = isBotAttack
           ? {
-              checkoutDurationSeconds: 0.4,
-              clicksPerMinute: 240,
-              rapidSeatAttempts: 6,
-              deviceSwitches: 2,
-            }
+            checkoutDurationSeconds: 0.4,
+            clicksPerMinute: 240,
+            rapidSeatAttempts: 6,
+            deviceSwitches: 2,
+          }
           : {
-              checkoutDurationSeconds: Number(durationSec.toFixed(1)),
-              clicksPerMinute: Math.min(180, clicksPerMin),
-              rapidSeatAttempts: 1,
-              deviceSwitches: 0,
-            };
+            checkoutDurationSeconds: Number(durationSec.toFixed(1)),
+            clicksPerMinute: Math.min(180, clicksPerMin),
+            rapidSeatAttempts: 1,
+            deviceSwitches: 0,
+          };
 
         const { data } = await api.post('/bookings/initiate', {
           eventId,
@@ -300,7 +295,7 @@ function CheckoutContent() {
         order = { id: d.orderId, method, keys, total: Number(d.totalAmount), params: d.paymentParams };
         orderRef.current = order;
         // The server prices the order; if that differs from what was shown, stop and let the customer review
-        if(Math.abs(order.total - subtotal) > 0.009) {
+        if (Math.abs(order.total - subtotal) > 0.009) {
           setServerTotal(order.total);
           setProblem({ tone: 'warn', kind: 'price', text: `The total was recalculated by the server: ${formatPkr(order.total)} (shown before: ${formatPkr(subtotal)}). Review the order and press Confirm order again to pay.` });
           return;
@@ -312,10 +307,11 @@ function CheckoutContent() {
 
       let paymentDetails = paymentDetailsFor(method, order.params, form);
 
-      // Handle real Stripe Sandbox checkout if clientSecret is issued
+      // Handle real Stripe Sandbox checkout only when the API created a real PaymentIntent
+      // (only that path returns paymentIntentId; the simulated fallback's clientSecret is unknown to Stripe)
       if (method === 'STRIPE' && stripe && elements) {
         const cardElement = elements.getElement(CardElement);
-        if (cardElement && order.params?.clientSecret && !order.params.clientSecret.includes('mock')) {
+        if (cardElement && order.params?.paymentIntentId && order.params?.clientSecret) {
           const stripeRes = await stripe.confirmCardPayment(order.params.clientSecret, {
             payment_method: {
               card: cardElement,

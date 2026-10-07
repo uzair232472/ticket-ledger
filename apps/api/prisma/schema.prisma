@@ -131,7 +131,7 @@ enum ResaleStatus {
 model User {
   id            String         @id @default(uuid())
   email         String         @unique
-  phone         String?        @unique
+  phone         String?        // not unique: one number may be used by several accounts (e.g. customer + organizer)
   passwordHash  String
   name          String
   role          Role           @default(CUSTOMER)
@@ -245,7 +245,8 @@ model Company {
   email           String
   city            String
   ntnCnic         String
-  documentUrl     String
+  documentUrl     String        // first verification document (kept for single-link screens)
+  documentUrls    String[]      @default([]) // all verification documents, 1 to 4
   status          CompanyStatus @default(PENDING)
   rejectionReason String?
   reviewedBy      String?

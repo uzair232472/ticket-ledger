@@ -1621,22 +1621,29 @@
 }
 
 .tl-map-marker span {
+  /* Just the icon: no circle behind it. The 44px box keeps the click/tap target; the drop shadow keeps
+     the icon readable on the dark map. */
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #fff;
-  font-size: 21px;
+  background: none;
+  font-size: 28px;
   line-height: 1;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7));
+  transition: transform 0.2s ease, filter 0.2s ease;
 }
 
-.tl-map-marker:hover span,
+.tl-map-marker:hover span {
+  transform: scale(1.2);
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.8));
+}
+
+/* Keyboard focus still needs a visible marker */
 .tl-map-marker:focus-visible span {
-  transform: scale(1.15);
-  box-shadow: 0 0 0 3px var(--tl-green), 0 4px 14px rgba(0, 0, 0, 0.5);
+  transform: scale(1.2);
+  box-shadow: 0 0 0 3px var(--tl-green);
 }
 
 .tl-map-marker:focus-visible {

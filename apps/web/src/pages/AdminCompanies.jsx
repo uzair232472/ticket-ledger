@@ -238,11 +238,11 @@ export default function AdminCompanies() {
                       content: (
                         <>
                           <p className="tl-rc-line"><FileText className="w-4 h-4" aria-hidden="true" />{c.ntnCnic}</p>
-                          {c.documentUrl && (
-                            <a className="tl-rc-link" href={c.documentUrl.startsWith('http') ? c.documentUrl : `${API_URL}${c.documentUrl}`} target="_blank" rel="noreferrer">
-                              View document <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                          {(c.documentUrls?.length ? c.documentUrls : [c.documentUrl].filter(Boolean)).map((url, i, all) => (
+                            <a key={url} className="tl-rc-link" href={url.startsWith('http') ? url : `${API_URL}${url}`} target="_blank" rel="noreferrer">
+                              {all.length > 1 ? `View document ${i + 1}` : 'View document'} <ExternalLink className="w-4 h-4" aria-hidden="true" />
                             </a>
-                          )}
+                          ))}
                         </>
                       ),
                     },
