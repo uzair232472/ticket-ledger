@@ -2,6 +2,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { readRefreshCookie, sha256 } from '../services/tokenService.js';
 import prisma from '../config/prisma.js';
+import { uploadFile } from '../utils/storage.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
 // Schemas
@@ -9,6 +10,8 @@ const updateProfileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').optional(),
   phone: z.string().optional(),
   city: z.string().optional(),
+  salutation: z.enum(['Mr', 'Ms', 'Mrs', 'Dr', 'Prof', '']).optional(),
+  organisation: z.string().trim().max(120, 'Organisation must be 120 characters or fewer').optional(),
 });
 
 const updateWalletSchema = z.object({
@@ -46,6 +49,9 @@ export const getProfile = async (req, res) => {
         emailNotifications: true,
         pushNotifications: true,
         smsNotifications: true,
+        avatarUrl: true,
+        salutation: true,
+        organisation: true,
         createdAt: true,
         company: {
           select: {
@@ -135,6 +141,9 @@ export const updateProfile = async (req, res) => {
         emailNotifications: true,
         pushNotifications: true,
         smsNotifications: true,
+        avatarUrl: true,
+        salutation: true,
+        organisation: true,
       },
     });
 
@@ -342,6 +351,9 @@ export const updateNotifications = async (req, res) => {
         emailNotifications: true,
         pushNotifications: true,
         smsNotifications: true,
+        avatarUrl: true,
+        salutation: true,
+        organisation: true,
       },
     });
 
@@ -383,5 +395,38 @@ export const getAccountHistory = async (req, res) => {
       message: 'Failed to retrieve account history',
       error: error.message,
     });
+  }
+};
+
+/**
+ * Upload (or replace) the signed-in user's profile picture: multipart field `avatar`, PNG/JPG/WebP up to 2 MB
+ * (checked by the route's multer filter). Stored with the account, so it never leaks to another user.
+ */
+export const updateAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Choose a PNG, JPG or WebP image.' });
+    }
+    const { url } = await uploadFile(req.file, 'avatars');
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatarUrl: url },
+      select: { id: true, avatarUrl: true },
+    });
+    return res.status(200).json({ success: true, message: 'Profile picture updated', data: { avatarUrl: user.avatarUrl } });
+  } catch (error) {
+    console.error('Error updating avatar:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update the profile picture' });
+  }
+};
+
+/** Remove the signed-in user's profile picture. */
+export const removeAvatar = async (req, res) => {
+  try {
+    await prisma.user.update({ where: { id: req.user.id }, data: { avatarUrl: null } });
+    return res.status(200).json({ success: true, message: 'Profile picture removed', data: { avatarUrl: null } });
+  } catch (error) {
+    console.error('Error removing avatar:', error);
+    return res.status(500).json({ success: false, message: 'Failed to remove the profile picture' });
   }
 };

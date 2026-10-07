@@ -183,7 +183,7 @@ function EventDetailsPage({ id }) {
     api
       .get(`/events/${id}/waitlist`)
       .then((res) => alive && setWaitlist((w) => ({ ...w, on: Boolean(res.data?.data?.onWaitlist), count: res.data?.data?.totalWaitlistCount ?? null })))
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       alive = false;
     };
@@ -435,7 +435,8 @@ function EventDetailsPage({ id }) {
                           <span>{startingPrice === 'Free' ? 'Price' : 'Tickets from'}</span> {startingPrice}
                         </p>
                       )}
-                      {bookingAction('hero') || <p className="tl-dt-book-note">{sale.note}</p>}
+                      {/* The booking button lives in the Tickets section below; here only the sale note is shown */}
+                      {!bookingAction('hero') && <p className="tl-dt-book-note">{sale.note}</p>}
                     </div>
                     <ContactOrganizer email={event.organizerContactEmail} eventName={event.name} organizer={organizer} />
                   </div>

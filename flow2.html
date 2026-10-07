@@ -1,0 +1,2012 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="TicketLedger workflows as implemented: the overall flow through every module and each module's animated flowchart.">
+  <title>TicketLedger | Workflows (as implemented)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    /* Home page tokens (apps/web/src/components/home/home.css) */
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased
+    }
+
+    .tl-home {
+      --tl-green: #22c55e;
+      --tl-green-dark: #15803d;
+      --tl-ink: #052e16;
+      --tl-night: #07110b;
+      --tl-header-h: 76px;
+      position: relative;
+      background: var(--tl-night);
+      color: #fff
+    }
+
+    .tl-eyebrow {
+      margin: 0;
+      font: 600 12px/1.2 'JetBrains Mono', monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #86efac
+    }
+
+    .f2-header {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 60;
+      height: var(--tl-header-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(16px, 2.4vw, 32px)
+    }
+
+    .f2-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: #fff;
+      font: 800 26px/1 'Plus Jakarta Sans', sans-serif;
+      letter-spacing: -.04em;
+      cursor: pointer
+    }
+
+    .f2-brand b {
+      font-weight: inherit;
+      color: var(--tl-green)
+    }
+
+    .f2-mark {
+      width: 40px;
+      height: auto
+    }
+
+    .f2-mark path[fill="#051a3d"] {
+      fill: #fff
+    }
+
+    .f2-tag {
+      font: 600 11px/1 'JetBrains Mono', monospace;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #86efac;
+      border: 1px solid rgba(134, 239, 172, .35);
+      border-radius: 999px;
+      padding: 6px 10px
+    }
+
+    @media (max-width:479px) {
+      .f2-brand {
+        font-size: 20px
+      }
+
+      .f2-mark {
+        width: 30px
+      }
+
+      .f2-tag {
+        display: none
+      }
+    }
+  </style>
+  <style>
+    /* Workflow explorer, in the Home page's design language: night-green stage with green glows, Plus Jakarta
+   Sans headings, JetBrains Mono eyebrows and controls, green primary / ghost buttons. The page is pinned to
+   the viewport under the fixed site header, so it never scrolls; the diagram pans and zooms instead. */
+    .tl-wf {
+      --wf-line: rgba(255, 255, 255, 0.12);
+      --wf-line-strong: rgba(255, 255, 255, 0.24);
+      --wf-muted: rgba(226, 240, 231, 0.66);
+      --wf-ink: #f2faf5;
+      --wf-edge: rgba(214, 232, 220, 0.42);
+      --wf-accent: #4ade80;
+      --wf-surface: rgba(255, 255, 255, 0.035);
+      --wf-process: #12271b;
+      --wf-input: #0f2a2e;
+      --wf-terminal: #123c24;
+      --wf-decision: #33290f;
+      --wf-progress: #f59e0b;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      background:
+        radial-gradient(55% 45% at 85% 10%, rgba(34, 197, 94, 0.16), transparent 70%),
+        radial-gradient(45% 40% at 5% 95%, rgba(22, 101, 52, 0.28), transparent 70%),
+        var(--tl-night, #07110b);
+      color: var(--wf-ink);
+    }
+
+    .wf-app {
+      position: fixed;
+      inset: var(--tl-header-h, 76px) 0 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 12px;
+      min-width: 0;
+      min-height: 0;
+      padding: 10px clamp(16px, 2.4vw, 32px) 14px;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+
+    .wf-app button,
+    .wf-app select {
+      font: inherit;
+      color: inherit;
+    }
+
+    .wf-app button {
+      touch-action: manipulation;
+    }
+
+    .wf-app :focus-visible {
+      outline: 2px solid var(--wf-accent);
+      outline-offset: 3px;
+    }
+
+    /* The title takes focus when a flow opens (for screen readers); it is not a control, so no ring */
+    .wf-app .wf-title:focus-visible {
+      outline: none;
+    }
+
+    .wf-app [hidden] {
+      display: none !important;
+    }
+
+    .wf-sr {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ---------- Heading + module dropdown ---------- */
+    .wf-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      min-width: 0;
+    }
+
+    .wf-heading-copy {
+      min-width: 0;
+    }
+
+    .wf-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .wf-count {
+      padding: 3px 9px;
+      border: 1px solid rgba(134, 239, 172, 0.35);
+      border-radius: 999px;
+      color: #86efac;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wf-title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      margin-top: 8px;
+    }
+
+    .wf-title {
+      margin: 0;
+      font-size: clamp(22px, 2.4vw, 34px);
+      line-height: 1.05;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      color: #fff;
+      outline: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .wf-status-pill {
+      flex-shrink: 0;
+      padding: 5px 10px;
+      border: 1px solid rgba(245, 158, 11, 0.55);
+      border-radius: 999px;
+      background: rgba(245, 158, 11, 0.12);
+      font: 600 11px/1 'JetBrains Mono', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #fcd34d;
+    }
+
+    .wf-basis {
+      margin: 6px 0 0;
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--wf-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .wf-picker {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .wf-picker>span {
+      font: 600 11px/1 'JetBrains Mono', monospace;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #86efac;
+    }
+
+    .wf-picker select {
+      width: 300px;
+      max-width: 34vw;
+      height: 46px;
+      padding: 0 38px 0 14px;
+      border: 1px solid var(--wf-line-strong);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.35) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%2386efac' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;
+      appearance: none;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+
+    .wf-picker select:hover {
+      border-color: rgba(255, 255, 255, 0.55);
+    }
+
+    .wf-picker option,
+    .wf-picker optgroup {
+      background: #0d1f14;
+      color: #fff;
+    }
+
+    /* ---------- Back, breadcrumbs, play controls ---------- */
+    .wf-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .wf-path {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .wf-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 40px;
+      padding: 0 16px;
+      border: 1.5px solid rgba(255, 255, 255, 0.4);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.25);
+      font: 700 12px/1 'JetBrains Mono', monospace !important;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: #fff;
+      cursor: pointer;
+      transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    }
+
+    .wf-btn:hover:not(:disabled) {
+      border-color: #fff;
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .wf-btn:disabled {
+      opacity: 0.38;
+      cursor: default;
+    }
+
+    .wf-btn--green {
+      min-width: 104px;
+      border-color: transparent;
+      background: var(--tl-green, #22c55e);
+      color: var(--tl-ink, #052e16) !important;
+    }
+
+    .wf-btn--green:hover:not(:disabled) {
+      border-color: transparent;
+      background: #4ade80;
+      box-shadow: 0 6px 24px rgba(34, 197, 94, 0.35);
+    }
+
+    .wf-back {
+      flex-shrink: 0;
+    }
+
+    .wf-crumbs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 13px;
+      color: var(--wf-muted);
+    }
+
+    .wf-crumbs button {
+      padding: 6px 0;
+      border: 0;
+      background: none;
+      color: var(--wf-muted);
+      cursor: pointer;
+    }
+
+    .wf-crumbs button:hover {
+      color: var(--wf-accent);
+    }
+
+    .wf-crumbs .crumb-current {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .wf-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* ---------- Diagram stage ---------- */
+    .wf-stage {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      isolation: isolate;
+      border: 1px solid var(--wf-line);
+      border-radius: 14px;
+      background-color: rgba(4, 12, 7, 0.55);
+      background-image: radial-gradient(rgba(134, 239, 172, 0.16) 0.8px, transparent 0.8px);
+      background-size: 20px 20px;
+      box-shadow: inset 0 0 80px rgba(34, 197, 94, 0.05), 0 20px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    .wf-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .wf-canvas.is-dragging {
+      cursor: grabbing;
+    }
+
+    .wf-hint {
+      position: absolute;
+      left: 14px;
+      bottom: 12px;
+      margin: 0;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.45);
+      font: 500 11px/1 'JetBrains Mono', monospace;
+      color: var(--wf-muted);
+      pointer-events: none;
+    }
+
+    .wf-zoom {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px;
+      border: 1px solid var(--wf-line-strong);
+      border-radius: 8px;
+      background: rgba(5, 14, 9, 0.85);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .wf-zoom button {
+      min-width: 32px;
+      height: 30px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 5px;
+      background: none;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .wf-zoom button:hover:not(:disabled) {
+      background: rgba(34, 197, 94, 0.18);
+      color: #86efac;
+    }
+
+    .wf-zoom button:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    .wf-zoom output {
+      min-width: 44px;
+      text-align: center;
+      font: 600 11px/1 'JetBrains Mono', monospace;
+      color: var(--wf-muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wf-zoom [data-fc='fit'] {
+      border-left: 1px solid var(--wf-line);
+      border-radius: 0 5px 5px 0;
+      font: 700 11px/1 'JetBrains Mono', monospace;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* Diagram: shapes keep their geometry; only colours follow the theme */
+    .wf-canvas .fc-edge {
+      fill: none;
+      stroke: var(--wf-edge);
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      transition: stroke 0.2s ease, opacity 0.2s ease;
+    }
+
+    .wf-canvas .fc-edge.related {
+      stroke-dasharray: 5 5;
+      opacity: 0.6;
+    }
+
+    .wf-canvas .fc-edge.visited {
+      stroke: #22c55e;
+      opacity: 0.75;
+    }
+
+    .wf-canvas .fc-edge.active {
+      stroke: var(--wf-accent);
+      opacity: 1;
+      stroke-width: 2.6;
+      filter: drop-shadow(0 0 4px rgba(74, 222, 128, 0.6));
+    }
+
+    .wf-canvas .fc-arrowhead {
+      fill: var(--wf-edge);
+    }
+
+    .wf-canvas .fc-edge-label {
+      fill: #bbf7d0;
+      font: 600 11px 'JetBrains Mono', monospace;
+      paint-order: stroke;
+      stroke: #07110b;
+      stroke-width: 5px;
+      stroke-linejoin: round;
+    }
+
+    .wf-canvas .fc-node {
+      --fill: var(--wf-process);
+    }
+
+    .wf-canvas .fc-node.input {
+      --fill: var(--wf-input);
+    }
+
+    .wf-canvas .fc-node.terminal {
+      --fill: var(--wf-terminal);
+    }
+
+    .wf-canvas .fc-node.decision {
+      --fill: var(--wf-decision);
+    }
+
+    .wf-canvas .fc-node[data-target] {
+      cursor: pointer;
+    }
+
+    .wf-canvas .fc-node .shape {
+      fill: var(--fill);
+      stroke: rgba(214, 232, 220, 0.38);
+      stroke-width: 1.3;
+      transition: stroke 0.16s ease, fill 0.16s ease, stroke-width 0.16s ease;
+    }
+
+    .wf-canvas .fc-node.visited .shape {
+      stroke: rgba(74, 222, 128, 0.6);
+    }
+
+    .wf-canvas .fc-node.current .shape {
+      stroke: var(--wf-accent);
+      stroke-width: 3;
+      filter: drop-shadow(0 0 10px rgba(74, 222, 128, 0.45));
+    }
+
+    .wf-canvas .fc-node[data-target]:hover .shape,
+    .wf-canvas .fc-node[data-target]:focus .shape {
+      stroke: #86efac;
+      stroke-width: 2.6;
+      fill: color-mix(in srgb, var(--fill) 80%, #22c55e);
+    }
+
+    .wf-canvas .fc-node:focus {
+      outline: none;
+    }
+
+    .wf-canvas .fc-node:focus-visible .shape {
+      stroke: #fff;
+      stroke-width: 3.5;
+    }
+
+    .wf-canvas .node-label {
+      font-size: 15px;
+      font-weight: 600;
+      fill: var(--wf-ink);
+      pointer-events: none;
+    }
+
+    .wf-canvas .node-open {
+      font: 600 10.5px 'JetBrains Mono', monospace;
+      fill: #86efac;
+      pointer-events: none;
+    }
+
+    .wf-canvas .node-open.is-progress {
+      fill: #fcd34d;
+    }
+
+    .wf-canvas .lane-label {
+      font: 600 11px 'JetBrains Mono', monospace;
+      letter-spacing: 1.6px;
+      fill: #86efac;
+    }
+
+    .wf-canvas .lane-line {
+      stroke: rgba(255, 255, 255, 0.14);
+      stroke-width: 1;
+      stroke-dasharray: 3 5;
+    }
+
+    .wf-canvas .fc-packet {
+      fill: #bbf7d0;
+      pointer-events: none;
+    }
+
+    .wf-canvas .fc-halo {
+      fill: #22c55e;
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    /* ---------- Status + legend ---------- */
+    .wf-status {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      column-gap: 24px;
+      min-height: 56px;
+    }
+
+    .wf-status-line {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+      line-height: 22px;
+    }
+
+    .wf-position {
+      flex-shrink: 0;
+      font: 600 11px/1 'JetBrains Mono', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #86efac;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wf-current {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .wf-detail {
+      display: -webkit-box;
+      margin: 4px 0 0;
+      overflow: hidden;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--wf-muted);
+    }
+
+    .wf-legend {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding-top: 4px;
+      white-space: nowrap;
+      font: 500 11px/1 'JetBrains Mono', monospace;
+      color: var(--wf-muted);
+    }
+
+    .wf-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .wf-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--wf-accent);
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+    }
+
+    .wf-progress-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--wf-progress);
+    }
+
+    /* ---------- Responsive (Home breakpoints) ---------- */
+    @media (max-width: 1023px) {
+      .wf-legend {
+        display: none;
+      }
+
+      .wf-status {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    @media (max-width: 767px) {
+      .wf-app {
+        gap: 8px;
+        padding: 6px 12px 10px;
+      }
+
+      .wf-heading {
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .wf-picker>span {
+        display: none;
+      }
+
+      .wf-picker select {
+        width: 44vw;
+        max-width: 44vw;
+        height: 38px;
+        font-size: 12px;
+        padding-left: 10px;
+      }
+
+      .wf-title {
+        font-size: 20px;
+      }
+
+      .wf-basis {
+        font-size: 11px;
+      }
+
+      .wf-btn {
+        height: 34px;
+        padding: 0 10px;
+        font-size: 11px !important;
+      }
+
+      .wf-btn--green {
+        min-width: 72px;
+      }
+
+      .wf-path {
+        gap: 8px;
+      }
+
+      .wf-crumbs {
+        gap: 5px;
+        font-size: 11px;
+      }
+
+      .wf-crumbs .crumb-ancestor {
+        display: none;
+      }
+
+      .wf-hint {
+        display: none;
+      }
+
+      .wf-stage {
+        border-radius: 10px;
+      }
+
+      .wf-zoom {
+        right: 6px;
+        bottom: 6px;
+      }
+
+      .wf-zoom button {
+        min-width: 28px;
+        height: 28px;
+      }
+
+      .wf-zoom output {
+        min-width: 34px;
+      }
+
+      .wf-current {
+        font-size: 13px;
+      }
+
+      .wf-detail {
+        font-size: 12px;
+      }
+    }
+
+    @media (max-width: 479px) {
+      .wf-eyebrow>span:first-child {
+        display: none;
+      }
+
+      .wf-back span {
+        display: none;
+      }
+
+      .wf-basis {
+        display: none;
+      }
+    }
+
+    @media (max-height: 640px) {
+      .wf-app {
+        gap: 6px;
+        padding-top: 6px;
+      }
+
+      .wf-basis {
+        display: none;
+      }
+
+      .wf-btn {
+        height: 32px;
+      }
+
+      .wf-picker select {
+        height: 34px;
+      }
+
+      .wf-status {
+        min-height: 40px;
+      }
+
+      .wf-detail {
+        -webkit-line-clamp: 1;
+      }
+
+      .wf-hint {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .tl-wf * {
+        transition: none !important;
+      }
+    }
+
+    /* Modules still in development ("Coming soon" in the app): amber dashed outline */
+    .wf-canvas .fc-node.is-progress .shape {
+      stroke: var(--wf-progress);
+      stroke-dasharray: 6 4;
+    }
+
+    .wf-canvas .fc-node.is-progress.current .shape {
+      stroke: #fcd34d;
+      filter: drop-shadow(0 0 10px rgba(245, 158, 11, 0.45));
+    }
+  </style>
+</head>
+
+<body>
+  <div class="tl-home tl-wf">
+    <header class="f2-header">
+      <button class="f2-brand" type="button" data-fc="home" aria-label="TicketLedger — open overall flow"><svg
+          class="f2-mark" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="131 211 760 604">
+          <defs>
+            <linearGradient id="tl-mark-gradient" x1="238.56" y1="512.87" x2="882.95" y2="512.87"
+              gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#0175fe" />
+              <stop offset="1" stop-color="#3d3ffc" />
+            </linearGradient>
+          </defs>
+          <path fill="#051a3d"
+            d="M139.15,521.13v-116.25s-.48-10,9.5-25.09c5.12-7.75,12.3-13.92,20.61-18.06l284.8-142.04c.29-.14.58-.24.9-.3.14-.02.31-.05.5-.08,11.54-1.67,21.8,7.51,21.8,19.17v26.6s-.53,16.38-11.87,30.78c-3.84,4.87-8.94,8.59-14.57,11.19l-216.58,100.11s-11.52,5.25-20.54,18.74c-5.95,8.89-8.83,19.49-8.87,30.19l-.45,110.48c-.01,2.54-2.77,4.11-4.95,2.82l-53.83-31.65c-.18-.1-.34-.22-.5-.36-1.15-1.03-5.96-5.99-5.96-16.25Z" />
+          <path fill="url(#tl-mark-gradient)"
+            d="M880.95,559.42l-28.97-77.29c-79.04,21.64-103.71-49.01-103.71-49.01-22.05-74.07,52.79-107.91,52.79-107.91l-30.63-83.9c-.99-2.7-2.29-5.29-3.98-7.61-13.57-18.59-32.59-15.86-38.87-14.32-1.16.28-2.29.69-3.38,1.18l-464.6,209.81c-3.35,1.51-6.45,3.54-9.05,6.13-7.3,7.28-10.18,16.14-11.3,21.45-.48,2.28-.7,4.61-.7,6.95v98.78s203.37-98.65,203.37-98.65l2.02,342.44,423.89-205.82c.32-.15.64-.32.94-.5,16.55-9.7,14.63-30.14,13.36-37.38-.26-1.48-.67-2.93-1.19-4.33ZM549.57,404.85l-11.52-30.38c-2.71-7.2.89-15.24,8.09-17.97,1.61-.6,3.27-.89,4.91-.89,5.62,0,10.95,3.42,13.06,8.99l11.49,30.38c2.74,7.2-.89,15.24-8.09,17.97-7.17,2.74-15.24-.89-17.94-8.09ZM583.77,487.82l-11.49-30.38c-2.74-7.2.89-15.24,8.09-17.97,1.61-.6,3.27-.89,4.91-.89,5.62,0,10.92,3.42,13.03,8.99l11.52,30.38c2.71,7.2-.92,15.24-8.09,17.97-7.2,2.71-15.24-.89-17.97-8.09ZM617.22,569.36l-11.52-30.38c-2.74-7.17.89-15.24,8.09-17.94,1.64-.63,3.3-.92,4.94-.92,5.62,0,10.92,3.45,13,9.02l11.52,30.38c2.74,7.2-.89,15.24-8.09,17.94-7.2,2.74-15.24-.89-17.94-8.09ZM669.12,659.02c-7.2,2.71-15.24-.89-17.97-8.09l-11.52-30.38c-2.71-7.2.92-15.24,8.09-17.97,1.64-.62,3.3-.89,4.94-.89,5.62,0,10.92,3.42,13.03,8.99l11.52,30.38c2.71,7.2-.92,15.24-8.09,17.97Z" />
+          <path fill="#051a3d"
+            d="M238.24,691.4v-65.99c0-7.88,2.25-15.67,6.89-22.04,3-4.12,7.23-8.32,13.12-11.45l150.44-79.05v293.45l-154.75-88.9s-13.08-5.61-15.46-21.86c-.2-1.37-.24-2.77-.24-4.15Z" />
+        </svg>
+        <span>Ticket<b>Ledger</b></span></button>
+      <span class="f2-tag">As implemented · 323a885</span>
+    </header>
+    <main class="wf-app" id="wf" aria-label="TicketLedger workflow explorer">
+      <div class="wf-heading">
+        <div class="wf-heading-copy">
+          <p class="tl-eyebrow wf-eyebrow"><span>Workflow explorer</span><span class="wf-count" data-count></span></p>
+          <div class="wf-title-row">
+            <h1 class="wf-title" data-fc="title" tabindex="-1">Overall flow</h1><span class="wf-status-pill"
+              data-fc="status" hidden></span>
+          </div>
+          <p class="wf-basis" data-fc="basis"></p>
+        </div>
+        <label class="wf-picker"><span>Module / workflow</span><select data-fc="select"
+            aria-label="Choose a module or workflow"></select></label>
+      </div>
+      <div class="wf-nav">
+        <div class="wf-path"><button class="wf-btn wf-back" data-fc="back" type="button"
+            aria-label="Back to previous flow">← <span>Back</span></button>
+          <nav class="wf-crumbs" data-fc="crumbs" aria-label="Workflow path"></nav>
+        </div>
+        <div class="wf-controls"><button class="wf-btn wf-btn--green" data-fc="play" type="button">Pause</button><button
+            class="wf-btn" data-fc="step" type="button">Next step →</button></div>
+      </div>
+      <section class="wf-stage" aria-label="Interactive flowchart canvas">
+        <svg class="wf-canvas" data-fc="svg" role="img" aria-label="Workflow diagram"
+          preserveAspectRatio="xMidYMid meet"></svg>
+        <p class="wf-hint">Click a module to open its flow · Drag to pan · Pinch or scroll to zoom</p>
+        <div class="wf-zoom" aria-label="Diagram zoom controls"><button data-fc="zoom-out" type="button"
+            aria-label="Zoom out">−</button><output data-fc="zoom-level" aria-live="off">100%</output><button
+            data-fc="zoom-in" type="button" aria-label="Zoom in">+</button><button data-fc="fit" type="button"
+            title="Fit the entire flow to the screen">Fit</button></div>
+      </section>
+      <footer class="wf-status">
+        <div>
+          <div class="wf-status-line"><span class="wf-position" data-fc="position"></span><span class="wf-current"
+              data-fc="current"></span></div>
+          <p class="wf-detail" data-fc="detail"></p>
+        </div>
+        <div class="wf-legend"><span><i class="wf-dot"></i>Current step</span><span data-fc="branch-legend">┄ Related /
+            optional</span><span><i class="wf-progress-dot"></i>In progress</span><span>↗ Open module</span></div>
+      </footer>
+      <span class="wf-sr" data-fc="live" aria-live="polite"></span>
+    </main>
+  </div>
+  <script>
+    /**
+     * Workflow explorer engine (ported from flow.html). Renders the flowcharts into an SVG and wires the
+     * controls found inside `root` by their data-fc attributes. It has no dependencies, so the same file is used
+     * by the React page (WorkflowExplorer.jsx) and inlined into the standalone flow2.html.
+     *
+     * Shapes: terminal = ellipse, process = rectangle, input/output = parallelogram, decision = diamond.
+     * Interactions: overall flow first; module nodes open their flow; Back / breadcrumbs / dropdown; play, pause,
+     * next step, replay; zoom buttons, Fit, wheel zoom, drag to pan, two-finger pinch; reduced motion stops play.
+     *
+     * mountWorkflow(root, data) -> destroy()
+     */
+    function mountWorkflow(root, data) {
+      const q = (name) => root.querySelector(`[data-fc="${name}"]`);
+      const { flows, graphs, names, flowMap, layouts = {}, lanes, overallDescription } = data;
+
+      const svg = q('svg');
+      const select = q('select');
+      const back = q('back');
+      const play = q('play');
+      const next = q('step');
+      const crumbs = q('crumbs');
+      const ns = 'http://www.w3.org/2000/svg';
+      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const states = new Map(flows.map((f) => [f.id, { cursor: 0, phase: 0, playing: false, finished: false }]));
+      const history = [];
+      const cleanups = [];
+      const on = (el, type, fn, opts) => {
+        if (!el) return;
+        el.addEventListener(type, fn, opts);
+        cleanups.push(() => el.removeEventListener(type, fn, opts));
+      };
+
+      let selected = 'overall';
+      let positions = new Map();
+      let nodeEls = new Map();
+      let edgeEls = [];
+      let packet;
+      let halo;
+      let last = 0;
+      let raf = 0;
+      let destroyed = false;
+      let bounds = { x: 0, y: 0, w: 1260, h: 620 };
+      let camera = { ...bounds };
+      let zoom = 1;
+      let drag = null;
+      let inspection = null;
+      const pointers = new Map();
+      let pinch = null;
+      const dwell = 1500;
+      const travel = 850;
+
+      const current = () => states.get(selected);
+      const graph = () => graphs.get(selected);
+      const count = () => (selected === 'overall' ? graph().edges.length : graph().trace.length);
+      const activeNode = () => (selected === 'overall' ? graph().edges[current().cursor].from : graph().trace[current().cursor]);
+      const activeEdge = () =>
+        selected === 'overall'
+          ? graph().edges[current().cursor]
+          : graph().edges.find((e) => e.from === activeNode() && e.to === graph().trace[current().cursor + 1]);
+      const make = (tag, attrs = {}) => {
+        const el = document.createElementNS(ns, tag);
+        for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+        return el;
+      };
+      const textEl = (label, attrs = {}) => {
+        const el = make('text', attrs);
+        el.textContent = label;
+        return el;
+      };
+
+      // Dropdown: overall first, then one group per module area
+      select.replaceChildren();
+      const groups = new Map();
+      for (const flow of flows) {
+        let group = select;
+        if (flow.id !== 'overall') {
+          if (!groups.has(flow.group)) {
+            const opt = document.createElement('optgroup');
+            opt.label = flow.group;
+            select.append(opt);
+            groups.set(flow.group, opt);
+          }
+          group = groups.get(flow.group);
+        }
+        const opt = document.createElement('option');
+        opt.value = flow.id;
+        opt.textContent = flow.label + (flow.status ? ` (${flow.status})` : '');
+        group.append(opt);
+      }
+
+      function renderCrumbs() {
+        crumbs.replaceChildren();
+        const entries = history.filter((e, i) => e.id !== 'overall' || i === 0);
+        if (selected === 'overall') {
+          const label = document.createElement('span');
+          label.textContent = 'Overall flow';
+          label.className = 'crumb-current';
+          label.setAttribute('aria-current', 'page');
+          crumbs.append(label);
+          return;
+        }
+        const home = document.createElement('button');
+        home.type = 'button';
+        home.textContent = 'Overall';
+        home.addEventListener('click', () => goHome());
+        crumbs.append(home);
+        const start = Math.max(0, entries.length - 2);
+        entries.forEach((entry, i) => {
+          if (entry.id === 'overall' || i < start) return;
+          const sep = document.createElement('span');
+          sep.textContent = '›';
+          sep.className = 'crumb-ancestor';
+          sep.setAttribute('aria-hidden', 'true');
+          crumbs.append(sep);
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'crumb-ancestor';
+          btn.textContent = names[entry.id];
+          btn.addEventListener('click', () => restoreAncestor(history.indexOf(entry)));
+          crumbs.append(btn);
+        });
+        const sep = document.createElement('span');
+        sep.textContent = '›';
+        sep.setAttribute('aria-hidden', 'true');
+        crumbs.append(sep);
+        const label = document.createElement('span');
+        label.className = 'crumb-current';
+        label.textContent = names[selected];
+        label.setAttribute('aria-current', 'page');
+        crumbs.append(label);
+      }
+
+      function refreshNavigation() {
+        const flow = flowMap.get(selected);
+        select.value = selected;
+        q('title').textContent = names[selected];
+        q('basis').textContent = flow.basis;
+        q('basis').title = flow.basis;
+        const status = q('status');
+        if (status) {
+          status.textContent = flow.status || '';
+          status.hidden = !flow.status;
+        }
+        back.disabled = selected === 'overall' && !history.length;
+        back.title = history.length ? 'Back to ' + names[history[history.length - 1].id] : 'Back to overall flow';
+        back.setAttribute('aria-label', back.title);
+        q('branch-legend').textContent = selected === 'overall' ? '┄ Related / optional' : 'Yes / No = decision';
+        renderCrumbs();
+      }
+
+      function openFlow(id, opts = {}) {
+        if (!flowMap.has(id)) return;
+        current().playing = false;
+        if (opts.root) history.length = 0;
+        else if (id !== selected) history.push({ id: selected, focusNode: opts.fromNode || null, camera: { ...camera }, zoom });
+        selected = id;
+        last = 0;
+        inspection = null;
+        current().playing = !reduced.matches && !current().finished;
+        refreshNavigation();
+        draw();
+        update(true);
+        if (opts.focus) q('title').focus({ preventScroll: true });
+      }
+      function goHome() {
+        openFlow('overall', { root: true, focus: true });
+      }
+      function restoreAncestor(index) {
+        if (index < 0 || index >= history.length) return;
+        current().playing = false;
+        const entry = history[index];
+        history.splice(index);
+        selected = entry.id;
+        last = 0;
+        inspection = null;
+        current().playing = false;
+        refreshNavigation();
+        draw();
+        if (entry.camera) {
+          camera = { ...entry.camera };
+          zoom = entry.zoom;
+          applyCamera();
+        }
+        update(true);
+        (nodeEls.get(entry.focusNode) || q('title')).focus({ preventScroll: true });
+      }
+      function goBack() {
+        if (history.length) restoreAncestor(history.length - 1);
+        else if (selected !== 'overall') goHome();
+      }
+
+      function update(announce = false) {
+        const st = current();
+        const g = graph();
+        const id = activeNode();
+        const node = g.nodes.find((n) => n.id === id);
+        const edge = activeEdge();
+        q('position').textContent = st.finished ? 'Complete' : (selected === 'overall' ? 'Connection ' : 'Step ') + (st.cursor + 1) + ' / ' + count();
+        q('current').textContent = inspection ? inspection.label : selected === 'overall' ? names[edge.from] + ' → ' + names[edge.to] : node.label;
+        q('detail').textContent = inspection ? inspection.detail : selected === 'overall' ? edge.detail : node.detail;
+        q('detail').title = q('detail').textContent;
+        play.textContent = st.finished ? 'Replay' : st.playing ? 'Pause' : 'Play';
+        play.setAttribute('aria-label', st.finished ? 'Replay this flow' : st.playing ? 'Pause animation' : 'Play animation');
+        next.textContent = st.cursor === count() - 1 ? 'Finish' : 'Next step →';
+        next.disabled = st.finished;
+        const visited = new Set(
+          selected === 'overall'
+            ? g.edges.slice(0, st.finished ? g.edges.length : st.cursor).flatMap((e) => [e.from, e.to])
+            : st.finished
+              ? g.trace
+              : g.trace.slice(0, st.cursor),
+        );
+        for (const n of g.nodes) {
+          const el = nodeEls.get(n.id);
+          if (!el) continue;
+          el.setAttribute(
+            'class',
+            'fc-node ' + n.kind + (n.status ? ' is-progress' : '') + (visited.has(n.id) ? ' visited' : '') +
+            (!st.finished && (n.id === id || (selected === 'overall' && n.id === edge.to)) ? ' current' : ''),
+          );
+          if (!st.finished && n.id === id) el.setAttribute('aria-current', 'step');
+          else el.removeAttribute('aria-current');
+        }
+        edgeEls.forEach(({ edge: e, path }) => {
+          const at = selected === 'overall' ? g.edges.indexOf(e) : g.trace.indexOf(e.from);
+          const follow = selected === 'overall' || (at >= 0 && g.trace[at + 1] === e.to);
+          path.setAttribute('class', 'fc-edge' + (e.related ? ' related' : '') + (follow && (st.finished || at < st.cursor) ? ' visited' : '') + (!st.finished && e === edge ? ' active' : ''));
+        });
+        if (announce) q('live').textContent = names[selected] + '. ' + q('position').textContent + '. ' + q('current').textContent;
+        movePacket();
+      }
+
+      function dimensions(n) {
+        const size = selected === 'overall' ? { w: 178, h: 60 } : n.kind === 'terminal' ? { w: 156, h: 56 } : n.kind === 'decision' ? { w: 208, h: 108 } : { w: 194, h: n.target ? 84 : 78 };
+        return { ...size, kind: n.kind };
+      }
+
+      function layout() {
+        const g = graph();
+        positions = new Map();
+        if (selected === 'overall') {
+          for (const n of g.nodes) positions.set(n.id, { x: n.x, y: n.y, ...dimensions(n) });
+          return;
+        }
+        const fixed = layouts[selected];
+        if (fixed) {
+          for (const n of g.nodes) positions.set(n.id, { x: fixed[n.id][0], y: fixed[n.id][1], ...dimensions(n) });
+          return;
+        }
+        g.trace.forEach((id, i) => {
+          const row = Math.floor(i / 5);
+          const col = row % 2 ? 4 - (i % 5) : i % 5;
+          const n = g.nodes.find((m) => m.id === id);
+          positions.set(id, { x: 130 + col * 250, y: 100 + row * 280, row, col, ...dimensions(n) });
+        });
+        for (const n of g.nodes) {
+          if (positions.has(n.id)) continue;
+          const edge = g.edges.find((e) => e.to === n.id && positions.has(e.from)) || g.edges.find((e) => e.from === n.id && positions.has(e.to));
+          const anchor = positions.get(edge.to === n.id ? edge.from : edge.to);
+          positions.set(n.id, { x: anchor.x, y: anchor.y + 132, row: anchor.row, col: anchor.col, ...dimensions(n) });
+        }
+      }
+
+      function port(p, side) {
+        if (side === 'top') return { x: p.x, y: p.y - p.h / 2 };
+        if (side === 'bottom') return { x: p.x, y: p.y + p.h / 2 };
+        const inset = p.kind === 'input' ? 6.5 : 0;
+        if (side === 'left') return { x: p.x - p.w / 2 + inset, y: p.y };
+        return { x: p.x + p.w / 2 - inset, y: p.y };
+      }
+
+      function edgeRoute(e, index) {
+        const a = positions.get(e.from);
+        const b = positions.get(e.to);
+        const g = graph();
+        let points;
+        const P = (x, y) => ({ x, y });
+        if (e.fromSide) {
+          points = [port(a, e.fromSide), ...(e.via || []).map((v) => P(...v)), port(b, e.toSide)];
+        } else if (selected === 'authentication' && e.route === 'return-left') {
+          if (e.from === 'refresh-question') points = [port(a, 'right'), P(1286, a.y), P(1286, b.y), port(b, 'right')];
+          else points = [port(a, 'top'), P(a.x, 418), P(1258, 418), P(1258, b.y), port(b, 'right')];
+        } else if (e.route === 'return-right') {
+          const bottom = a.y + a.h / 2 + 24 + (index % 3) * 7;
+          const roof = b.y - b.h / 2 - 24;
+          points = [port(a, 'bottom'), P(a.x, bottom), P(12 + (index % 3) * 8, bottom), P(12 + (index % 3) * 8, roof), P(b.x, roof), port(b, 'top')];
+        } else if (g.trace.indexOf(e.to) === g.trace.indexOf(e.from) + 1 && g.trace.includes(e.from) && a.y !== b.y) {
+          const rail = Math.max(a.x + a.w / 2, b.x + b.w / 2) + 32;
+          points = [port(a, 'right'), P(rail, a.y), P(rail, b.y), port(b, 'right')];
+        } else if (Math.abs(a.y - b.y) < 1) {
+          const right = b.x > a.x;
+          points = [port(a, right ? 'right' : 'left'), port(b, right ? 'left' : 'right')];
+        } else if (Math.abs(a.x - b.x) < 1) {
+          const down = b.y > a.y;
+          points = [port(a, down ? 'bottom' : 'top'), port(b, down ? 'top' : 'bottom')];
+        } else {
+          const down = b.y > a.y;
+          const p1 = port(a, down ? 'bottom' : 'top');
+          const p2 = port(b, down ? 'top' : 'bottom');
+          const mid = (p1.y + p2.y) / 2;
+          points = [p1, P(p1.x, mid), P(p2.x, mid), p2];
+        }
+        // Remove zero-length legs; keep arrowheads and animation paths deterministic.
+        points = points.filter((p, i) => !i || p.x !== points[i - 1].x || p.y !== points[i - 1].y);
+        let best = [points[0], points[1]];
+        let length = -1;
+        for (let i = 1; i < points.length; i++) {
+          const n = Math.abs(points[i].x - points[i - 1].x) + Math.abs(points[i].y - points[i - 1].y);
+          if (n > length) {
+            length = n;
+            best = [points[i - 1], points[i]];
+          }
+        }
+        const horizontal = best[0].y === best[1].y;
+        let label = { x: (best[0].x + best[1].x) / 2 + (horizontal ? 0 : 9), y: (best[0].y + best[1].y) / 2 + (horizontal ? -7 : 4), anchor: horizontal ? 'middle' : 'start' };
+        if (e.label === 'Yes' || e.label === 'No') {
+          const p = points[0];
+          const p2 = points[1];
+          label = { x: p.x + (p.x === p2.x ? 10 : p2.x > p.x ? 18 : -18), y: p.y + (p.x === p2.x ? (p2.y > p.y ? 19 : -15) : -9), anchor: p.x === p2.x ? 'start' : 'middle' };
+        }
+        if (e.labelPos) label = e.labelPos;
+        return { points, label, d: points.map((p, i) => (i ? 'L ' : 'M ') + p.x + ' ' + p.y).join(' ') };
+      }
+
+      const measure = document.createElement('canvas').getContext('2d');
+      function wrapText(text, width, size) {
+        if (measure) measure.font = '600 ' + size + "px 'Plus Jakarta Sans', system-ui, sans-serif";
+        const measureWidth = (s) => (measure ? measure.measureText(s).width : s.length * size * 0.54);
+        const lines = [];
+        let line = '';
+        for (const word of text.split(/\s+/)) {
+          const candidate = line ? line + ' ' + word : word;
+          if (line && measureWidth(candidate) > width) {
+            lines.push(line);
+            line = word;
+          } else line = candidate;
+        }
+        if (line) lines.push(line);
+        return lines;
+      }
+
+      function draw() {
+        const g = graph();
+        layout();
+        nodeEls = new Map();
+        edgeEls = [];
+        svg.replaceChildren();
+        const title = make('title');
+        title.textContent = flowMap.get(selected).label;
+        svg.append(title);
+        const desc = make('desc');
+        desc.textContent = selected === 'overall' ? overallDescription : 'Animated flowchart. Yes and No label decision branches. Nodes marked Open flow open their own module. Use Back to return.';
+        svg.append(desc);
+        const defs = make('defs');
+        const marker = make('marker', { id: 'fc-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 5, markerHeight: 5, orient: 'auto' });
+        marker.append(make('path', { d: 'M 1 1 L 9 5 L 1 9 Z', class: 'fc-arrowhead' }));
+        const glow = make('filter', { id: 'fc-glow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
+        glow.append(make('feGaussianBlur', { stdDeviation: 6 }));
+        defs.append(marker, glow);
+        svg.append(defs);
+        if (selected === 'overall' && lanes) {
+          for (const [label, y] of lanes.labels) svg.append(textEl(label, { x: 21, y, class: 'lane-label' }));
+          const [x1, y1, x2, y2] = lanes.line;
+          svg.append(make('line', { x1, y1, x2, y2, class: 'lane-line' }));
+        }
+        const points = [];
+        g.edges.forEach((e, i) => {
+          const route = edgeRoute(e, i);
+          const path = make('path', { d: route.d, class: 'fc-edge', 'marker-end': 'url(#fc-arrow)' });
+          svg.append(path);
+          edgeEls.push({ edge: e, path, points: route.points });
+          points.push(...route.points);
+          if (e.label) svg.append(textEl(e.label, { x: route.label.x, y: route.label.y, 'text-anchor': route.label.anchor, class: 'fc-edge-label' }));
+        });
+        for (const n of g.nodes) {
+          const p = positions.get(n.id);
+          const x = p.x - p.w / 2;
+          const y = p.y - p.h / 2;
+          points.push({ x: x - 16, y: y - 16 }, { x: x + p.w + 16, y: y + p.h + 16 });
+          const el = make('g', {
+            class: 'fc-node ' + n.kind,
+            'data-node': n.id,
+            role: n.target ? 'button' : 'group',
+            'aria-label': n.target ? 'Open ' + flowMap.get(n.target).label + ' workflow' : n.label,
+          });
+          const tip = make('title');
+          tip.textContent = n.label + (n.target ? ' — Open flow' : '') + '. ' + n.detail;
+          el.append(tip);
+          let shape;
+          if (n.kind === 'terminal') shape = make('ellipse', { cx: p.x, cy: p.y, rx: p.w / 2, ry: p.h / 2 });
+          else if (n.kind === 'decision') shape = make('polygon', { points: p.x + ',' + y + ' ' + (x + p.w) + ',' + p.y + ' ' + p.x + ',' + (y + p.h) + ' ' + x + ',' + p.y });
+          else if (n.kind === 'input') shape = make('polygon', { points: x + 13 + ',' + y + ' ' + (x + p.w) + ',' + y + ' ' + (x + p.w - 13) + ',' + (y + p.h) + ' ' + x + ',' + (y + p.h) });
+          else shape = make('rect', { x, y, width: p.w, height: p.h, rx: 2 });
+          shape.setAttribute('class', 'shape');
+          el.append(shape);
+          const innerW = p.w * (n.kind === 'decision' ? 0.6 : n.kind === 'terminal' ? 0.8 : 0.87);
+          const size = 15;
+          const lines = wrapText(n.label, innerW, size);
+          const lineHeight = 17;
+          const offset = n.target ? 7 : 0;
+          const label = make('text', { x: p.x, y: p.y - ((lines.length - 1) * lineHeight) / 2 - offset, 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'node-label' });
+          lines.forEach((line, i) => {
+            const span = make('tspan', { x: p.x, dy: i ? lineHeight : 0 });
+            span.textContent = line;
+            label.append(span);
+          });
+          el.append(label);
+          const targetStatus = n.target && flowMap.get(n.target)?.status;
+          if (n.target) {
+            el.setAttribute('tabindex', '0');
+            el.setAttribute('data-target', n.target);
+            el.append(textEl(targetStatus ? targetStatus + ' · Open ↗' : 'Open flow ↗', { x: p.x, y: p.y + ((lines.length - 1) * lineHeight) / 2 + 15, 'text-anchor': 'middle', class: 'node-open' + (targetStatus ? ' is-progress' : '') }));
+            el.addEventListener('click', () => openFlow(n.target, { fromNode: n.id, focus: true }));
+            el.addEventListener('keydown', (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openFlow(n.target, { fromNode: n.id, focus: true });
+              }
+            });
+          } else {
+            el.addEventListener('click', () => {
+              inspection = n;
+              current().playing = false;
+              update(true);
+            });
+          }
+          svg.append(el);
+          nodeEls.set(n.id, el);
+        }
+        halo = make('circle', { r: 11, class: 'fc-halo', 'aria-hidden': 'true', filter: 'url(#fc-glow)' });
+        packet = make('circle', { r: 4.5, class: 'fc-packet', 'aria-hidden': 'true' });
+        svg.append(halo, packet);
+        const minX = Math.min(...points.map((pt) => pt.x)) - 16;
+        const maxX = Math.max(...points.map((pt) => pt.x)) + 16;
+        const minY = selected === 'overall' ? -4 : Math.min(...points.map((pt) => pt.y)) - 16;
+        const maxY = Math.max(...points.map((pt) => pt.y)) + 30;
+        bounds = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+        fit();
+        update();
+      }
+
+      function applyCamera() {
+        svg.setAttribute('viewBox', [camera.x, camera.y, camera.w, camera.h].join(' '));
+        q('zoom-level').textContent = Math.round(zoom * 100) + '%';
+        q('zoom-out').disabled = zoom <= 0.61;
+        q('zoom-in').disabled = zoom >= 4.99;
+      }
+      function fit() {
+        camera = { ...bounds };
+        zoom = 1;
+        applyCamera();
+      }
+      function zoomBy(factor, client) {
+        const value = Math.max(0.6, Math.min(5, zoom * factor));
+        const ratio = zoom / value;
+        const center = client ? clientToDiagram(client.x, client.y) : { x: camera.x + camera.w / 2, y: camera.y + camera.h / 2 };
+        camera = { x: center.x + (camera.x - center.x) * ratio, y: center.y + (camera.y - center.y) * ratio, w: camera.w * ratio, h: camera.h * ratio };
+        zoom = value;
+        applyCamera();
+      }
+      function clientToDiagram(x, y) {
+        const r = svg.getBoundingClientRect();
+        const scale = Math.min(r.width / camera.w, r.height / camera.h);
+        return { x: camera.x + (x - r.left - (r.width - camera.w * scale) / 2) / scale, y: camera.y + (y - r.top - (r.height - camera.h * scale) / 2) / scale };
+      }
+
+      function movePacket() {
+        if (!packet) return;
+        const st = current();
+        const id = activeNode();
+        const p = positions.get(id);
+        const edge = activeEdge();
+        if (!p) return;
+        let x = p.x;
+        let y = p.y - p.h / 2;
+        if (!reduced.matches && st.phase > dwell && edge) {
+          const item = edgeEls.find((v) => v.edge === edge);
+          if (item) {
+            const t = Math.min(1, (st.phase - dwell) / travel);
+            const ease = t * t * (3 - 2 * t);
+            const point = item.path.getPointAtLength(item.path.getTotalLength() * ease);
+            x = point.x;
+            y = point.y;
+          }
+        }
+        for (const el of [packet, halo]) {
+          el.setAttribute('cx', x);
+          el.setAttribute('cy', y);
+          el.style.display = st.finished ? 'none' : '';
+        }
+      }
+      function advance(announce = false) {
+        const st = current();
+        inspection = null;
+        if (st.cursor < count() - 1) {
+          st.cursor++;
+          st.phase = 0;
+        } else {
+          st.finished = true;
+          st.playing = false;
+          st.phase = 0;
+        }
+        update(announce);
+      }
+      function tick(time) {
+        if (destroyed) return;
+        const dt = last ? Math.min(80, time - last) : 0;
+        last = time;
+        if (current().playing && !current().finished && !document.hidden) {
+          const st = current();
+          st.phase += dt;
+          if (st.phase >= (activeEdge() ? dwell + travel : dwell)) advance();
+          movePacket();
+        }
+        raf = requestAnimationFrame(tick);
+      }
+
+      // ---------- Controls ----------
+      on(back, 'click', goBack);
+      on(q('home'), 'click', goHome);
+      on(select, 'change', () => {
+        if (select.value === 'overall') goHome();
+        else if (select.value !== selected) openFlow(select.value, { focus: true });
+      });
+      on(play, 'click', () => {
+        const st = current();
+        inspection = null;
+        if (st.finished) {
+          st.cursor = 0;
+          st.phase = 0;
+          st.finished = false;
+        }
+        st.playing = !st.playing;
+        last = 0;
+        update(true);
+      });
+      on(next, 'click', () => {
+        current().playing = false;
+        advance(true);
+      });
+      on(q('zoom-in'), 'click', () => zoomBy(1.25));
+      on(q('zoom-out'), 'click', () => zoomBy(0.8));
+      on(q('fit'), 'click', fit);
+
+      // Drag to pan (mouse, pen or one finger); two fingers pinch to zoom
+      on(svg, 'pointerdown', (event) => {
+        if (event.button !== 0 || event.target.closest('.fc-node')) return;
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        svg.setPointerCapture(event.pointerId);
+        if (pointers.size === 2) {
+          const [a, b] = [...pointers.values()];
+          pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y), zoom };
+          drag = null;
+          return;
+        }
+        const r = svg.getBoundingClientRect();
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, camera: { ...camera }, scale: Math.min(r.width / camera.w, r.height / camera.h) };
+        svg.classList.add('is-dragging');
+      });
+      on(svg, 'pointermove', (event) => {
+        if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pinch && pointers.size === 2) {
+          const [a, b] = [...pointers.values()];
+          const dist = Math.hypot(a.x - b.x, a.y - b.y);
+          if (pinch.dist > 0) zoomBy((pinch.zoom * (dist / pinch.dist)) / zoom, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+          return;
+        }
+        if (!drag || event.pointerId !== drag.id) return;
+        camera.x = drag.camera.x - (event.clientX - drag.x) / drag.scale;
+        camera.y = drag.camera.y - (event.clientY - drag.y) / drag.scale;
+        applyCamera();
+      });
+      const endDrag = (event) => {
+        pointers.delete(event.pointerId);
+        if (pointers.size < 2) pinch = null;
+        drag = null;
+        svg.classList.remove('is-dragging');
+      };
+      on(svg, 'pointerup', endDrag);
+      on(svg, 'pointercancel', endDrag);
+      on(svg, 'lostpointercapture', endDrag);
+      on(svg, 'wheel', (event) => {
+        if (event.ctrlKey || event.metaKey) return;
+        event.preventDefault();
+        zoomBy(event.deltaY < 0 ? 1.12 : 1 / 1.12, { x: event.clientX, y: event.clientY });
+      }, { passive: false });
+      const onReduced = () => {
+        if (reduced.matches) {
+          current().playing = false;
+          update();
+        }
+      };
+      reduced.addEventListener?.('change', onReduced);
+      cleanups.push(() => reduced.removeEventListener?.('change', onReduced));
+      on(document, 'visibilitychange', () => {
+        last = 0;
+      });
+
+      openFlow('overall', { root: true });
+      raf = requestAnimationFrame(tick);
+
+      return function destroy() {
+        destroyed = true;
+        cancelAnimationFrame(raf);
+        cleanups.forEach((fn) => fn());
+      };
+    }
+
+    /**
+     * Corrected TicketLedger workflows for flow2.html: every module as the code works at commit 323a885
+     * (7 October 2026). Pages that show "Coming soon" in the app are marked status: 'In progress' and drawn as
+     * short flows. Same data format as flowData.js, rendered by the same engine.
+     */
+    function buildWorkflowData() {
+      const S = (actor, title, note, detail) => ({ actor, title, note, detail });
+      const BASIS = 'Code-verified · commit 323a885 · 7 October 2026';
+      const PROGRESS = 'In progress';
+
+      const flows = [
+        // ---------------- Account & access ----------------
+        {
+          id: 'signup', group: 'Account & access', label: 'Sign-up & email verification', basis: BASIS + ' · customer or organizer',
+          steps: [
+            S('Browser', 'Fill in sign-up form', 'Customer or organizer', 'Signup.jsx checks name, e-mail, Pakistani mobile number, password strength and the terms box, then AuthContext.signup sends POST /api/auth/signup.'),
+            S('API', 'Validate details', 'Zod · e-mail must be new', 'Invalid fields return 400; an e-mail that already has an account returns 409. The phone number may be shared with another account.'),
+            S('Database', 'Save pending user', 'PENDING_VERIFICATION', 'The password is hashed with bcrypt and the User is created as CUSTOMER or ORGANIZER; a signed pending-signup cookie lets the browser correct the details.'),
+            S('Email service', 'Send 6-digit code', '10-minute expiry · resend cooldown', 'issueOtp stores an HMAC of the code, cancels earlier codes and e-mails the new one.'),
+            S('Browser → API', 'Enter the code', 'POST /api/auth/verify-otp', 'VerifyOtp.jsx sends the code; consumeOtp checks expiry, the attempt limit and single use.'),
+            S('Database', 'Activate account', 'ACTIVE · emailVerifiedAt', 'A valid code is consumed and the account becomes ACTIVE.'),
+            S('API → Browser', 'Start session', 'Access token + refresh cookie', 'startSession returns a 15-minute access token and sets the httpOnly refresh cookie.'),
+            S('Browser', 'Open next page', 'Organizer → company registration', 'Customers continue to the site; organizers are sent to register their company before they can create events.'),
+          ],
+        },
+        {
+          id: 'login', group: 'Account & access', label: 'Login & protected access', basis: BASIS + ' · active account',
+          steps: [
+            S('Browser', 'Submit credentials', 'POST /api/auth/login', 'Login.jsx sends the e-mail and password (demo logins can fill them in).'),
+            S('API', 'Check password', 'bcrypt comparison', 'Unknown e-mail and wrong password both return the same 401 response.'),
+            S('API + Database', 'Check account status', 'Active / pending / blocked', 'Pending accounts are sent to e-mail verification; suspended, banned or deactivated accounts get 403 and the Suspended page.'),
+            S('API → Browser', 'Issue session', 'Token in memory; cookie set', 'For an active account the API stores a refresh-token row and returns the access token.'),
+            S('API + Database', 'Link guest activity', 'Session ID → user ID', 'trackLogin links anonymous BehaviorEvent rows to the signed-in user.'),
+            S('Browser → API', 'Request protected data', 'Authorization: Bearer token', 'The axios interceptor adds the in-memory access token to protected requests.'),
+            S('API', 'Check user and role', 'authenticateJWT → requireRole', 'The API reloads the user and enforces role permissions before the action runs.'),
+          ],
+        },
+        {
+          id: 'refresh', group: 'Account & access', label: 'Restore & refresh session', basis: BASIS + ' · valid refresh cookie',
+          steps: [
+            S('Browser', 'Restore session', 'Page load or token expiry', 'AuthContext refreshes on start-up and before the access token expires; a 30-minute idle session signs out instead.'),
+            S('Browser → API', 'Send refresh cookie', 'POST /api/auth/refresh', 'The browser automatically includes the httpOnly tl_refresh cookie.'),
+            S('API + Database', 'Find hashed token', 'SHA-256 lookup', 'rotateRefreshToken checks the stored token, its expiry, revocation and the idle limit; a reused token revokes the whole family.'),
+            S('Database', 'Rotate refresh token', 'Revoke old; create new', 'A conditional update lets only one concurrent rotation win; a new token row is created.'),
+            S('API → Browser', 'Return new session', 'New cookie + access token', 'The API replaces the refresh cookie and returns the current user and access token.'),
+            S('Browser', 'Resume request', 'Retry at most once', 'A request that failed with an expired token is retried once with the new token.'),
+          ],
+        },
+        {
+          id: 'reset', group: 'Account & access', label: 'Forgot password & reset', basis: BASIS + ' · eligible account',
+          steps: [
+            S('Browser → API', 'Request password reset', 'POST /forgot-password', 'The user submits an e-mail; the endpoint always answers with the same generic message.'),
+            S('API → Email', 'Issue reset code', 'RESET_PASSWORD OTP', 'For an eligible account the API creates a reset code and e-mails it.'),
+            S('Browser → API', 'Submit code + password', 'POST /reset-password', 'ResetPassword.jsx sends the 6-digit code and the new password.'),
+            S('API', 'Consume valid OTP', 'Single use + expiry checks', 'consumeOtp validates the reset code before the password can change.'),
+            S('Database', 'Update password hash', 'Revoke all refresh tokens', 'The new bcrypt hash is stored and every refresh session is revoked.'),
+            S('Browser', 'Sign in again', 'Use the new password', 'Old sessions no longer work; the user signs in again.'),
+          ],
+        },
+        {
+          id: 'invite', group: 'Account & access', label: 'Gate-staff invitation', basis: BASIS + ' · invitation accepted',
+          steps: [
+            S('Organizer', 'Invite gate staff', 'POST /api/staff/invites', 'StaffManager sends the e-mail address and the events the staff member may scan.'),
+            S('Database', 'Store invitation', 'Hashed token · 72 hours', 'A StaffInvite stores the hash of a random invitation token.'),
+            S('Email service', 'Deliver invite link', '/invite/<token>', 'The e-mail links to AcceptInvite.jsx; organizers can resend or cancel pending invites.'),
+            S('Browser → API', 'Accept invitation', 'POST /accept-invite', 'The recipient opens the link, sees the company and events, sets a password and accepts.'),
+            S('Database', 'Create staff + assignment', 'Single transaction', 'The invite becomes ACCEPTED; a verified GATE_STAFF user and StaffEventAssignment rows are created.'),
+            S('API → Browser', 'Start staff session', 'Scanner opens', 'The staff member is signed in and sees only the events assigned to them.'),
+          ],
+        },
+        {
+          id: 'logout', group: 'Account & access', label: 'Logout & idle expiry', basis: BASIS,
+          steps: [
+            S('Browser', 'Logout triggered', 'Manual or 30-minute idle', 'AuthContext.logout runs after a user action or the client idle check.'),
+            S('Browser → API', 'Request logout', 'POST /api/auth/logout', 'The browser sends the logout request with its refresh cookie.'),
+            S('API + Database', 'Revoke refresh token', 'revokeRefreshToken', 'The current refresh-token row is revoked so it cannot create a new access token.'),
+            S('Browser', 'Clear local session', 'Signed-out view', 'The access token and user are dropped and the signed-out view is shown.'),
+          ],
+        },
+
+        // ---------------- Events & tickets ----------------
+        {
+          id: 'company', group: 'Events & tickets', label: 'Company registration & approval', basis: BASIS + ' · 1 to 4 documents',
+          steps: [
+            S('Organizer', 'Fill company details', 'Name, owner, contact, city, NTN/CNIC', 'CompanyRegistration.jsx collects the company details.'),
+            S('Organizer', 'Attach 1–4 documents', 'PDF, PNG, JPG or WebP · 10 MB each', 'Files are dragged in or chosen; each can be removed before submitting.'),
+            S('API', 'Validate upload', 'Fields + 1–4 files', 'Zod checks the fields; multer rejects more than 4 files, files over 10 MB and other types (400). At least one document is required.'),
+            S('Storage', 'Store documents', 'Cloudinary or local uploads/', 'uploadFile stores each document; the URLs are saved in Company.documentUrls.'),
+            S('Database', 'Company PENDING', 'Organizer linked · notified', 'registerCompany creates or resets the Company to PENDING, links the organizer, and writes a notification and an audit log.'),
+            S('Super Admin', 'Review application', 'AdminCompanies', 'The admin sees the details and opens every document.'),
+            S('API', 'Approve company', 'APPROVED · notification + e-mail', 'The organizer is told by notification and e-mail and can now create events.'),
+          ],
+        },
+        {
+          id: 'publish', group: 'Events & tickets', label: 'Create, review & publish an event', basis: BASIS + ' · approved company',
+          steps: [
+            S('Organizer', 'Create event', 'Details, banner, gallery, map pin, tiers', 'CreateEvent.jsx checks image sizes and ratios and sends POST /api/events; an APPROVED company is required.'),
+            S('Database', 'Save draft event', 'Event DRAFT + TicketTiers', 'The event and its ticket tiers are stored as a draft.'),
+            S('Organizer', 'Draw seating plan', 'Venue editor', 'The venue editor publishes a seating plan, which creates the seats.'),
+            S('Organizer', 'Submit for review', 'POST /api/events/:id/submit', 'EventSubmit shows what is ready and submits the event.'),
+            S('Database', 'Pending approval', 'PENDING_APPROVAL', 'Super Admins are notified that an event is waiting for review.'),
+            S('Super Admin', 'Review event', 'AdminEventApprovals', 'The admin approves, or rejects with a comment; a second decision on the same submission returns 409.'),
+            S('API', 'Publish event', 'PUBLISHED · organizer notified', 'The event goes on sale and appears in browse, search and the map.'),
+          ],
+        },
+        {
+          id: 'venue', group: 'Events & tickets', label: 'Venue plan editor', basis: BASIS,
+          steps: [
+            S('Organizer', 'Open venue editor', 'Template or blank canvas', 'GET /api/venues/event/:id/editor returns tiers, the draft, the published plan and protected seats.'),
+            S('Organizer', 'Draw sections', 'Seats, tables, GA · tiers', 'Sections are drawn on the canvas; venue-core generates seat keys and geometry.'),
+            S('API', 'Save draft', 'PUT /draft', 'The VenueLayout draft is stored and can be discarded.'),
+            S('Organizer', 'Publish plan', 'POST /publish', 'The organizer publishes the draft.'),
+            S('API', 'Check protected seats', 'Sold / held / in checkout', 'publishDraft refuses to remove or move seats that are sold, held or in a checkout (409 with the conflicts).'),
+            S('Database', 'Generate seats', 'Seat rows + tier totals', 'Seats are created or updated from the plan in a transaction; the layout becomes PUBLISHED.'),
+          ],
+        },
+        {
+          id: 'seats', group: 'Events & tickets', label: 'Seat selection & holds', basis: BASIS + ' · published plan',
+          steps: [
+            S('Attendee', 'Open event', 'Event page', 'EventDetails shows the sale state; the visit is tracked as event_view.'),
+            S('Browser', 'Load seat map', 'GET /api/venues/event/:id', 'Lapsed holds are expired first; the plan shows available, held and sold seats and updates live over Socket.IO.'),
+            S('Attendee', 'Pick seat, table or GA', 'Venue map', 'Signed-out picks are kept and held automatically after login.'),
+            S('API', 'Request hold', 'POST /holds', 'venueController.createHold dispatches to a seat, whole-table or GA hold.'),
+            S('Database', 'Hold atomically', '10 minutes · max 10', 'A single conditional UPDATE holds the seat; a taken seat or the 10-hold limit returns 409.'),
+            S('API', 'Broadcast & track', 'seat:status_batch', 'Other viewers see the seat as held; seat_selected and seat_locked are recorded.'),
+            S('Attendee', 'Go to checkout', 'Hold bar / cart', 'Get tickets re-checks the holds and opens Checkout. Releasing a hold records checkout_abandoned.'),
+          ],
+        },
+        {
+          id: 'checkout', group: 'Events & tickets', label: 'Checkout, anti-bot check & payment', basis: BASIS + ' · Stripe test mode when configured',
+          steps: [
+            S('Browser', 'Open checkout', 'Holds + server prices', 'Checkout loads the held seats with server prices and records checkout_started.'),
+            S('Attendee', 'Choose payment', 'Card, JazzCash, EasyPaisa, test', 'Card details go into Stripe’s CardElement and never reach the API.'),
+            S('Browser → API', 'Send order + telemetry', 'POST /bookings/initiate', 'Seconds on the page and click rate are sent with the order.'),
+            S('API', 'Anti-bot check', 'ML service or fallback rules', 'A CRITICAL_BOT score (75+) returns 403 with the anomaly signals and an audit log.'),
+            S('API', 'Validate holds', 'Still held by this user?', 'An expired hold, a sold seat or another customer’s checkout returns 409.'),
+            S('Database', 'Create pending order', 'Order PENDING · placeholder tickets', 'Tier counts drop; the seats stay held while payment runs.'),
+            S('Payment', 'Pay', 'Stripe card / wallet OTP', 'With STRIPE_SECRET_KEY a real PaymentIntent is confirmed in the browser; JazzCash, EasyPaisa and test payments are simulated.'),
+            S('API', 'Verify payment', 'POST /bookings/confirm', 'The payment is checked; on failure the order stays PENDING so the customer can retry.'),
+            S('Database', 'Confirm order', 'SUCCESSFUL · seats SOLD', 'A notification and e-mail are sent; other viewers see the seats as sold.'),
+            S('API', 'Mint NFT tickets', 'Errors never fail the order', 'batchMintOrderTickets runs after confirmation.'),
+            S('Browser', 'Show confirmation', 'Order confirmed', 'The confirmation modal opens; tickets appear in the wallet.'),
+          ],
+        },
+        {
+          id: 'wallet', group: 'Events & tickets', label: 'Ticket wallet & QR pass', basis: BASIS + ' · paid tickets',
+          steps: [
+            S('Customer', 'Open wallet', 'GET /api/tickets/wallet', 'DigitalWallet lists the customer’s tickets, active first.'),
+            S('API', 'Load paid tickets', 'Order SUCCESSFUL only', 'Placeholder tickets of an unfinished checkout are not shown.'),
+            S('API', 'Mint if missing', 'Lazy NFT mint', 'A ticket without token data is minted (or simulated) on the way.'),
+            S('API', 'Sign pass', 'Ed25519 · TL1 code + manual code', 'passFor signs ticket, event and QR version; it is generated on demand and never stored.'),
+            S('Browser', 'Show QR pass', 'QR image · PDF download', 'The pass greys out live when it is scanned at the gate.'),
+            S('Customer', 'Present at gate', 'Screen or PDF', 'The QR (or the TL-XXXX-XXXX code) is scanned by gate staff.'),
+          ],
+        },
+        {
+          id: 'gate', group: 'Events & tickets', label: 'Gate check-in (QR scan)', basis: BASIS + ' · green / yellow / red',
+          steps: [
+            S('Gate staff', 'Choose event & gate', 'Assigned events only', 'GateScanner lists the events the staff member is assigned to.'),
+            S('Device', 'Download offline list', 'Refreshed every 3 min', 'A signed ticket pack lets the device check passes without a connection.'),
+            S('Gate staff', 'Scan pass', 'Camera, QR image or manual code', 'The camera reads the QR; a dropped or chosen image is decoded the same way; the code can be typed.'),
+            S('Device', 'Connection available?', 'Online check', 'Online scans are decided by the server.'),
+            S('API', 'Check signature & ticket', 'Right event, paid, current QR', 'A bad signature, another event, an unpaid or transferred ticket gives a red result.'),
+            S('API', 'Check not used', 'First entry?', 'A ticket already admitted gives a yellow result with the first entry time, gate and staff.'),
+            S('Database', 'Admit atomically', 'Ticket SCANNED · CheckIn row', 'The ticket is marked used in one conditional update, so two scanners cannot both admit it.'),
+            S('API', 'Broadcast', 'Live stats · wallet update', 'Organizer stats update live and the holder’s pass greys out.'),
+            S('Device', 'Show green card', 'ENTRY APPROVED', 'Holder, ticket type, seat, ticket code and check-in time are shown.'),
+          ],
+        },
+        {
+          id: 'transfer', group: 'Events & tickets', label: 'Ticket transfer', basis: BASIS,
+          steps: [
+            S('Owner', 'Enter recipient e-mail', 'POST /api/tickets/transfer', 'The owner sends a ticket from the wallet.'),
+            S('API', 'Check ticket & recipient', 'Owned, active, registered recipient', 'The ticket must be the sender’s, ACTIVE and unscanned; the recipient must have an account and cannot be the sender.'),
+            S('Database', 'Move ownership', 'qrVersion + 1 · listing cancelled', 'Any active resale listing is cancelled, the old QR stops working at once, and a transfer-history row is written.'),
+            S('API', 'Notify both', 'Notifications + e-mail', 'Sender and recipient are notified.'),
+            S('Recipient', 'Ticket in wallet', 'New QR pass', 'The recipient’s wallet shows the ticket with a new pass.'),
+          ],
+        },
+        {
+          id: 'resale', group: 'Events & tickets', label: 'Controlled ticket resale', basis: BASIS + ' · 110% price cap',
+          steps: [
+            S('Owner', 'List ticket', 'Price ≤ 110% of face value', 'The wallet or My NFTs page sends POST /api/resale/list.'),
+            S('API', 'Check price & ticket', '110% cap', 'Prices above 110% of the original price, or tickets that cannot be sold, are rejected.'),
+            S('Database', 'Listing ACTIVE', 'Waitlist notified', 'Customers on the event waitlist are told a ticket is available.'),
+            S('Buyer', 'Browse marketplace', 'Search, city, max price', 'ResaleMarketplace lists active listings.'),
+            S('Buyer', 'Buy ticket', 'POST /api/resale/buy/:id', 'No payment is taken at this stage (the purchase is simulated).'),
+            S('Database', 'Transfer to buyer', 'qrVersion + 1 · listing SOLD', 'The seller’s QR stops working and the buyer gets a new pass.'),
+            S('API', 'Notify seller & buyer', 'Notifications + e-mail', 'Both parties are notified of the sale.'),
+          ],
+        },
+        {
+          id: 'nft', group: 'Events & tickets', label: 'NFT ticket minting', basis: BASIS + ' · simulated unless a chain is configured',
+          steps: [
+            S('API', 'Mint requested', 'After payment or wallet load', 'confirmBooking and the wallet ask nftService to mint.'),
+            S('API', 'Not minted yet?', 'tokenId + txHash present?', 'An already-minted ticket returns its existing token.'),
+            S('API', 'Build metadata', 'data: URI · keccak fingerprint', 'Name, seat, event and the 110% resale cap are embedded; the recipient is the linked wallet or the platform custodian.'),
+            S('API', 'Chain configured?', 'POLYGON_PRIVATE_KEY + contract', 'Without a signer and contract the mint is simulated.'),
+            S('Blockchain', 'mintTicket on contract', 'Polygon Amoy or local Hardhat', 'The ERC-721 contract rejects a second mint for the same seat.'),
+            S('Database', 'Save token', 'tokenId, txHash · audit log', 'The ticket stores its token data and an NFT_TICKET_MINTED audit log is written.'),
+          ],
+        },
+        {
+          id: 'notifications', group: 'Events & tickets', label: 'Notifications & e-mail', basis: BASIS,
+          steps: [
+            S('API', 'Feature creates notification', 'Booking, approval, transfer…', 'Features write a Notification row for the user.'),
+            S('Database', 'Notification row', 'Prisma $extends hook', 'Every new notification passes through the e-mail hook.'),
+            S('API', 'E-mail enabled?', 'User preference', 'Users can switch e-mail notifications off in their profile.'),
+            S('Email service', 'Send e-mail', 'Branded template', 'The e-mail is sent after the request finishes, so it never slows it down.'),
+            S('Browser', 'Show in header', 'Polls every 60 s', 'The header badge and the Notifications page show unread items.'),
+            S('User', 'Mark as read', 'One or all', 'Read state is saved; notifications can be deleted.'),
+          ],
+        },
+        {
+          id: 'dashboards', group: 'Events & tickets', label: 'Organizer & admin dashboards', basis: BASIS,
+          steps: [
+            S('Organizer / Admin', 'Open dashboard', 'Organizer or Super Admin console', 'Each role sees its own console.'),
+            S('API', 'Aggregate metrics', 'Sales, revenue, events, users', 'Dashboard services read orders, tickets, check-ins and audit logs.'),
+            S('Socket.IO', 'Live check-ins', 'checkin:stats', 'Entry counts update while gates are scanning.'),
+            S('Browser', 'Show charts & tables', 'Events, staff, approvals', 'Organizers manage events and staff; admins manage companies, events, users and logs.'),
+          ],
+        },
+
+        // ---------------- Behavior & analytics ----------------
+        {
+          id: 'tracking', group: 'Behavior & analytics', label: 'Behavior tracking & guest linking', basis: BASIS,
+          steps: [
+            S('Browser', 'Visitor acts', 'View, category, checkout', 'Pages report actions such as event_view, category_view, checkout_started and checkout_abandoned.'),
+            S('Browser → API', 'Send event', 'POST /api/behavior/track', 'Each request carries the browser’s x-session-id.'),
+            S('API', 'Record server events', 'Login, holds, booking, payment', 'Controllers also record actions such as seat_locked, payment_completed and ticket_transferred.'),
+            S('Database', 'BehaviorEvent row', 'User or guest session', 'Rows store the action, event, session and metadata.'),
+            S('API', 'Link guest on login', 'attachSessionToUser', 'Anonymous rows from the same browser are linked to the account after login.'),
+          ],
+        },
+        {
+          id: 'profile', group: 'Behavior & analytics', label: 'Customer behavior profile', basis: BASIS + ' · Profile → Behaviour tab',
+          steps: [
+            S('Customer', 'Open behaviour tab', 'Profile page', 'The customer’s Profile shows Client Telemetry & Affinity Metrics.'),
+            S('API', 'Load recent activity', 'Last 100 events', 'GET /api/behavior/profile reads the customer’s latest behaviour rows.'),
+            S('API', 'Count actions', '15 action types', 'Views, seat selections, checkouts and payments are counted.'),
+            S('API', 'Rule-based scores', 'Intent formula · fraud LOW', 'The ML calls here fall back to rules, so the scores come from fixed formulas.'),
+            S('Browser', 'Show tiles & timeline', 'Exact time per activity', 'The timeline shows each activity with its date and time.'),
+          ],
+        },
+        {
+          id: 'abandoned', group: 'Behavior & analytics', label: 'Abandoned checkout → reminder', basis: BASIS,
+          steps: [
+            S('Organizer', 'Open Abandoned intents', 'Dashboard → Abandoned intents', 'Organizers see their own events; admins see all.'),
+            S('API', 'Load behaviour rows', 'Per event', 'Behaviour and order data are read for the events.'),
+            S('API', 'Find drop-offs', 'Held or started, not bought', 'Visitors who held seats or started checkout without paying are listed.'),
+            S('API', 'Score & reason', 'Rule-based', 'Views, seats, checkout and cart value give a score and a likely reason.'),
+            S('Organizer', 'Send reminder', 'One or batch', 'The organizer sends a reminder to one visitor or to many.'),
+            S('API', 'Notify customer', 'Notification + e-mail', 'The reminder arrives as a notification and an e-mail.'),
+          ],
+        },
+        {
+          id: 'fraud', group: 'Behavior & analytics', label: 'Fraud scoring API & watchlist', basis: BASIS,
+          steps: [
+            S('Client', 'Submit telemetry', 'POST /api/ml/fraud/score', 'A separate scoring endpoint; the checkout runs its own anti-bot check.'),
+            S('API', 'Call ML service', 'Model, heuristic or fallback', 'The Python service scores the request; Node rules are used if it is unavailable.'),
+            S('Database', 'Store evaluation', 'AI_BOT_EVALUATION', 'Every score is stored; bots are flagged in the audit log.'),
+            S('Super Admin', 'Review watchlist', 'Fraud watchlist page', 'The admin sees flagged users and scores.'),
+            S('Super Admin', 'Freeze account?', 'Manual decision', 'Freezing suspends the user and revokes their sessions.'),
+            S('API', 'Suspend & revoke', 'Account SUSPENDED', 'The user can no longer sign in until unfrozen.'),
+          ],
+        },
+        // In progress: these pages show "Coming soon" in the app
+        {
+          id: 'intent', group: 'Behavior & analytics', status: PROGRESS, label: 'Purchase-intent analytics', basis: 'In progress · page shows “Coming soon” in the app',
+          steps: [
+            S('Organizer / Admin', 'Open Purchase intent', 'Dashboard menu', 'The menu item and dashboard tile still link to the page.'),
+            S('Browser', 'Coming soon page', 'COMING_SOON.purchaseIntent', 'App.jsx shows the Coming soon page while the feature is finished.'),
+            S('API', 'Scoring endpoint ready', 'GET /api/analytics/intent/:id', 'The rule-based funnel and intent scores already exist on the server.'),
+          ],
+        },
+        {
+          id: 'demand', group: 'Behavior & analytics', status: PROGRESS, label: 'Pre-launch demand forecast', basis: 'In progress · page shows “Coming soon” in the app',
+          steps: [
+            S('Organizer / Admin', 'Open Demand forecast', 'Dashboard menu', 'The menu item and dashboard tile still link to the page.'),
+            S('Browser', 'Coming soon page', 'COMING_SOON.demandForecast', 'App.jsx shows the Coming soon page while the feature is finished.'),
+            S('ML service', 'Forecast ready', '/forecast/demand · 78% fallback', 'The forecast endpoint and its fallback already exist.'),
+          ],
+        },
+        {
+          id: 'behavior', group: 'Behavior & analytics', status: PROGRESS, label: 'Behavioral analysis (admin)', basis: 'In progress · page shows “Coming soon” in the app',
+          steps: [
+            S('Super Admin', 'Open Behavior', 'Admin menu', 'The admin console still links to the page.'),
+            S('Browser', 'Coming soon page', 'COMING_SOON.behaviorAnalysis', 'App.jsx shows the Coming soon page while the feature is finished.'),
+            S('API', 'Profile API ready', 'GET /api/behavior/user/:id', 'Per-user behaviour profiles can already be read by admins.'),
+          ],
+        },
+      ];
+
+      flows.unshift({ id: 'authentication', group: 'Account & access', label: 'Authentication', basis: 'Account lifecycle · login, protected access, then logout', steps: [] });
+      flows.push({
+        id: 'session', group: 'Account & access', label: 'Start a session', basis: BASIS, steps: [
+          S('API', 'Account authenticated', 'startSession', 'A login, a verified sign-up or an accepted invite starts a session.'),
+          S('API', 'Create refresh token', 'Random 48-byte token', 'The session service creates the refresh token used to restore access.'),
+          S('Database', 'Store token hash', 'SHA-256', 'Only the hash of the refresh token is stored.'),
+          S('API → Browser', 'Set refresh cookie', 'httpOnly · /api/auth · 7 days', 'The API sets tl_refresh, scoped to /api/auth.'),
+          S('API → Browser', 'Return access token', '15-minute JWT', 'The browser keeps the access token in memory and sends it with protected requests.'),
+        ]
+      });
+      flows.push({
+        id: 'access', group: 'Account & access', label: 'Protected access & roles', basis: BASIS, steps: [
+          S('Browser → API', 'Send protected request', 'Bearer access token', 'The access token goes in the Authorization header.'),
+          S('API', 'Verify access token', 'authenticateJWT', 'The middleware verifies the JWT and its type.'),
+          S('API + Database', 'Load current user', 'Status checked each request', 'Blocked statuses are enforced on every protected request.'),
+          S('API', 'Check allowed role', 'requireRole', 'The route checks the user’s role (customer, organizer, gate staff, super admin).'),
+          S('API', 'Run requested action', 'Authorized request', 'Only a permitted request reaches the handler.'),
+        ]
+      });
+
+      const specs = {
+        signup: { input: [0, 3, 4], links: { 6: 'session', 7: 'company' }, decisions: { 1: { label: 'Details valid, e-mail new?', no: 'Fix details', retry: 0, detail: 'Invalid fields return 400; an e-mail that already has an account returns 409. Phone numbers may be shared.' }, 4: { label: 'Code valid?', no: 'Code rejected', retry: 4, detail: 'Wrong, expired or used codes do not activate the account; a new code can be requested after the cooldown.' } }, end: 'Signed in' },
+        login: { input: [0], links: { 3: 'session', 4: 'tracking', 5: 'access', 6: 'access' }, decisions: { 1: { label: 'Password correct?', no: 'Login error', retry: 0, detail: 'Unknown e-mail and wrong password receive the same 401 response.' }, 2: { label: 'Account active?', no: 'Verify or suspended', detail: 'Pending users go to e-mail verification; blocked users get 403 and the Suspended page.' } }, end: 'Access granted' },
+        refresh: { input: [1, 4], links: { 5: 'access' }, decisions: { 2: { label: 'Refresh valid?', no: 'Sign in again', target: 'login', detail: 'Missing, expired, idle, reused or revoked tokens cannot restore the session.' } }, end: 'Session restored' },
+        reset: { input: [0, 1, 2], links: { 5: 'login' }, decisions: { 3: { label: 'Reset code valid?', no: 'Reset rejected', retry: 2, detail: 'A valid, unused reset code is required before the password changes.' } }, end: 'Reset complete' },
+        invite: { input: [0, 2, 3], links: { 5: 'session' }, decisions: { 3: { label: 'Invite valid?', no: 'No new account', detail: 'An expired, cancelled or already-used invitation cannot create a staff account.' } }, end: 'Staff signed in' },
+        logout: { input: [0, 1], end: 'Signed out' },
+        company: { input: [0, 1], links: { 6: 'publish' }, decisions: { 2: { label: 'Form & 1–4 files valid?', no: 'Fix and resubmit', retry: 0, detail: 'Over 4 files, a file over 10 MB, a wrong file type or no document at all returns 400.' }, 5: { label: 'Admin approves?', no: 'Rejected with reason', retry: 0, detail: 'A rejection stores a reason; the organizer corrects the details and resubmits.' } }, end: 'Company approved' },
+        publish: { input: [0, 3], links: { 2: 'venue', 6: 'seats' }, decisions: { 3: { label: 'Ready to submit?', no: 'Finish seating', retry: 2, detail: 'Submission needs a published seating plan and valid tiers (400 otherwise).' }, 5: { label: 'Admin approves?', no: 'Rejected with comment', retry: 0, detail: 'The organizer sees the comment, edits the event and submits again.' } }, end: 'Event on sale' },
+        venue: { input: [0, 3], decisions: { 4: { label: 'Protected seats kept?', no: 'Publish blocked', retry: 1, detail: 'Sold, held or in-checkout seats cannot be removed or moved (409 lists the conflicts).' } }, end: 'Plan published' },
+        seats: { input: [0, 2, 6], links: { 6: 'checkout' }, decisions: { 4: { label: 'Seat free & under 10 holds?', no: 'Choose other seats', retry: 2, detail: 'A seat taken by someone else or the 10-hold limit returns 409 and nothing is held.' } }, end: 'Seats held 10 min' },
+        checkout: { input: [1, 2, 6], links: { 9: 'nft', 10: 'wallet' }, decisions: { 3: { label: 'Human (score < 75)?', no: 'Blocked by AI', detail: '403 blockedByAI with the anomaly signals; the attempt is written to the audit log.' }, 4: { label: 'Holds still yours?', no: 'Choose seats again', target: 'seats', detail: 'An expired hold, a sold seat or another customer’s checkout returns 409.' }, 7: { label: 'Payment verified?', no: 'Retry payment', retry: 6, detail: 'A failed payment leaves the order PENDING so the customer can try again before the hold runs out.' } }, end: 'Tickets issued' },
+        wallet: { input: [0, 4, 5], links: { 2: 'nft', 5: 'gate' }, end: 'Ready for entry' },
+        gate: { input: [0, 2, 8], decisions: { 3: { label: 'Connection available?', no: 'Check on device', detail: 'Offline, the device checks the signature against its downloaded list, shows the result and queues the scan to sync later.' }, 4: { label: 'Signature & ticket valid?', no: 'RED · Invalid ticket', detail: 'Bad signature, another event, unpaid, transferred (old QR version) or cancelled.' }, 5: { label: 'Not used yet?', no: 'YELLOW · Already used', detail: 'Shows the first entry time, gate and staff; do not admit again.' } }, end: 'Attendee enters' },
+        transfer: { input: [0, 4], links: { 4: 'wallet' }, decisions: { 1: { label: 'Transfer allowed?', no: 'Transfer refused', retry: 0, detail: 'Not the owner (403), ticket not ACTIVE (400), no account for the recipient e-mail (404) or sending to yourself (400).' } }, end: 'Recipient owns ticket' },
+        resale: { input: [0, 3, 4], decisions: { 1: { label: 'Within 110% cap?', no: 'Listing rejected', retry: 0, detail: 'Listings above 110% of the original price are refused.' } }, end: 'New holder owns ticket' },
+        nft: { input: [4], decisions: { 1: { label: 'Not minted yet?', no: 'Return existing token', detail: 'A ticket with a tokenId and txHash keeps its token.' }, 3: { label: 'Chain configured?', no: 'Simulated token', detail: 'Without a signer and contract, the token id comes from the ticket hash and the transaction hash is random.' } }, end: 'NFT recorded' },
+        notifications: { input: [3, 4], decisions: { 2: { label: 'E-mail enabled?', no: 'In-app only', detail: 'Users who turned e-mails off still see the notification in the app.' } }, end: 'Read' },
+        dashboards: { input: [0, 3], end: 'Dashboard shown' },
+        tracking: { input: [0, 1], end: 'Activity recorded' },
+        profile: { input: [0, 4], end: 'Profile displayed' },
+        abandoned: { input: [0, 4], end: 'Reminder delivered' },
+        fraud: { input: [0, 3], decisions: { 4: { label: 'Freeze account?', no: 'No action', detail: 'The admin may leave the account active; nothing changes automatically.' } }, end: 'Admin decision made' },
+        intent: { input: [0], end: 'In progress' },
+        demand: { input: [0], end: 'In progress' },
+        behavior: { input: [0], end: 'In progress' },
+        session: { input: [3, 4], end: 'Session active' },
+        access: { input: [0], decisions: { 1: { label: 'Access token valid?', no: '401 response', target: 'refresh', detail: 'An expired access token triggers one refresh-and-retry.' }, 2: { label: 'User active?', no: '403 response', detail: 'Blocked account statuses are rejected on protected requests.' }, 3: { label: 'Role permitted?', no: '403 response', detail: 'A valid session does not grant every role-specific route.' } }, end: 'Response returned' },
+      };
+
+      const N = (id, label, kind, col, row, detail, target, status) => ({ id, label, kind, col, row, detail, target, status });
+      const E = (from, to, label = '', route = 'auto') => ({ from, to, label, route });
+      const linearGraph = (flow) => {
+        const spec = specs[flow.id] || {};
+        const nodes = [N('start', 'Start', 'terminal', 0, 0, 'Begin ' + flow.label.toLowerCase() + '.')];
+        const edges = [];
+        const trace = ['start'];
+        flow.steps.forEach((s, i) => {
+          const d = (spec.decisions || {})[i];
+          const target = (spec.links || {})[i];
+          nodes.push(N('s' + i, d ? d.label : s.title, d ? 'decision' : (spec.input || []).includes(i) ? 'input' : 'process', 0, i + 1, s.detail, target));
+          trace.push('s' + i);
+          if (d) nodes.push(N('no' + i, d.no, d.target ? 'process' : d.retry !== undefined ? 'input' : 'terminal', 1, i + 1, d.detail, d.target));
+        });
+        nodes.push(N('end', spec.end || 'End', 'terminal', 0, flow.steps.length + 1, flow.status ? 'This module is still in development.' : 'End of this illustrated path.'));
+        trace.push('end');
+        for (let i = 0; i < trace.length - 1; i++) {
+          const source = nodes.find((n) => n.id === trace[i]);
+          edges.push(E(trace[i], trace[i + 1], source.kind === 'decision' ? 'Yes' : ''));
+        }
+        for (const [i, d] of Object.entries(spec.decisions || {})) {
+          edges.push(E('s' + i, 'no' + i, 'No'));
+          if (d.retry !== undefined) edges.push(E('no' + i, 's' + d.retry, 'Retry', 'return-right'));
+        }
+        return { nodes, edges, trace };
+      };
+      const graphs = new Map(flows.map((f) => [f.id, linearGraph(f)]));
+
+      // Authentication overview (same structure as flow.html)
+      graphs.set('authentication', {
+        nodes: [
+          N('start', 'Start', 'terminal', 0, 0, 'An existing user opens TicketLedger.'),
+          N('login', 'Login', 'input', 0, 1, 'Open the detailed login and protected-access workflow.', 'login'),
+          N('allowed', 'Login allowed?', 'decision', 0, 2, 'The credentials and account status must permit access.'),
+          N('denied', 'Access denied', 'terminal', 1, 2, 'Wrong credentials or a blocked account stop this path.'),
+          N('session', 'Start session', 'process', 0, 3, 'Create the refresh session and issue the access token.', 'session'),
+          N('use', 'Protected access', 'process', 0, 4, 'Protected requests verify the token, user status and role.', 'access'),
+          N('logout-question', 'Logout clicked?', 'decision', 0, 5, 'Yes opens the logout path; otherwise the session continues.'),
+          N('logout', 'Logout', 'process', 1, 5, 'Open the logout workflow.', 'logout'),
+          N('signed-out', 'Signed out', 'terminal', 1, 6, 'The local session is cleared.'),
+          N('refresh-question', 'Refresh needed?', 'decision', 0, 6, 'The browser refreshes near token expiry or after an expired-token response.'),
+          N('refresh', 'Refresh session', 'process', 0, 7, 'Open token validation, rotation and retry.', 'refresh'),
+        ],
+        edges: [E('start', 'login'), E('login', 'allowed'), E('allowed', 'session', 'Yes'), E('allowed', 'denied', 'No'), E('session', 'use'), E('use', 'logout-question'), E('logout-question', 'logout', 'Yes'), E('logout', 'signed-out'), E('logout-question', 'refresh-question', 'No'), E('refresh-question', 'refresh', 'Yes'), E('refresh-question', 'use', 'No', 'return-left'), E('refresh', 'use', '', 'return-left')],
+        trace: ['start', 'login', 'allowed', 'session', 'use', 'logout-question', 'logout', 'signed-out'],
+      });
+
+      const names = {
+        authentication: 'Authentication', signup: 'Sign-up & verification', login: 'Login & access', refresh: 'Session refresh', reset: 'Password reset', invite: 'Staff invitations', logout: 'Logout', session: 'Start a session', access: 'Protected access',
+        company: 'Company approval', publish: 'Event publishing', venue: 'Venue plan editor', seats: 'Seat selection', checkout: 'Checkout & payment', wallet: 'Ticket wallet & QR', gate: 'Gate check-in', transfer: 'Ticket transfer', resale: 'Ticket resale', nft: 'NFT minting', notifications: 'Notifications', dashboards: 'Dashboards',
+        tracking: 'Behavior tracking', profile: 'Behavior profile', abandoned: 'Abandoned checkout', fraud: 'Fraud scoring', intent: 'Purchase intent', demand: 'Demand forecast', behavior: 'Behavioral analysis',
+      };
+      names.overall = 'Overall flow';
+      const moduleCount = flows.length;
+      const flowMap = new Map(flows.map((f) => [f.id, f]));
+      const O = (id, x, y) => ({ ...N(id, names[id], 'process', 0, 0, flowMap.get(id).basis, id, flowMap.get(id).status), x, y });
+      const OE = (from, to, detail, extra = {}) => ({ ...E(from, to), detail, ...extra });
+      const overview = {
+        nodes: [
+          O('signup', 110, 65), O('authentication', 355, 65), O('login', 600, 65), O('session', 845, 65), O('access', 1090, 65),
+          O('reset', 110, 155), O('invite', 355, 155), O('refresh', 845, 155), O('logout', 1090, 155),
+          O('company', 110, 282), O('publish', 355, 282), O('seats', 600, 282), O('checkout', 845, 282), O('wallet', 1090, 282),
+          O('venue', 355, 378), O('nft', 845, 378), O('transfer', 1090, 378),
+          O('demand', 110, 474), O('notifications', 600, 474), O('resale', 845, 474), O('gate', 1090, 474),
+          O('tracking', 110, 600), O('profile', 355, 600), O('intent', 600, 600), O('abandoned', 845, 600), O('fraud', 1090, 600),
+          O('behavior', 110, 696), O('dashboards', 1090, 696),
+        ],
+        edges: [
+          OE('authentication', 'login', 'Authentication opens the login workflow. Click any module for its detailed flow.'),
+          OE('login', 'session', 'A successful login starts a refresh session and issues an access token.'),
+          OE('session', 'access', 'The browser uses its access token for protected actions.'),
+          OE('access', 'seats', 'Attendees continue to browsing events and choosing seats.', { fromSide: 'right', toSide: 'top', via: [[1204, 65], [1204, 216], [600, 216]], label: 'Attendee' }),
+          OE('company', 'publish', 'An approved company can create events and submit them for review.'),
+          OE('publish', 'venue', 'Organizers draw the seating plan; publishing it creates the seats.'),
+          OE('publish', 'seats', 'A published event is on sale and attendees can hold seats.'),
+          OE('seats', 'checkout', 'Held seats continue to checkout, the anti-bot check and payment.'),
+          OE('checkout', 'wallet', 'A confirmed order puts signed QR passes in the wallet.'),
+          OE('wallet', 'gate', 'The QR pass is scanned at the gate: green, yellow or red.', { fromSide: 'right', toSide: 'right', via: [[1212, 282], [1212, 474]] }),
+          OE('checkout', 'nft', 'Confirmed tickets are minted as NFTs (simulated unless a chain is configured).', { related: true }),
+          OE('checkout', 'notifications', 'The confirmation is sent as a notification and an e-mail.', { fromSide: 'bottom', toSide: 'top', via: [[845, 345], [600, 345]], related: true }),
+          OE('wallet', 'transfer', 'A holder can transfer a ticket; the old QR stops working.', { related: true }),
+          OE('transfer', 'gate', 'The new holder presents the new pass at the gate.', { related: true }),
+          OE('wallet', 'resale', 'A holder can list a ticket for resale at up to 110% of the price.', { fromSide: 'right', toSide: 'bottom', via: [[1230, 282], [1230, 520], [845, 520]], related: true }),
+          OE('resale', 'gate', 'The buyer presents their new pass at the gate.', { related: true }),
+          OE('company', 'demand', 'Demand forecasting for organizers is in progress.', { fromSide: 'bottom', toSide: 'top', related: true }),
+          OE('signup', 'session', 'A verified sign-up starts a session without a separate login.', { fromSide: 'bottom', toSide: 'bottom', via: [[110, 110], [845, 110]], related: true }),
+          OE('signup', 'company', 'Organizer accounts register their company next.', { fromSide: 'left', toSide: 'left', via: [[6, 65], [6, 282]], related: true }),
+          OE('reset', 'login', 'After a password reset, the user signs in again.', { fromSide: 'bottom', toSide: 'bottom', via: [[110, 203], [600, 203]], related: true }),
+          OE('invite', 'session', 'Accepting a staff invitation starts a session.', { fromSide: 'right', toSide: 'bottom', via: [[510, 155], [510, 119], [845, 119]], related: true }),
+          OE('session', 'refresh', 'The refresh cookie renews the access token.', { fromSide: 'bottom', toSide: 'top', related: true }),
+          OE('refresh', 'access', 'A successful refresh restores authorized requests.', { fromSide: 'right', toSide: 'left', via: [[976, 155], [976, 65]], related: true }),
+          OE('access', 'logout', 'Logout revokes the refresh session and clears the browser.', { fromSide: 'bottom', toSide: 'top' }),
+          OE('seats', 'tracking', 'Views, holds and checkouts are recorded as behaviour events.', { fromSide: 'bottom', toSide: 'top', via: [[600, 331], [14, 331], [14, 560], [110, 560]], related: true }),
+          OE('tracking', 'profile', 'Recorded behaviour feeds the customer’s profile tab.', { related: true }),
+          OE('profile', 'intent', 'Purchase-intent analytics is in progress.', { related: true }),
+          OE('tracking', 'behavior', 'Admin behavioral analysis is in progress.', { related: true }),
+          OE('tracking', 'abandoned', 'Abandoned-checkout analysis lists drop-offs and sends reminders.', { fromSide: 'bottom', toSide: 'bottom', via: [[110, 650], [845, 650]], related: true }),
+          OE('tracking', 'fraud', 'Telemetry can be scored by the separate fraud API; results appear in the admin watchlist.', { fromSide: 'bottom', toSide: 'left', via: [[110, 656], [968, 656], [968, 600]], related: true, label: 'Separate scoring API', labelPos: { x: 690, y: 674, anchor: 'middle' } }),
+          OE('fraud', 'dashboards', 'The admin console shows fraud alerts, gate scans and audit logs.', { related: true }),
+        ],
+        trace: [],
+      };
+      graphs.set('overall', overview);
+      flows.unshift({ id: 'overall', group: 'Overview', label: 'Overall flow — all modules', basis: 'All ' + moduleCount + ' modules · Solid arrows show journeys; dotted arrows show optional or supporting workflows; amber = in progress.', steps: [] });
+      flowMap.set('overall', flows[0]);
+      for (const g of graphs.values()) for (const n of g.nodes) if (n.target && !flowMap.has(n.target)) delete n.target;
+
+      return {
+        flows,
+        graphs,
+        names,
+        flowMap,
+        moduleCount,
+        layouts: {
+          authentication: { start: [130, 100], login: [380, 100], allowed: [630, 100], session: [880, 100], use: [1130, 100], denied: [630, 232], 'logout-question': [1130, 342], logout: [880, 342], 'signed-out': [630, 342], 'refresh-question': [1130, 486], refresh: [880, 486] },
+        },
+        lanes: { labels: [['ACCOUNT & ACCESS', 14], ['EVENTS & TICKETS', 232], ['BEHAVIOR & ANALYTICS', 548]], line: [21, 530, 1179, 530] },
+        overallDescription: 'All ' + moduleCount + ' TicketLedger modules and their relationships, as implemented. Amber modules are in progress (Coming soon in the app). Click a module or choose it from the dropdown to open its flow.',
+      };
+    }
+
+    (function () {
+      var data = buildWorkflowData();
+      document.querySelector('[data-count]').textContent = data.moduleCount + ' modules';
+      // Mounted on the whole page so the header brand (data-fc="home") also returns to the overall flow
+      mountWorkflow(document.body, data);
+    })();
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Explore the complete TicketLedger workflow and open every module's animated flowchart.">
+  <title>TicketLedger | Workflow Explorer</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#fff;--canvas:#fbfcfd;--ink:#172b3b;--muted:#61717d;--line:#dce4e9;--accent:#236af0;--soft:#eef4ff;--edge:#8795a1;--header-height:66px;--process:#edf0fe;--input:#e3f2fb;--terminal:#e5f5ec;--decision:#fff2d9;--focus:#1f65ec}
+    @media(prefers-color-scheme:dark){:root{--bg:#151d26;--canvas:#111922;--ink:#e7eef5;--muted:#a0b0bd;--line:#33434f;--accent:#85afff;--soft:#253855;--edge:#8a9daa;--process:#292f48;--input:#173647;--terminal:#203e35;--decision:#423720;--focus:#91baff}}
+    *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden}body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}button,select{font:inherit;color:inherit}button{touch-action:manipulation}button:focus-visible,select:focus-visible,[role=button]:focus-visible{outline:3px solid var(--focus);outline-offset:3px}button:disabled{opacity:.42;cursor:default}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}[hidden]{display:none!important}
+    .site-header{position:fixed;inset:0 0 auto;height:var(--header-height);z-index:10;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 24px;background:var(--bg);border-bottom:1px solid var(--line)}.brand{width:250px;max-width:54vw;display:block;border:0;padding:0;background:none;cursor:pointer}.brand svg{display:block;width:100%;height:auto;max-height:40px}.brand-word-ticket{fill:var(--ink)}.header-right{display:flex;gap:14px;align-items:center;color:var(--muted);font-size:12px}.module-count{border:1px solid var(--line);border-radius:30px;padding:5px 10px;font-variant-numeric:tabular-nums}
+    .app{position:fixed;inset:var(--header-height) 0 0;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:10px;padding:16px 24px 12px;min-width:0;min-height:0}.heading{display:flex;align-items:center;justify-content:space-between;gap:24px;min-width:0}.heading-copy{min-width:0}h1{font-size:22px;line-height:1.2;letter-spacing:-.4px;font-weight:650;margin:0;outline:none}.basis{color:var(--muted);margin:5px 0 0;font-size:12px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.picker{display:flex;align-items:center;gap:10px;flex-shrink:0;color:var(--muted);font-size:12px}.picker select{width:270px;max-width:35vw;height:38px;padding:0 32px 0 12px;background:var(--bg);border:1px solid var(--line);border-radius:7px;font-size:13px;color:var(--ink);cursor:pointer}
+    .navigation{display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0}.path{display:flex;align-items:center;gap:10px;min-width:0;flex:1}.btn{height:34px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:0 12px;cursor:pointer;white-space:nowrap;font-size:12px;font-weight:550;display:inline-flex;align-items:center;justify-content:center;gap:6px}.btn:hover:not(:disabled){background:var(--soft);border-color:var(--accent)}.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);min-width:88px}.btn-primary:hover:not(:disabled){background:var(--accent);filter:brightness(.94)}.back{flex-shrink:0}.crumbs{display:flex;align-items:center;gap:7px;min-width:0;overflow:hidden;white-space:nowrap;font-size:12px;color:var(--muted)}.crumbs button{border:0;background:none;padding:5px 0;cursor:pointer;color:var(--muted);font:inherit}.crumbs button:hover{color:var(--accent)}.crumb-current{color:var(--ink);text-overflow:ellipsis;overflow:hidden}.controls{display:flex;align-items:center;gap:7px;flex-shrink:0}
+    .stage{position:relative;min-height:0;min-width:0;border:1px solid var(--line);border-radius:10px;background-color:var(--canvas);background-image:radial-gradient(var(--line) .65px,transparent .65px);background-size:18px 18px;overflow:hidden;isolation:isolate}.canvas{display:block;width:100%;height:100%;overflow:hidden;touch-action:none;cursor:grab;user-select:none}.canvas.is-dragging{cursor:grabbing}.zoom{position:absolute;bottom:10px;right:10px;display:flex;gap:2px;align-items:center;padding:3px;border:1px solid var(--line);border-radius:8px;background:var(--bg);box-shadow:0 2px 9px #1526380a}.zoom .btn{border:0;height:28px;min-width:30px;padding:0 8px;font-size:14px}.zoom output{font-size:11px;min-width:40px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.zoom #fit{font-size:11px;border-left:1px solid var(--line);border-radius:0}.stage-hint{position:absolute;bottom:12px;left:14px;margin:0;color:var(--muted);font-size:10px;pointer-events:none;background:var(--canvas);padding:3px 5px;border-radius:4px}
+    .fc-edge{fill:none;stroke:var(--edge);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.78}.fc-edge.related{stroke-dasharray:5 5;opacity:.56}.fc-edge.visited{stroke:var(--accent);opacity:.6}.fc-edge.active{stroke:var(--accent);opacity:1;stroke-width:2.3}.fc-edge-label{fill:var(--muted);font-size:11px;font-weight:550;paint-order:stroke;stroke:var(--canvas);stroke-width:5px;stroke-linejoin:round}.fc-node{--fill:var(--process)}.fc-node.input{--fill:var(--input)}.fc-node.terminal{--fill:var(--terminal)}.fc-node.decision{--fill:var(--decision)}.fc-node[data-target]{cursor:pointer}.fc-node .shape{fill:var(--fill);stroke:var(--edge);stroke-width:1.3;transition:stroke .16s,fill .16s}.fc-node.current .shape{stroke:var(--accent);stroke-width:2.8}.fc-node.visited .shape{stroke:color-mix(in srgb,var(--accent) 60%,var(--edge))}.fc-node[data-target]:hover .shape,.fc-node[data-target]:focus .shape{stroke:var(--accent);stroke-width:2.5;filter:brightness(.98)}.fc-node:focus{outline:none}.fc-node:focus-visible .shape{stroke:var(--focus);stroke-width:3.5}.node-label{font-size:15px;fill:var(--ink);font-weight:550;pointer-events:none}.node-open{font-size:10.5px;fill:var(--muted);pointer-events:none}.lane-label{font-size:11px;font-weight:650;letter-spacing:1.3px;fill:var(--muted)}.lane-line{stroke:var(--line);stroke-width:1;stroke-dasharray:3 5}.fc-packet{fill:var(--accent);pointer-events:none}.fc-halo{fill:var(--accent);opacity:.12;pointer-events:none}
+    .statusbar{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;column-gap:24px;min-height:55px}.status-line{display:flex;gap:12px;align-items:baseline;min-width:0;line-height:21px}.position{flex-shrink:0;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}.current{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.detail{font-size:12px;line-height:1.45;color:var(--muted);margin:2px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.legend{display:flex;gap:14px;align-items:center;color:var(--muted);font-size:10px;white-space:nowrap;padding-top:5px}.legend span{display:inline-flex;align-items:center;gap:5px}.dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}.dash{width:17px;border-top:1.5px dashed var(--edge)}
+    @media(max-width:900px){.picker>span{display:none}.header-right>span:first-child{display:none}.legend{display:none}.statusbar{grid-template-columns:minmax(0,1fr)}.site-header{padding:0 16px}.app{padding:12px 16px 10px;gap:8px}}
+    @media(max-width:600px){:root{--header-height:57px}.brand{width:220px;max-width:65vw}.site-header{padding:0 12px}.module-count{font-size:10px;padding:4px 7px}.app{padding:10px 8px 8px;gap:7px}.heading{gap:8px;align-items:flex-start}h1{font-size:17px;line-height:1.4}.basis{max-width:49vw;font-size:10px}.picker select{width:43vw;max-width:43vw;height:34px;font-size:11px;padding-left:8px}.navigation{gap:6px}.path{gap:7px}.crumbs{font-size:10px;gap:4px}.crumbs .crumb-ancestor{display:none}.controls{gap:4px}.btn{padding:0 8px;height:31px;font-size:11px}.btn-primary{min-width:62px}.stage{border-radius:7px}.stage-hint{display:none}.statusbar{min-height:58px}.status-line{gap:8px}.current{font-size:12px}.detail{font-size:11px}.zoom{bottom:6px;right:6px}.zoom .btn{height:26px;min-width:28px}.zoom output{min-width:32px}}
+    @media(max-height:600px){.app{padding-top:8px;gap:6px}.basis{display:none}.heading h1{font-size:17px}.picker select{height:31px}.btn{height:29px}.statusbar{min-height:38px}.detail{-webkit-line-clamp:1}.stage-hint{display:none}}
+    @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <button class="brand" id="brand-home" type="button" aria-label="TicketLedger — open overall flow"><svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TicketLedger" viewBox="76.90 216.35 848.76 122.81" preserveAspectRatio="xMinYMid meet" width="848.76" height="122.81"><title>TicketLedger</title><g transform="translate(35,175) scale(2.7)"><path fill="#102345" fill-rule="evenodd" d="M32,21 L35,21 L35,24 L34,24 L34,25 L33,25 L33,26 L30,26 L30,27 L28,27 L28,28 L26,28 L26,29 L24,29 L24,30 L22,30 L22,31 L21,31 L21,32 L20,32 L20,39 L18,39 L18,38 L17,38 L17,29 L18,29 L18,28 L20,28 L20,27 L22,27 L22,26 L24,26 L24,25 L26,25 L26,24 L28,24 L28,23 L30,23 L30,22 L32,22Z M30,37 L31,37 L31,52 L30,52 L30,51 L28,51 L28,50 L26,50 L26,49 L24,49 L24,48 L23,48 L23,47 L22,47 L22,41 L24,41 L24,40 L26,40 L26,39 L28,39 L28,38 L30,38Z"/><path fill="#344BFF" fill-rule="evenodd" d="M48,20 L50,20 L50,21 L51,21 L51,23 L52,23 L52,27 L51,27 L51,29 L50,29 L50,33 L51,33 L51,34 L52,34 L52,35 L56,35 L56,37 L57,37 L57,41 L56,41 L56,42 L54,42 L54,43 L52,43 L52,44 L50,44 L50,45 L48,45 L48,46 L46,46 L46,47 L44,47 L44,48 L42,48 L42,49 L40,49 L40,50 L38,50 L38,51 L35,51 L35,52 L33,52 L33,34 L32,34 L32,35 L30,35 L30,36 L28,36 L28,37 L26,37 L26,38 L24,38 L24,39 L22,39 L22,32 L23,32 L23,31 L26,31 L26,30 L28,30 L28,29 L30,29 L30,28 L32,28 L32,27 L35,27 L35,26 L37,26 L37,25 L39,25 L39,24 L41,24 L41,23 L44,23 L44,22 L46,22 L46,21 L48,21Z M39,28 L38,28 L38,29 L39,29 L39,31 L40,31 L40,29 L39,29Z M40,33 L40,34 L41,34 L41,35 L42,35 L42,33Z M43,37 L42,37 L42,39 L43,39 L43,40 L44,40 L44,38 L43,38Z M45,42 L44,42 L44,44 L46,44 L46,43 L45,43Z"/></g><g transform="translate(215,207) scale(.89)"><path fill="#0B1630" fill-rule="evenodd" d="M189,15 L210,15 L210,69 L211,69 L211,68 L212,68 L212,67 L213,67 L213,66 L214,66 L214,65 L215,65 L215,64 L216,64 L216,63 L217,63 L217,62 L218,62 L218,60 L219,60 L219,59 L220,59 L220,58 L221,58 L221,57 L222,57 L222,56 L223,56 L223,55 L224,55 L224,54 L225,54 L225,53 L226,53 L226,52 L227,52 L227,51 L228,51 L228,50 L229,50 L229,49 L230,49 L230,48 L231,48 L231,47 L232,47 L232,46 L233,46 L233,45 L234,45 L234,44 L235,44 L235,43 L259,43 L259,45 L258,45 L258,46 L257,46 L257,48 L256,48 L256,49 L255,49 L255,50 L254,50 L254,51 L253,51 L253,52 L252,52 L252,53 L251,53 L251,54 L250,54 L250,55 L249,55 L249,56 L248,56 L248,58 L247,58 L247,59 L246,59 L246,60 L245,60 L245,61 L244,61 L244,62 L243,62 L243,63 L242,63 L242,64 L241,64 L241,65 L240,65 L240,66 L239,66 L239,68 L238,68 L238,69 L237,69 L237,70 L236,70 L236,71 L235,71 L235,72 L234,72 L234,75 L235,75 L235,77 L236,77 L236,78 L237,78 L237,80 L238,80 L238,82 L239,82 L239,83 L240,83 L240,85 L241,85 L241,87 L242,87 L242,88 L243,88 L243,90 L244,90 L244,92 L245,92 L245,93 L246,93 L246,95 L247,95 L247,97 L248,97 L248,98 L249,98 L249,100 L250,100 L250,102 L251,102 L251,103 L252,103 L252,105 L253,105 L253,107 L254,107 L254,108 L255,108 L255,110 L256,110 L256,112 L257,112 L257,113 L258,113 L258,115 L259,115 L259,116 L260,116 L260,117 L236,117 L236,116 L235,116 L235,114 L234,114 L234,112 L233,112 L233,111 L232,111 L232,109 L231,109 L231,107 L230,107 L230,106 L229,106 L229,104 L228,104 L228,102 L227,102 L227,101 L226,101 L226,99 L225,99 L225,97 L224,97 L224,95 L223,95 L223,94 L222,94 L222,92 L221,92 L221,90 L220,90 L220,89 L219,89 L219,87 L217,87 L217,88 L216,88 L216,89 L215,89 L215,90 L214,90 L214,91 L213,91 L213,92 L212,92 L212,93 L211,93 L211,94 L210,94 L210,117 L189,117Z M19,17 L111,17 L111,37 L90,37 L90,35 L65,35 L65,117 L44,117 L44,35 L19,35Z M339,27 L360,27 L360,43 L376,43 L376,44 L377,44 L377,61 L360,61 L360,94 L361,94 L361,96 L362,96 L362,97 L363,97 L363,98 L364,98 L364,99 L367,99 L367,100 L377,100 L377,117 L374,117 L374,118 L360,118 L360,117 L356,117 L356,116 L353,116 L353,115 L351,115 L351,114 L350,114 L350,113 L348,113 L348,112 L347,112 L347,111 L346,111 L346,110 L345,110 L345,109 L344,109 L344,108 L343,108 L343,106 L342,106 L342,104 L341,104 L341,102 L340,102 L340,98 L339,98 L339,61 L327,61 L327,43 L333,43 L333,42 L335,42 L335,41 L336,41 L336,40 L337,40 L337,39 L338,39 L338,36 L339,36Z M144,42 L160,42 L160,43 L164,43 L164,44 L167,44 L167,45 L170,45 L170,46 L171,46 L171,47 L173,47 L173,48 L175,48 L175,49 L176,49 L176,50 L177,50 L177,51 L179,51 L179,52 L180,52 L180,53 L181,53 L181,55 L182,55 L182,56 L183,56 L183,57 L184,57 L184,59 L185,59 L185,61 L186,61 L186,64 L187,64 L187,65 L185,65 L185,66 L183,66 L183,67 L180,67 L180,68 L178,68 L178,69 L176,69 L176,70 L173,70 L173,71 L171,71 L171,72 L168,72 L168,69 L167,69 L167,68 L166,68 L166,66 L165,66 L165,65 L164,65 L164,64 L162,64 L162,63 L161,63 L161,62 L159,62 L159,61 L155,61 L155,60 L150,60 L150,61 L146,61 L146,62 L144,62 L144,63 L142,63 L142,64 L141,64 L141,65 L140,65 L140,66 L139,66 L139,67 L138,67 L138,69 L137,69 L137,70 L136,70 L136,73 L135,73 L135,78 L134,78 L134,83 L135,83 L135,88 L136,88 L136,90 L137,90 L137,92 L138,92 L138,93 L139,93 L139,95 L140,95 L140,96 L141,96 L141,97 L143,97 L143,98 L144,98 L144,99 L147,99 L147,100 L158,100 L158,99 L160,99 L160,98 L162,98 L162,97 L163,97 L163,96 L164,96 L164,95 L165,95 L165,94 L166,94 L166,93 L167,93 L167,91 L168,91 L168,89 L172,89 L172,90 L174,90 L174,91 L176,91 L176,92 L179,92 L179,93 L181,93 L181,94 L183,94 L183,95 L186,95 L186,96 L187,96 L187,97 L186,97 L186,100 L185,100 L185,102 L184,102 L184,103 L183,103 L183,105 L182,105 L182,106 L181,106 L181,107 L180,107 L180,108 L179,108 L179,109 L178,109 L178,110 L177,110 L177,111 L176,111 L176,112 L174,112 L174,113 L173,113 L173,114 L171,114 L171,115 L169,115 L169,116 L166,116 L166,117 L163,117 L163,118 L158,118 L158,119 L147,119 L147,118 L141,118 L141,117 L138,117 L138,116 L136,116 L136,115 L134,115 L134,114 L132,114 L132,113 L130,113 L130,112 L129,112 L129,111 L127,111 L127,110 L126,110 L126,109 L125,109 L125,108 L124,108 L124,107 L123,107 L123,106 L122,106 L122,105 L121,105 L121,103 L120,103 L120,102 L119,102 L119,100 L118,100 L118,99 L117,99 L117,97 L116,97 L116,94 L115,94 L115,91 L114,91 L114,87 L113,87 L113,73 L114,73 L114,69 L115,69 L115,66 L116,66 L116,64 L117,64 L117,62 L118,62 L118,60 L119,60 L119,58 L120,58 L120,57 L121,57 L121,56 L122,56 L122,54 L123,54 L123,53 L124,53 L124,52 L126,52 L126,51 L127,51 L127,50 L128,50 L128,49 L129,49 L129,48 L131,48 L131,47 L133,47 L133,46 L135,46 L135,45 L137,45 L137,44 L140,44 L140,43 L144,43Z M285,42 L301,42 L301,43 L305,43 L305,44 L308,44 L308,45 L310,45 L310,46 L312,46 L312,47 L314,47 L314,48 L315,48 L315,49 L316,49 L316,50 L318,50 L318,51 L319,51 L319,52 L320,52 L320,53 L321,53 L321,55 L322,55 L322,56 L323,56 L323,58 L324,58 L324,59 L325,59 L325,61 L326,61 L326,64 L327,64 L327,67 L328,67 L328,72 L329,72 L329,84 L328,84 L328,86 L277,86 L277,90 L278,90 L278,92 L279,92 L279,94 L280,94 L280,95 L281,95 L281,96 L282,96 L282,97 L283,97 L283,98 L284,98 L284,99 L286,99 L286,100 L290,100 L290,101 L298,101 L298,100 L302,100 L302,99 L304,99 L304,98 L305,98 L305,97 L306,97 L306,96 L307,96 L307,95 L308,95 L308,94 L309,94 L309,93 L311,93 L311,94 L313,94 L313,95 L315,95 L315,96 L317,96 L317,97 L319,97 L319,98 L321,98 L321,99 L323,99 L323,100 L325,100 L325,103 L324,103 L324,105 L323,105 L323,106 L322,106 L322,108 L321,108 L321,109 L320,109 L320,110 L319,110 L319,111 L317,111 L317,112 L316,112 L316,113 L314,113 L314,114 L312,114 L312,115 L310,115 L310,116 L308,116 L308,117 L305,117 L305,118 L299,118 L299,119 L288,119 L288,118 L283,118 L283,117 L279,117 L279,116 L277,116 L277,115 L275,115 L275,114 L273,114 L273,113 L272,113 L272,112 L270,112 L270,111 L269,111 L269,110 L268,110 L268,109 L267,109 L267,108 L266,108 L266,107 L265,107 L265,106 L264,106 L264,105 L263,105 L263,104 L262,104 L262,102 L261,102 L261,101 L260,101 L260,99 L259,99 L259,97 L258,97 L258,94 L257,94 L257,91 L256,91 L256,86 L255,86 L255,74 L256,74 L256,69 L257,69 L257,66 L258,66 L258,64 L259,64 L259,62 L260,62 L260,60 L261,60 L261,58 L262,58 L262,57 L263,57 L263,55 L264,55 L264,54 L265,54 L265,53 L266,53 L266,52 L267,52 L267,51 L268,51 L268,50 L269,50 L269,49 L271,49 L271,48 L272,48 L272,47 L274,47 L274,46 L276,46 L276,45 L278,45 L278,44 L281,44 L281,43 L285,43Z M90,43 L110,43 L110,44 L111,44 L111,117 L90,117Z M290,58 L290,59 L286,59 L286,60 L284,60 L284,61 L283,61 L283,62 L282,62 L282,63 L281,63 L281,64 L280,64 L280,65 L279,65 L279,67 L278,67 L278,70 L277,70 L277,71 L307,71 L307,68 L306,68 L306,66 L305,66 L305,64 L304,64 L304,63 L303,63 L303,62 L302,62 L302,61 L301,61 L301,60 L299,60 L299,59 L295,59 L295,58Z" class="brand-word-ticket"/><path fill="#22C55E" fill-rule="evenodd" d="M573,15 L594,15 L594,117 L574,117 L574,111 L573,111 L573,112 L572,112 L572,113 L571,113 L571,114 L569,114 L569,115 L567,115 L567,116 L565,116 L565,117 L562,117 L562,118 L557,118 L557,119 L547,119 L547,118 L542,118 L542,117 L539,117 L539,116 L537,116 L537,115 L534,115 L534,114 L533,114 L533,113 L531,113 L531,112 L530,112 L530,111 L528,111 L528,110 L527,110 L527,109 L526,109 L526,108 L525,108 L525,107 L524,107 L524,106 L523,106 L523,104 L522,104 L522,103 L521,103 L521,101 L520,101 L520,100 L519,100 L519,98 L518,98 L518,96 L517,96 L517,93 L516,93 L516,89 L515,89 L515,85 L514,85 L514,86 L463,86 L463,90 L464,90 L464,92 L465,92 L465,94 L466,94 L466,95 L467,95 L467,96 L468,96 L468,97 L469,97 L469,98 L470,98 L470,99 L472,99 L472,100 L475,100 L475,101 L485,101 L485,100 L488,100 L488,99 L490,99 L490,98 L491,98 L491,97 L492,97 L492,96 L493,96 L493,95 L494,95 L494,94 L495,94 L495,93 L496,93 L496,94 L499,94 L499,95 L501,95 L501,96 L503,96 L503,97 L505,97 L505,98 L507,98 L507,99 L509,99 L509,100 L511,100 L511,103 L510,103 L510,105 L509,105 L509,106 L508,106 L508,107 L507,107 L507,109 L506,109 L506,110 L504,110 L504,111 L503,111 L503,112 L502,112 L502,113 L500,113 L500,114 L498,114 L498,115 L496,115 L496,116 L494,116 L494,117 L491,117 L491,118 L485,118 L485,119 L474,119 L474,118 L469,118 L469,117 L466,117 L466,116 L463,116 L463,115 L461,115 L461,114 L459,114 L459,113 L458,113 L458,112 L456,112 L456,111 L455,111 L455,110 L454,110 L454,109 L453,109 L453,108 L452,108 L452,107 L451,107 L451,106 L450,106 L450,105 L449,105 L449,104 L448,104 L448,102 L447,102 L447,101 L446,101 L446,99 L445,99 L445,97 L444,97 L444,94 L443,94 L443,91 L442,91 L442,86 L441,86 L441,75 L442,75 L442,69 L443,69 L443,66 L444,66 L444,64 L445,64 L445,62 L446,62 L446,60 L447,60 L447,58 L448,58 L448,57 L449,57 L449,56 L450,56 L450,54 L451,54 L451,53 L452,53 L452,52 L453,52 L453,51 L454,51 L454,50 L456,50 L456,49 L457,49 L457,48 L458,48 L458,47 L460,47 L460,46 L462,46 L462,45 L464,45 L464,44 L467,44 L467,43 L471,43 L471,42 L486,42 L486,43 L491,43 L491,44 L494,44 L494,45 L496,45 L496,46 L498,46 L498,47 L499,47 L499,48 L501,48 L501,49 L502,49 L502,50 L503,50 L503,51 L505,51 L505,53 L506,53 L506,54 L507,54 L507,55 L508,55 L508,56 L509,56 L509,58 L510,58 L510,60 L511,60 L511,62 L512,62 L512,64 L513,64 L513,67 L514,67 L514,72 L515,72 L515,71 L516,71 L516,68 L517,68 L517,65 L518,65 L518,63 L519,63 L519,61 L520,61 L520,59 L521,59 L521,58 L522,58 L522,56 L523,56 L523,55 L524,55 L524,54 L525,54 L525,53 L526,53 L526,52 L527,52 L527,51 L528,51 L528,50 L529,50 L529,49 L531,49 L531,48 L532,48 L532,47 L534,47 L534,46 L536,46 L536,45 L538,45 L538,44 L541,44 L541,43 L545,43 L545,42 L559,42 L559,43 L563,43 L563,44 L566,44 L566,45 L568,45 L568,46 L569,46 L569,47 L571,47 L571,48 L572,48 L572,49 L573,49Z M381,17 L402,17 L402,99 L444,99 L444,117 L381,117Z M624,42 L638,42 L638,43 L642,43 L642,44 L644,44 L644,45 L646,45 L646,46 L648,46 L648,47 L649,47 L649,48 L650,48 L650,49 L651,49 L651,50 L653,50 L653,43 L671,43 L671,44 L672,44 L672,119 L671,119 L671,123 L670,123 L670,126 L669,126 L669,128 L668,128 L668,130 L667,130 L667,132 L666,132 L666,133 L665,133 L665,134 L664,134 L664,135 L663,135 L663,136 L662,136 L662,137 L661,137 L661,138 L660,138 L660,139 L659,139 L659,140 L657,140 L657,141 L656,141 L656,142 L654,142 L654,143 L652,143 L652,144 L619,144 L619,143 L616,143 L616,142 L615,142 L615,141 L613,141 L613,140 L611,140 L611,139 L610,139 L610,138 L609,138 L609,137 L608,137 L608,136 L607,136 L607,135 L606,135 L606,134 L605,134 L605,133 L604,133 L604,132 L603,132 L603,130 L602,130 L602,129 L601,129 L601,126 L600,126 L600,124 L601,124 L601,123 L604,123 L604,122 L606,122 L606,121 L609,121 L609,120 L612,120 L612,119 L615,119 L615,118 L619,118 L619,119 L620,119 L620,121 L621,121 L621,123 L622,123 L622,124 L623,124 L623,125 L625,125 L625,126 L627,126 L627,127 L630,127 L630,128 L641,128 L641,127 L644,127 L644,126 L646,126 L646,125 L647,125 L647,124 L648,124 L648,123 L649,123 L649,121 L650,121 L650,119 L651,119 L651,107 L650,107 L650,108 L649,108 L649,109 L648,109 L648,110 L646,110 L646,111 L644,111 L644,112 L641,112 L641,113 L634,113 L634,114 L630,114 L630,113 L623,113 L623,112 L619,112 L619,111 L617,111 L617,110 L615,110 L615,109 L613,109 L613,108 L611,108 L611,107 L610,107 L610,106 L609,106 L609,105 L607,105 L607,104 L606,104 L606,103 L605,103 L605,101 L604,101 L604,100 L603,100 L603,99 L602,99 L602,97 L601,97 L601,96 L600,96 L600,94 L599,94 L599,91 L598,91 L598,88 L597,88 L597,83 L596,83 L596,72 L597,72 L597,67 L598,67 L598,64 L599,64 L599,62 L600,62 L600,60 L601,60 L601,58 L602,58 L602,56 L603,56 L603,55 L604,55 L604,54 L605,54 L605,53 L606,53 L606,52 L607,52 L607,51 L608,51 L608,50 L609,50 L609,49 L610,49 L610,48 L612,48 L612,47 L613,47 L613,46 L615,46 L615,45 L617,45 L617,44 L620,44 L620,43 L624,43Z M704,42 L720,42 L720,43 L724,43 L724,44 L727,44 L727,45 L729,45 L729,46 L731,46 L731,47 L733,47 L733,48 L734,48 L734,49 L736,49 L736,50 L737,50 L737,51 L738,51 L738,52 L739,52 L739,53 L740,53 L740,54 L741,54 L741,56 L742,56 L742,57 L743,57 L743,59 L744,59 L744,61 L745,61 L745,63 L746,63 L746,66 L747,66 L747,70 L748,70 L748,85 L747,85 L747,86 L696,86 L696,89 L697,89 L697,92 L698,92 L698,93 L699,93 L699,95 L700,95 L700,96 L701,96 L701,97 L702,97 L702,98 L703,98 L703,99 L705,99 L705,100 L709,100 L709,101 L718,101 L718,100 L721,100 L721,99 L723,99 L723,98 L724,98 L724,97 L726,97 L726,96 L727,96 L727,94 L728,94 L728,93 L730,93 L730,94 L732,94 L732,95 L734,95 L734,96 L736,96 L736,97 L738,97 L738,98 L740,98 L740,99 L742,99 L742,100 L744,100 L744,101 L745,101 L745,102 L744,102 L744,104 L743,104 L743,105 L742,105 L742,107 L741,107 L741,108 L740,108 L740,109 L739,109 L739,110 L738,110 L738,111 L736,111 L736,112 L735,112 L735,113 L733,113 L733,114 L732,114 L732,115 L730,115 L730,116 L727,116 L727,117 L724,117 L724,118 L718,118 L718,119 L708,119 L708,118 L702,118 L702,117 L699,117 L699,116 L696,116 L696,115 L694,115 L694,114 L693,114 L693,113 L691,113 L691,112 L690,112 L690,111 L688,111 L688,110 L687,110 L687,109 L686,109 L686,108 L685,108 L685,107 L684,107 L684,106 L683,106 L683,105 L682,105 L682,103 L681,103 L681,102 L680,102 L680,100 L679,100 L679,98 L678,98 L678,96 L677,96 L677,93 L676,93 L676,89 L675,89 L675,71 L676,71 L676,67 L677,67 L677,64 L678,64 L678,62 L679,62 L679,60 L680,60 L680,59 L681,59 L681,57 L682,57 L682,56 L683,56 L683,55 L684,55 L684,54 L685,54 L685,53 L686,53 L686,52 L687,52 L687,51 L688,51 L688,50 L689,50 L689,49 L690,49 L690,48 L692,48 L692,47 L693,47 L693,46 L695,46 L695,45 L698,45 L698,44 L700,44 L700,43 L704,43Z M752,43 L770,43 L770,53 L771,53 L771,51 L772,51 L772,50 L773,50 L773,48 L775,48 L775,47 L776,47 L776,46 L777,46 L777,45 L780,45 L780,44 L783,44 L783,43 L794,43 L794,60 L787,60 L787,61 L781,61 L781,62 L779,62 L779,63 L778,63 L778,64 L777,64 L777,65 L776,65 L776,66 L775,66 L775,67 L774,67 L774,69 L773,69 L773,71 L772,71 L772,117 L751,117 L751,44 L752,44Z M476,58 L476,59 L472,59 L472,60 L470,60 L470,61 L469,61 L469,62 L468,62 L468,63 L467,63 L467,64 L466,64 L466,65 L465,65 L465,67 L464,67 L464,70 L463,70 L463,71 L493,71 L493,68 L492,68 L492,66 L491,66 L491,64 L490,64 L490,63 L489,63 L489,62 L488,62 L488,61 L487,61 L487,60 L485,60 L485,59 L481,59 L481,58Z M709,58 L709,59 L705,59 L705,60 L703,60 L703,61 L702,61 L702,62 L701,62 L701,63 L700,63 L700,64 L699,64 L699,66 L698,66 L698,68 L697,68 L697,71 L726,71 L726,67 L725,67 L725,65 L724,65 L724,64 L723,64 L723,62 L721,62 L721,61 L720,61 L720,60 L718,60 L718,59 L714,59 L714,58Z M552,60 L552,61 L548,61 L548,62 L546,62 L546,63 L544,63 L544,64 L543,64 L543,65 L542,65 L542,66 L541,66 L541,67 L540,67 L540,68 L539,68 L539,69 L538,69 L538,71 L537,71 L537,75 L536,75 L536,86 L537,86 L537,89 L538,89 L538,91 L539,91 L539,93 L540,93 L540,94 L541,94 L541,95 L542,95 L542,96 L543,96 L543,97 L544,97 L544,98 L546,98 L546,99 L549,99 L549,100 L560,100 L560,99 L563,99 L563,98 L565,98 L565,97 L566,97 L566,96 L567,96 L567,95 L568,95 L568,94 L569,94 L569,93 L570,93 L570,91 L571,91 L571,89 L572,89 L572,85 L573,85 L573,75 L572,75 L572,72 L571,72 L571,70 L570,70 L570,68 L569,68 L569,67 L568,67 L568,65 L566,65 L566,64 L565,64 L565,63 L564,63 L564,62 L562,62 L562,61 L557,61 L557,60Z M632,60 L632,61 L628,61 L628,62 L626,62 L626,63 L624,63 L624,64 L623,64 L623,65 L622,65 L622,66 L621,66 L621,67 L620,67 L620,69 L619,69 L619,71 L618,71 L618,84 L619,84 L619,86 L620,86 L620,88 L621,88 L621,89 L622,89 L622,90 L623,90 L623,91 L624,91 L624,92 L625,92 L625,93 L627,93 L627,94 L630,94 L630,95 L639,95 L639,94 L642,94 L642,93 L644,93 L644,92 L645,92 L645,91 L647,91 L647,89 L648,89 L648,88 L649,88 L649,86 L650,86 L650,84 L651,84 L651,72 L650,72 L650,69 L649,69 L649,67 L648,67 L648,66 L647,66 L647,65 L646,65 L646,64 L645,64 L645,63 L643,63 L643,62 L641,62 L641,61 L637,61 L637,60Z"/></g></svg></button>
+    <div class="header-right"><span>WORKFLOW EXPLORER</span><span class="module-count">21 modules</span></div>
+  </header>
+  <main class="app" aria-label="TicketLedger workflow explorer">
+    <div class="heading">
+      <div class="heading-copy"><h1 id="flow-title" tabindex="-1">Overall flow</h1><p class="basis" id="fc-basis"></p></div>
+      <label class="picker" for="fc-select"><span>Module / workflow</span><select id="fc-select" aria-label="Choose a module or workflow"></select></label>
+    </div>
+    <div class="navigation">
+      <div class="path"><button class="btn back" id="fc-back" type="button" aria-label="Back to previous flow">← <span>Back</span></button><nav class="crumbs" id="fc-crumbs" aria-label="Workflow path"></nav></div>
+      <div class="controls"><button class="btn btn-primary" id="fc-play" type="button">Pause</button><button class="btn" id="fc-step" type="button">Next step →</button></div>
+    </div>
+    <section class="stage" id="fc-stage" aria-label="Interactive flowchart canvas">
+      <svg class="canvas" id="fc-svg" role="group" aria-labelledby="fc-title fc-description" preserveAspectRatio="xMidYMid meet"></svg>
+      <p class="stage-hint">Click a module to open its flow · Drag to pan</p>
+      <div class="zoom" aria-label="Diagram zoom controls"><button class="btn" id="zoom-out" type="button" aria-label="Zoom out">−</button><output id="zoom-level" aria-live="off">100%</output><button class="btn" id="zoom-in" type="button" aria-label="Zoom in">+</button><button class="btn" id="fit" type="button" title="Fit the entire flow to the screen">Fit</button></div>
+    </section>
+    <footer class="statusbar">
+      <div><div class="status-line"><span class="position" id="fc-position"></span><span class="current" id="fc-current"></span></div><p class="detail" id="fc-detail"></p></div>
+      <div class="legend"><span><i class="dot"></i>Current step</span><span id="branch-legend"><i class="dash"></i>Related / optional</span><span>↗ Open module</span></div>
+    </footer>
+    <span class="sr-only" id="fc-live" aria-live="polite"></span>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const q=id=>document.getElementById(id);
+        const S = (actor, title, note, detail) => ({actor, title, note, detail});
+    const flows = [
+      {
+        id:'signup', group:'Account & access', label:'Sign-up & email verification', basis:'Documented behavior · 6 October 2026 · successful path',
+        steps:[
+          S('Browser','Submit sign-up','Name, email, phone, password','Signup.jsx validates the form; AuthContext.signup sends POST /api/auth/signup.'),
+          S('API','Validate details','Normalize email and phone','authController.signup validates with Zod; duplicate accounts return 409.'),
+          S('Database','Save pending user','PENDING_VERIFICATION','The API hashes the password with bcrypt and creates a pending User.'),
+          S('Email service','Send verification code','6 digits · 10-minute expiry','issueOtp stores an HMAC of the code, cancels older codes, and sends the OTP email.'),
+          S('Browser → API','Check entered code','Maximum 5 attempts','VerifyOtp.jsx calls /verify-otp; consumeOtp checks expiry, attempts, and single use.'),
+          S('Database','Activate account','User → ACTIVE','A valid OTP is consumed; the user status and emailVerifiedAt are updated.'),
+          S('API → Browser','Start session','Access token + refresh cookie','startSession returns a 15-minute access token and sets the httpOnly refresh cookie.')
+        ]
+      },
+      {
+        id:'login', group:'Account & access', label:'Login & protected access', basis:'Documented behavior · 6 October 2026 · active account',
+        steps:[
+          S('Browser','Submit credentials','POST /api/auth/login','The browser sends the email and password to the authentication API.'),
+          S('API','Check password','bcrypt comparison','Unknown email and wrong password both return the same 401 response.'),
+          S('API + Database','Check account status','Active / pending / blocked','Blocked accounts receive 403; pending accounts are sent to OTP verification.'),
+          S('API → Browser','Issue session','Token in memory; cookie set','For an active account, the API creates a refresh-token row and returns the access token.'),
+          S('API + Database','Link guest activity','Session ID → user ID','trackLogin links anonymous BehaviorEvent rows to the signed-in user.'),
+          S('Browser → API','Request protected data','Authorization: Bearer token','The browser adds the in-memory access token to the protected API request.'),
+          S('API','Check user and role','authenticateJWT → requireRole','The API reloads the user and enforces role permissions before allowing the action.')
+        ]
+      },
+      {
+        id:'refresh', group:'Account & access', label:'Restore & refresh session', basis:'Documented behavior · 6 October 2026 · valid refresh cookie',
+        steps:[
+          S('Browser','Restore session','Page load or token expiry','AuthContext.refreshSession runs on startup or before access-token expiry; idle sessions sign out.'),
+          S('Browser → API','Send refresh cookie','POST /api/auth/refresh','The browser automatically includes the httpOnly tl_refresh cookie.'),
+          S('API + Database','Find hashed token','SHA-256 lookup','rotateRefreshToken checks the stored token, expiry, revocation, and idle limit.'),
+          S('Database','Rotate refresh token','Revoke old; create new','A conditional update lets only one concurrent rotation win; a new token row is created.'),
+          S('API → Browser','Return new session','New cookie + access token','The API replaces the refresh cookie and returns the current user and access token.'),
+          S('Browser','Resume request','Retry at most once','The browser keeps the access token in memory; an expired-token request can be retried once.')
+        ]
+      },
+      {
+        id:'reset', group:'Account & access', label:'Forgot password & reset', basis:'Documented behavior · 6 October 2026 · eligible account',
+        steps:[
+          S('Browser → API','Request password reset','POST /forgot-password','The user submits an email; the endpoint always returns a generic response.'),
+          S('API → Email','Issue reset code','RESET_PASSWORD OTP','For an eligible account, the API creates a reset OTP and sends the email.'),
+          S('Browser → API','Submit code + password','POST /reset-password','The user enters the reset code and new password.'),
+          S('API','Consume valid OTP','Single use + expiry checks','consumeOtp validates the reset code before the password can be updated.'),
+          S('Database','Update password hash','Revoke all refresh tokens','The API stores the new hash and revokes every refresh session.'),
+          S('Browser','Sign in again','Use the new password','Existing refresh sessions no longer work; users must authenticate again.')
+        ]
+      },
+      {
+        id:'invite', group:'Account & access', label:'Gate-staff invitation', basis:'Documented behavior · 6 October 2026 · invitation accepted',
+        steps:[
+          S('Organizer','Invite gate staff','POST /api/staff/invites','The organizer requests a staff invitation for their company and event assignments.'),
+          S('Database','Store invitation','Hashed token · 72 hours','A StaffInvite stores the hash of a random invitation token.'),
+          S('Email service','Deliver invite link','/invite/<token>','The invitation email gives the recipient a link to AcceptInvite.jsx.'),
+          S('Browser → API','Accept invitation','POST /accept-invite','The recipient opens the link, loads invitation details, and submits acceptance.'),
+          S('Database','Create staff + assignment','Single transaction','The invite becomes ACCEPTED; a verified GATE_STAFF user and StaffEventAssignment are created.'),
+          S('API → Browser','Start staff session','Company and role attached','The API issues the staff session, with event access controlled by their assignments.')
+        ]
+      },
+      {
+        id:'logout', group:'Account & access', label:'Logout & idle expiry', basis:'Documented behavior · 6 October 2026',
+        steps:[
+          S('Browser','Logout triggered','Manual or 30-minute idle','AuthContext.logout runs after a user action or the client idle check.'),
+          S('Browser → API','Request logout','POST /api/auth/logout','The browser sends the logout request with its refresh cookie.'),
+          S('API + Database','Revoke refresh token','revokeRefreshToken','The current refresh-token row is revoked so it cannot create a new access token.'),
+          S('Browser','Clear local session','Signed-out view','The browser drops its current session state and shows the signed-out experience.'),
+          S('API','Refuse future refresh','Expired / idle / revoked → 401','The server also rejects refresh tokens older than the allowed idle window, independently of client checks.')
+        ]
+      },
+      {
+        id:'company', group:'Tickets & event operations', label:'Company registration & approval', basis:'Planned flow · project scope · simplified approval path',
+        steps:[
+          S('Organizer','Register company','Company details + documents','The organizer supplies the company information required for approval.'),
+          S('API','Validate submission','Required fields and documents','The submission is checked before being stored for review.'),
+          S('Database','Save pending request','Awaiting admin review','The company registration remains pending until an administrator reviews it.'),
+          S('Super admin','Review application','Approve or reject','The administrator checks the submitted registration and records a decision.'),
+          S('Organizer','Receive approval','Event management enabled','In the approval path, the organizer can proceed to manage company events.')
+        ]
+      },
+      {
+        id:'publish', group:'Tickets & event operations', label:'Create & publish an event', basis:'Planned flow · project scope and venue requirements',
+        steps:[
+          S('Organizer','Enter event details','Category, venue, date','The organizer sets the event information and selects its category.'),
+          S('Organizer','Add event images','Card, hero and gallery','The event receives the images used across listing and detail views.'),
+          S('Venue editor','Configure enclosures','Rows, seats and aisles','The organizer uses a category template or uploaded plan to define the seating layout.'),
+          S('Organizer','Set ticket prices','Enclosure and tier prices','Prices and quantities are configured for the available enclosures and tiers.'),
+          S('API + Database','Save event configuration','Event + seating + tiers','The event configuration is saved for review and publication.'),
+          S('Attendee view','Show published event','Browse → event details','After publication, attendees can discover the event and open its venue plan.')
+        ]
+      },
+      {
+        id:'seats', group:'Tickets & event operations', label:'Venue plan → seats → checkout', basis:'Planned flow · supplied venue requirements · successful selection',
+        steps:[
+          S('Attendee','Open event','Get tickets','The attendee opens the event and enters its booking flow.'),
+          S('Venue overview','Choose enclosure','Name, price and availability','The attendee taps an enclosure directly on the interactive venue plan.'),
+          S('Seat map','Zoom into enclosure','Rows + seat numbers','The chosen enclosure expands, while other areas dim; the attendee can return to the overview.'),
+          S('Attendee','Select available seats','Available → selected','Selections stay preserved when moving between the enclosure and stadium views.'),
+          S('API + Seat holds','Hold seats temporarily','Check availability','The server reserves available seats for checkout; conflicting selections must be rejected.'),
+          S('My Tickets','Review selected seats','Seats + prices','The attendee reviews the chosen tickets before proceeding.'),
+          S('Checkout','Confirm order','Continue to payment','The attendee confirms the order and moves into the payment workflow.')
+        ]
+      },
+      {
+        id:'payment', group:'Tickets & event operations', label:'Payment → ticket → QR wallet', basis:'Planned flow · project scope · successful payment and issuance',
+        steps:[
+          S('Attendee','Choose payment method','Card or mobile wallet','The attendee chooses an available payment method for the confirmed order.'),
+          S('Payment provider','Process payment','Order reference + amount','The payment provider processes the payment and returns its result.'),
+          S('API','Verify payment result','Match order and amount','The backend validates payment confirmation before completing ticket issuance.'),
+          S('Database','Record paid order','Store payment reference','The successful payment is recorded against the order.'),
+          S('Blockchain','Record ticket ownership','Planned integration','The project scope calls for blockchain-backed ticket ownership; this step is a planned flow.'),
+          S('Ticket service','Create digital ticket','Ticket + unique QR','The ticket is associated with the attendee and its QR information.'),
+          S('Attendee wallet','Show purchased ticket','My tickets + PDF','The attendee can view the ticket in the QR wallet and download the ticket document.')
+        ]
+      },
+      {
+        id:'gate', group:'Tickets & event operations', label:'QR scan → gate entry', basis:'Planned flow · project scope · valid, unused ticket',
+        steps:[
+          S('Gate staff','Scan attendee QR','Assigned event','An authorized staff member scans the ticket at the event entrance.'),
+          S('API','Validate QR','Ticket and event checks','The system checks the QR information against the requested event.'),
+          S('Database','Check ticket status','Valid and not already used','The ticket record must be eligible for entry and must not already be checked in.'),
+          S('Blockchain','Verify ownership','Planned second validation','The scope calls for ownership verification against the blockchain record.'),
+          S('API + Database','Record check-in','Prevent repeated entry','A successful check-in records ticket use; a duplicate or invalid ticket is rejected.'),
+          S('Gate screen','Allow entry','Show scan result','The staff screen shows the result so the attendee can enter.')
+        ]
+      },
+      {
+        id:'resale', group:'Tickets & event operations', label:'Controlled ticket resale', basis:'Planned flow · project scope · resale cap is 110% of original price',
+        steps:[
+          S('Ticket holder','List ticket for resale','Owned, eligible ticket','The ticket holder chooses an eligible ticket and proposes a resale price.'),
+          S('API / Contract','Check resale limit','Price ≤ original × 1.10','The planned resale rule rejects prices above 110% of the original price.'),
+          S('Marketplace','Publish listing','Ticket and asking price','A valid listing becomes available to potential buyers.'),
+          S('Buyer → Payment','Purchase listed ticket','Payment confirmation','The buyer completes payment for the listed ticket.'),
+          S('API + Blockchain','Transfer ownership','Record new holder','The planned ownership transfer updates the ticket record and blockchain ownership.'),
+          S('Buyer wallet','Show acquired ticket','Listing closed','The acquired ticket appears in the new holder’s wallet and the listing closes.')
+        ]
+      },
+      {
+        id:'tracking', group:'Behavior & analytics', label:'Behavior tracking & guest linking', basis:'Documented behavior · 6 October 2026 · event-view path',
+        steps:[
+          S('Browser','View an event','EventDetails.jsx','Opening an event page triggers the event request and client behavior tracking.'),
+          S('Browser → API','Send behavior event','POST /api/behavior/track','trackClientBehavior sends the action with the client session identifier.'),
+          S('API','Prepare activity record','trackBehavior','The service includes action, session, user when available, event, and request metadata.'),
+          S('Database','Insert BehaviorEvent','Activity history','Client and server tracking can both record the same view, producing duplicate rows.'),
+          S('Authentication','Link guest after login','attachSessionToUser','After authentication, anonymous rows for that session are attached to the user.'),
+          S('Analytics pages','Read recorded history','Profile and funnels','Analytics aggregate these rows when a page loads; there is no scheduled analysis job.')
+        ]
+      },
+      {
+        id:'profile', group:'Behavior & analytics', label:'Behavior profile & fallback scores', basis:'Documented behavior · 6 October 2026 · fallback path currently used',
+        steps:[
+          S('Browser','Open behavior profile','GET /api/behavior/profile','Profile.jsx or BehaviorProfile.jsx requests the signed-in user’s profile.'),
+          S('API + Database','Load recent activity','Latest 100 rows','getUserBehavioralProfile attaches the session and loads the latest behavior rows.'),
+          S('API','Count recorded actions','Views, seats, checkouts','The service builds counts and feature values from the retrieved activity.'),
+          S('API','Attempt model calls','Undefined function names','predictPurchaseIntent and predictFraud do not exist in mlService.js; their errors are caught.'),
+          S('API','Use fallback scores','Rule-based intent; fraud 14','The current profile uses a fallback intent formula and a fixed fraud score of 14 / LOW.'),
+          S('Browser','Display profile','Timeline + scores','The profile displays these values; they are not model predictions in this documented path.')
+        ]
+      },
+      {
+        id:'intent', group:'Behavior & analytics', label:'Purchase-intent analytics', basis:'Documented behavior · 6 October 2026 · rules, not model output',
+        steps:[
+          S('Organizer','Open intent dashboard','Select an event','PurchaseIntentAnalytics.jsx requests /api/analytics/intent/:eventId.'),
+          S('API','Check event ownership','Organizer or super admin','The service verifies that the requester can view this event’s analytics.'),
+          S('Database','Read activity + orders','All rows for the event','BehaviorEvent records and event orders are loaded for aggregation.'),
+          S('API','Group by visitor','userId or sessionId','Actions are grouped per person; successful orders identify buyers.'),
+          S('API','Build funnel and scores','Hand-written rules','getEventIntentAnalytics calculates funnel stages and intent scores using fixed rules.'),
+          S('Organizer dashboard','Show intent results','Funnel + likely buyers','The page displays conversion stages, likely buyers, and abandoned users.')
+        ]
+      },
+      {
+        id:'abandoned', group:'Behavior & analytics', label:'Abandoned checkout → reminder', basis:'Documented behavior · 6 October 2026 · organizer-triggered reminder',
+        steps:[
+          S('Organizer','Open abandoned dashboard','GET /api/analytics/abandoned','AbandonedIntentDashboard.jsx requests the organizer’s permitted event data.'),
+          S('API + Database','Find unfinished journeys','Selections or checkout starts','The service groups behavior by person and event, then excludes records it classifies as buyers.'),
+          S('API','Apply recovery rules','Score, reason and cart value','Scores and likely reasons use rules; missing cart values can use the documented fallback.'),
+          S('Organizer','Choose a reminder','Registered user','The organizer clicks Send reminder; guest sessions cannot receive these user reminders.'),
+          S('Notification service','Store notification','dispatchNotification','The service creates a Notification row and triggers the configured delivery channels.'),
+          S('Email / Socket','Attempt delivery','Email, socket; mock push','Email depends on preferences; Socket.IO emits an update and push delivery is mocked.'),
+          S('Attendee','See reminder','Header polling or email','The documented UI checks notifications by polling; reminder discount text is not a working checkout coupon.')
+        ]
+      },
+      {
+        id:'demand', group:'Behavior & analytics', label:'Pre-launch demand forecast', basis:'Documented behavior · 6 October 2026 · model available; error fallback noted',
+        steps:[
+          S('Organizer','Open demand forecast','DemandForecast.jsx','The page requests /api/events/:id/prelaunch-forecast for the selected event.'),
+          S('API + Database','Prepare event features','Capacity, price, type, city','getPreLaunchDemandForecast reads the event and prepares demand inputs.'),
+          S('Node → Python','Request forecast','POST /forecast/demand','mlService.forecastEventDemand sends the features to the FastAPI service.'),
+          S('Python model','Predict demand','Sales + demand tier','With compatible models loaded, the pipeline produces the forecast; missing models may use Python heuristics.'),
+          S('Node API','Resolve forecast result','Model result or fallback','If the HTTP call fails, Node falls back to projected sales equal to 78% of capacity.'),
+          S('Node API','Add guidance','Rule-based time and pricing','Publish-time suggestions and price warnings are calculated with separate rules.'),
+          S('Organizer dashboard','Display forecast','Review or adjust prices','The results support organizer decisions; the forecast does not automatically enforce changes.')
+        ]
+      },
+      {
+        id:'fraud', group:'Behavior & analytics', label:'Fraud scoring API & watchlist', basis:'Documented behavior · 6 October 2026 · API flow; no web scoring caller',
+        steps:[
+          S('API client','Submit telemetry','POST /api/ml/fraud/score','This endpoint exists, but the documented web app does not call it.'),
+          S('Node API','Prepare fraud features','checkFraudRisk','The service maps telemetry into the input expected by the Python fraud endpoint.'),
+          S('Python / Node','Calculate risk','Model or Node heuristic','The Python model can score the request; failed calls use the Node fallback rules.'),
+          S('Database','Store evaluation','AI_BOT_EVALUATION','The API stores the result as a BehaviorEvent and may create a scalper-flag audit record.'),
+          S('Admin dashboard','Show fraud watchlist','Stored evaluations','The watchlist reads these stored evaluations; an administrator reviews the result.'),
+          S('Super admin','Decide account action','Manual freeze or unfreeze','Freezing suspends the account and revokes refresh sessions; it is an administrator’s decision.')
+        ]
+      }
+    ];
+
+    flows.unshift({id:'authentication',group:'Account & access',label:'Authentication',basis:'Account lifecycle · example: login, protected access, then logout',steps:[]});
+    flows.push({id:'session',group:'Account & access',label:'Start a session',basis:'Documented behavior · 6 October 2026',steps:[
+      S('API','Account authenticated','startSession','A successful login, verification, or accepted invite can start a session.'),
+      S('API','Create refresh token','Random 48-byte token','The session service creates the refresh token used to restore access.'),
+      S('Database','Store token hash','SHA-256','The database stores the refresh-token hash, rather than the raw cookie value.'),
+      S('API → Browser','Set refresh cookie','httpOnly cookie','The API sets tl_refresh, scoped to /api/auth; its nominal lifetime is seven days.'),
+      S('API → Browser','Return access token','15-minute JWT','The browser keeps the access token in memory and sends it with protected requests.')
+    ]});
+    flows.push({id:'access',group:'Account & access',label:'Protected access & roles',basis:'Documented behavior · 6 October 2026',steps:[
+      S('Browser → API','Send protected request','Bearer access token','The browser sends its in-memory access token in the Authorization header.'),
+      S('API','Verify access token','authenticateJWT','The middleware verifies the JWT and its access-token type.'),
+      S('API + Database','Load current user','Status checked each request','The API reloads the user so blocked statuses are enforced on protected requests.'),
+      S('API','Check allowed role','requireRole','The route checks whether the current user has an allowed role.'),
+      S('API','Run requested action','Authorized request','Only a permitted request reaches the protected handler.')
+    ]});
+    const specs={
+      signup:{input:[0,3,4],links:{6:'session'},decisions:{1:{label:'Details valid?',no:'Correct details',retry:0,detail:'Invalid details or duplicate accounts must be corrected before sign-up continues.'},4:{label:'Code valid?',no:'Code rejected',retry:4,detail:'Invalid or expired codes do not activate the account; attempt limits also apply.'}},end:'Signed in'},
+      login:{input:[0],links:{3:'session',4:'tracking',5:'access',6:'access'},decisions:{1:{label:'Password correct?',no:'Login error',retry:0,detail:'Unknown email and wrong password receive the same 401 response.'},2:{label:'Account active?',no:'Verify or deny',detail:'Pending users are directed to verification; blocked users receive 403.'}},end:'Access granted'},
+      refresh:{input:[1,4],links:{5:'access'},decisions:{2:{label:'Refresh valid?',no:'Sign in again',target:'login',detail:'Missing, expired, idle, or revoked tokens cannot restore the session.'}},end:'Session restored'},
+      reset:{input:[0,1,2],links:{5:'login'},decisions:{3:{label:'Reset code valid?',no:'Reset rejected',retry:2,detail:'A valid, unconsumed reset code is required before changing the password.'}},end:'Reset complete'},
+      invite:{input:[0,2,3],links:{5:'session'},decisions:{3:{label:'Invite accepted?',no:'No new account',detail:'An expired or invalid invitation cannot be used to create a staff session.'}},end:'Staff signed in'},
+      company:{input:[0],decisions:{3:{label:'Admin approves?',no:'Registration rejected',detail:'A rejected application does not enable organizer event management.'}},end:'Company approved'},
+      publish:{input:[0,1,2,3],end:'Event published'},
+      seats:{input:[0,1,2,3,5,6],links:{6:'payment'},decisions:{4:{label:'Seats available?',no:'Choose other seats',retry:3,detail:'A conflicting seat request must not create a new hold.'}},end:'Order ready'},
+      payment:{input:[0,1,6],decisions:{2:{label:'Payment verified?',no:'Payment not confirmed',detail:'Ticket issuance must wait for valid payment confirmation.'}},end:'Ticket available'},
+      gate:{input:[0,5],decisions:{1:{label:'QR valid?',no:'Reject QR',detail:'Invalid QR information must not authorize gate entry.'},2:{label:'Ticket unused?',no:'Reject repeat entry',detail:'A ticket already used for entry must not pass a second time.'},3:{label:'Owner verified?',no:'Reject ownership',detail:'This second validation is part of the planned blockchain integration.'}},end:'Attendee enters'},
+      resale:{input:[0,2,3,5],decisions:{1:{label:'Price within cap?',no:'Listing rejected',retry:0,detail:'The planned limit is 110% of the original ticket price.'}},end:'New holder owns ticket'},
+      tracking:{input:[0,1],end:'Activity recorded'},
+      profile:{input:[0,5],end:'Profile displayed'},
+      intent:{input:[0,5],decisions:{1:{label:'Access permitted?',no:'Access denied',detail:'Organizers must own the event; super-admin access is also permitted.'}},end:'Analytics displayed'},
+      abandoned:{input:[0,3,6],end:'Reminder delivered'},
+      demand:{input:[0,2,6],end:'Forecast displayed'},
+      fraud:{input:[0,4],end:'Admin reviews result'},
+      session:{input:[3,4],end:'Session active'},
+      access:{input:[0],decisions:{1:{label:'Access token valid?',no:'401 response',target:'refresh',detail:'An expired access token can trigger a single refresh-and-retry attempt.'},2:{label:'User active?',no:'403 response',detail:'Blocked account statuses are rejected on protected requests.'},3:{label:'Role permitted?',no:'403 response',detail:'A valid session does not grant permission for every role-specific route.'}},end:'Response returned'}
+    };
+    const N=(id,label,kind,col,row,detail,target)=>({id,label,kind,col,row,detail,target});
+    const E=(from,to,label='',route='auto')=>({from,to,label,route});
+    const linearGraph=flow=>{
+      const spec=specs[flow.id]||{},nodes=[N('start','Start','terminal',0,0,'Begin '+flow.label.toLowerCase()+'.')],edges=[],trace=['start'];
+      flow.steps.forEach((s,i)=>{
+        const d=(spec.decisions||{})[i],target=(spec.links||{})[i];
+        nodes.push(N('s'+i,d?d.label:s.title,d?'decision':(spec.input||[]).includes(i)?'input':'process',0,i+1,s.detail,target));
+        trace.push('s'+i);
+        if(d)nodes.push(N('no'+i,d.no,d.target?'process':d.retry!==undefined?'input':'terminal',1,i+1,d.detail,d.target));
+      });
+      nodes.push(N('end',spec.end||'End','terminal',0,flow.steps.length+1,'End of this illustrated path.'));trace.push('end');
+      for(let i=0;i<trace.length-1;i++){
+        const source=nodes.find(n=>n.id===trace[i]);edges.push(E(trace[i],trace[i+1],source.kind==='decision'?'Yes':''));
+      }
+      for(const [i,d] of Object.entries(spec.decisions||{})){
+        edges.push(E('s'+i,'no'+i,'No'));
+        if(d.retry!==undefined)edges.push(E('no'+i,'s'+d.retry,'Retry','return-right'));
+      }
+      return{nodes,edges,trace};
+    };
+    const graphs=new Map(flows.map(f=>[f.id,linearGraph(f)]));
+    graphs.set('authentication',{
+      nodes:[
+        N('start','Start','terminal',0,0,'An existing user opens TicketLedger.'),
+        N('login','Login','input',0,1,'Open the detailed login and protected-access workflow.','login'),
+        N('allowed','Login allowed?','decision',0,2,'The credentials and account status must permit access.'),
+        N('denied','Access denied','terminal',1,2,'Incorrect credentials or a blocked account prevent this login path.'),
+        N('session','Start session','process',0,3,'Create the refresh session and issue the browser access token.','session'),
+        N('use','Protected access','process',0,4,'Protected requests verify the access token, current user status, and permitted role.','access'),
+        N('logout-question','Logout clicked?','decision',0,5,'Yes opens the logout path; otherwise the session can continue.'),
+        N('logout','Logout','process',1,5,'Click this Logout box to open its own animated module workflow.','logout'),
+        N('signed-out','Signed out','terminal',1,6,'The local session is cleared and the user sees the signed-out experience.'),
+        N('refresh-question','Refresh needed?','decision',0,6,'The browser refreshes near access-token expiry or after an expired-token response.'),
+        N('refresh','Refresh session','process',0,7,'Open token validation, rotation, and request retry.','refresh')
+      ],
+      edges:[E('start','login'),E('login','allowed'),E('allowed','session','Yes'),E('allowed','denied','No'),E('session','use'),E('use','logout-question'),E('logout-question','logout','Yes'),E('logout','signed-out'),E('logout-question','refresh-question','No'),E('refresh-question','refresh','Yes'),E('refresh-question','use','No','return-left'),E('refresh','use','','return-left')],
+      trace:['start','login','allowed','session','use','logout-question','logout','signed-out']
+    });
+    graphs.set('logout',{
+      nodes:[
+        N('start','Logout clicked','terminal',0,0,'The user clicks Logout in the signed-in application.'),
+        N('idle','30-minute idle','input',1,0,'An idle timeout can trigger the same logout action.'),
+        N('request','POST /logout','input',0,1,'AuthContext.logout requests POST /api/auth/logout with the refresh cookie.'),
+        N('revoke','Revoke refresh token','process',0,2,'revokeRefreshToken revokes the current stored refresh session.'),
+        N('clear','Clear local session','process',0,3,'The browser removes its access token and signed-in user state.'),
+        N('end','Signed out','terminal',0,4,'The signed-out view is shown; the revoked refresh session cannot restore access.')
+      ],
+      edges:[E('start','request'),E('idle','request','Timeout','side-to-main'),E('request','revoke'),E('revoke','clear'),E('clear','end')],
+      trace:['start','request','revoke','clear','end']
+    });
+    // A real result branch keeps the model and fallback paths distinct.
+    graphs.set('demand',{
+      nodes:[
+        N('start','Start','terminal',0,0,'The organizer opens Demand Forecast.'),
+        N('features','Prepare event inputs','process',0,1,'The API reads capacity, pricing, event type, and city.'),
+        N('request','Call ML service','input',0,2,'forecastEventDemand calls the Python /forecast/demand endpoint.'),
+        N('success','Request succeeds?','decision',0,3,'A successful Python response may use a loaded model or a Python heuristic.'),
+        N('fallback','78% capacity fallback','process',1,3,'If the HTTP request fails, Node uses projected sales equal to 78% of capacity.'),
+        N('result','Use returned forecast','process',0,4,'Use the Python forecast result when the service request succeeds.'),
+        N('guidance','Add pricing guidance','process',0,5,'Node adds rule-based timing suggestions and price warnings.'),
+        N('display','Display forecast','input',0,6,'Show the forecast to the organizer; it does not automatically enforce changes.'),
+        N('end','End','terminal',0,7,'The organizer reviews the forecast.')
+      ],
+      edges:[E('start','features'),E('features','request'),E('request','success'),E('success','result','Yes'),E('success','fallback','No'),E('result','guidance'),E('fallback','guidance','','side-to-main'),E('guidance','display'),E('display','end')],
+      trace:['start','features','request','success','result','guidance','display','end']
+    });
+
+    const names={authentication:'Authentication',signup:'Sign-up & verification',login:'Login & access',refresh:'Session refresh',reset:'Password reset',invite:'Staff invitations',logout:'Logout',company:'Company approval',publish:'Event publishing',seats:'Seat selection',payment:'Payment & QR wallet',gate:'Gate entry',resale:'Ticket resale',tracking:'Behavior tracking',profile:'Behavior profile',intent:'Purchase intent',abandoned:'Abandoned checkout',demand:'Demand forecast',fraud:'Fraud scoring',session:'Start a session',access:'Protected access'};
+    names.overall='Overall flow';
+    const moduleCount=flows.length;
+    const flowMap=new Map(flows.map(f=>[f.id,f]));
+    const O=(id,x,y)=>({...N(id,names[id],'process',0,0,flowMap.get(id).basis,id),x,y});
+    const OE=(from,to,detail,extra={})=>({...E(from,to),detail,...extra});
+    const overview={
+      nodes:[O('signup',110,65),O('authentication',355,65),O('login',600,65),O('session',845,65),O('access',1090,65),O('reset',110,155),O('invite',355,155),O('refresh',845,155),O('logout',1090,155),O('company',110,282),O('publish',355,282),O('seats',600,282),O('payment',845,282),O('gate',1090,282),O('demand',355,378),O('resale',845,378),O('tracking',110,492),O('profile',355,492),O('intent',600,492),O('abandoned',845,492),O('fraud',1090,492)],
+      edges:[
+        OE('authentication','login','Authentication opens the login workflow. Click either module for its detailed flow.'),
+        OE('login','session','Successful login starts a refresh session and issues an access token.'),
+        OE('session','access','The browser uses its access token to request protected actions.'),
+        OE('access','seats','An attendee can continue to event browsing and the planned seat-selection journey.',{fromSide:'right',toSide:'top',via:[[1204,65],[1204,216],[600,216]],label:'Attendee'}),
+        OE('company','publish','Approved companies can manage and publish events in the planned organizer journey.'),
+        OE('company','demand','Organizers can review demand while preparing an event.',{fromSide:'bottom',toSide:'left',via:[[110,378]],related:true}),
+        OE('demand','publish','The forecast provides guidance before publication; changes remain an organizer decision.',{fromSide:'top',toSide:'bottom',related:true}),
+        OE('publish','seats','A published event is available for attendees to browse and select seats.'),
+        OE('seats','payment','A seat hold and pending order continue into payment and ticket issuance.'),
+        OE('payment','gate','The issued QR ticket is used in the planned gate-entry validation flow.'),
+        OE('payment','resale','A ticket holder may use the planned resale workflow.',{fromSide:'bottom',toSide:'top',related:true}),
+        OE('resale','gate','The new ticket holder can present the ticket at the gate.',{fromSide:'right',toSide:'bottom',via:[[1090,378]],related:true}),
+        OE('signup','session','Successful account verification can start a session without a separate login.',{fromSide:'bottom',toSide:'bottom',via:[[110,110],[845,110]],related:true}),
+        OE('reset','login','After resetting a password, the user returns to login.',{fromSide:'bottom',toSide:'bottom',via:[[110,203],[600,203]],related:true}),
+        OE('invite','session','Accepting a valid staff invitation can start a session.',{fromSide:'right',toSide:'bottom',via:[[510,155],[510,119],[845,119]],related:true}),
+        OE('session','refresh','A refresh token allows the browser to renew its access token.',{fromSide:'bottom',toSide:'top',related:true}),
+        OE('refresh','access','A successful refresh restores authorized requests.',{fromSide:'right',toSide:'left',via:[[976,155],[976,65]],related:true}),
+        OE('access','logout','Choosing Logout revokes the current refresh session and clears local sign-in state.',{fromSide:'bottom',toSide:'top'}),
+        OE('seats','tracking','Browsing and seat-related activity are examples of events recorded by the behavior-tracking workflow.',{fromSide:'bottom',toSide:'top',via:[[600,331],[14,331],[14,452],[110,452]],related:true}),
+        OE('tracking','profile','Recorded behavior supports the behavior-profile view.',{related:true}),
+        OE('tracking','intent','Purchase-intent analytics inspect recorded behavior and apply rules.',{fromSide:'bottom',toSide:'bottom',via:[[110,540],[600,540]],related:true}),
+        OE('tracking','abandoned','Abandoned-checkout analysis inspects activity and can send a reminder.',{fromSide:'bottom',toSide:'bottom',via:[[110,549],[845,549]],related:true}),
+        OE('tracking','fraud','Related telemetry can be submitted to the separate fraud-scoring API. The documented web app has no scoring caller.',{fromSide:'bottom',toSide:'bottom',via:[[110,558],[1090,558]],related:true,label:'Separate scoring API',labelPos:{x:1010,y:578,anchor:'middle'}})
+      ],trace:[]
+    };
+    graphs.set('overall',overview);
+    flows.unshift({id:'overall',group:'Overview',label:'Overall flow — all modules',basis:'All '+moduleCount+' modules · Solid arrows show journeys; dotted arrows show optional or supporting workflows.',steps:[]});
+    flowMap.set('overall',flows[0]);
+    for(const g of graphs.values())for(const n of g.nodes)if(n.target&&!flowMap.has(n.target))delete n.target;
+    const svg=q('fc-svg'),select=q('fc-select'),back=q('fc-back'),play=q('fc-play'),next=q('fc-step'),crumbs=q('fc-crumbs');
+    const ns='http://www.w3.org/2000/svg',reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+    const states=new Map(flows.map(f=>[f.id,{cursor:0,phase:0,playing:false,finished:false}]));
+    const history=[];
+    let selected='overall',positions=new Map(),nodeEls=new Map(),edgeEls=[],packet,halo,last=0;
+    let bounds={x:0,y:0,w:1260,h:620},camera={...bounds},zoom=1,drag=null,inspection=null;
+    const dwell=1500,travel=850;
+    const current=()=>states.get(selected),graph=()=>graphs.get(selected);
+    const count=()=>selected==='overall'?graph().edges.length:graph().trace.length;
+    const activeNode=()=>selected==='overall'?graph().edges[current().cursor].from:graph().trace[current().cursor];
+    const activeEdge=()=>selected==='overall'?graph().edges[current().cursor]:graph().edges.find(e=>e.from===activeNode()&&e.to===graph().trace[current().cursor+1]);
+    const make=(tag,attrs={})=>{const el=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))el.setAttribute(k,String(v));return el;};
+    const textEl=(label,attrs={})=>{const el=make('text',attrs);el.textContent=label;return el;};
+    const options=new Map();
+    for(const flow of flows){
+      let group=select;
+      if(flow.id!=='overall'){
+        if(!options.has(flow.group)){const opt=document.createElement('optgroup');opt.label=flow.group;select.append(opt);options.set(flow.group,opt);}
+        group=options.get(flow.group);
+      }
+      const opt=document.createElement('option');opt.value=flow.id;opt.textContent=flow.label;group.append(opt);
+    }
+    function renderCrumbs(){
+      crumbs.replaceChildren();
+      const entries=history.filter((e,i)=>e.id!=='overall'||i===0);
+      if(selected==='overall'){const label=document.createElement('span');label.textContent='Overall flow';label.className='crumb-current';label.setAttribute('aria-current','page');crumbs.append(label);return;}
+      const home=document.createElement('button');home.type='button';home.textContent='Overall';home.addEventListener('click',()=>goHome());crumbs.append(home);
+      const start=Math.max(0,entries.length-2);
+      entries.forEach((entry,i)=>{
+        if(entry.id==='overall'||i<start)return;
+        const sep=document.createElement('span');sep.textContent='›';sep.className='crumb-ancestor';sep.setAttribute('aria-hidden','true');crumbs.append(sep);
+        const btn=document.createElement('button');btn.type='button';btn.className='crumb-ancestor';btn.textContent=names[entry.id];btn.addEventListener('click',()=>restoreAncestor(history.indexOf(entry)));crumbs.append(btn);
+      });
+      const sep=document.createElement('span');sep.textContent='›';sep.setAttribute('aria-hidden','true');crumbs.append(sep);
+      const label=document.createElement('span');label.className='crumb-current';label.textContent=names[selected];label.setAttribute('aria-current','page');crumbs.append(label);
+    }
+    function refreshNavigation(){
+      select.value=selected;q('flow-title').textContent=names[selected];q('fc-basis').textContent=flowMap.get(selected).basis;
+      q('fc-basis').title=flowMap.get(selected).basis;
+      back.disabled=selected==='overall'&&!history.length;
+      back.title=history.length?'Back to '+names[history[history.length-1].id]:'Back to overall flow';
+      back.setAttribute('aria-label',back.title);
+      q('branch-legend').textContent=selected==='overall'?'┄ Related / optional':'Yes / No = decision';
+      renderCrumbs();
+    }
+    function openFlow(id,opts={}){
+      if(!flowMap.has(id))return;
+      current().playing=false;
+      if(opts.root)history.length=0;
+      else if(id!==selected)history.push({id:selected,focusNode:opts.fromNode||null,camera:{...camera},zoom});
+      selected=id;last=0;inspection=null;
+      current().playing=!reduced.matches&&!current().finished;
+      refreshNavigation();draw();update(true);
+      if(opts.focus)q('flow-title').focus({preventScroll:true});
+    }
+    function goHome(){openFlow('overall',{root:true,focus:true});}
+    function restoreAncestor(index){
+      if(index<0||index>=history.length)return;
+      current().playing=false;
+      const entry=history[index];history.splice(index);selected=entry.id;last=0;inspection=null;current().playing=false;
+      refreshNavigation();draw();
+      if(entry.camera){camera={...entry.camera};zoom=entry.zoom;applyCamera();}
+      update(true);(nodeEls.get(entry.focusNode)||q('flow-title')).focus({preventScroll:true});
+    }
+    function goBack(){if(history.length)restoreAncestor(history.length-1);else if(selected!=='overall')goHome();}
+    function update(announce=false){
+      const st=current(),g=graph(),id=activeNode(),node=g.nodes.find(n=>n.id===id),edge=activeEdge();
+      q('fc-position').textContent=st.finished?'Complete':(selected==='overall'?'Connection ':'Step ')+(st.cursor+1)+' / '+count();
+      q('fc-current').textContent=inspection?inspection.label:selected==='overall'?names[edge.from]+' → '+names[edge.to]:node.label;
+      q('fc-detail').textContent=inspection?inspection.detail:selected==='overall'?edge.detail:node.detail;
+      q('fc-detail').title=q('fc-detail').textContent;
+      play.textContent=st.finished?'Replay':st.playing?'Pause':'Play';
+      play.setAttribute('aria-label',st.finished?'Replay this flow':st.playing?'Pause animation':'Play animation');
+      next.textContent=st.cursor===count()-1?'Finish':'Next step →';next.disabled=st.finished;
+      const visited=new Set(selected==='overall'?g.edges.slice(0,st.finished?g.edges.length:st.cursor).flatMap(e=>[e.from,e.to]):st.finished?g.trace:g.trace.slice(0,st.cursor));
+      for(const n of g.nodes){
+        const el=nodeEls.get(n.id);if(!el)continue;
+        el.setAttribute('class','fc-node '+n.kind+(visited.has(n.id)?' visited':'')+(!st.finished&&(n.id===id||(selected==='overall'&&n.id===edge.to))?' current':''));
+        if(!st.finished&&n.id===id)el.setAttribute('aria-current','step');else el.removeAttribute('aria-current');
+      }
+      edgeEls.forEach(({edge:e,path})=>{
+        const at=selected==='overall'?g.edges.indexOf(e):g.trace.indexOf(e.from),follow=selected==='overall'||at>=0&&g.trace[at+1]===e.to;
+        path.setAttribute('class','fc-edge'+(e.related?' related':'')+(follow&&(st.finished||at<st.cursor)?' visited':'')+(!st.finished&&e===edge?' active':''));
+      });
+      if(announce)q('fc-live').textContent=names[selected]+'. '+q('fc-position').textContent+'. '+q('fc-current').textContent;
+      movePacket();
+    }
+    function dimensions(n){const size=selected==='overall'?{w:178,h:60}:n.kind==='terminal'?{w:156,h:56}:n.kind==='decision'?{w:208,h:108}:{w:194,h:n.target?84:78};return{...size,kind:n.kind};}
+    function layout(){
+      const g=graph();positions=new Map();
+      if(selected==='overall'){for(const n of g.nodes)positions.set(n.id,{x:n.x,y:n.y,...dimensions(n)});return;}
+      if(selected==='authentication'){
+        const loc={start:[130,100],login:[380,100],allowed:[630,100],session:[880,100],use:[1130,100],denied:[630,232],'logout-question':[1130,342],logout:[880,342],'signed-out':[630,342],'refresh-question':[1130,486],refresh:[880,486]};
+        for(const n of g.nodes)positions.set(n.id,{x:loc[n.id][0],y:loc[n.id][1],...dimensions(n)});return;
+      }
+      g.trace.forEach((id,i)=>{const row=Math.floor(i/5),col=row%2?4-i%5:i%5;const n=g.nodes.find(n=>n.id===id);positions.set(id,{x:130+col*250,y:100+row*280,row,col,...dimensions(n)});});
+      for(const n of g.nodes){
+        if(positions.has(n.id))continue;
+        const edge=g.edges.find(e=>e.to===n.id&&positions.has(e.from))||g.edges.find(e=>e.from===n.id&&positions.has(e.to));
+        const anchor=positions.get(edge.to===n.id?edge.from:edge.to);
+        positions.set(n.id,{x:anchor.x,y:anchor.y+132,row:anchor.row,col:anchor.col,...dimensions(n)});
+      }
+    }
+    function port(p,side){if(side==='top')return{x:p.x,y:p.y-p.h/2};if(side==='bottom')return{x:p.x,y:p.y+p.h/2};const inset=p.kind==='input'?6.5:0;if(side==='left')return{x:p.x-p.w/2+inset,y:p.y};return{x:p.x+p.w/2-inset,y:p.y};}
+    function edgeRoute(e,index){
+      const a=positions.get(e.from),b=positions.get(e.to),g=graph();let points;
+      const P=(x,y)=>({x,y});
+      if(e.fromSide){points=[port(a,e.fromSide),...(e.via||[]).map(v=>P(...v)),port(b,e.toSide)];}
+      else if(selected==='authentication'&&(e.route==='return-left')){
+        if(e.from==='refresh-question')points=[port(a,'right'),P(1286,a.y),P(1286,b.y),port(b,'right')];
+        else points=[port(a,'top'),P(a.x,418),P(1258,418),P(1258,b.y),port(b,'right')];
+      }else if(e.route==='return-right'){
+        const bottom=a.y+a.h/2+24+(index%3)*7,roof=b.y-b.h/2-24;
+        points=[port(a,'bottom'),P(a.x,bottom),P(12+(index%3)*8,bottom),P(12+(index%3)*8,roof),P(b.x,roof),port(b,'top')];
+      }else if(g.trace.indexOf(e.to)===g.trace.indexOf(e.from)+1&&g.trace.includes(e.from)&&a.y!==b.y){
+        const rail=Math.max(a.x+a.w/2,b.x+b.w/2)+32;
+        points=[port(a,'right'),P(rail,a.y),P(rail,b.y),port(b,'right')];
+      }else if(Math.abs(a.y-b.y)<1){const right=b.x>a.x;points=[port(a,right?'right':'left'),port(b,right?'left':'right')];}
+      else if(Math.abs(a.x-b.x)<1){const down=b.y>a.y;points=[port(a,down?'bottom':'top'),port(b,down?'top':'bottom')];}
+      else{
+        const down=b.y>a.y,p1=port(a,down?'bottom':'top'),p2=port(b,down?'top':'bottom'),mid=(p1.y+p2.y)/2;
+        points=[p1,P(p1.x,mid),P(p2.x,mid),p2];
+      }
+      // Remove zero-length legs; keep arrowheads and animation paths deterministic.
+      points=points.filter((p,i)=>!i||p.x!==points[i-1].x||p.y!==points[i-1].y);
+      let best=[points[0],points[1]],length=-1;
+      for(let i=1;i<points.length;i++){const n=Math.abs(points[i].x-points[i-1].x)+Math.abs(points[i].y-points[i-1].y);if(n>length){length=n;best=[points[i-1],points[i]];}}
+      const horizontal=best[0].y===best[1].y;
+      let label={x:(best[0].x+best[1].x)/2+(horizontal?0:9),y:(best[0].y+best[1].y)/2+(horizontal?-7:4),anchor:horizontal?'middle':'start'};
+      if(e.label==='Yes'||e.label==='No'){const p=points[0],p2=points[1];label={x:p.x+(p.x===p2.x?10:(p2.x>p.x?18:-18)),y:p.y+(p.x===p2.x?(p2.y>p.y?19:-15):-9),anchor:p.x===p2.x?'start':'middle'};}
+      if(e.labelPos)label=e.labelPos;
+      return{points,label,d:points.map((p,i)=>(i?'L ':'M ')+p.x+' '+p.y).join(' ')};
+    }
+    const measureCanvas=document.createElement('canvas'),measure=measureCanvas.getContext('2d');
+    function wrapText(text,width,size){
+      if(measure)measure.font='550 '+size+'px system-ui';
+      const measureWidth=s=>measure?measure.measureText(s).width:s.length*size*.54;
+      const lines=[];let line='';
+      for(const word of text.split(/\s+/)){const candidate=line?line+' '+word:word;if(line&&measureWidth(candidate)>width){lines.push(line);line=word;}else line=candidate;}
+      if(line)lines.push(line);return lines;
+    }
+    function draw(){
+      const g=graph();layout();nodeEls=new Map();edgeEls=[];svg.replaceChildren();
+      const title=make('title',{id:'fc-title'});title.textContent=flowMap.get(selected).label;svg.append(title);
+      const desc=make('desc',{id:'fc-description'});desc.textContent=selected==='overall'?'All 21 TicketLedger modules and their relationships. Click a module or choose it from the dropdown to open its flow. Dotted arrows indicate related or optional workflows.':'Animated flowchart. Yes and No label decision branches. Nodes marked Open flow open their own module. Use Back to return.';svg.append(desc);
+      const defs=make('defs'),marker=make('marker',{id:'fc-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:5,markerHeight:5,orient:'auto'});
+      marker.append(make('path',{d:'M 1 1 L 9 5 L 1 9 Z',fill:'var(--edge)'}));defs.append(marker);svg.append(defs);
+      if(selected==='overall'){
+        for(const [label,y] of [['ACCOUNT & ACCESS',14],['EVENTS & TICKETS',232],['BEHAVIOR & ANALYTICS',442]])svg.append(textEl(label,{x:21,y,class:'lane-label'}));
+        svg.append(make('line',{x1:21,y1:420,x2:1179,y2:420,class:'lane-line'}));
+      }
+      const points=[];
+      g.edges.forEach((e,i)=>{const route=edgeRoute(e,i),path=make('path',{d:route.d,class:'fc-edge','marker-end':'url(#fc-arrow)'});svg.append(path);edgeEls.push({edge:e,path,points:route.points});points.push(...route.points);if(e.label)svg.append(textEl(e.label,{x:route.label.x,y:route.label.y,'text-anchor':route.label.anchor,class:'fc-edge-label'}));});
+      for(const n of g.nodes){
+        const p=positions.get(n.id),x=p.x-p.w/2,y=p.y-p.h/2;
+        points.push({x:x-16,y:y-16},{x:x+p.w+16,y:y+p.h+16});
+        const el=make('g',{class:'fc-node '+n.kind,'data-node':n.id,role:n.target?'button':'group','aria-label':n.target?'Open '+flowMap.get(n.target).label+' workflow':n.label});
+        const tip=make('title');tip.textContent=n.label+(n.target?' — Open flow':'')+'. '+n.detail;el.append(tip);
+        let shape;
+        if(n.kind==='terminal')shape=make('ellipse',{cx:p.x,cy:p.y,rx:p.w/2,ry:p.h/2});
+        else if(n.kind==='decision')shape=make('polygon',{points:p.x+','+y+' '+(x+p.w)+','+p.y+' '+p.x+','+(y+p.h)+' '+x+','+p.y});
+        else if(n.kind==='input')shape=make('polygon',{points:(x+13)+','+y+' '+(x+p.w)+','+y+' '+(x+p.w-13)+','+(y+p.h)+' '+x+','+(y+p.h)});
+        else shape=make('rect',{x,y,width:p.w,height:p.h,rx:2});
+        shape.setAttribute('class','shape');el.append(shape);
+        const innerW=p.w*(n.kind==='decision'?.6:n.kind==='terminal'?.8:.87),size=15,lines=wrapText(n.label,innerW,size),lineHeight=17;
+        const offset=n.target?7:0,label=make('text',{x:p.x,y:p.y-(lines.length-1)*lineHeight/2-offset,'text-anchor':'middle','dominant-baseline':'central',class:'node-label'});
+        lines.forEach((line,i)=>{const span=make('tspan',{x:p.x,dy:i?lineHeight:0});span.textContent=line;label.append(span);});el.append(label);
+        if(n.target){
+          el.setAttribute('tabindex','0');el.setAttribute('data-target',n.target);
+          el.append(textEl('Open flow ↗',{x:p.x,y:p.y+(lines.length-1)*lineHeight/2+15,'text-anchor':'middle',class:'node-open'}));
+          el.addEventListener('click',()=>openFlow(n.target,{fromNode:n.id,focus:true}));
+          el.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openFlow(n.target,{fromNode:n.id,focus:true});}});
+        }else{el.addEventListener('click',()=>{inspection=n;current().playing=false;update(true);});}
+        svg.append(el);nodeEls.set(n.id,el);
+      }
+      halo=make('circle',{r:10,class:'fc-halo','aria-hidden':'true'});packet=make('circle',{r:4,class:'fc-packet','aria-hidden':'true'});svg.append(halo,packet);
+      const minX=Math.min(...points.map(p=>p.x))-16,maxX=Math.max(...points.map(p=>p.x))+16,minY=selected==='overall'?-4:Math.min(...points.map(p=>p.y))-16,maxY=Math.max(...points.map(p=>p.y))+30;
+      bounds={x:minX,y:minY,w:maxX-minX,h:maxY-minY};fit();update();
+    }
+    function applyCamera(){svg.setAttribute('viewBox',[camera.x,camera.y,camera.w,camera.h].join(' '));q('zoom-level').textContent=Math.round(zoom*100)+'%';q('zoom-out').disabled=zoom<=.61;q('zoom-in').disabled=zoom>=4.99;}
+    function fit(){camera={...bounds};zoom=1;applyCamera();}
+    function zoomBy(factor,client){
+      const value=Math.max(.6,Math.min(5,zoom*factor)),ratio=zoom/value;
+      const center=client?clientToDiagram(client.x,client.y):{x:camera.x+camera.w/2,y:camera.y+camera.h/2};
+      camera={x:center.x+(camera.x-center.x)*ratio,y:center.y+(camera.y-center.y)*ratio,w:camera.w*ratio,h:camera.h*ratio};zoom=value;applyCamera();
+    }
+    function clientToDiagram(x,y){const r=svg.getBoundingClientRect(),scale=Math.min(r.width/camera.w,r.height/camera.h);return{x:camera.x+(x-r.left-(r.width-camera.w*scale)/2)/scale,y:camera.y+(y-r.top-(r.height-camera.h*scale)/2)/scale};}
+    function movePacket(){
+      if(!packet)return;
+      const st=current(),id=activeNode(),p=positions.get(id),edge=activeEdge();if(!p)return;
+      let x=p.x,y=p.y-p.h/2;
+      if(!reduced.matches&&st.phase>dwell&&edge){const item=edgeEls.find(v=>v.edge===edge);if(item){const t=Math.min(1,(st.phase-dwell)/travel),ease=t*t*(3-2*t),point=item.path.getPointAtLength(item.path.getTotalLength()*ease);x=point.x;y=point.y;}}
+      for(const el of [packet,halo]){el.setAttribute('cx',x);el.setAttribute('cy',y);el.style.display=st.finished?'none':'';}
+    }
+    function advance(announce=false){const st=current();inspection=null;if(st.cursor<count()-1){st.cursor++;st.phase=0;}else{st.finished=true;st.playing=false;st.phase=0;}update(announce);}
+    function tick(time){const dt=last?Math.min(80,time-last):0;last=time;if(current().playing&&!current().finished&&!document.hidden){const st=current();st.phase+=dt;if(st.phase>=(activeEdge()?dwell+travel:dwell))advance();movePacket();}requestAnimationFrame(tick);}
+    back.addEventListener('click',goBack);
+    q('brand-home').addEventListener('click',goHome);
+    select.addEventListener('change',()=>{if(select.value==='overall')goHome();else if(select.value!==selected)openFlow(select.value,{focus:true});});
+    play.addEventListener('click',()=>{const st=current();inspection=null;if(st.finished){st.cursor=0;st.phase=0;st.finished=false;}st.playing=!st.playing;last=0;update(true);});
+    next.addEventListener('click',()=>{current().playing=false;advance(true);});
+    q('zoom-in').addEventListener('click',()=>zoomBy(1.25));q('zoom-out').addEventListener('click',()=>zoomBy(.8));q('fit').addEventListener('click',fit);
+    svg.addEventListener('pointerdown',event=>{if(event.button!==0||event.target.closest('.fc-node'))return;const r=svg.getBoundingClientRect();drag={id:event.pointerId,x:event.clientX,y:event.clientY,camera:{...camera},scale:Math.min(r.width/camera.w,r.height/camera.h)};svg.setPointerCapture(event.pointerId);svg.classList.add('is-dragging');});
+    svg.addEventListener('pointermove',event=>{if(!drag||event.pointerId!==drag.id)return;camera.x=drag.camera.x-(event.clientX-drag.x)/drag.scale;camera.y=drag.camera.y-(event.clientY-drag.y)/drag.scale;applyCamera();});
+    const endDrag=()=>{drag=null;svg.classList.remove('is-dragging');};svg.addEventListener('pointerup',endDrag);svg.addEventListener('pointercancel',endDrag);svg.addEventListener('lostpointercapture',endDrag);
+    svg.addEventListener('wheel',event=>{if(event.ctrlKey||event.metaKey)return;event.preventDefault();zoomBy(event.deltaY<0?1.12:1/1.12,{x:event.clientX,y:event.clientY});},{passive:false});
+    reduced.addEventListener('change',()=>{if(reduced.matches){current().playing=false;update();}});
+    document.addEventListener('visibilitychange',()=>{last=0;});
+    // SVG viewBox scaling follows both viewport dimensions automatically. No page scrolling or auto-panning.
+    openFlow('overall',{root:true});requestAnimationFrame(tick);
+  })();
+  </script>
+</body>
+</html>

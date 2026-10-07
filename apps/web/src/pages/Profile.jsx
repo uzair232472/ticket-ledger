@@ -55,6 +55,23 @@ import {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const POLYGON_AMOY_CHAIN_ID = '0x13882'; // 80002 in hex
 
+/** Uploaded files are served by the API; Cloudinary URLs are already absolute. */
+const mediaUrl = (url) => (!url ? null : /^https?:|^data:/.test(url) ? url : `${API_URL}${url}`);
+
+const INTENT_TIER_STYLE = {
+  PURCHASED: 'bg-emerald-600 text-white',
+  HIGH: 'bg-emerald-100 text-emerald-800',
+  MODERATE: 'bg-teal-100 text-teal-800',
+  LOW: 'bg-slate-200 text-slate-700',
+};
+/** "3 views · seat held · checkout started" from an event's intent signals. */
+const intentSignals = (sig = {}) => [
+  sig.views ? `${sig.views} view${sig.views === 1 ? '' : 's'}` : null,
+  sig.seatActions ? 'seat held' : null,
+  sig.checkoutsStarted ? 'checkout started' : null,
+  sig.abandoned ? 'checkout abandoned' : null,
+].filter(Boolean).join(' · ') || 'No activity yet';
+
 export default function Profile() {
   const dialog = useDialog();
   const { token, user: authUser } = useAuth();
@@ -78,13 +95,16 @@ export default function Profile() {
   const [recentTickets, setRecentTickets] = useState(null); // overview: latest tickets (null while loading)
 
   // Form states matching Eventfrog fields
-  const [salutation, setSalutation] = useState(localStorage.getItem('tl_salutation') || 'Mr');
-  const [organisation, setOrganisation] = useState(localStorage.getItem('tl_organisation') || '');
+  const [salutation, setSalutation] = useState('Mr');
+  const [organisation, setOrganisation] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('Lahore');
-  const [avatarUrl, setAvatarUrl] = useState(localStorage.getItem('tl_avatar') || null);
+  // Stored with the account on the server (it used to live in shared browser storage, so the next person to
+  // sign in on the same browser saw it). Those old keys are removed on load.
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const fileInputRef = useRef(null);
 
   // Notification toggles
@@ -101,6 +121,8 @@ export default function Profile() {
 
   // Behavioral profile & AI intent score (Customer telemetry)
   const [behaviorProfile, setBehaviorProfile] = useState(null);
+  // 'all' = overall intent across events, otherwise one event id
+  const [intentEvent, setIntentEvent] = useState('all');
   const [loadingBehavior, setLoadingBehavior] = useState(false);
 
   // Load profile from API
@@ -122,6 +144,9 @@ export default function Profile() {
         setLastName(nameParts.slice(1).join(' ') || '');
         setPhone(p.phone || '');
         setCity(p.city || 'Lahore');
+        setSalutation(p.salutation || 'Mr');
+        setOrganisation(p.organisation || '');
+        setAvatarUrl(mediaUrl(p.avatarUrl));
 
         setNotifications({
           emailNotifications: p.emailNotifications ?? true,
@@ -170,6 +195,15 @@ export default function Profile() {
   };
 
   useEffect(() => {
+    // Drop the old shared, per-browser profile extras so they can't show up for another account
+    try {
+      ['tl_avatar', 'tl_salutation', 'tl_organisation'].forEach((k) => localStorage.removeItem(k));
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+
+  useEffect(() => {
     if (token) {
       loadProfile();
       loadHistory();
@@ -178,14 +212,31 @@ export default function Profile() {
   }, [token]);
 
   // Handle Avatar selection
-  const handleAvatarFile = (file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAvatarUrl(reader.result);
-      localStorage.setItem('tl_avatar', reader.result);
-    };
-    reader.readAsDataURL(file);
+  const handleAvatarFile = async (file) => {
+    if (!file || avatarBusy) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setMessage({ text: 'Choose a PNG, JPG or WebP image.', type: 'error' });
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setMessage({ text: 'The picture must be 2 MB or smaller.', type: 'error' });
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      const body = new FormData();
+      body.append('avatar', file);
+      const res = await fetch(`${API_URL}/api/users/avatar`, { method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Upload failed');
+      setAvatarUrl(mediaUrl(data.data.avatarUrl));
+      setMessage({ text: 'Profile picture updated.', type: 'success' });
+    } catch (err) {
+      setMessage({ text: err.message, type: 'error' });
+    } finally {
+      setAvatarBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   // Handle Profile Update
@@ -197,9 +248,6 @@ export default function Profile() {
     // Combine First and Last Name
     const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
 
-    // Persist UI extras
-    localStorage.setItem('tl_salutation', salutation);
-    localStorage.setItem('tl_organisation', organisation);
 
     try {
       const res = await fetch(`${API_URL}/api/users/profile`, {
@@ -212,6 +260,8 @@ export default function Profile() {
           name: fullName,
           phone,
           city,
+          salutation,
+          organisation: organisation.trim(),
         }),
       });
       const data = await res.json();
@@ -502,7 +552,7 @@ export default function Profile() {
                       type="file"
                       ref={fileInputRef}
                       className="hidden"
-                      accept="image/*"
+                      accept="image/png,image/jpeg,image/webp"
                       onChange={(e) => handleAvatarFile(e.target.files?.[0])}
                     />
 
@@ -513,7 +563,7 @@ export default function Profile() {
                           alt="Avatar Preview"
                           className="w-16 h-16 rounded-full object-cover border-2 border-[#008459] shadow-sm"
                         />
-                        <span className="text-xs font-bold text-[#008459] hover:underline">Change image</span>
+                        <span className="text-xs font-bold text-[#008459] hover:underline">{avatarBusy ? 'Uploading…' : 'Change image'}</span>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -995,22 +1045,40 @@ export default function Profile() {
                 {(() => {
                   const summary = behaviorProfile?.summary || {};
                   const scores = behaviorProfile?.scores || {};
-                  const intentScore = scores.purchaseIntent?.score ?? summary.intentScore ?? 45;
-                  const intentLevel = scores.purchaseIntent?.tier ?? summary.intentLevel ?? (intentScore > 70 ? 'HIGH' : intentScore > 40 ? 'MEDIUM' : 'NORMAL');
-                  const totalActions = behaviorProfile?.totalEventsTracked ?? summary.totalActions ?? (behaviorProfile?.timeline?.length || 0);
-                  const topCategory = summary.categoryAffinity?.[0]?.category || summary.topCategory || 'PSL Cricket';
+                  const perEvent = behaviorProfile?.intentByEvent || [];
+                  const picked = intentEvent === 'all' ? null : perEvent.find((e) => e.eventId === intentEvent) || null;
+                  const intentScore = picked ? picked.score : scores.purchaseIntent?.score ?? summary.intentScore ?? 0;
+                  const intentLevel = picked ? picked.tier : scores.purchaseIntent?.tier ?? summary.intentLevel ?? 'LOW';
+                  const intentNote = picked
+                    ? (picked.purchased ? 'Tickets bought for this event' : intentSignals(picked.signals))
+                    : scores.purchaseIntent?.description || 'Across all events you interacted with';
+                  const totalActions = picked ? picked.actions : behaviorProfile?.totalEventsTracked ?? summary.totalActions ?? (behaviorProfile?.timeline?.length || 0);
+                  const topCategory = summary.categoryAffinity?.[0]?.category || summary.topCategory || '';
                   const riskLevel = scores.fraudRisk?.level || summary.riskLevel || 'LOW_RISK';
 
                   return (
+                    <>
+                    {/* Which score to show: the overall one, or one event's */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                      <label htmlFor="intent-event" className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Intent for</label>
+                      <select
+                        id="intent-event"
+                        value={picked ? intentEvent : 'all'}
+                        onChange={(e) => setIntentEvent(e.target.value)}
+                        className="w-full sm:w-auto sm:min-w-[320px] px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#008459]"
+                      >
+                        <option value="all">All events (overall) · {scores.purchaseIntent?.score ?? 0}/100</option>
+                        {perEvent.map((e) => (
+                          <option key={e.eventId} value={e.eventId}>{e.eventName} · {e.score}/100</option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {/* Card 1: Intent Score */}
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[10px] uppercase font-bold text-slate-400">AI Intent</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${intentLevel === 'HIGH'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-teal-100 text-teal-800'
-                            }`}>
+                          <span className="text-[10px] uppercase font-bold text-slate-400">{picked ? 'Event intent' : 'Overall intent'}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${INTENT_TIER_STYLE[intentLevel] || INTENT_TIER_STYLE.LOW}`}>
                             {intentLevel}
                           </span>
                         </div>
@@ -1020,15 +1088,17 @@ export default function Profile() {
                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
                           <div
                             className="bg-[#008459] h-full rounded-full transition-all"
-                            style={{ width: `${Math.min(100, Math.max(10, intentScore))}%` }}
+                            style={{ width: `${Math.min(100, Math.max(2, intentScore))}%` }}
                           />
                         </div>
-                        <p className="text-[10px] text-slate-500">Checkout completion readiness</p>
+                        <p className="text-[10px] text-slate-500 truncate" title={picked ? picked.eventName : undefined}>
+                          {picked ? <><strong className="text-slate-700">{picked.eventName}</strong> · {intentNote}</> : intentNote}
+                        </p>
                       </div>
 
                       {/* Card 2: Actions Tracked */}
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Session Actions</span>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">{picked ? 'Actions on this event' : 'Actions tracked'}</span>
                         <div className="text-2xl font-black text-slate-900 font-mono">
                           {totalActions}
                         </div>
@@ -1039,9 +1109,9 @@ export default function Profile() {
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                         <span className="text-[10px] uppercase font-bold text-slate-400 block">Top Affinity</span>
                         <div className="text-sm font-bold text-slate-900 truncate">
-                          {topCategory.replace('_', ' ')}
+                          {topCategory ? topCategory.replace(/_/g, ' ') : '—'}
                         </div>
-                        <p className="text-[10px] text-slate-500">Highest viewed event genre</p>
+                        <p className="text-[10px] text-slate-500">Event category you interact with most</p>
                       </div>
 
                       {/* Card 4: Bot & Security Status */}
@@ -1054,6 +1124,39 @@ export default function Profile() {
                         <p className="text-[10px] text-slate-500">Anti-scalping score normal</p>
                       </div>
                     </div>
+
+                    {/* Intent by event: one score per event, click to focus it */}
+                    {perEvent.length > 0 && (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">Intent by event</h3>
+                        <ul className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden">
+                          {perEvent.map((e) => (
+                            <li key={e.eventId}>
+                              <button
+                                type="button"
+                                onClick={() => setIntentEvent(e.eventId === intentEvent ? 'all' : e.eventId)}
+                                aria-pressed={e.eventId === intentEvent}
+                                className={`w-full p-3 flex items-center gap-3 text-left transition ${e.eventId === intentEvent ? 'bg-emerald-50' : 'bg-white hover:bg-slate-50'}`}
+                              >
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-xs font-bold text-slate-900 truncate">{e.eventName}</span>
+                                  <span className="block text-[10px] text-slate-500 truncate">
+                                    {[e.eventDate && new Date(e.eventDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }), e.city, e.purchased ? 'Tickets bought' : intentSignals(e.signals)].filter(Boolean).join(' · ')}
+                                  </span>
+                                </span>
+                                <span className="w-24 hidden sm:block bg-slate-200 h-1.5 rounded-full overflow-hidden" aria-hidden="true">
+                                  <span className="block bg-[#008459] h-full rounded-full" style={{ width: `${Math.max(2, e.score)}%` }} />
+                                </span>
+                                <span className="w-14 text-right text-xs font-black font-mono text-slate-900">{e.score}</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${INTENT_TIER_STYLE[e.tier] || INTENT_TIER_STYLE.LOW}`}>{e.tier}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="text-[10px] text-slate-400">Rule-based: views, seat holds and checkouts for each event; events you bought tickets for score 100. The overall score is the average across events, weighted by your activity on each.</p>
+                      </div>
+                    )}
+                    </>
                   );
                 })()}
 
@@ -1069,7 +1172,7 @@ export default function Profile() {
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden text-xs">
-                      {behaviorProfile.timeline.slice(0, 10).map((item, idx) => (
+                      {behaviorProfile.timeline.filter((item) => intentEvent === 'all' || item.eventId === intentEvent).slice(0, 10).map((item, idx) => (
                         <div key={idx} className="p-3 bg-white hover:bg-slate-50 flex items-center justify-between gap-3 transition">
                           <div className="flex items-center gap-2.5">
                             <div className="w-7 h-7 rounded-lg bg-slate-100 text-[#008459] flex items-center justify-center font-bold shrink-0">

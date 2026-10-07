@@ -70,6 +70,7 @@ import ComingSoon from './pages/ComingSoon';
 import Legal from './pages/Legal';
 import About from './pages/About';
 import Contact from './pages/Contact';
+import WorkflowExplorer from './pages/WorkflowExplorer';
 import './components/ui/selects.css';
 import SelectEnhancer from './components/ui/SelectEnhancer';
 import SmoothScroll from './components/motion/SmoothScroll';
@@ -152,6 +153,8 @@ export default function App() {
               <Route path="/privacy" element={<Legal doc="privacy" />} />
               <Route path="/about" element={<About />} />
               <Route path="/contact" element={<Contact />} />
+              {/* Workflow explorer: overall flow and every module's flowchart */}
+              <Route path="/workflow" element={<WorkflowExplorer />} />
               <Route path="/wishlist" element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
               <Route path="/events/:id" element={<EventDetails />} />
               <Route path="/events/:id/seats" element={<SeatMap />} />
