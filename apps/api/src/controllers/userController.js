@@ -2,6 +2,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { readRefreshCookie, sha256 } from '../services/tokenService.js';
 import prisma from '../config/prisma.js';
+import { withPasswordRules } from '../config/auth.js';
 import { uploadFile } from '../utils/storage.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
@@ -193,11 +194,7 @@ export const updateProfile = async (req, res) => {
 const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, 'Enter your current password'),
-    newPassword: z
-      .string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/[A-Za-z]/, 'Password must contain at least 1 letter')
-      .regex(/\d/, 'Password must contain at least 1 number'),
+    newPassword: withPasswordRules(z.string()),
   })
   .refine((v) => v.currentPassword !== v.newPassword, { message: 'Choose a password different from your current one.', path: ['newPassword'] });
 

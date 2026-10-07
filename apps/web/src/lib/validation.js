@@ -18,12 +18,16 @@ export const validatePhone = (phone) => {
   return /^\+923\d{9}$/.test(normalized) ? null : 'Phone must be a Pakistani mobile number (+923XXXXXXXXX)';
 };
 
-export const validatePassword = (password) => {
-  if (password.length < 8) return 'Password must be at least 8 characters';
-  if (!/[A-Za-z]/.test(password)) return 'Password must contain at least 1 letter';
-  if (!/\d/.test(password)) return 'Password must contain at least 1 number';
-  return null;
-};
+// Same rule as the API (apps/api/src/config/auth.js PASSWORD_RULES)
+export const PASSWORD_RULES = [
+  { test: (v) => v.length >= 8, label: 'At least 8 characters', message: 'Password must be at least 8 characters' },
+  { test: (v) => /[A-Z]/.test(v), label: 'An uppercase letter', message: 'Password must contain at least 1 uppercase letter' },
+  { test: (v) => /\d/.test(v), label: 'A number', message: 'Password must contain at least 1 number' },
+  { test: (v) => /[^A-Za-z0-9\s]/.test(v), label: 'A special character (@ # $ % !)', message: 'Password must contain at least 1 special character (e.g. @ # $ % !)' },
+];
+export const PASSWORD_HINT = '8+ chars, A-Z, number & symbol';
+
+export const validatePassword = (password) => PASSWORD_RULES.find((r) => !r.test(password || ''))?.message || null;
 
 export const validateOtp = (code) => (/^\d{6}$/.test(code) ? null : 'Enter all 6 digits of the code');
 

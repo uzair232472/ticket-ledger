@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, User, Phone, Users, Building2, RefreshCw } from 'lucide-react';
 import AuthShell, { Alert, Field, SubmitButton } from '../components/auth/AuthShell';
 import { getHomeRoute } from '../lib/session';
-import { validateName, validateEmail, validatePhone, validatePassword } from '../lib/validation';
+import { validateName, validateEmail, validatePhone, validatePassword, PASSWORD_HINT } from '../lib/validation';
 
 const ACCOUNT_TYPES = [
   { id: 'customer', label: 'Customer', description: 'Buy and manage tickets', icon: Users },
@@ -150,7 +150,7 @@ export default function Signup() {
           <Field label="Email address" icon={Mail} type="email" name="email" autoComplete="email" value={form.email} onChange={update} placeholder="name@gmail.com" error={fieldErrors.email} />
           <Field label="Mobile number" icon={Phone} type="tel" name="phone" autoComplete="tel" inputMode="tel" required value={form.phone} onChange={update} placeholder="+92 300 1234567" error={fieldErrors.phone} />
           <div className="tl-auth-pair">
-            <Field label="Password" hint={editingPending ? '(leave blank to keep)' : undefined} icon={Lock} type="password" name="password" autoComplete="new-password" value={form.password} onChange={update} placeholder="8+ chars, letter & number" error={fieldErrors.password} />
+            <Field label="Password" hint={editingPending ? '(leave blank to keep)' : undefined} icon={Lock} type="password" name="password" autoComplete="new-password" value={form.password} onChange={update} placeholder={PASSWORD_HINT} error={fieldErrors.password} />
             <Field label="Confirm password" icon={Lock} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={update} placeholder="Repeat password" error={fieldErrors.confirmPassword} />
           </div>
 

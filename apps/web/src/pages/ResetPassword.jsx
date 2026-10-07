@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Lock, Mail, KeyRound, RefreshCw } from 'lucide-react';
 import AuthShell, { Alert, Field, OtpInput, SubmitButton } from '../components/auth/AuthShell';
-import { validateEmail, validateOtp, validatePassword } from '../lib/validation';
+import { validateEmail, validateOtp, validatePassword, PASSWORD_HINT } from '../lib/validation';
 
 const RESEND_SECONDS = 60;
 
@@ -106,7 +106,7 @@ export default function ResetPassword() {
           <OtpInput value={code} onChange={setCode} disabled={loading} />
           {fieldErrors.code && <p className="text-[11px] text-rose-600 mt-1">{fieldErrors.code}</p>}
         </div>
-        <Field label="New Password" icon={Lock} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="8+ chars, letter & number" error={fieldErrors.password} />
+        <Field label="New Password" icon={Lock} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={PASSWORD_HINT} error={fieldErrors.password} />
         <Field label="Confirm New Password" icon={Lock} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} error={fieldErrors.confirmPassword} />
 
         <SubmitButton loading={loading} loadingText="Saving...">
