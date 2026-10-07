@@ -292,7 +292,7 @@ export default function Dashboard() {
             <div className="tl-hero-content">
               <div className="tl-hero-lead">
                 <p className="tl-eyebrow">Live events across Pakistan</p>
-                <h1>Your seat at every big night.</h1>
+                <h1>Trust the Ticket. Own the Moment..</h1>
                 <p>Cricket finals, concerts and festivals. Find what’s on and book your tickets in minutes.</p>
                 <div className="tl-hero-actions">
                   <Link to="/events" className="tl-btn tl-btn--green">

@@ -145,6 +145,10 @@ model User {
   otpExpiresAt       DateTime?
   isVerified         Boolean        @default(false)
   city               String?        @default("Lahore")
+  // Profile extras (per account; previously kept in the browser and shared by everyone using it)
+  avatarUrl          String?
+  salutation         String?
+  organisation       String?
   emailNotifications Boolean        @default(true)
   pushNotifications  Boolean        @default(true)
   smsNotifications   Boolean        @default(false)

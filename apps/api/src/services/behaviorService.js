@@ -238,43 +238,14 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
     }
   });
 
-  // 4. Calculate Machine Learning Intent & Fraud Scores
-  // Telemetry session representation
-  const telemetryFeatures = {
-    event_views: Math.max(counts.eventsViewed, 1),
-    seat_map_interacted: counts.seatsSelected > 0 ? 1 : 0,
-    dwell_time_seconds: Math.min(300, 30 + counts.eventsViewed * 20),
-    checkout_started: counts.checkoutsStarted > 0 ? 1 : 0,
-    past_purchases: counts.ticketsPurchased,
-    category_views: counts.categoriesViewed,
-    abandonment_ratio: counts.checkoutsStarted > 0 ? counts.abandonedCheckouts / counts.checkoutsStarted : 0,
-  };
-
-  let intentScore = 75; // Default moderate-high intent
+  // 4. Intent (rules, per event) and fraud scores
+  // Purchase intent, per event and overall (rule-based; documented in computeIntentByEvent below)
+  const intentByEvent = await computeIntentByEvent(userId);
+  const overall = overallIntent(intentByEvent, counts);
+  const intentScore = overall.score;
+  const intentClass = overall.tier;
   let fraudScore = 12; // Default normal customer
-  let intentClass = 'HIGH';
   let fraudStatus = 'LOW';
-
-  try {
-    // Request prediction from FastAPI ML service
-    const intentRes = await mlService.predictPurchaseIntent({
-      eventViews: telemetryFeatures.event_views,
-      seatMapInteracted: telemetryFeatures.seat_map_interacted,
-      dwellTimeSeconds: telemetryFeatures.dwell_time_seconds,
-      checkoutStarted: telemetryFeatures.checkout_started,
-      pastPurchases: telemetryFeatures.past_purchases,
-    });
-
-    if (intentRes && intentRes.intent_score !== undefined) {
-      intentScore = intentRes.intent_score;
-      intentClass = intentRes.intent_class || (intentScore > 65 ? 'HIGH' : intentScore > 35 ? 'MODERATE' : 'LOW');
-    }
-  } catch (mlErr) {
-    // Fallback heuristic scoring
-    const intentWeight = (counts.eventsViewed * 5) + (counts.seatsSelected * 10) + (counts.checkoutsStarted * 15) + (counts.paymentsCompleted * 20);
-    intentScore = Math.min(98, Math.max(10, intentWeight));
-    intentClass = intentScore > 65 ? 'HIGH' : intentScore > 35 ? 'MODERATE' : 'LOW';
-  }
 
   try {
     const fraudRes = await mlService.predictFraud({
@@ -302,7 +273,9 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
       purchaseIntent: {
         score: Math.round(intentScore),
         tier: intentClass,
-        description: intentScore > 65 ? 'Highly Engaged Attendee' : intentScore > 35 ? 'Browsing Customer' : 'Passive Visitor',
+        description: overall.description,
+        basis: 'rules',
+        eventsConsidered: intentByEvent.length,
       },
       fraudRisk: {
         score: Math.round(fraudScore),
@@ -316,12 +289,12 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
       intentLevel: intentClass,
       totalActions: events.length,
       riskLevel: fraudStatus === 'LOW' ? 'LOW_RISK' : fraudStatus === 'CRITICAL_BOT' ? 'CRITICAL_BOT' : 'SUSPICIOUS',
-      topCategory: events.find((e) => e.event?.name)?.event?.name || 'PSL Cricket',
-      categoryAffinity: [
-        { category: 'PSL Cricket', count: counts.eventsViewed },
-        { category: 'Music Concert', count: counts.categoriesViewed },
-      ],
+      // Event categories the user actually interacted with, most active first
+      topCategory: categoryAffinity(intentByEvent)[0]?.category || null,
+      categoryAffinity: categoryAffinity(intentByEvent),
     },
+    // One score per event the user interacted with (most recent first); the overall score above combines them
+    intentByEvent,
     timeline: events.map((ev) => ({
       id: ev.id,
       action: ev.action,
@@ -334,6 +307,118 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
     })),
   };
 };
+
+
+const INTENT_ACTIONS = {
+  view: [BEHAVIOR_ACTIONS.EVENT_VIEW],
+  seat: [BEHAVIOR_ACTIONS.SEAT_SELECTED, BEHAVIOR_ACTIONS.SEAT_LOCKED],
+  checkout: [BEHAVIOR_ACTIONS.CHECKOUT_STARTED],
+  abandon: [BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED],
+  failed: [BEHAVIOR_ACTIONS.PAYMENT_FAILED],
+  bought: [BEHAVIOR_ACTIONS.PAYMENT_COMPLETED, BEHAVIOR_ACTIONS.TICKET_PURCHASED],
+};
+const intentTier = (score, purchased) => (purchased ? 'PURCHASED' : score >= 70 ? 'HIGH' : score >= 40 ? 'MODERATE' : 'LOW');
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Purchase intent for every event the user has interacted with (rule-based, 0–100):
+ *   base 10 · +6 per view (max +24) · +20 for holding a seat (+5 more for 3+ seat actions) · +25 for starting
+ *   checkout · −10 if every checkout was abandoned · −5 after a failed payment · −10 if the last activity is
+ *   over 14 days old. Not-yet-bought events are capped at 95; an event with a paid order scores 100 (PURCHASED).
+ * Counts come from all of the user's behaviour rows (not only the latest 100), grouped by event and action.
+ */
+export async function computeIntentByEvent(userId) {
+  const [grouped, paidOrders] = await Promise.all([
+    prisma.behaviorEvent.groupBy({
+      by: ['eventId', 'action'],
+      where: { userId, eventId: { not: null } },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    }),
+    prisma.order.findMany({ where: { userId, status: 'SUCCESSFUL' }, select: { eventId: true } }),
+  ]);
+  const paid = new Set(paidOrders.map((o) => o.eventId));
+  const perEvent = new Map();
+  for (const row of grouped) {
+    const e = perEvent.get(row.eventId) || { views: 0, seatActions: 0, checkoutsStarted: 0, abandoned: 0, paymentsFailed: 0, boughtSignals: 0, actions: 0, lastActivityAt: null };
+    const n = row._count._all;
+    if (INTENT_ACTIONS.view.includes(row.action)) e.views += n;
+    else if (INTENT_ACTIONS.seat.includes(row.action)) e.seatActions += n;
+    else if (INTENT_ACTIONS.checkout.includes(row.action)) e.checkoutsStarted += n;
+    else if (INTENT_ACTIONS.abandon.includes(row.action)) e.abandoned += n;
+    else if (INTENT_ACTIONS.failed.includes(row.action)) e.paymentsFailed += n;
+    else if (INTENT_ACTIONS.bought.includes(row.action)) e.boughtSignals += n;
+    e.actions += n;
+    const at = row._max.createdAt;
+    if (at && (!e.lastActivityAt || at > e.lastActivityAt)) e.lastActivityAt = at;
+    perEvent.set(row.eventId, e);
+  }
+  for (const eventId of paid) if (!perEvent.has(eventId)) perEvent.set(eventId, { views: 0, seatActions: 0, checkoutsStarted: 0, abandoned: 0, paymentsFailed: 0, boughtSignals: 0, actions: 1, lastActivityAt: null });
+  if (!perEvent.size) return [];
+
+  const details = await prisma.event.findMany({
+    where: { id: { in: [...perEvent.keys()] } },
+    select: { id: true, name: true, type: true, city: true, date: true },
+  });
+  const byId = new Map(details.map((d) => [d.id, d]));
+
+  return [...perEvent.entries()]
+    .filter(([eventId]) => byId.has(eventId))
+    .map(([eventId, e]) => {
+      const purchased = paid.has(eventId);
+      let score = 10;
+      score += Math.min(24, e.views * 6);
+      if (e.seatActions > 0) score += 20 + (e.seatActions >= 3 ? 5 : 0);
+      if (e.checkoutsStarted > 0) score += 25;
+      if (e.abandoned > 0 && e.abandoned >= e.checkoutsStarted) score -= 10;
+      if (e.paymentsFailed > 0) score -= 5;
+      if (e.lastActivityAt && Date.now() - new Date(e.lastActivityAt).getTime() > 14 * DAY_MS) score -= 10;
+      score = purchased ? 100 : Math.max(0, Math.min(95, score));
+      const d = byId.get(eventId);
+      return {
+        eventId,
+        eventName: d.name,
+        eventType: d.type,
+        city: d.city,
+        eventDate: d.date,
+        score,
+        tier: intentTier(score, purchased),
+        purchased,
+        actions: e.actions,
+        signals: { views: e.views, seatActions: e.seatActions, checkoutsStarted: e.checkoutsStarted, abandoned: e.abandoned, paymentsFailed: e.paymentsFailed },
+        lastActivityAt: e.lastActivityAt,
+      };
+    })
+    .sort((a, b) => new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0));
+}
+
+/**
+ * Overall intent across all events: the per-event scores averaged, weighted by how much the user did on each
+ * event. With no event activity yet, a low score that rises slightly with category browsing.
+ */
+function overallIntent(perEvent, counts) {
+  let score;
+  if (perEvent.length) {
+    const weight = perEvent.reduce((sum, e) => sum + e.actions, 0) || 1;
+    score = Math.round(perEvent.reduce((sum, e) => sum + e.score * e.actions, 0) / weight);
+  } else {
+    score = Math.min(30, 10 + (counts.categoriesViewed || 0) * 4);
+  }
+  const tier = intentTier(score, false);
+  const bought = perEvent.filter((e) => e.purchased).length;
+  const engagement = tier === 'HIGH' ? 'Highly engaged attendee' : tier === 'MODERATE' ? 'Browsing customer' : 'Passive visitor';
+  const description = !perEvent.length
+    ? 'No event activity yet'
+    : bought ? `${engagement} · bought tickets for ${bought} of ${perEvent.length} event${perEvent.length === 1 ? '' : 's'}` : engagement;
+  return { score, tier, description };
+}
+
+/** Event categories by the user's activity on them, most active first. */
+function categoryAffinity(perEvent) {
+  const byType = new Map();
+  for (const e of perEvent) byType.set(e.eventType, (byType.get(e.eventType) || 0) + e.actions);
+  return [...byType.entries()].sort((a, b) => b[1] - a[1]).map(([category, count]) => ({ category, count }));
+}
 
 export default {
   BEHAVIOR_ACTIONS,
