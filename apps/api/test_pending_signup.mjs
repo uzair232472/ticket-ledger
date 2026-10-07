@@ -39,7 +39,7 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
   let firstExpiry = '';
 
   await t.test('1. Signup with a phone and a mistyped email starts a pending signup session', async () => {
-    const res = await call('POST', '/signup', { body: { name: 'Ayesha Typo', email: wrongEmail, phone, password: 'Password123', accountType: 'organizer' } });
+    const res = await call('POST', '/signup', { body: { name: 'Ayesha Typo', email: wrongEmail, phone, password: 'Password@123', accountType: 'organizer' } });
     assert.strictEqual(res.status, 201);
     assert.ok(res.pendingCookie, 'Pending signup cookie is set');
     assert.match(res.setCookie, /HttpOnly/i);
@@ -90,7 +90,7 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
     const before = await prisma.user.findUnique({ where: { email: wrongEmail } });
 
     // Resubmitting the signup form (with the original phone) updates the pending record
-    const res = await call('POST', '/signup', { cookie: pendingCookie, body: { name: 'Ayesha Fixed', email: rightEmail, phone, password: 'Password123', accountType: 'organizer' } });
+    const res = await call('POST', '/signup', { cookie: pendingCookie, body: { name: 'Ayesha Fixed', email: rightEmail, phone, password: 'Password@123', accountType: 'organizer' } });
     assert.strictEqual(res.status, 200, res.body?.message);
     assert.strictEqual(res.body.data.emailChanged, true);
     pendingCookie = res.pendingCookie || pendingCookie;
@@ -130,12 +130,12 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
 
   await t.test("8. Other accounts' phone numbers stay protected", async () => {
     // A brand-new signup cannot reuse the now-verified account's phone
-    const fresh = await call('POST', '/signup', { body: { name: 'Copy Cat', email: `copycat_${run}@example.com`, phone, password: 'Password123' } });
+    const fresh = await call('POST', '/signup', { body: { name: 'Copy Cat', email: `copycat_${run}@example.com`, phone, password: 'Password@123' } });
     assert.strictEqual(fresh.status, 409);
     assert.strictEqual(fresh.body.message, 'An account with this phone number already exists.');
 
     // A pending signup cannot take another account's phone either
-    const other = await call('POST', '/signup', { body: { name: 'Other Person', email: `other_${run}@example.com`, phone: `+92346${String(run).slice(-7)}`, password: 'Password123' } });
+    const other = await call('POST', '/signup', { body: { name: 'Other Person', email: `other_${run}@example.com`, phone: `+92346${String(run).slice(-7)}`, password: 'Password@123' } });
     assert.strictEqual(other.status, 201);
     const steal = await call('PATCH', '/pending-signup', { cookie: other.pendingCookie, body: { name: 'Other Person', email: `other_${run}@example.com`, phone, accountType: 'customer' } });
     assert.strictEqual(steal.status, 409);
@@ -159,7 +159,7 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
     assert.strictEqual(expired.status, 400);
     assert.strictEqual(expired.body.message, 'This code has expired. Please request a new one.');
 
-    const login = await call('POST', '/login', { body: { email, password: 'Password123' } });
+    const login = await call('POST', '/login', { body: { email, password: 'Password@123' } });
     const cookie = login.pendingCookie;
     const timing = await call('GET', '/pending-signup', { cookie });
     // Logging in while unverified issued a fresh code, so the timer restarted only because a new code exists

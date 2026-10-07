@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { Check, Eye, EyeOff, KeyRound } from 'lucide-react';
 import api from '../../utils/api';
+import { PASSWORD_RULES } from '../../lib/validation';
 import { useDialog } from '../ui/DialogProvider';
 
-const RULES = [
-  { test: (v) => v.length >= 8, label: 'At least 8 characters' },
-  { test: (v) => /[A-Za-z]/.test(v), label: 'A letter' },
-  { test: (v) => /\d/.test(v), label: 'A number' },
-];
+// Same rule as sign-up and password reset
+const RULES = PASSWORD_RULES;
 
 /** Password field with a show / hide toggle. */
 function PasswordInput({ id, label, value, onChange, autoComplete }) {

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, User, ScanLine, CalendarDays, RefreshCw } from 'lucide-react';
 import AuthShell, { Alert, Field, SubmitButton } from '../components/auth/AuthShell';
 import { getHomeRoute } from '../lib/session';
-import { validateName, validatePassword } from '../lib/validation';
+import { validateName, validatePassword, PASSWORD_HINT } from '../lib/validation';
 
 export default function AcceptInvite() {
   const { token } = useParams();
@@ -106,7 +106,7 @@ export default function AcceptInvite() {
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <Field label="Email Address" icon={Mail} type="email" value={invite.email} disabled readOnly />
         <Field label="Full Name" icon={User} name="name" autoComplete="name" value={form.name} onChange={update} error={fieldErrors.name} />
-        <Field label="Password" icon={Lock} type="password" name="password" autoComplete="new-password" value={form.password} onChange={update} placeholder="8+ chars, letter & number" error={fieldErrors.password} />
+        <Field label="Password" icon={Lock} type="password" name="password" autoComplete="new-password" value={form.password} onChange={update} placeholder={PASSWORD_HINT} error={fieldErrors.password} />
         <Field label="Confirm Password" icon={Lock} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={update} error={fieldErrors.confirmPassword} />
         <SubmitButton loading={loading} loadingText="Creating account...">
           <span>Accept Invite</span>

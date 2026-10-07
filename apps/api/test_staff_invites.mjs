@@ -124,7 +124,7 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
   });
 
   await t.test('6. Accepting the invite creates a GATE_STAFF account linked to the company', async () => {
-    const res = await call('POST', '/auth/accept-invite', null, { token: inviteToken, name: 'Gate Tester', password: 'Password123' });
+    const res = await call('POST', '/auth/accept-invite', null, { token: inviteToken, name: 'Gate Tester', password: 'Password@123' });
     assert.strictEqual(res.status, 201, res.body?.message);
     assert.strictEqual(res.body.data.user.role, 'GATE_STAFF');
     assert.strictEqual(res.body.data.user.companyId, orgA.company.id);
@@ -132,7 +132,7 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
     staffId = res.body.data.user.id;
     staffCookie = (res.headers.get('set-cookie') || '').match(/tl_refresh=[^;]*/)?.[0];
 
-    const reuse = await call('POST', '/auth/accept-invite', null, { token: inviteToken, name: 'Again', password: 'Password123' });
+    const reuse = await call('POST', '/auth/accept-invite', null, { token: inviteToken, name: 'Again', password: 'Password@123' });
     assert.strictEqual(reuse.status, 410, 'A used link cannot be reused');
     assert.strictEqual(reuse.body.message, 'This invite link is no longer valid. Ask the organizer to send a new one.');
   });
@@ -217,7 +217,7 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.data.staff.status, 'DEACTIVATED');
 
-    const relogin = await call('POST', '/auth/login', null, { email: staffEmail, password: 'Password123' });
+    const relogin = await call('POST', '/auth/login', null, { email: staffEmail, password: 'Password@123' });
     assert.strictEqual(relogin.status, 403);
     assert.strictEqual(relogin.body.message, 'Your account has been suspended. Contact support.');
 

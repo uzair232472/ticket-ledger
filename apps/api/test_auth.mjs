@@ -36,7 +36,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
     const res = await fetch(`${baseUrl}/signup`, json({
       name: 'New Test User',
       email: testEmail,
-      password: 'Password123',
+      password: 'Password@123',
       phone: `0300${Math.floor(1000000 + Math.random() * 9000000)}`,
       role: 'SUPER_ADMIN',
       walletAddress: uniqueWallet,
@@ -58,7 +58,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
 
   await t.test('1b. Nobody can sign up as GATE_STAFF or SUPER_ADMIN via accountType', async () => {
     const res = await fetch(`${baseUrl}/signup`, json({
-      name: 'Sneaky', email: `sneaky_${Date.now()}@example.com`, password: 'Password123', accountType: 'super_admin',
+      name: 'Sneaky', email: `sneaky_${Date.now()}@example.com`, password: 'Password@123', accountType: 'super_admin',
     }));
     assert.strictEqual(res.status, 400);
   });
@@ -66,19 +66,19 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
   await t.test('1c. Password and name rules are enforced', async () => {
     const weak = await fetch(`${baseUrl}/signup`, json({ name: 'Weak', email: `weak_${Date.now()}@example.com`, password: 'abcdefgh' }));
     assert.strictEqual(weak.status, 400);
-    const shortName = await fetch(`${baseUrl}/signup`, json({ name: 'A', email: `short_${Date.now()}@example.com`, password: 'Password123' }));
+    const shortName = await fetch(`${baseUrl}/signup`, json({ name: 'A', email: `short_${Date.now()}@example.com`, password: 'Password@123' }));
     assert.strictEqual(shortName.status, 400);
   });
 
   await t.test('2. Duplicate email gets the brief wording', async () => {
-    const res = await fetch(`${baseUrl}/signup`, json({ name: 'Duplicate Guy', email: testEmail, password: 'Password123', phone: '03112223344' }));
+    const res = await fetch(`${baseUrl}/signup`, json({ name: 'Duplicate Guy', email: testEmail, password: 'Password@123', phone: '03112223344' }));
     const body = await res.json();
     assert.strictEqual(res.status, 409);
     assert.strictEqual(body.message, 'An account with this email already exists. Try logging in.');
   });
 
   await t.test('3. Unverified login is refused with needsVerification', async () => {
-    const res = await fetch(`${baseUrl}/login`, json({ email: testEmail, password: 'Password123' }));
+    const res = await fetch(`${baseUrl}/login`, json({ email: testEmail, password: 'Password@123' }));
     const body = await res.json();
     assert.strictEqual(res.status, 403);
     assert.strictEqual(body.needsVerification, true);
@@ -109,7 +109,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
 
   await t.test('5. Five wrong attempts lock the code', async () => {
     const email = `locked_${Date.now()}@example.com`;
-    await fetch(`${baseUrl}/signup`, json({ name: 'Locked User', email, password: 'Password123', phone: '03115556677' }));
+    await fetch(`${baseUrl}/signup`, json({ name: 'Locked User', email, password: 'Password@123', phone: '03115556677' }));
     const code = getLastSentEmail().otpCode;
     const wrongCode = code === '000000' ? '111111' : '000000';
 
@@ -129,7 +129,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
   });
 
   await t.test('6. Organizer signup lands with companyStatus NONE', async () => {
-    await fetch(`${baseUrl}/signup`, json({ name: 'New Organizer', email: organizerEmail, password: 'Password123', accountType: 'organizer', phone: '03118889900' }));
+    await fetch(`${baseUrl}/signup`, json({ name: 'New Organizer', email: organizerEmail, password: 'Password@123', accountType: 'organizer', phone: '03118889900' }));
     const res = await fetch(`${baseUrl}/verify-otp`, json({ email: organizerEmail, code: getLastSentEmail().otpCode }));
     const body = await res.json();
     assert.strictEqual(res.status, 200);
@@ -189,15 +189,15 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
     const code = getLastSentEmail().otpCode; // from test 10
     assert.strictEqual(getLastSentEmail().purpose, 'RESET_PASSWORD');
 
-    const res = await fetch(`${baseUrl}/reset-password`, json({ email: testEmail, code, newPassword: 'NewPassword456' }));
+    const res = await fetch(`${baseUrl}/reset-password`, json({ email: testEmail, code, newPassword: 'NewPassword@456' }));
     assert.strictEqual(res.status, 200);
 
     const refreshAfter = await fetch(`${baseUrl}/refresh`, { method: 'POST', headers: { Cookie: customerCookie } });
     assert.strictEqual(refreshAfter.status, 401, 'Old sessions are revoked');
 
-    const oldPw = await fetch(`${baseUrl}/login`, json({ email: testEmail, password: 'Password123' }));
+    const oldPw = await fetch(`${baseUrl}/login`, json({ email: testEmail, password: 'Password@123' }));
     assert.strictEqual(oldPw.status, 401);
-    const newPw = await fetch(`${baseUrl}/login`, json({ email: testEmail, password: 'NewPassword456' }));
+    const newPw = await fetch(`${baseUrl}/login`, json({ email: testEmail, password: 'NewPassword@456' }));
     const body = await newPw.json();
     assert.strictEqual(newPw.status, 200);
     customerToken = body.data.token;

@@ -16,7 +16,7 @@ import {
   clearPendingSignupCookie,
   readPendingSignupUserId,
 } from '../services/tokenService.js';
-import { BLOCKED_STATUSES, OTP_RESEND_COOLDOWN_MS, MESSAGES } from '../config/auth.js';
+import { BLOCKED_STATUSES, OTP_RESEND_COOLDOWN_MS, MESSAGES, withPasswordRules } from '../config/auth.js';
 
 // The role is never taken from the client. Public signup can only create CUSTOMER or ORGANIZER accounts;
 // GATE_STAFF come from invites and SUPER_ADMIN from the seed script.
@@ -25,11 +25,7 @@ const ACCOUNT_TYPE_TO_ROLE = { customer: 'CUSTOMER', organizer: 'ORGANIZER' };
 // Validation Schemas (same rules as the frontend forms)
 const emailSchema = z.string().trim().toLowerCase().email('Invalid email address');
 const nameSchema = z.string().trim().min(2, 'Name must be at least 2 characters').max(50, 'Name must be at most 50 characters');
-const passwordSchema = z
-  .string()
-  .min(8, 'Password must be at least 8 characters')
-  .regex(/[A-Za-z]/, 'Password must contain at least 1 letter')
-  .regex(/\d/, 'Password must contain at least 1 number');
+const passwordSchema = withPasswordRules(z.string());
 const codeSchema = z.string().regex(/^\d{6}$/, 'The code must be exactly 6 digits');
 
 // Accepts 03XXXXXXXXX or +92 3XX XXXXXXX (spaces/dashes allowed) and normalizes to +923XXXXXXXXX

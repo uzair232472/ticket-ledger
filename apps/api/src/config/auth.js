@@ -41,3 +41,14 @@ export const MESSAGES = {
   INVITE_NOT_OWN_EVENT: 'You can only invite staff for your own events.',
   COMPANY_NOT_APPROVED: 'Your company must be approved before you can create events.',
 };
+
+// Password rule for every place a password is set (sign-up, reset, staff invite, change password).
+// Keep in sync with apps/web/src/lib/validation.js.
+export const PASSWORD_RULES = [
+  { test: (v) => v.length >= 8, message: 'Password must be at least 8 characters' },
+  { test: (v) => /[A-Z]/.test(v), message: 'Password must contain at least 1 uppercase letter' },
+  { test: (v) => /\d/.test(v), message: 'Password must contain at least 1 number' },
+  { test: (v) => /[^A-Za-z0-9\s]/.test(v), message: 'Password must contain at least 1 special character (e.g. @ # $ % !)' },
+];
+/** Adds the password rules to a zod string schema. */
+export const withPasswordRules = (schema) => PASSWORD_RULES.reduce((s, r) => s.refine(r.test, r.message), schema);
