@@ -33,6 +33,11 @@ const ticketView = (t) => t && {
   type: t.seat?.tier?.name || 'Ticket',
   seat: seatLabel(t.seat),
   holder: firstName(t.user?.name),
+  holderName: (t.user?.name || '').trim() || 'Guest',
+  // Short code printed under the QR (TL-XXXX-XXXX), or the start of the ticket id
+  code: t.manualCode || `TL-${String(t.id).slice(0, 8).toUpperCase()}`,
+  checkedInAt: t.checkedInAt || null,
+  gate: t.gate || null,
   event: t.event?.name,
 };
 

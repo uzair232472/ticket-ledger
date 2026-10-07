@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import {
-  AlertTriangle, ArrowLeft, Camera, ShieldOff, CheckCircle2, CloudOff, CloudUpload, Keyboard, MapPin, RefreshCw, ScanLine, ShieldCheck, Wifi, X, XCircle,
+  AlertTriangle, ArrowLeft, Armchair, Camera, Check, ChevronRight, Clock, ShieldOff, CheckCircle2, CloudOff, CloudUpload, ImageUp, Info, Keyboard, MapPin,
+  RefreshCw, ScanLine, ShieldCheck, Tag, Ticket, User, Users, Wifi, X,
 } from 'lucide-react';
 import api from '../utils/api';
 import { API_URL } from '../lib/session';
 import { useAuth } from '../context/AuthContext';
 import QrCamera from '../components/scanner/QrCamera';
+import { decodeQrFromFile } from '../lib/qrImage';
 import {
   deviceId as getDeviceId, enqueue, dequeue, queued, evaluateOffline, loadPack, savePack, markUsedLocally, noteOnline, offlineTooLong, lastOnline, wipeEvent,
 } from '../lib/gateOffline';
@@ -15,9 +17,8 @@ import '../components/scanner/scanner.css';
 
 const GATES = ['Gate A', 'Gate B', 'Gate C', 'Gate D', 'Gate E', 'VIP Gate'];
 const PACK_REFRESH_MS = 3 * 60 * 1000;
-const RESULT_HOLD_MS = 2000;
+const RESULT_HOLD_MS = 3500;
 const TITLES = { GREEN: 'Entry allowed', YELLOW: 'Already scanned', RED: 'Not valid' };
-const ICONS = { GREEN: CheckCircle2, YELLOW: AlertTriangle, RED: XCircle };
 
 const readGate = (eventId) => {
   try {
@@ -64,20 +65,118 @@ const feedback = (result) => {
   }
 };
 
-/** Full-screen verdict: colour, icon, reason and the ticket, then back to scanning. */
-function Verdict({ verdict, gate, onDone }) {
-  const Icon = ICONS[verdict.result];
+const VERDICT_COPY = {
+  GREEN: { title: 'Entry approved', sub: 'Ticket checked in successfully.', Icon: Check },
+  YELLOW: { title: 'Already used', sub: 'Do not admit again.', Icon: RefreshCw },
+  RED: { title: 'Invalid ticket', sub: 'Entry not approved.', Icon: X },
+};
+
+/**
+ * Full-screen result card. Green = admitted (the server has marked the ticket used), yellow = the ticket was
+ * already used (first entry shown), red = not valid (reason shown). Green clears itself; yellow and red stay
+ * until staff choose what to do next.
+ */
+function Verdict({ verdict, eventName, gate, online, onNext, onManual }) {
+  const [supervisor, setSupervisor] = useState(false);
+  const { title, sub, Icon } = VERDICT_COPY[verdict.result];
+  const t = verdict.ticket;
+  const first = verdict.firstScan;
+  const tone = verdict.result.toLowerCase();
   return (
-    <button type="button" className={`tl-gs-verdict is-${verdict.result.toLowerCase()}`} onClick={onDone} aria-live="assertive">
-      <Icon className="tl-gs-verdict-icon" aria-hidden="true" />
-      <strong>{TITLES[verdict.result]}</strong>
-      <span className="tl-gs-verdict-reason">{verdict.result === 'GREEN' ? `${verdict.ticket?.holder || 'Guest'} · ${verdict.ticket?.type || 'Ticket'}` : verdict.reason}</span>
-      {verdict.ticket && <span className="tl-gs-verdict-seat">{verdict.ticket.seat}</span>}
-      <span className="tl-gs-verdict-foot">
-        {verdict.offline && <em><CloudOff className="w-4 h-4" aria-hidden="true" /> Offline</em>}
-        {gate} · tap to scan the next ticket
+    <div className={`tl-gv is-${tone}`} role="alertdialog" aria-modal="true" aria-labelledby="gv-title" aria-live="assertive">
+      <div className="tl-gv-card">
+        <header className="tl-gv-brand">
+          <span><strong>TicketLedger</strong><small>Gate Scanner</small></span>
+        </header>
+        <div className="tl-gv-event">
+          <strong>{eventName || 'Event'}</strong>
+          <small><i className={online && !verdict.offline ? 'is-on' : ''} aria-hidden="true" /> {gate} • {online && !verdict.offline ? 'Online' : 'Offline'}</small>
+        </div>
+
+        <div className="tl-gv-badge" aria-hidden="true"><Icon /></div>
+        <h2 id="gv-title" className="tl-gv-title">{title}</h2>
+        <p className="tl-gv-sub">{sub}</p>
+
+        {verdict.result !== 'RED' && t && (
+          <ul className="tl-gv-facts">
+            <li><User aria-hidden="true" /><strong>{t.holderName || t.holder || 'Guest'}</strong></li>
+            <li><Ticket aria-hidden="true" />{t.type || 'Ticket'}</li>
+            <li><Armchair aria-hidden="true" />{t.seat || 'General admission'}</li>
+            {t.code && <li><Tag aria-hidden="true" />Ticket {t.code}</li>}
+            {verdict.result === 'GREEN' && (
+              <li><Clock aria-hidden="true" />Checked in at {clock(t.checkedInAt || Date.now())}</li>
+            )}
+            {verdict.result === 'YELLOW' && (
+              <li className="tl-gv-first">
+                <Clock aria-hidden="true" />
+                <span>
+                  <strong>First entry: {first?.at ? clock(first.at) : (t.checkedInAt ? clock(t.checkedInAt) : 'earlier')}</strong>
+                  <small>{[first?.gate || t.gate, first?.by].filter(Boolean).join(' • ') || verdict.reason}</small>
+                </span>
+              </li>
+            )}
+          </ul>
+        )}
+
+        {verdict.result === 'GREEN' && (
+          <p className="tl-gv-ok"><CheckCircle2 aria-hidden="true" /> Ticket valid • Ownership verified</p>
+        )}
+
+        {verdict.result === 'YELLOW' && (
+          supervisor
+            ? <p className="tl-gv-info" role="status"><Info aria-hidden="true" /> Ask the guest to wait to one side and radio your supervisor. Do not admit them again.</p>
+            : <button type="button" className="tl-gv-outline" onClick={() => setSupervisor(true)}><Users aria-hidden="true" /> Call supervisor</button>
+        )}
+
+        {verdict.result === 'RED' && (
+          <>
+            <p className="tl-gv-reason"><AlertTriangle aria-hidden="true" /> {verdict.reason || 'This ticket could not be verified.'}</p>
+            <p className="tl-gv-info"><Info aria-hidden="true" /> Ask the attendee to open their ticket in TicketLedger and try again.</p>
+            <button type="button" className="tl-gv-outline" onClick={onNext}><ScanLine aria-hidden="true" /> Scan again</button>
+            <button type="button" className="tl-gv-link" onClick={onManual}>Manual lookup</button>
+          </>
+        )}
+
+        <button type="button" className="tl-gv-next" onClick={onNext} autoFocus>
+          <ScanLine aria-hidden="true" /> <span>Scan next ticket</span> <ChevronRight aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Drag-and-drop / file picker that reads the QR from a screenshot or photo of a pass (demo and testing). */
+function ImageScan({ disabled, busy, onCode, onError, compact }) {
+  const inputRef = useRef(null);
+  const [over, setOver] = useState(false);
+  const [reading, setReading] = useState(false);
+  const read = async (file) => {
+    if (!file || disabled) return;
+    setReading(true);
+    try {
+      onCode(await decodeQrFromFile(file));
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setReading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+  return (
+    <div
+      className={`tl-gs-drop${over ? ' is-over' : ''}${compact ? ' is-compact' : ''}${disabled ? ' is-disabled' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); if (!disabled) setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); read(e.dataTransfer.files?.[0]); }}
+    >
+      <ImageUp className="w-6 h-6" aria-hidden="true" />
+      <span>
+        <strong>{reading || busy ? 'Reading the QR…' : compact ? 'Scan from an image' : 'Drop a QR image here'}</strong>
+        {!compact && <small>Screenshot or photo of the ticket QR · PNG, JPG or WebP</small>}
       </span>
-    </button>
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || reading || busy}>Choose file</button>
+      <input ref={inputRef} type="file" accept="image/*" hidden onChange={(e) => read(e.target.files?.[0])} />
+    </div>
   );
 }
 
@@ -290,9 +389,9 @@ export default function GateScanner() {
   // ---------- Scanning ----------
   const show = useCallback((v) => {
     feedback(v.result);
-    setVerdict(v);
+    setVerdict({ ...v, shownAt: Date.now() });
     clearTimeout(resetTimer.current);
-    resetTimer.current = setTimeout(() => setVerdict(null), RESULT_HOLD_MS + (v.result === 'GREEN' ? 0 : 1200));
+    if (v.result === 'GREEN') resetTimer.current = setTimeout(() => setVerdict(null), RESULT_HOLD_MS);
   }, []);
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
@@ -339,6 +438,20 @@ export default function GateScanner() {
     show(v);
     setRecent((r) => [{ id: `${Date.now()}`, result: v.result, reason: v.reason, gate, offline: Boolean(v.offline), scannedAt: new Date().toISOString(), holder: v.ticket?.holder, type: v.ticket?.type }, ...r].slice(0, 12));
   }, [eventId, gate, device, locked, revoked, decideOffline, show, revoke]);
+
+  const imageError = (message) => {
+    if (!gate || locked || revoked) return;
+    const v = { result: 'RED', reason: message };
+    show(v);
+    setRecent((r) => [{ id: `${Date.now()}`, result: 'RED', reason: message, gate, offline: false, scannedAt: new Date().toISOString() }, ...r].slice(0, 12));
+  };
+  const manualLookup = () => {
+    setVerdict(null);
+    setTimeout(() => document.getElementById(scanning ? 'gs-code-cam' : 'gs-code')?.focus(), 50);
+  };
+  const verdictEl = verdict && (
+    <Verdict key={verdict.shownAt} verdict={verdict} eventName={event?.name} gate={gate} online={online} onNext={() => setVerdict(null)} onManual={manualLookup} />
+  );
 
   const submitManual = (e) => {
     e.preventDefault();
@@ -441,6 +554,12 @@ export default function GateScanner() {
         </div>
       </section>
 
+      <section className="tl-gs-card">
+        <h2 className="tl-gs-h2">Scan from an image</h2>
+        <p className="tl-gs-muted">For demos and testing: drop a screenshot of a ticket QR, or choose the file. It’s checked and marked used exactly like a camera scan.</p>
+        <ImageScan disabled={!gate || locked} busy={checking} onCode={check} onError={imageError} />
+      </section>
+
       <section className="tl-gs-card">{manualForm(false)}</section>
 
       {/* Recent scans */}
@@ -481,12 +600,13 @@ export default function GateScanner() {
           {checking && <p className="tl-gs-checking" role="status"><RefreshCw className="w-5 h-5 tl-dash-spin" aria-hidden="true" /> Checking…</p>}
           <div className="tl-gs-camera-bottom">
             <p>Hold the QR inside the frame. Ask the guest to turn their screen brightness up.</p>
+            <ImageScan compact disabled={!gate || locked} busy={checking} onCode={check} onError={imageError} />
             {manualForm(true)}
           </div>
-          {verdict && <Verdict verdict={verdict} gate={gate} onDone={() => setVerdict(null)} />}
+          {verdictEl}
         </div>
       )}
-      {!scanning && verdict && <Verdict verdict={verdict} gate={gate} onDone={() => setVerdict(null)} />}
+      {!scanning && verdictEl}
 
       {revoked && (
         <div className="tl-gs-lock" role="alertdialog" aria-modal="true" aria-labelledby="gs-revoked-title">

@@ -3,6 +3,8 @@ import prisma from '../config/prisma.js';
 import { requireApprovedCompany } from '../middlewares/auth.js';
 import { uploadFile } from '../utils/storage.js';
 
+const MAX_COMPANY_DOCUMENTS = 4;
+
 // Schemas
 const companyRegisterSchema = z.object({
   companyName: z.string().min(2, 'Company name is required'),
@@ -29,32 +31,41 @@ export const registerCompany = async (req, res) => {
     // Validate body
     const validated = companyRegisterSchema.parse(req.body);
 
-    // Handle document upload if file was sent via multipart/form-data
-    let documentUrl = validated.documentUrl;
-    if (req.file) {
-      const uploadResult = await uploadFile(req.file, 'company_docs');
-      documentUrl = uploadResult.url;
-    }
-
-    if (!documentUrl) {
-      // Default sample placeholder for quick manual submissions
-      documentUrl = '/uploads/company_docs/sample_ntn_certificate.pdf';
-    }
-
     // Check if company already registered for this organizer
     const existingCompany = await prisma.company.findUnique({
       where: { userId },
     });
+    // Checked before anything is uploaded, so a refused request stores no files
+    if (existingCompany?.status === 'APPROVED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Your company is already approved. Contact admin for any corporate modifications.',
+      });
+    }
+
+    // Verification documents: 1 to 4 files sent as multipart `documents` (or the older single `document`).
+    // Without new files, a resubmission keeps the documents already on file; a JSON `documentUrl` also counts.
+    const files = [...(req.files?.documents || []), ...(req.files?.document || [])];
+    if (files.length > MAX_COMPANY_DOCUMENTS) {
+      return res.status(400).json({ success: false, message: `You can upload at most ${MAX_COMPANY_DOCUMENTS} documents.` });
+    }
+    let documentUrls;
+    if (files.length) {
+      documentUrls = [];
+      for (const file of files) documentUrls.push((await uploadFile(file, 'company_docs')).url);
+    } else if (existingCompany) {
+      documentUrls = existingCompany.documentUrls?.length ? existingCompany.documentUrls : [existingCompany.documentUrl].filter(Boolean);
+    } else if (validated.documentUrl) {
+      documentUrls = [validated.documentUrl];
+    }
+    if (!documentUrls?.length) {
+      return res.status(400).json({ success: false, message: 'Upload at least one verification document (NTN certificate, FBR registration or CNIC scan).' });
+    }
+    // documentUrl keeps the first document for screens that show a single link
+    const documentUrl = documentUrls[0];
 
     let company;
     if (existingCompany) {
-      if (existingCompany.status === 'APPROVED') {
-        return res.status(400).json({
-          success: false,
-          message: 'Your company is already approved. Contact admin for any corporate modifications.',
-        });
-      }
-
       // Update and reset to PENDING if previously REJECTED or PENDING
       company = await prisma.company.update({
         where: { id: existingCompany.id },
@@ -66,6 +77,7 @@ export const registerCompany = async (req, res) => {
           city: validated.city,
           ntnCnic: validated.ntnCnic,
           documentUrl,
+          documentUrls,
           status: 'PENDING',
           rejectionReason: null,
           reviewedBy: null,
@@ -83,6 +95,7 @@ export const registerCompany = async (req, res) => {
           city: validated.city,
           ntnCnic: validated.ntnCnic,
           documentUrl,
+          documentUrls,
           status: 'PENDING',
         },
       });

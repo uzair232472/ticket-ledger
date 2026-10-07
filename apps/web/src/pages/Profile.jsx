@@ -1080,7 +1080,7 @@ export default function Profile() {
                             </div>
                             <div>
                               <div className="font-bold text-slate-900 text-xs">
-                                {item.action?.replace('_', ' ').toUpperCase()}
+                                {item.action?.replace(/_/g, ' ').toUpperCase()}
                               </div>
                               {item.metadata?.source && (
                                 <div className="text-[10px] text-slate-400 font-mono">
@@ -1091,7 +1091,16 @@ export default function Profile() {
                           </div>
 
                           <div className="text-[11px] text-slate-400 font-mono">
-                            {item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : 'Just now'}
+                            {(() => {
+                              // The API sends the row's time as createdAt (timestamp kept for older payloads)
+                              const at = item.createdAt || item.timestamp || item.metadata?.timestamp;
+                              const d = at ? new Date(at) : null;
+                              return d && !Number.isNaN(d.getTime())
+                                ? <time dateTime={d.toISOString()} title={d.toString()}>
+                                    {d.toLocaleString('en-PK', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                                  </time>
+                                : '—';
+                            })()}
                           </div>
                         </div>
                       ))}

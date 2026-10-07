@@ -1,5 +1,7 @@
 import React, { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff, IdCard, Forward, RefreshCw, Ticket } from 'lucide-react';
+import airUniversityLogo from '../../assets/air-university-logo.png';
 import HomeHeader from '../home/HomeHeader';
 import '../home/home.css';
 import './auth.css';
@@ -56,42 +58,85 @@ function TicketArt() {
   );
 }
 
+/** TicketLedger mark (from assets/ticketledger-mark.svg) with the outline drawn in white for the dark panel. */
+function TicketLedgerMark({ className }) {
+  return (
+    <svg className={className} viewBox="131 211 760 604" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="auth-mark-gradient" x1="238.56" y1="512.87" x2="882.95" y2="512.87" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#0175fe" />
+          <stop offset="1" stopColor="#3d3ffc" />
+        </linearGradient>
+      </defs>
+      <path fill="#ffffff" d="M139.15,521.13v-116.25s-.48-10,9.5-25.09c5.12-7.75,12.3-13.92,20.61-18.06l284.8-142.04c.29-.14.58-.24.9-.3.14-.02.31-.05.5-.08,11.54-1.67,21.8,7.51,21.8,19.17v26.6s-.53,16.38-11.87,30.78c-3.84,4.87-8.94,8.59-14.57,11.19l-216.58,100.11s-11.52,5.25-20.54,18.74c-5.95,8.89-8.83,19.49-8.87,30.19l-.45,110.48c-.01,2.54-2.77,4.11-4.95,2.82l-53.83-31.65c-.18-.1-.34-.22-.5-.36-1.15-1.03-5.96-5.99-5.96-16.25Z" />
+      <path fill="url(#auth-mark-gradient)" d="M880.95,559.42l-28.97-77.29c-79.04,21.64-103.71-49.01-103.71-49.01-22.05-74.07,52.79-107.91,52.79-107.91l-30.63-83.9c-.99-2.7-2.29-5.29-3.98-7.61-13.57-18.59-32.59-15.86-38.87-14.32-1.16.28-2.29.69-3.38,1.18l-464.6,209.81c-3.35,1.51-6.45,3.54-9.05,6.13-7.3,7.28-10.18,16.14-11.3,21.45-.48,2.28-.7,4.61-.7,6.95v98.78s203.37-98.65,203.37-98.65l2.02,342.44,423.89-205.82c.32-.15.64-.32.94-.5,16.55-9.7,14.63-30.14,13.36-37.38-.26-1.48-.67-2.93-1.19-4.33ZM549.57,404.85l-11.52-30.38c-2.71-7.2.89-15.24,8.09-17.97,1.61-.6,3.27-.89,4.91-.89,5.62,0,10.95,3.42,13.06,8.99l11.49,30.38c2.74,7.2-.89,15.24-8.09,17.97-7.17,2.74-15.24-.89-17.94-8.09ZM583.77,487.82l-11.49-30.38c-2.74-7.2.89-15.24,8.09-17.97,1.61-.6,3.27-.89,4.91-.89,5.62,0,10.92,3.42,13.03,8.99l11.52,30.38c2.71,7.2-.92,15.24-8.09,17.97-7.2,2.71-15.24-.89-17.97-8.09ZM617.22,569.36l-11.52-30.38c-2.74-7.17.89-15.24,8.09-17.94,1.64-.63,3.3-.92,4.94-.92,5.62,0,10.92,3.45,13,9.02l11.52,30.38c2.74,7.2-.89,15.24-8.09,17.94-7.2,2.74-15.24-.89-17.94-8.09ZM669.12,659.02c-7.2,2.71-15.24-.89-17.97-8.09l-11.52-30.38c-2.71-7.2.92-15.24,8.09-17.97,1.64-.62,3.3-.89,4.94-.89,5.62,0,10.92,3.42,13.03,8.99l11.52,30.38c2.71,7.2-.92,15.24-8.09,17.97Z" />
+      <path fill="#ffffff" d="M238.24,691.4v-65.99c0-7.88,2.25-15.67,6.89-22.04,3-4.12,7.23-8.32,13.12-11.45l150.44-79.05v293.45l-154.75-88.9s-13.08-5.61-15.46-21.86c-.2-1.37-.24-2.77-.24-4.15Z" />
+    </svg>
+  );
+}
+
+/** "TicketLedger — in collaboration with — Air University" lock-up on the green panel. */
+function CoBrand() {
+  return (
+    <div className="tl-auth-cobrand" role="img" aria-label="TicketLedger in collaboration with Air University">
+      <div className="tl-auth-cobrand-tl">
+        <div className="tl-auth-cobrand-word">
+          <TicketLedgerMark className="tl-auth-cobrand-mark" />
+          <span>Ticket<b>Ledger</b></span>
+        </div>
+        <p className="tl-auth-cobrand-with">In collaboration with</p>
+      </div>
+      <span className="tl-auth-cobrand-rule" aria-hidden="true" />
+      <img className="tl-auth-cobrand-au" src={airUniversityLogo} alt="" width="360" height="296" />
+    </div>
+  );
+}
+
 /**
  * Sign-in / sign-up layout shared by every auth screen (login, signup, verify, password reset, invites):
- * only the menu button on top, then a two-panel card. The green panel shows the TicketLedger promise and
- * the ticket illustration; the light panel holds the form. On phones the green panel shrinks to a banner.
+ * only the menu button on top, then a two-panel card and a small legal footer. The green panel shows the
+ * TicketLedger × Air University lock-up and the ticket illustration; the light panel holds the form.
+ * On phones the green panel shrinks to a banner.
  */
-export default function AuthShell({ title, subtitle, children, footer }) {
+export default function AuthShell({ eyebrow = 'Welcome to TicketLedger', title, subtitle, children, footer }) {
   return (
     <div className="tl-home tl-auth">
       <HomeHeader tone="light" minimal />
       <main className="tl-auth-main">
-        <div className="tl-auth-card">
-          <section className="tl-auth-promo" aria-label="TicketLedger">
-            <p className="tl-auth-eyebrow">The digital ticket wallet</p>
-            <h2 className="tl-auth-headline">
-              Every ticket.<br />Truly <em>yours.</em>
-            </h2>
-            <p className="tl-auth-lead">Book, keep and transfer<br />your verified tickets.</p>
-            <TicketArt />
-            <ul className="tl-auth-steps">
-              <li><Ticket className="w-5 h-5" aria-hidden="true" /> Book</li>
-              <li aria-hidden="true" className="tl-auth-dot" />
-              <li><IdCard className="w-5 h-5" aria-hidden="true" /> Own</li>
-              <li aria-hidden="true" className="tl-auth-dot" />
-              <li><Forward className="w-5 h-5" aria-hidden="true" /> Transfer</li>
-            </ul>
-          </section>
+        <div className="tl-auth-wrap">
+          <div className="tl-auth-card">
+            <section className="tl-auth-promo" aria-label="TicketLedger">
+              <p className="tl-auth-eyebrow">Your digital ticket wallet</p>
+              <CoBrand />
+              <p className="tl-auth-lead">Book, keep and transfer<br />your verified tickets.</p>
+              <TicketArt />
+              <ul className="tl-auth-steps">
+                <li><Ticket className="w-5 h-5" aria-hidden="true" /> Book</li>
+                <li aria-hidden="true" className="tl-auth-dot" />
+                <li><IdCard className="w-5 h-5" aria-hidden="true" /> Own</li>
+                <li aria-hidden="true" className="tl-auth-dot" />
+                <li><Forward className="w-5 h-5" aria-hidden="true" /> Transfer</li>
+              </ul>
+            </section>
 
-          <section className="tl-auth-form">
-            <div className="tl-auth-form-inner">
-              <p className="tl-auth-logo" aria-hidden="true">Ticket<span>Ledger</span></p>
-              <h1 className="tl-auth-title">{title}</h1>
-              {subtitle && <p className="tl-auth-sub">{subtitle}</p>}
-              <div className="tl-auth-body">{children}</div>
-              {footer && <div className="tl-auth-foot">{footer}</div>}
-            </div>
-          </section>
+            <section className="tl-auth-form">
+              <div className="tl-auth-form-inner">
+                {eyebrow && <p className="tl-auth-kicker">{eyebrow}</p>}
+                <h1 className="tl-auth-title">{title}</h1>
+                {subtitle && <p className="tl-auth-sub">{subtitle}</p>}
+                <div className="tl-auth-body">{children}</div>
+                {footer && <div className="tl-auth-foot">{footer}</div>}
+              </div>
+            </section>
+          </div>
+          <footer className="tl-auth-legal">
+            <p>© {new Date().getFullYear()} TicketLedger. All rights reserved.</p>
+            <nav aria-label="Legal">
+              <Link to="/privacy">Privacy</Link>
+              <span aria-hidden="true">•</span>
+              <Link to="/terms">Terms</Link>
+            </nav>
+          </footer>
         </div>
       </main>
     </div>

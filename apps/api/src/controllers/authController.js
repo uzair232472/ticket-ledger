@@ -54,7 +54,6 @@ const pendingSignupUpdateSchema = signupSchema
   .omit({ password: true, walletAddress: true })
   .extend({ password: z.literal('').transform(() => undefined).or(passwordSchema).optional() });
 
-const PHONE_EXISTS = 'An account with this phone number already exists.';
 const ROLE_TO_ACCOUNT_TYPE = { CUSTOMER: 'customer', ORGANIZER: 'organizer' };
 
 const loginSchema = z.object({
@@ -183,14 +182,11 @@ export const signup = async (req, res) => {
       }
     }
 
-    const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ email }, ...(phone ? [{ phone }] : [])] },
-    });
+    // Only the email must be unique: one phone number may be shared by several accounts
+    // (e.g. the same person's customer and organizer accounts).
+    const existingUser = await prisma.user.findFirst({ where: { email } });
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: existingUser.email === email ? MESSAGES.EMAIL_EXISTS : PHONE_EXISTS,
-      });
+      return res.status(409).json({ success: false, message: MESSAGES.EMAIL_EXISTS });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -278,9 +274,6 @@ export const updatePendingSignup = async (req, res) => {
     if (await prisma.user.findFirst({ where: { email, ...others } })) {
       return res.status(409).json({ success: false, message: MESSAGES.EMAIL_EXISTS });
     }
-    if (phone && (await prisma.user.findFirst({ where: { phone, ...others } }))) {
-      return res.status(409).json({ success: false, message: PHONE_EXISTS });
-    }
 
     const emailChanged = email !== user.email;
     if (emailChanged) {
@@ -319,10 +312,9 @@ export const updatePendingSignup = async (req, res) => {
       data: { email: updated.email, emailChanged, ...(await getOtpTiming(updated.id, 'VERIFY_EMAIL')) },
     });
   } catch (error) {
-    // A concurrent signup took the email or phone between the check and the update
+    // A concurrent signup took the email between the check and the update
     if (error?.code === 'P2002') {
-      const target = String(error.meta?.target || '');
-      return res.status(409).json({ success: false, message: target.includes('phone') ? PHONE_EXISTS : MESSAGES.EMAIL_EXISTS });
+      return res.status(409).json({ success: false, message: MESSAGES.EMAIL_EXISTS });
     }
     return handleError(res, error, 'Signup update');
   }
