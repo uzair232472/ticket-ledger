@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StudioSelect, StatCard, Panel, Badge, ScoreBar } from '../components/dash/Studio';
@@ -20,6 +20,7 @@ import {
   Banknote,
   Gauge,
   BadgeCheck,
+  ArrowLeft,
 } from 'lucide-react';
 
 const API_BASE = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api`;
@@ -192,6 +193,18 @@ export default function DemandForecast() {
         crumbs={['Insights', 'Pre-launch']}
         title="Demand forecast"
         intro="Predicted first-48-hour sales, expected revenue and the best launch window. Adjust tier prices and watch the forecast before you publish."
+        controls={
+          // New-event setup came from step 3 (tickets & pricing); otherwise back to the event's dashboard
+          setup && selectedEventId ? (
+            <Link to={`/organizer/events/${selectedEventId}/edit?step=3`} className="tl-st-btn tl-st-btn--light">
+              <ArrowLeft className="w-4 h-4" /> Back: Tickets &amp; pricing
+            </Link>
+          ) : (
+            <Link to={`/organizer/dashboard${selectedEventId ? `?eventId=${selectedEventId}` : ''}`} className="tl-st-btn tl-st-btn--light">
+              <ArrowLeft className="w-4 h-4" /> Back to dashboard
+            </Link>
+          )
+        }
       />
 
       {/* Event picker + facts */}

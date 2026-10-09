@@ -11,6 +11,7 @@ import { categoryName } from '../components/home/homeData';
 import { googleMapsUrl } from '../utils/maps';
 import SetupStepper from '../components/dash/SetupStepper';
 import { useDialog } from '../components/ui/DialogProvider';
+import PromotionPanel from '../components/promotion/PromotionPanel';
 
 const pkr = (n) => `PKR ${Number(n || 0).toLocaleString('en-PK')}`;
 const SUBMITTABLE = ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'];
@@ -55,6 +56,12 @@ export default function EventSubmit() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // "Promote" from the dashboard opens this page at the promotion panel
+  const loaded = Boolean(data);
+  useEffect(() => {
+    if (loaded && window.location.hash === '#promote') document.getElementById('promote')?.scrollIntoView({ block: 'start' });
+  }, [loaded]);
 
   const submit = async () => {
     setSending(true);
@@ -154,7 +161,7 @@ export default function EventSubmit() {
             <div className="tl-rv-hero">
               <img src={visual.bannerImage} alt="" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
               <div className="tl-rv-hero-text">
-                <p className="tl-rv-kicker">{categoryName(event.type)} · {event.city}</p>
+                <p className="tl-rv-kicker">{categoryName(event.type, event.categoryLabel)} · {event.city}</p>
                 <h2 id="rv-title">{event.name}</h2>
                 <p className="tl-rv-meta">
                   <span><CalendarDays className="w-4 h-4" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</span>
@@ -197,6 +204,10 @@ export default function EventSubmit() {
               </a>
             </div>
           </section>
+
+          <div id="promote">
+            <PromotionPanel event={event} onChanged={load} />
+          </div>
         </div>
 
         <aside className="tl-wz-card tl-rv-side" aria-labelledby="rv-ready">
@@ -233,6 +244,11 @@ export default function EventSubmit() {
             <p className="tl-rv-fine"><Clock className="w-4 h-4" aria-hidden="true" /> Sent. Editing is still possible; the admin sees the latest version.</p>
           ) : null}
 
+          {inSetup && (
+            <Link to={`/organizer/events/${event.id}/venue${setup ? '?setup=1' : ''}`} className="tl-wz-btn" style={{ marginTop: 10 }}>
+              <ArrowLeft className="w-4 h-4" /> Back: Seating plan
+            </Link>
+          )}
           <Link to="/organizer/dashboard" className="tl-wz-btn" style={{ marginTop: 10 }}>
             <ArrowLeft className="w-4 h-4" /> Back to dashboard
           </Link>

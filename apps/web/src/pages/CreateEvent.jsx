@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { getEventVisual } from '../utils/eventMedia';
@@ -7,6 +7,9 @@ import ImageField, { emptyImageValue, imageValueSrc } from '../components/event-
 import GalleryField, { galleryItemsFromSaved } from '../components/event-form/GalleryField';
 import SetupStepper, { SETUP_STEPS } from '../components/dash/SetupStepper';
 import LocationPicker, { googleMapsUrl } from '../components/event-form/LocationPicker';
+import CategoryField from '../components/event-form/CategoryField';
+import { categoryProfile } from '../components/event-form/categoryProfiles';
+import { formatEventDate, formatEventTime } from '../utils/eventTime';
 import { useDialog } from '../components/ui/DialogProvider';
 import {
   AlertCircle,
@@ -37,24 +40,14 @@ import {
   Eye,
   ArrowUpRight,
   HelpCircle,
+  CheckCircle2,
+  Loader2,
+  Copy,
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const CITIES = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar', 'Quetta'];
-const CATEGORIES = [
-  ['CRICKET_MATCH', ' Cricket Match (PSL)'],
-  ['MUSIC_CONCERT', ' Music Concert'],
-  ['MUSIC_FESTIVAL', ' Music Festival'],
-  ['KABADDI', ' Kabaddi Match'],
-  ['FOOTBALL_MATCH', ' Football Match'],
-  ['BOXING', ' Boxing Match'],
-  ['HOCKEY_MATCH', ' Hockey Match'],
-  ['QAWWALI', ' Qawwali Night'],
-  ['THEATRE', ' Theatre'],
-  ['CONFERENCE', ' Conference'],
-  ['GENERAL_ADMISSION', ' General Admission'],
-];
 
 const emptyImages = (event) => ({
   banner: emptyImageValue(event?.bannerUrl || null),
@@ -82,6 +75,30 @@ const todayIso = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+
+// End must come after the start; events that run past midnight end on the next day. Same wording as the API.
+function scheduleOrderError({ date, time, endDate, endTime }) {
+  const start = toTimeInput(time);
+  const end = toTimeInput(endTime);
+  if (!date || !start || !endDate || !end) return null;
+  if (`${endDate}T${end}` > `${date}T${start}`) return null;
+  return endDate === date
+    ? { endTime: 'The end time must be after the start time. If the event runs past midnight, set the end date to the next day.' }
+    : { endDate: 'The event must end after it starts.' };
+}
+
+const SCHEDULE_FIELDS = ['date', 'time', 'endDate', 'endTime', 'city', 'venue'];
+
+const STATUS_LABEL = {
+  DRAFT: 'Draft',
+  PRELAUNCH_ANALYSIS: 'Pre-launch',
+  PENDING_APPROVAL: 'Awaiting approval',
+  PUBLISHED: 'On sale',
+  PAUSED: 'Paused',
+};
+// "Wed, 21 Oct 2026 · 7:00 PM · Air University C-Block (Draft)": one existing event in duplicate warnings
+const describeEvent = (e) =>
+  `${formatEventDate(e.date)}${e.time ? ` · ${formatEventTime(e.time)}` : ''} · ${e.venue} (${STATUS_LABEL[e.status] || e.status.replace(/_/g, ' ').toLowerCase()})`;
 
 function Field({ id, label, error, wide, children }) {
   return (
@@ -128,17 +145,38 @@ export default function CreateEvent() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(null); // 'PRELAUNCH_ANALYSIS' | 'DRAFT' | 'SAVE' | null
   const [eventStatus, setEventStatus] = useState(null); // edit mode: the saved event's status
+  // Edit mode: with tickets sold, the date, time and venue change through "Cancel or change date"
+  const [ticketsHeld, setTicketsHeld] = useState(0);
   const [company, setCompany] = useState(null);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
-  const [step, setStep] = useState(0);
+  // The step lives in the URL (?step=2), so the browser and phone back button go to the previous step
+  // instead of leaving the form
+  const routerLocation = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const step = Math.min(Math.max((Number(searchParams.get('step')) || 1) - 1, 0), 2);
+  const setStep = (index, { replace = false } = {}) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (index > 0) next.set('step', String(index + 1));
+        else next.delete('step');
+        return next;
+      },
+      { replace, state: replace ? routerLocation.state : { wizardFrom: step } },
+    );
+  const savingRef = useRef(false); // blocks a second save from a double click before React re-renders
+  const tiersTouched = useRef(false); // until the organizer edits tiers, they follow the chosen category
 
   const [eventData, setEventData] = useState({
     name: '',
     description: '',
     type: 'CRICKET_MATCH',
+    customCategoryId: '',
     date: '',
     time: '7:00 PM PKT',
+    endDate: '',
+    endTime: '10:00 PM PKT',
     city: 'Lahore',
     venue: '',
     contactEmail: '',
@@ -186,12 +224,17 @@ export default function CreateEvent() {
         if (!alive) return;
         const ev = res.data.data.event;
         setEventStatus(ev.status);
+        setTicketsHeld(ev.ticketsHeld || 0);
         setEventData({
           name: ev.name,
           description: ev.description,
           type: ev.type,
+          customCategoryId: ev.customCategoryId || '',
           date: new Date(ev.date).toISOString().slice(0, 10),
           time: ev.time,
+          // Older events have no end yet: the organizer is asked to add one before saving
+          endDate: ev.endDate || new Date(ev.date).toISOString().slice(0, 10),
+          endTime: ev.endTime ? fromTimeInput(ev.endTime) : '',
           city: ev.city,
           venue: ev.venue,
           contactEmail: ev.contactEmail || '',
@@ -211,9 +254,62 @@ export default function CreateEvent() {
   }, [isEdit, editId, token]);
 
   const update = (key) => (e) => {
-    const value = key === 'time' ? fromTimeInput(e.target.value) : e.target.value;
-    setEventData((prev) => ({ ...prev, [key]: value }));
-    if (fieldErrors[key]) setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+    const value = key === 'time' || key === 'endTime' ? fromTimeInput(e.target.value) : e.target.value;
+    const next = { ...eventData, [key]: value };
+    // The end date follows the start date until the organizer picks a different one
+    if (key === 'date' && (!eventData.endDate || eventData.endDate === eventData.date)) next.endDate = value;
+    setEventData(next);
+    if (SCHEDULE_FIELDS.includes(key)) {
+      // Start / end order is checked as the dates and times are picked
+      const order = scheduleOrderError(next) || {};
+      setFieldErrors((prev) => ({ ...prev, [key]: undefined, endDate: order.endDate, endTime: order.endTime, schedule: undefined }));
+    } else if (fieldErrors[key]) {
+      setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+    }
+  };
+
+  // ---------- Live venue availability ----------
+  // Re-checked (debounced) whenever the venue, city, dates or times change. The API applies the same
+  // overlap and one-hour-gap rules again when the event is saved.
+  const [venueCheck, setVenueCheck] = useState({ status: 'idle' }); // idle | checking | free | conflict | error
+  // Your own events with the same name (from the same check): probably this event entered twice
+  const [duplicates, setDuplicates] = useState([]);
+  const checkSeq = useRef(0);
+  useEffect(() => {
+    const { city, venue, date, time, endDate, endTime, name } = eventData;
+    const ready = venue.trim().length >= 2 && date && toTimeInput(time) && endDate && toTimeInput(endTime) && !scheduleOrderError(eventData);
+    const seq = ++checkSeq.current;
+    if (!ready || !token) {
+      setVenueCheck({ status: 'idle' });
+      return undefined;
+    }
+    setVenueCheck({ status: 'checking' });
+    const timer = setTimeout(() => {
+      api
+        .get('/events/schedule-check', {
+          params: { city, venue: venue.trim(), date, time, endDate, endTime, name: name.trim(), ...(isEdit ? { excludeEventId: editId } : {}) },
+        })
+        .then((res) => {
+          if (seq !== checkSeq.current) return;
+          const { available, message, conflicts = [], duplicates: same = [] } = res.data.data;
+          setDuplicates(same);
+          setVenueCheck(available ? { status: 'free' } : { status: 'conflict', message, more: Math.max(conflicts.length - 1, 0) });
+        })
+        .catch(() => seq === checkSeq.current && setVenueCheck({ status: 'error' }));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [eventData.city, eventData.venue, eventData.date, eventData.time, eventData.endDate, eventData.endTime, eventData.name, token, isEdit, editId]);
+
+  // A rejected save (e.g. someone booked the slot in the meantime) shows the problem on its field in step 1
+  const showServerError = (body, fallback) => {
+    const message = body?.message || fallback;
+    if (body?.field && (SCHEDULE_FIELDS.includes(body.field) || body.field === 'schedule')) {
+      setStep(0, { replace: true });
+      setFieldErrors((prev) => ({ ...prev, [body.field]: message }));
+      if (body.field === 'schedule') setVenueCheck({ status: 'conflict', message, more: Math.max((body.conflicts?.length || 1) - 1, 0) });
+    }
+    setError(message);
+    window.scrollTo({ top: 0, behavior: 'instant' });
   };
   const setImage = (field) => (value) => setImages((prev) => ({ ...prev, [field]: value }));
 
@@ -223,13 +319,18 @@ export default function CreateEvent() {
   const bannerFallbackLabel = bannerSrc ? 'the event banner' : 'the category artwork shown here';
 
   // ---------- Tiers ----------
-  const handleAddTier = () => setTiers((prev) => [...prev, { name: '', price: 2000, totalQuantity: 100 }]);
+  const handleAddTier = () => {
+    tiersTouched.current = true;
+    setTiers((prev) => [...prev, { name: '', price: 2000, totalQuantity: 100 }]);
+  };
   const handleRemoveTier = (index) => {
     if (tiers.length <= 1) return;
+    tiersTouched.current = true;
     setTiers((prev) => prev.filter((_, i) => i !== index));
     setFieldErrors({});
   };
   const handleTierChange = (index, field, value) => {
+    tiersTouched.current = true;
     setTiers((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: field === 'name' ? value : Number(value) } : t)));
     const key = `tier-${index}-${field}`;
     if (fieldErrors[key]) setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
@@ -241,10 +342,15 @@ export default function CreateEvent() {
     const errs = {};
     if (index === 0) {
       if (eventData.name.trim().length < 3) errs.name = 'Enter the event name or match title.';
+      if (eventData.type === 'OTHER' && !eventData.customCategoryId) errs.type = 'Choose a category, or add yours.';
       if (!eventData.venue.trim()) errs.venue = 'Enter the venue or stadium.';
       if (!eventData.date) errs.date = 'Choose the event date.';
       else if (!isEdit && eventData.date < todayIso()) errs.date = 'The date can’t be in the past.';
       if (!toTimeInput(eventData.time)) errs.time = 'Choose the start time.';
+      if (!eventData.endDate) errs.endDate = 'Choose the end date.';
+      if (!toTimeInput(eventData.endTime)) errs.endTime = 'Choose the end time.';
+      Object.assign(errs, scheduleOrderError(eventData));
+      if (venueCheck.status === 'conflict') errs.schedule = venueCheck.message;
       if (eventData.description.trim().length < 10) errs.description = 'Add a short description (at least 10 characters).';
       if (eventData.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(eventData.contactEmail.trim())) errs.contactEmail = 'Enter a valid email address, or leave it empty.';
     }
@@ -262,14 +368,15 @@ export default function CreateEvent() {
   const goTo = (target) => {
     setError('');
     if (target <= step) {
-      setStep(target);
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      // Going back one step the way we came: use history, so browser Back / Forward stay in order
+      if (target === step - 1 && routerLocation.state?.wizardFrom === target) navigate(-1);
+      else setStep(target, { replace: true });
       return;
     }
     for (let i = step; i < target; i += 1) {
       const errs = validateStep(i);
       if (Object.keys(errs).length) {
-        setStep(i);
+        if (i !== step) setStep(i, { replace: true });
         setFieldErrors(errs);
         requestAnimationFrame(() => document.getElementById(`ev-${Object.keys(errs)[0]}`)?.focus());
         return;
@@ -277,25 +384,74 @@ export default function CreateEvent() {
     }
     setFieldErrors({});
     setStep(target);
-    window.scrollTo({ top: 0, behavior: 'instant' });
   };
 
-  // ---------- Save ----------
-  const createEvent = async (status) => {
-    if (submitting) return;
-    for (let i = 0; i < 3; i += 1) {
+  // Every step change (buttons, stepper, browser back / forward) starts at the top of the page
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [step]);
+
+  // Opening a later step directly (reload, browser Forward) still needs the earlier steps to be valid
+  const formReady = !loading && (!isEdit || Boolean(eventData.name));
+  useEffect(() => {
+    if (!formReady) return;
+    for (let i = 0; i < step; i += 1) {
       const errs = validateStep(i);
       if (Object.keys(errs).length) {
-        setStep(i);
+        setStep(i, { replace: true });
         setFieldErrors(errs);
         return;
       }
     }
+  }, [step, formReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Until the organizer edits the tiers, a new event's tiers follow the chosen category
+  useEffect(() => {
+    if (!isEdit && !tiersTouched.current) setTiers(categoryProfile(eventData.type).tiers.map((t) => ({ ...t })));
+  }, [eventData.type, isEdit]);
+
+  /**
+   * The API found an event of yours with the same name. Same venue and time: offer to open it instead.
+   * Otherwise ask; true means create it anyway.
+   */
+  const confirmDuplicate = async ({ duplicate }) => {
+    if (duplicate.sameSlot) {
+      const open = await dialog.confirm({
+        tone: 'warning',
+        title: 'This event already exists',
+        message: `You already created “${duplicate.name}” at the same venue and time:\n${describeEvent(duplicate)}\nOpen it to carry on setting it up instead of creating it twice.`,
+        confirmLabel: 'Open existing event',
+        cancelLabel: 'Stay here',
+      });
+      if (open) navigate(`/organizer/events/${duplicate.id}/edit`);
+      return false;
+    }
+    return dialog.confirm({
+      tone: 'warning',
+      title: 'Is this a duplicate?',
+      message: `You already have an event called “${duplicate.name}”${duplicate.sameDay ? ' on the same day' : ''}:\n${describeEvent(duplicate)}\nIf you entered it again by mistake, go back and edit the existing one. Create a new event only if this is a separate show or date.`,
+      confirmLabel: 'Create anyway',
+      cancelLabel: 'Don’t create',
+    });
+  };
+
+  // ---------- Save ----------
+  const createEvent = async (status) => {
+    if (savingRef.current) return;
+    for (let i = 0; i < 3; i += 1) {
+      const errs = validateStep(i);
+      if (Object.keys(errs).length) {
+        if (i !== step) setStep(i, { replace: true });
+        setFieldErrors(errs);
+        return;
+      }
+    }
+    savingRef.current = true;
     setError('');
     setSubmitting(status);
-    try {
+    const send = async (allowDuplicate) => {
       const formData = new FormData();
-      ['name', 'description', 'type', 'date', 'time', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
+      ['name', 'description', 'type', 'customCategoryId', 'date', 'time', 'endDate', 'endTime', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
       formData.append('status', status);
       formData.append('tiers', JSON.stringify(tiers));
       if (location.latitude != null) {
@@ -307,14 +463,25 @@ export default function CreateEvent() {
       if (images.cardImage.file) formData.append('cardImage', images.cardImage.file);
       if (images.galleryWide.file) formData.append('galleryWide', images.galleryWide.file);
       gallery.forEach((item) => formData.append('galleryImages', item.file));
+      if (allowDuplicate) formData.append('allowDuplicate', 'true');
 
       const res = await fetch(`${API_URL}/api/events`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to create event');
+      return { res, data: await res.json() };
+    };
+    try {
+      let { res, data } = await send(false);
+      if (res.status === 409 && data.field === 'duplicate') {
+        if (!(await confirmDuplicate(data))) return;
+        ({ res, data } = await send(true));
+      }
+      if (!res.ok) {
+        showServerError(data, 'Failed to create event');
+        return;
+      }
 
       // The event is saved unpublished. With a forecast: adjust prices first; either way step 4 is seating.
       if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${data.data.event.id}&setup=1`);
@@ -323,24 +490,26 @@ export default function CreateEvent() {
       setError(err.message);
       window.scrollTo({ top: 0, behavior: 'instant' });
     } finally {
+      savingRef.current = false;
       setSubmitting(null);
     }
   };
 
   // Details and images in one request; the API swaps images only after every upload succeeds
   const saveEdits = async () => {
-    if (submitting) return;
+    if (savingRef.current) return;
     const errs = validateStep(0);
     if (Object.keys(errs).length) {
-      setStep(0);
+      setStep(0, { replace: true });
       setFieldErrors(errs);
       return;
     }
+    savingRef.current = true;
     setError('');
     setSubmitting('SAVE');
     try {
       const formData = new FormData();
-      ['name', 'description', 'type', 'date', 'time', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
+      ['name', 'description', 'type', 'customCategoryId', 'date', 'time', 'endDate', 'endTime', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
       if (location.latitude != null) {
         formData.append('latitude', String(location.latitude));
         formData.append('longitude', String(location.longitude));
@@ -362,9 +531,9 @@ export default function CreateEvent() {
       await dialog.alert({ tone: 'success', title: 'Changes saved', message: `“${eventData.name}” has been updated.` });
       navigate(`/events/${editId}`);
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Failed to save changes');
-      window.scrollTo({ top: 0, behavior: 'instant' });
+      showServerError(err.response?.data, err.message || 'Failed to save changes');
     } finally {
+      savingRef.current = false;
       setSubmitting(null);
     }
   };
@@ -407,14 +576,17 @@ export default function CreateEvent() {
   // New events show all five setup steps (seating and review come after the event is created)
   const STEPS = isEdit ? SETUP_STEPS.slice(0, 3) : SETUP_STEPS;
   const err = (key) => fieldErrors[key];
-  const backHref = isEdit ? `/events/${editId}` : '/organizer/dashboard';
+  // New events go back to "Register or prebook", where the organizer came from
+  const backHref = isEdit ? `/events/${editId}` : '/organizer/events/new';
+  const profile = categoryProfile(eventData.type);
+  const scheduleLocked = isEdit && ticketsHeld > 0;
 
   return (
     <div>
       <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
         <Link to="/organizer/dashboard">Dashboard</Link>
         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        {isEdit ? <Link to={`/events/${editId}`}>{eventData.name}</Link> : <span style={{ color: 'var(--st-green)' }}>Create event</span>}
+        {isEdit ? <Link to={`/events/${editId}`}>{eventData.name}</Link> : <Link to="/organizer/events/new" style={{ color: 'var(--st-green)' }}>Create event</Link>}
         <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
         <span aria-current="page">{isEdit ? 'Edit event' : STEPS[step].label}</span>
       </nav>
@@ -465,21 +637,27 @@ export default function CreateEvent() {
                 </div>
               </div>
               <div className="tl-wz-grid">
-                <Field id="ev-name" label="Event name / Match title" error={err('name')} wide>
-                  <input id="ev-name" className="tl-wz-input" type="text" value={eventData.name} onChange={update('name')} placeholder="e.g. Lahore Qalandars vs Islamabad United – PSL 2026" aria-invalid={Boolean(err('name'))} />
+                <Field id="ev-name" label={profile.nameLabel} error={err('name')} wide>
+                  <input id="ev-name" className="tl-wz-input" type="text" value={eventData.name} onChange={update('name')} placeholder={profile.namePlaceholder} aria-invalid={Boolean(err('name'))} />
                 </Field>
-                <Field id="ev-type" label="Event category">
-                  <select id="ev-type" className="tl-wz-input" value={eventData.type} onChange={update('type')}>
-                    {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+                <Field id="ev-type" label="Event category" error={err('type')}>
+                  <CategoryField
+                    id="ev-type"
+                    value={{ type: eventData.type, customCategoryId: eventData.customCategoryId || null }}
+                    error={err('type')}
+                    onChange={({ type, customCategoryId }) => {
+                      setEventData((prev) => ({ ...prev, type, customCategoryId: customCategoryId || '' }));
+                      if (fieldErrors.type) setFieldErrors((prev) => ({ ...prev, type: undefined }));
+                    }}
+                  />
                 </Field>
                 <Field id="ev-city" label="City in Pakistan">
-                  <select id="ev-city" className="tl-wz-input" value={eventData.city} onChange={update('city')}>
+                  <select id="ev-city" className="tl-wz-input" value={eventData.city} onChange={update('city')} disabled={scheduleLocked}>
                     {(CITIES.includes(eventData.city) ? CITIES : [eventData.city, ...CITIES]).map((city) => <option key={city} value={city}>{city}</option>)}
                   </select>
                 </Field>
-                <Field id="ev-venue" label="Venue / Stadium" error={err('venue')} wide>
-                  <input id="ev-venue" className="tl-wz-input" type="text" value={eventData.venue} onChange={update('venue')} placeholder="e.g. Gaddafi Stadium" aria-invalid={Boolean(err('venue'))} />
+                <Field id="ev-venue" label={profile.venueLabel} error={err('venue')} wide>
+                  <input id="ev-venue" disabled={scheduleLocked} className="tl-wz-input" type="text" value={eventData.venue} onChange={update('venue')} placeholder={profile.venuePlaceholder} aria-invalid={Boolean(err('venue'))} />
                   {eventData.venue.trim() && (
                     <p className="tl-lp-typed">
                       <a href={googleMapsUrl({ ...location, venue: eventData.venue, city: eventData.city })} target="_blank" rel="noreferrer" aria-label="Open the venue in Google Maps" title="Open in Google Maps">
@@ -497,14 +675,73 @@ export default function CreateEvent() {
                     city={eventData.city}
                   />
                 </div>
-                <Field id="ev-date" label="Date" error={err('date')}>
-                  <input id="ev-date" className="tl-wz-input" type="date" value={eventData.date} min={isEdit ? undefined : todayIso()} onChange={update('date')} aria-invalid={Boolean(err('date'))} />
+                <Field id="ev-date" label="Start date" error={err('date')}>
+                  <input id="ev-date" disabled={scheduleLocked} className="tl-wz-input" type="date" value={eventData.date} min={isEdit ? undefined : todayIso()} onChange={update('date')} aria-invalid={Boolean(err('date'))} />
                 </Field>
-                <Field id="ev-time" label="Time (PKT)" error={err('time')}>
-                  <input id="ev-time" className="tl-wz-input" type="time" value={toTimeInput(eventData.time)} onChange={update('time')} aria-invalid={Boolean(err('time'))} />
+                <Field id="ev-time" label="Start time (PKT)" error={err('time')}>
+                  <input id="ev-time" disabled={scheduleLocked} className="tl-wz-input" type="time" value={toTimeInput(eventData.time)} onChange={update('time')} aria-invalid={Boolean(err('time'))} />
                 </Field>
-                <Field id="ev-description" label="Event description & lineup" error={err('description')} wide>
-                  <textarea id="ev-description" className="tl-wz-input" rows={3} value={eventData.description} onChange={update('description')} placeholder="Provide event overview, team rosters, or musical schedule…" aria-invalid={Boolean(err('description'))} />
+                <Field id="ev-endDate" label="End date" error={err('endDate')}>
+                  <input id="ev-endDate" disabled={scheduleLocked} className="tl-wz-input" type="date" value={eventData.endDate} min={eventData.date || undefined} onChange={update('endDate')} aria-invalid={Boolean(err('endDate'))} />
+                </Field>
+                <Field id="ev-endTime" label="End time (PKT)" error={err('endTime')}>
+                  <input id="ev-endTime" disabled={scheduleLocked} className="tl-wz-input" type="time" value={toTimeInput(eventData.endTime)} onChange={update('endTime')} aria-invalid={Boolean(err('endTime'))} />
+                </Field>
+                {/* Venue availability, re-checked as the venue and times change */}
+                {scheduleLocked && (
+                  <div className="tl-wz-field is-wide">
+                    <div className="tl-wz-dupe" role="note">
+                      <CalendarDays className="w-4 h-4" aria-hidden="true" />
+                      <div>
+                        <strong>{ticketsHeld} ticket{ticketsHeld === 1 ? ' is' : 's are'} sold, so the date, time and venue are locked here</strong>
+                        <p>Ticket holders have to be told about a new date and offered a refund. <Link to={`/organizer/events/${editId}/changes`}>Change the date or venue</Link>, postpone, or cancel the event there.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div id="ev-schedule" tabIndex={-1} className="tl-wz-field is-wide" aria-live="polite">
+                  {venueCheck.status === 'conflict' ? (
+                    <p className="tl-wz-error" role="alert">
+                      <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                      {venueCheck.message}
+                      {venueCheck.more > 0 && ` (${venueCheck.more} more booking${venueCheck.more === 1 ? '' : 's'} at this venue also clash.)`}
+                    </p>
+                  ) : venueCheck.status === 'checking' ? (
+                    <p className="tl-wz-hint">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" style={{ display: 'inline', marginRight: 6, verticalAlign: '-2px' }} />
+                      Checking whether {eventData.venue.trim()} is free at this time…
+                    </p>
+                  ) : venueCheck.status === 'free' ? (
+                    <p className="tl-wz-hint" style={{ color: '#16a34a' }}>
+                      <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" style={{ display: 'inline', marginRight: 6, verticalAlign: '-2px' }} />
+                      {eventData.venue.trim()} is free at this time, with at least an hour before and after other events.
+                    </p>
+                  ) : venueCheck.status === 'error' ? (
+                    <p className="tl-wz-hint">Couldn’t check the venue right now. It will be checked again when you save.</p>
+                  ) : (
+                    <p className="tl-wz-hint">Running past midnight? Set the end date to the next day. Events at the same venue need at least one hour between them.</p>
+                  )}
+                </div>
+                {duplicates.length > 0 && (
+                  <div className="tl-wz-field is-wide">
+                    <div className="tl-wz-dupe" role="status">
+                      <Copy className="w-4 h-4" aria-hidden="true" />
+                      <div>
+                        <strong>You already have {duplicates.length === 1 ? 'an event' : `${duplicates.length} events`} called “{duplicates[0].name}”</strong>
+                        <ul>
+                          {duplicates.slice(0, 3).map((d) => (
+                            <li key={d.id}>
+                              {describeEvent(d)} · <Link to={`/organizer/events/${d.id}/edit`}>Open it</Link>
+                            </li>
+                          ))}
+                        </ul>
+                        <p>If you entered it again by mistake, edit the existing one instead. Carry on only if this is a separate show or date.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <Field id="ev-description" label={profile.descriptionLabel} error={err('description')} wide>
+                  <textarea id="ev-description" className="tl-wz-input" rows={3} value={eventData.description} onChange={update('description')} placeholder={profile.descriptionPlaceholder} aria-invalid={Boolean(err('description'))} />
                 </Field>
                 <Field id="ev-contact" label="Contact email for attendees (optional)" error={err('contactEmail')} wide>
                   <input id="ev-contact" className="tl-wz-input" type="email" autoComplete="email" value={eventData.contactEmail} onChange={update('contactEmail')} placeholder={company?.email || 'events@yourcompany.pk'} aria-invalid={Boolean(err('contactEmail'))} aria-describedby="ev-contact-hint" />
@@ -517,8 +754,8 @@ export default function CreateEvent() {
             title="Event setup tips"
             intro="A few quick tips to help you create a great event listing."
             items={[
-              { icon: FileText, title: 'Clear and specific title', text: 'Include team names, match type and season (e.g. Lahore Qalandars vs Islamabad United – PSL 2026).' },
-              { icon: MapPin, title: 'Accurate venue and city', text: 'Choose the correct stadium and city so attendees can easily find your event.' },
+              { icon: FileText, title: 'Clear and specific title', text: profile.titleTip },
+              { icon: MapPin, title: 'Accurate venue and city', text: profile.venueTip },
               { icon: CalendarDays, title: 'Set the right date and time', text: 'Use the official schedule and local time (PKT) to avoid confusion.' },
             ]}
           />
@@ -621,7 +858,7 @@ export default function CreateEvent() {
                   <div className="tl-wz-card-head is-plain">
                     <div>
                       <h2>Ticket tiers &amp; capacity</h2>
-                      <p>Create ticket tiers for your event. You can add multiple tiers with different prices and quantities.</p>
+                      <p>Create ticket tiers for your event. We’ve started you with typical tiers for this category; rename them, change prices and quantities, or add more.</p>
                     </div>
                     <button type="button" className="tl-wz-btn" style={{ minHeight: 46, padding: '0 20px' }} onClick={handleAddTier}>
                       <PlusCircle className="w-5 h-5" /> Add tier
@@ -631,7 +868,7 @@ export default function CreateEvent() {
                     {tiers.map((tier, idx) => (
                       <div key={idx} className="tl-tier-row">
                         <Field id={`ev-tier-${idx}-name`} label="Tier name" error={err(`tier-${idx}-name`)}>
-                          <input id={`ev-tier-${idx}-name`} className="tl-wz-input" type="text" value={tier.name} onChange={(e) => handleTierChange(idx, 'name', e.target.value)} placeholder="e.g. General Enclosure" />
+                          <input id={`ev-tier-${idx}-name`} className="tl-wz-input" type="text" value={tier.name} onChange={(e) => handleTierChange(idx, 'name', e.target.value)} placeholder={`e.g. ${profile.tiers[0].name}`} />
                         </Field>
                         <Field id={`ev-tier-${idx}-price`} label="Price (PKR)" error={err(`tier-${idx}-price`)}>
                           <input id={`ev-tier-${idx}-price`} className="tl-wz-input" type="number" min={100} value={tier.price} onChange={(e) => handleTierChange(idx, 'price', e.target.value)} />
@@ -714,7 +951,7 @@ export default function CreateEvent() {
             title="Ticket setup tips"
             intro="A few quick tips to help you set up your ticket tiers and move forward."
             items={[
-              { icon: Tag, title: 'Set clear tier names', text: 'Use simple, descriptive names such as General Enclosure, VIP Pavilion or Early Bird so attendees understand their options.' },
+              { icon: Tag, title: 'Set clear tier names', text: `Use simple, descriptive names such as ${profile.tierExamples} so attendees understand their options.` },
               { icon: Tags, title: 'Check prices and quantities', text: 'Double-check ticket prices and total quantities. Make sure they match your event plan and venue capacity.' },
               { icon: Armchair, title: 'Seating comes next', text: 'After this step you set up the seating plan, then review your event and send it to TicketLedger for approval.' },
             ]}
@@ -725,7 +962,7 @@ export default function CreateEvent() {
         {/* ---------- Footer: back / next ---------- */}
         <div className="tl-wz-foot">
           {step === 0 ? (
-            <Link to={backHref} className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> {isEdit ? 'Back to event page' : 'Back to dashboard'}</Link>
+            <Link to={backHref} className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> {isEdit ? 'Back to event page' : 'Back'}</Link>
           ) : (
             <button type="button" className="tl-wz-btn" onClick={() => goTo(step - 1)}>
               <ArrowLeft className="w-4 h-4" /> Back: {STEPS[step - 1].label}

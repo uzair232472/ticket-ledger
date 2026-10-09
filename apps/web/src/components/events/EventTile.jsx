@@ -93,6 +93,7 @@ export default function EventTile({ event, index, isFavorite, onToggleFavorite, 
           <img className="tl-tile-img" src={visual.image} alt="" loading={index < 3 ? 'eager' : 'lazy'} decoding="async" onError={fallback} />
           <img className="tl-tile-img tl-tile-gray" src={visual.image} alt="" aria-hidden="true" loading={index < 3 ? 'eager' : 'lazy'} decoding="async" />
           <span className="tl-tile-fallback" aria-hidden="true" style={{ backgroundImage: `url(${markUrl})` }} />
+          {event.featured && <span className="tl-tile-flag is-featured">Featured</span>}
           {(soldOut || limited) && (
             <span className={`tl-tile-flag${soldOut ? ' is-soldout' : ''}`}>{soldOut ? 'Sold out' : `Only ${available} left`}</span>
           )}

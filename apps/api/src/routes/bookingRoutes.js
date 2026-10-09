@@ -7,6 +7,7 @@ import {
   getMyBookings,
   getBookingById,
 } from '../controllers/bookingController.js';
+import { getMyRefunds, getMyEventNotices } from '../controllers/lifecycleController.js';
 
 const router = Router();
 
@@ -17,6 +18,9 @@ router.post('/initiate', initiateBooking);
 router.post('/confirm', confirmBooking);
 router.post('/cancel', cancelBooking);
 router.get('/my-bookings', getMyBookings);
+// Refunds paid to me, and my events that were cancelled, postponed or moved (before /:id)
+router.get('/refunds', getMyRefunds);
+router.get('/event-notices', getMyEventNotices);
 router.get('/:id', getBookingById);
 
 export default router;

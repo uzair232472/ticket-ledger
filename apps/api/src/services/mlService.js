@@ -104,6 +104,7 @@ const ML_EVENT_TYPE = {
   THEATRE: 'MUSIC_CONCERT',
   CONFERENCE: 'MUSIC_CONCERT',
   GENERAL_ADMISSION: 'MUSIC_FESTIVAL',
+  OTHER: 'MUSIC_CONCERT', // organizer-added categories
 };
 const mlEventType = (type) => ML_EVENT_TYPE[type] || type;
 

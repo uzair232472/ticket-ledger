@@ -24,3 +24,14 @@ export const EVENT_IMAGE_SPECS = {
 };
 
 export const LARGEST_IMAGE_BYTES = Math.max(...Object.values(EVENT_IMAGE_SPECS).map((s) => s.maxBytes));
+
+/**
+ * Promo videos for the home page hero (organizer promotion requests). The hero fills the whole screen with
+ * object-fit: cover, like TicketLedger's own hero films (1920 × 1080 landscape, 608 × 1080 portrait on
+ * phones), so the edges can be cropped: keep text and logos in the middle. They play muted and on a loop.
+ * Keep in sync with apps/web/src/utils/heroVideoSpecs.js (the request form shows the same values).
+ */
+export const HERO_VIDEO_SPECS = {
+  desktop: { label: 'Hero video (desktop)', ratio: 16 / 9, ratioLabel: '16:9', recommended: [1920, 1080], min: [1280, 720], maxBytes: 30 * MB, maxSeconds: 60 },
+  mobile: { label: 'Hero video (phones)', ratio: 9 / 16, ratioLabel: '9:16', recommended: [1080, 1920], min: [540, 960], maxBytes: 15 * MB, maxSeconds: 60 },
+};

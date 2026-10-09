@@ -29,6 +29,7 @@ import {
   Receipt,
   ScanLine,
   ShieldAlert,
+  Megaphone,
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -76,7 +77,12 @@ function EventCard({ event, index, totals, selected, onStats, onDelete }) {
     <article className={`tl-st-ev${selected ? ' is-selected' : ''}`}>
       <Link to={`/events/${event.id}`} className="tl-st-ev-media" tabIndex={-1} aria-hidden="true">
         <img src={image} alt="" loading="lazy" onError={(e) => e.currentTarget.classList.add('is-broken')} />
-        <span className={`tl-st-ev-badge ${badgeClass}`}>{badge}</span>
+        <span className={`tl-st-ev-badge ${badgeClass}`}>{event.postponedAt ? 'Postponed' : badge}</span>
+        {(event.priorityStatus === 'APPROVED' || event.heroStatus === 'APPROVED') && (
+          <span className="tl-st-ev-badge is-live tl-st-ev-promo">
+            {event.heroStatus === 'APPROVED' ? 'Hero banner' : 'Top of listings'}
+          </span>
+        )}
       </Link>
       <div className="tl-st-ev-body">
         <h3><Link to={`/events/${event.id}`}>{event.name}</Link></h3>
@@ -105,6 +111,16 @@ function EventCard({ event, index, totals, selected, onStats, onDelete }) {
           {/* Not on sale yet: preview the details and send it (or see its review state) */}
           {!['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status) && (
             <Link to={`/organizer/events/${event.id}/submit`}>{event.status === 'PENDING_APPROVAL' ? 'Preview' : 'Preview & submit'}</Link>
+          )}
+          {!['CANCELLED', 'COMPLETED'].includes(event.status) && (
+            <Link to={`/organizer/events/${event.id}/submit#promote`} title="Ask for top of listings or the home page hero banner">
+              <Megaphone className="w-3.5 h-3.5" aria-hidden="true" style={{ display: 'inline', verticalAlign: '-2px', marginRight: 3 }} />
+              {event.priorityStatus === 'REQUESTED' || event.heroStatus === 'REQUESTED' ? 'Promotion pending' : 'Promote'}
+            </Link>
+          )}
+          {/* Live events with buyers are cancelled (refunds) or moved here, not deleted or edited */}
+          {['PUBLISHED', 'PAUSED'].includes(event.status) && (
+            <Link to={`/organizer/events/${event.id}/changes`}>Cancel or change date</Link>
           )}
           <button type="button" className="tl-st-ev-delete" onClick={onDelete}>Delete</button>
           <Link to={`/events/${event.id}`} className="tl-st-ev-open" aria-label={`Open the ${event.name} event page`}>
@@ -147,6 +163,7 @@ export default function OrganizerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [eventView, setEventView] = useState('upcoming'); // upcoming | all | past
+  const [eventSort, setEventSort] = useState('newest'); // newest (recently created) | date (soonest first)
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [showAllTiers, setShowAllTiers] = useState(false);
 
@@ -230,15 +247,17 @@ export default function OrganizerDashboard() {
     return parts;
   }, [tierBreakdown]);
   const eventTotals = useMemo(() => totalsByEvent(allTiers || []), [allTiers]);
-  // Upcoming and live events (soonest first) by default; past events on request (latest first)
+  // Upcoming and live events by default, past ones on request. Newest created first, so an event you've
+  // just created is at the top; or by event date (upcoming soonest first, past latest first).
   const listedEvents = useMemo(() => {
     const today = startOfToday();
-    const upcoming = events.filter((e) => new Date(e.date) >= today).sort((a, b) => new Date(a.date) - new Date(b.date));
-    const past = events.filter((e) => new Date(e.date) < today).sort((a, b) => new Date(b.date) - new Date(a.date));
+    const newest = (a, b) => new Date(b.createdAt) - new Date(a.createdAt);
+    const upcoming = events.filter((e) => new Date(e.date) >= today).sort(eventSort === 'newest' ? newest : (a, b) => new Date(a.date) - new Date(b.date));
+    const past = events.filter((e) => new Date(e.date) < today).sort(eventSort === 'newest' ? newest : (a, b) => new Date(b.date) - new Date(a.date));
     if (eventView === 'past') return past;
-    if (eventView === 'all') return [...upcoming, ...past];
+    if (eventView === 'all') return eventSort === 'newest' ? [...upcoming, ...past].sort(newest) : [...upcoming, ...past];
     return upcoming;
-  }, [events, eventView]);
+  }, [events, eventView, eventSort]);
   const shownEvents = showAllEvents ? listedEvents : listedEvents.slice(0, EVENTS_SHOWN);
   // Best-selling tiers first
   const sortedTiers = useMemo(
@@ -294,7 +313,7 @@ export default function OrganizerDashboard() {
           <button type="button" className="tl-st-btn tl-st-btn--ghost" onClick={fetchDashboard} disabled={refreshing}>
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'tl-dash-spin' : ''}`} aria-hidden="true" /> Refresh
           </button>
-          <Link to="/organizer/create-event" className="tl-st-btn tl-st-btn--green">
+          <Link to="/organizer/events/new" className="tl-st-btn tl-st-btn--green">
             <Plus className="w-4 h-4" aria-hidden="true" /> Create event
           </Link>
         </div>
@@ -320,6 +339,13 @@ export default function OrganizerDashboard() {
       </p>
 
       {error && <Notice tone="bad" icon={AlertTriangle}>{error}</Notice>}
+      {/* Payouts wait until a few days after each event, so refunds for cancellations can always be paid */}
+      {!loading && (metrics.payoutHeldPkr > 0 || metrics.payoutReleasablePkr > 0) && (
+        <Notice tone="good" icon={Info}>
+          Payout available: PKR {(metrics.payoutReleasablePkr || 0).toLocaleString()} · Held until {metrics.payoutHoldDays || 3} days after each event ends: PKR {(metrics.payoutHeldPkr || 0).toLocaleString()}
+          {metrics.refundsPending > 0 ? ` · ${metrics.refundsPending} refund${metrics.refundsPending === 1 ? '' : 's'} still processing` : ''}
+        </Notice>
+      )}
 
       {!loading && (
         <>
@@ -330,7 +356,11 @@ export default function OrganizerDashboard() {
                 label="GROSS REVENUE"
                 unit="PKR"
                 value={metrics.totalRevenuePkr || 0}
-                chips={[<Chip key="n" icon={Wallet}>Net PKR {(metrics.netRevenuePkr || 0).toLocaleString()}</Chip>, <Chip key="f" icon={Receipt}>Fee {(metrics.platformFeePkr || 0).toLocaleString()}</Chip>]}
+                chips={[
+                  <Chip key="n" icon={Wallet}>Net PKR {(metrics.netRevenuePkr || 0).toLocaleString()}</Chip>,
+                  <Chip key="f" icon={Receipt}>Fee {(metrics.platformFeePkr || 0).toLocaleString()}</Chip>,
+                  ...(metrics.refundedPkr > 0 ? [<Chip key="r" icon={Receipt}>Refunded {metrics.refundedPkr.toLocaleString()}</Chip>] : []),
+                ]}
               />
               <Kpi
                 label="TICKETS SOLD"
@@ -384,8 +414,13 @@ export default function OrganizerDashboard() {
             </div>
             <div className="tl-st-section-aside">
               <p>
-                {eventView === 'upcoming' ? 'Upcoming and live. Past events are hidden by default.' : eventView === 'past' ? 'Past events, latest first.' : 'Upcoming events first, then past ones.'}
+                {eventView === 'upcoming' ? 'Upcoming and live. Past events are hidden by default.' : eventView === 'past' ? 'Past events.' : 'Upcoming and past events.'}
+                {eventSort === 'newest' ? ' Recently created first.' : ' By event date.'}
               </p>
+              <select className="tl-st-filter" value={eventSort} onChange={(e) => setEventSort(e.target.value)} aria-label="Sort events">
+                <option value="newest">Newest first</option>
+                <option value="date">By event date</option>
+              </select>
               <select className="tl-st-filter" value={eventView} onChange={(e) => { setEventView(e.target.value); setShowAllEvents(false); }} aria-label="Which events to show">
                 <option value="upcoming">Upcoming &amp; live</option>
                 <option value="all">All events</option>
@@ -396,7 +431,7 @@ export default function OrganizerDashboard() {
           {listedEvents.length === 0 ? (
             <div className="tl-st-empty">
               {eventView === 'past' ? 'No past events yet.' : 'No upcoming events. '}
-              {eventView !== 'past' && <Link to="/organizer/create-event" style={{ color: 'var(--st-green)', fontWeight: 700 }}>Create one</Link>}
+              {eventView !== 'past' && <Link to="/organizer/events/new" style={{ color: 'var(--st-green)', fontWeight: 700 }}>Create one</Link>}
             </div>
           ) : (
             <div className="tl-st-events">

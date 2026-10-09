@@ -97,9 +97,10 @@ async function assertRoom(eventId, userId, adding) {
 }
 
 async function assertBookable(eventId) {
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, status: true } });
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, status: true, isHidden: true } });
   if (!event) throw new VenueError(404, 'Event not found');
-  if (event.status !== 'PUBLISHED') throw new VenueError(400, 'This event is not currently accepting bookings.');
+  // Hidden dates take no new bookings (tickets already sold stay valid)
+  if (event.status !== 'PUBLISHED' || event.isHidden) throw new VenueError(400, 'This event is not currently accepting bookings.');
   const layout = await prisma.venueLayout.findFirst({ where: { eventId, status: 'PUBLISHED' }, select: { id: true } });
   if (!layout) throw new VenueError(400, 'This event has no published venue plan.');
 }

@@ -119,6 +119,7 @@
 .tl-nt-type { padding: 4px 8px; border: 1px solid var(--bs-line-strong); border-radius: 2px; font: 600 10px/1 'JetBrains Mono', monospace; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tone); }
 .tl-nt-new { font: 700 10px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tl-green-dark); }
 .tl-nt-msg { margin-top: 8px; font-size: 15px; line-height: 1.55; color: var(--bs-muted); max-width: 760px; }
+.tl-nt-link { display: inline-block; margin-top: 6px; font-size: 14px; font-weight: 700; color: var(--tl-green-dark); text-decoration: underline; }
 .tl-nt-time { display: block; margin-top: 10px; font: 500 12px/1 'JetBrains Mono', monospace; color: rgba(11, 11, 11, 0.5); }
 .tl-nt-actions { display: flex; gap: 6px; }
 .tl-nt-actions .tl-basic-icon-btn { width: 40px; height: 40px; }

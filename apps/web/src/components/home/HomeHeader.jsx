@@ -44,7 +44,7 @@ function useMenuGroups(onCategories) {
       title: 'Organize',
       items: approved
         ? [
-            { label: 'Create Event', to: '/organizer/create-event' },
+            { label: 'Create Event', to: '/organizer/events/new' },
             { label: 'Organizer Dashboard', to: '/organizer/dashboard' },
             { label: 'Gate Scanner', to: '/scanner' },
           ]

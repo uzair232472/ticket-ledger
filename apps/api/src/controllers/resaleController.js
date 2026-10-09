@@ -26,13 +26,23 @@ export const listTicketForResale = async (req, res) => {
           include: { tier: true },
         },
         resaleListings: {
-          where: { status: 'ACTIVE' },
+          where: { status: { in: ['ACTIVE', 'PAUSED'] } },
         },
       },
     });
 
     if (!ticket) {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
+    }
+
+    // Postponed or cancelled events can't be resold (buyers wouldn't know the date)
+    if (ticket.event.postponedAt || ['CANCELLED', 'COMPLETED'].includes(ticket.event.status)) {
+      return res.status(409).json({
+        success: false,
+        message: ticket.event.postponedAt
+          ? 'This event is postponed. You can list your ticket once the new date is announced, or get a refund instead.'
+          : `This event is ${ticket.event.status.toLowerCase()}, so its tickets can’t be resold.`,
+      });
     }
 
     // Verify ownership
@@ -55,7 +65,9 @@ export const listTicketForResale = async (req, res) => {
     if (ticket.resaleListings && ticket.resaleListings.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'This ticket is already actively listed on the secondary marketplace.',
+        message: ticket.resaleListings[0].status === 'PAUSED'
+          ? 'This ticket’s listing was paused because the event moved. Relist it from My listings.'
+          : 'This ticket is already actively listed on the secondary marketplace.',
       });
     }
 
@@ -197,7 +209,7 @@ export const cancelResaleListing = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Access denied to this listing' });
     }
 
-    if (listing.status !== 'ACTIVE') {
+    if (!['ACTIVE', 'PAUSED'].includes(listing.status)) {
       return res.status(400).json({
         success: false,
         message: `Cannot cancel listing with status '${listing.status}'.`,
@@ -412,6 +424,12 @@ export const buyResaleTicket = async (req, res) => {
       });
     }
 
+    // The event moved, was postponed or cancelled since the listing went up
+    const ev = listing.ticket.event;
+    if (ev.status !== 'PUBLISHED' || ev.postponedAt || listing.ticket.status !== 'ACTIVE') {
+      return res.status(409).json({ success: false, message: 'This event is no longer on sale, so this ticket can’t be bought.' });
+    }
+
     // Buyer cannot buy their own ticket
     if (listing.sellerId === buyerId) {
       return res.status(400).json({
@@ -525,6 +543,31 @@ export const buyResaleTicket = async (req, res) => {
     });
   } catch (error) {
     console.error('Error buying resale ticket:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Seller puts a listing paused by a reschedule back on the market (optionally at a new price, still
+ * within the 110% cap), now that buyers see the new date.
+ */
+export const relistResaleListing = async (req, res) => {
+  try {
+    const listing = await prisma.resaleListing.findUnique({ where: { id: req.params.listingId }, include: { ticket: { include: { event: true } } } });
+    if (!listing) return res.status(404).json({ success: false, message: 'Resale listing not found' });
+    if (listing.sellerId !== req.user.id) return res.status(403).json({ success: false, message: 'Access denied to this listing' });
+    if (listing.status !== 'PAUSED') return res.status(400).json({ success: false, message: 'Only a paused listing can be relisted.' });
+    const { event } = listing.ticket;
+    if (event.status !== 'PUBLISHED' || event.postponedAt || listing.ticket.status !== 'ACTIVE') {
+      return res.status(409).json({ success: false, message: 'This event isn’t on sale right now, so the ticket can’t be relisted yet.' });
+    }
+    const price = req.body?.resalePrice != null ? Number(req.body.resalePrice) : Number(listing.resalePrice);
+    if (!(price > 0) || price > Number(listing.maxResalePrice)) {
+      return res.status(400).json({ success: false, message: `Choose a price up to Rs. ${Number(listing.maxResalePrice).toLocaleString()} (110% of face value).` });
+    }
+    const updated = await prisma.resaleListing.update({ where: { id: listing.id }, data: { status: 'ACTIVE', resalePrice: price } });
+    return res.json({ success: true, message: 'Your ticket is listed again with the new date.', data: { listing: updated } });
+  } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };

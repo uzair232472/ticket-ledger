@@ -10,7 +10,7 @@ const PUBLIC_STATUSES = ['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'];
 export const getWishlistIds = async (req, res) => {
   try {
     const items = await prisma.wishlistItem.findMany({
-      where: { userId: req.user.id, event: { status: { in: PUBLIC_STATUSES } } },
+      where: { userId: req.user.id, event: { status: { in: PUBLIC_STATUSES }, isHidden: false } },
       select: { eventId: true },
     });
     return res.json({ success: true, data: { eventIds: items.map((i) => i.eventId) } });
@@ -24,7 +24,7 @@ export const getWishlistIds = async (req, res) => {
 export const getWishlist = async (req, res) => {
   try {
     const items = await prisma.wishlistItem.findMany({
-      where: { userId: req.user.id, event: { status: { in: PUBLIC_STATUSES } } },
+      where: { userId: req.user.id, event: { status: { in: PUBLIC_STATUSES }, isHidden: false } },
       orderBy: { createdAt: 'desc' },
       include: {
         event: {
@@ -58,8 +58,8 @@ export const getWishlist = async (req, res) => {
 /** Save an event (idempotent). */
 export const addToWishlist = async (req, res) => {
   try {
-    const event = await prisma.event.findUnique({ where: { id: req.params.eventId }, select: { id: true, status: true } });
-    if (!event || !PUBLIC_STATUSES.includes(event.status)) {
+    const event = await prisma.event.findUnique({ where: { id: req.params.eventId }, select: { id: true, status: true, isHidden: true } });
+    if (!event || !PUBLIC_STATUSES.includes(event.status) || event.isHidden) {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
     await prisma.wishlistItem.upsert({

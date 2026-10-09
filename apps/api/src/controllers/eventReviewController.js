@@ -1,15 +1,27 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { canManageEvent } from '../utils/eventAccess.js';
+import { ScheduleError, findScheduleConflicts, lockVenue, occupiedInterval } from '../services/eventScheduleService.js';
+import { noticeReviewed, noticeSubmitted } from '../services/eventReviewNotices.js';
 
 /*
  * Event approval: the organizer submits a finished event (details, tickets, seating), a Super Admin
  * approves it (it goes on sale) or rejects it with a comment (the organizer fixes it and resubmits).
- * Both sides get an in-app notification, which is also emailed (config/prisma.js).
+ * Prebooked dates (see prebookController) use the same review: approval confirms the venue reservation.
+ * The organizer and the admins get an in-app notification at each step (submitted, approved, rejected),
+ * which is also emailed (config/prisma.js). The venue slot is rechecked under the venue lock on submit
+ * and on approval, so a conflicting request can never be confirmed.
  */
 
 const SUBMITTABLE = ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'];
-const when = (d) => new Date(d).toLocaleDateString('en-PK', { dateStyle: 'medium', timeZone: 'Asia/Karachi' });
+
+/** 409 with the clash, when another event now holds this event's slot. */
+async function assertSlotStillFree(tx, event) {
+  await lockVenue(tx, event);
+  const { start, end } = occupiedInterval(event);
+  const conflicts = await findScheduleConflicts({ city: event.city, venue: event.venue, startsAt: start, endsAt: end, excludeEventId: event.id }, tx);
+  if (conflicts.length) throw new ScheduleError(409, conflicts[0].message, { field: 'schedule', conflicts: conflicts.map((c) => c.message) });
+}
 
 /** Whether attendees will have something to book: a published venue plan or seats from the older grid. */
 async function seatingReady(eventId) {
@@ -62,35 +74,25 @@ export const submitEventForReview = async (req, res) => {
     if (!SUBMITTABLE.includes(event.status)) {
       return res.status(409).json({ success: false, message: `An event that is ${event.status.toLowerCase()} can’t be submitted for approval.` });
     }
-    if (!(await seatingReady(event.id))) {
+    // A prebooked date is a venue reservation: tickets and seating can be added once it is confirmed
+    if (!event.prebookDraftId && !(await seatingReady(event.id))) {
       return res.status(400).json({ success: false, message: 'Publish a seating plan first, so attendees have seats to choose from.' });
     }
 
-    const updated = await prisma.event.update({
-      where: { id: event.id },
-      data: { status: 'PENDING_APPROVAL', submittedAt: new Date() },
+    // A rejected request released its slot, so the venue is checked again before it is held for review
+    const updated = await prisma.$transaction(async (tx) => {
+      await assertSlotStillFree(tx, event);
+      return tx.event.update({ where: { id: event.id }, data: { status: 'PENDING_APPROVAL', submittedAt: new Date() } });
     });
 
-    const admins = await prisma.user.findMany({ where: { role: 'SUPER_ADMIN', status: 'ACTIVE' }, select: { id: true, email: true } });
-    const title = `New event to review: ${event.name}`;
-    const message = `${event.company.companyName} sent "${event.name}" (${when(event.date)}, ${event.venue}, ${event.city}) for approval.`;
-    await prisma.notification.createMany({
-      data: [
-        ...admins.map((a) => ({ userId: a.id, type: 'EVENT_REVIEW_REQUEST', title, message })),
-        {
-          userId: req.user.id,
-          type: 'EVENT_SUBMITTED',
-          title: `“${event.name}” sent for approval`,
-          message: 'A TicketLedger admin will review your event. You’ll get an email when it’s approved or if changes are needed.',
-        },
-      ],
-    });
+    await noticeSubmitted(updated, event.company);
     await prisma.auditLog.create({
       data: { userId: req.user.id, action: 'EVENT_SUBMITTED_FOR_REVIEW', targetType: 'Event', targetId: event.id, details: { eventName: event.name, previousStatus: event.status } },
     });
 
     return res.json({ success: true, message: 'Sent to TicketLedger admins for approval.', data: { event: updated } });
   } catch (error) {
+    if (error instanceof ScheduleError) return res.status(error.status).json({ success: false, message: error.message, ...error.details });
     console.error('Submit for review failed:', error);
     return res.status(500).json({ success: false, message: 'Failed to submit the event.' });
   }
@@ -128,11 +130,15 @@ const reviewSchema = z
   })
   .refine((v) => v.decision === 'APPROVE' || v.comment.length >= 5, { message: 'Add a comment explaining what the organizer should change.', path: ['comment'] });
 
-/** Super Admin: approve (goes on sale) or reject (with a comment) a submitted event. */
+/**
+ * Super Admin: approve or reject (with a comment) a submitted event. Approval secures the venue slot
+ * (reservedAt): a registered event goes on sale; a prebooked date becomes "Reserved" and is shown publicly
+ * only if the organizer chose that and it already has tickets and seating.
+ */
 export const reviewEvent = async (req, res) => {
   try {
     const { decision, comment } = reviewSchema.parse(req.body);
-    const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: { include: { user: { select: { id: true, email: true } } } } } });
+    const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
     if (event.status !== 'PENDING_APPROVAL') {
       return res.status(409).json({ success: false, message: 'This event is no longer waiting for approval.' });
@@ -140,33 +146,43 @@ export const reviewEvent = async (req, res) => {
 
     const approve = decision === 'APPROVE';
     const now = new Date();
-    // Only move it if it is still pending (two admins reviewing at once: the second one gets a 409)
-    const moved = await prisma.event.updateMany({
-      where: { id: event.id, status: 'PENDING_APPROVAL' },
-      data: {
-        status: approve ? 'PUBLISHED' : 'REJECTED',
-        approvedAt: approve ? now : null,
-        reviewedAt: now,
-        reviewedBy: req.user.email,
-        reviewComment: comment || null,
-      },
+    let hiddenUntilReady = false;
+    if (approve && event.prebookDraftId && !event.isHidden) {
+      const tiers = await prisma.ticketTier.count({ where: { eventId: event.id } });
+      hiddenUntilReady = !(tiers > 0 && (await seatingReady(event.id)));
+    }
+
+    const moved = await prisma.$transaction(async (tx) => {
+      if (approve) await assertSlotStillFree(tx, event);
+      // Only move it if it is still pending (two admins reviewing at once: the second one gets a 409)
+      return tx.event.updateMany({
+        where: { id: event.id, status: 'PENDING_APPROVAL' },
+        data: {
+          status: approve ? 'PUBLISHED' : 'REJECTED',
+          approvedAt: approve ? now : null,
+          reservedAt: approve ? now : null,
+          ...(hiddenUntilReady ? { isHidden: true } : {}),
+          reviewedAt: now,
+          reviewedBy: req.user.email,
+          reviewComment: comment || null,
+        },
+      });
     });
     if (!moved.count) return res.status(409).json({ success: false, message: 'Another admin has just reviewed this event.' });
 
-    const title = approve ? `“${event.name}” is approved and on sale` : `Changes needed for “${event.name}”`;
-    const message = approve
-      ? `Your event has been approved by TicketLedger and is now live for ticket sales.${comment ? ` Admin note: ${comment}` : ''}`
-      : `Your event wasn’t approved yet. Admin comment: ${comment} Update the event and send it for approval again.`;
-    await prisma.notification.create({
-      data: { userId: event.company.userId, type: approve ? 'EVENT_APPROVED' : 'EVENT_REJECTED', title, message },
-    });
-    await prisma.auditLog.create({
-      data: { userId: req.user.id, action: approve ? 'EVENT_APPROVED' : 'EVENT_REJECTED', targetType: 'Event', targetId: event.id, details: { eventName: event.name, comment: comment || null } },
-    });
     const updated = await prisma.event.findUnique({ where: { id: event.id } });
-    return res.json({ success: true, message: approve ? 'Event approved and published.' : 'Event returned to the organizer.', data: { event: updated } });
+    await noticeReviewed(updated, event.company, { approve, comment, reviewerEmail: req.user.email, hiddenUntilReady });
+    await prisma.auditLog.create({
+      data: { userId: req.user.id, action: approve ? 'EVENT_APPROVED' : 'EVENT_REJECTED', targetType: 'Event', targetId: event.id, details: { eventName: event.name, comment: comment || null, prebooked: Boolean(event.prebookDraftId) } },
+    });
+    let done = approve ? 'Event approved and published.' : 'Event returned to the organizer.';
+    if (event.prebookDraftId) done = approve ? 'Reservation confirmed.' : 'Reservation request rejected.';
+    return res.json({ success: true, message: done, data: { event: updated } });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Invalid review' });
+    if (error instanceof ScheduleError) {
+      return res.status(409).json({ success: false, message: `Can’t confirm this slot: ${error.message} Reject the request so the organizer can choose another time.`, conflicts: error.details.conflicts });
+    }
     console.error('Event review failed:', error);
     return res.status(500).json({ success: false, message: 'Failed to save the review.' });
   }

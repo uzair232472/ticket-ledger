@@ -2413,3 +2413,37 @@
 @media (max-width: 599px) {
   .tl-footer-top { grid-template-columns: 1fr 1fr; gap: 22px 24px; }
 }
+
+/* Hero: an organizer's event approved for the hero banner (its promo video plays behind) */
+.tl-hero-promo {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 10px;
+  max-width: 100%;
+  margin-top: 16px;
+  padding: 8px 14px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 14px;
+  text-decoration: none;
+  transition: border-color 0.2s, background 0.2s;
+}
+.tl-hero-promo:hover { border-color: var(--tl-green); background: rgba(0, 0, 0, 0.6); }
+.tl-hero-promo:focus-visible { outline: 2px solid var(--tl-green); outline-offset: 3px; }
+.tl-hero-promo-tag {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--tl-green);
+  color: var(--tl-ink);
+  font: 700 11px/1 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tl-hero-promo-name { font-weight: 700; overflow-wrap: anywhere; }
+.tl-hero-promo-meta { opacity: 0.8; }
+.tl-card-badge--featured { background: var(--tl-green); color: var(--tl-ink); }

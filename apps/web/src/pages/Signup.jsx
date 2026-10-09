@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Mail, Lock, User, Phone, Users, Building2, RefreshCw } from 'lucide-react';
 import AuthShell, { Alert, Field, SubmitButton } from '../components/auth/AuthShell';
 import { getHomeRoute } from '../lib/session';
-import { validateName, validateEmail, validatePhone, validatePassword, PASSWORD_HINT } from '../lib/validation';
+import { validateName, validateSignupEmail, validatePhone, validatePassword, PASSWORD_HINT } from '../lib/validation';
 
 const ACCOUNT_TYPES = [
   { id: 'customer', label: 'Customer', description: 'Buy and manage tickets', icon: Users },
@@ -51,20 +51,41 @@ export default function Signup() {
 
   if (!authLoading && user) return <Navigate to={getHomeRoute(user)} replace />;
 
+  // Rules per field; run on every keystroke so mistakes show while typing
+  const checkField = (name, values) => {
+    const value = values[name];
+    switch (name) {
+      case 'name':
+        return validateName(value);
+      case 'email':
+        return validateSignupEmail(value);
+      case 'phone':
+        return value.trim() ? validatePhone(value) : 'Enter your mobile number';
+      case 'password':
+        return editingPending && !value ? null : validatePassword(value);
+      case 'confirmPassword':
+        return value === values.password ? null : 'Passwords do not match';
+      default:
+        return null;
+    }
+  };
+
   const update = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    setFieldErrors((prev) => ({ ...prev, [name]: null }));
+    const next = { ...form, [name]: value };
+    setForm(next);
+    setFieldErrors((prev) => ({
+      ...prev,
+      [name]: checkField(name, next),
+      // A changed password re-checks the confirmation once one has been typed
+      ...(name === 'password' && next.confirmPassword ? { confirmPassword: checkField('confirmPassword', next) } : {}),
+    }));
   };
 
   const validate = () => {
-    const errors = {
-      name: validateName(form.name),
-      email: validateEmail(form.email),
-      phone: form.phone.trim() ? validatePhone(form.phone) : 'Enter your mobile number',
-      password: editingPending && !form.password ? null : validatePassword(form.password),
-      confirmPassword: form.password === form.confirmPassword ? null : 'Passwords do not match',
-    };
+    const errors = Object.fromEntries(
+      ['name', 'email', 'phone', 'password', 'confirmPassword'].map((field) => [field, checkField(field, form)]),
+    );
     setFieldErrors(errors);
     return !Object.values(errors).some(Boolean);
   };
@@ -82,7 +103,7 @@ export default function Signup() {
     try {
       const payload = {
         name: form.name.trim(),
-        email: form.email.trim(),
+        email: form.email.trim().toLowerCase(),
         phone: form.phone.trim(),
         password: form.password,
         accountType: form.accountType,
@@ -146,9 +167,9 @@ export default function Signup() {
             </div>
           </fieldset>
 
-          <Field label="Full name" icon={User} name="name" autoComplete="name" value={form.name} onChange={update} placeholder="Tariq Mehmood" error={fieldErrors.name} />
+          <Field label="Full name" icon={User} name="name" autoComplete="name" maxLength={50} value={form.name} onChange={update} placeholder="Tariq Mehmood" error={fieldErrors.name} />
           <Field label="Email address" icon={Mail} type="email" name="email" autoComplete="email" value={form.email} onChange={update} placeholder="name@gmail.com" error={fieldErrors.email} />
-          <Field label="Mobile number" icon={Phone} type="tel" name="phone" autoComplete="tel" inputMode="tel" required value={form.phone} onChange={update} placeholder="+92 300 1234567" error={fieldErrors.phone} />
+          <Field label="Mobile number" icon={Phone} type="tel" name="phone" autoComplete="tel" inputMode="tel" required value={form.phone} onChange={update} placeholder="0300 1234567" error={fieldErrors.phone} />
           <div className="tl-auth-pair">
             <Field label="Password" hint={editingPending ? '(leave blank to keep)' : undefined} icon={Lock} type="password" name="password" autoComplete="new-password" value={form.password} onChange={update} placeholder={PASSWORD_HINT} error={fieldErrors.password} />
             <Field label="Confirm password" icon={Lock} type="password" name="confirmPassword" autoComplete="new-password" value={form.confirmPassword} onChange={update} placeholder="Repeat password" error={fieldErrors.confirmPassword} />

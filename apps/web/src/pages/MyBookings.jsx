@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection } from '../components/account/AccountShell';
 import { STAGE_IMAGE } from '../components/home/homeData';
+import '../components/lifecycle/lifecycle.css';
 import {
   Ticket,
   Calendar,
@@ -17,20 +18,29 @@ import {
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const ORDER_STATUS = { SUCCESSFUL: 'Paid', PENDING: 'Pending', FAILED: 'Failed', REFUNDED: 'Refunded', PARTIALLY_REFUNDED: 'Partly refunded' };
 
 export default function MyBookings() {
   const { token } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Events of mine that were cancelled, postponed or moved (with refunds open), and refunds paid to me
+  const [notices, setNotices] = useState([]);
+  const [refunds, setRefunds] = useState([]);
 
   useEffect(() => {
     const fetchBookings = async () => {
       try {
         setLoading(true);
-        const res = await axios.get(`${API_BASE_URL}/api/bookings/my-bookings`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const headers = { Authorization: `Bearer ${token}` };
+        const [res, noticeRes, refundRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/api/bookings/my-bookings`, { headers }),
+          axios.get(`${API_BASE_URL}/api/bookings/event-notices`, { headers }).catch(() => null),
+          axios.get(`${API_BASE_URL}/api/bookings/refunds`, { headers }).catch(() => null),
+        ]);
+        setNotices(noticeRes?.data?.data?.events || []);
+        setRefunds(refundRes?.data?.data?.refunds || []);
 
         if (res.data.success) {
           setOrders(res.data.data.orders);
@@ -78,6 +88,46 @@ export default function MyBookings() {
           <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
           <div>{error}</div>
         </div>
+      )}
+
+      {notices.length > 0 && (
+        <section className="tl-lcu-notices" aria-label="Event updates">
+          {notices.map((ev) => (
+            <div key={ev.id} className={`tl-lcu-notice ${ev.status === 'CANCELLED' ? 'is-bad' : 'is-wait'}`}>
+              <div>
+                <strong>
+                  {ev.status === 'CANCELLED' ? `Cancelled: ${ev.name}` : ev.postponedAt ? `Postponed: ${ev.name}` : `New date: ${ev.name}`}
+                </strong>
+                {ev.status === 'CANCELLED'
+                  ? `${ev.cancelReason ? `${ev.cancelReason} ` : ''}Your tickets are refunded automatically.`
+                  : ev.postponedAt
+                    ? 'Your tickets stay valid for the new date. You can get a refund until it’s announced.'
+                    : `Now ${new Date(ev.date).toLocaleDateString()} at ${ev.venue}. Can’t make it? Get a refund until ${new Date(ev.refundWindowEndsAt).toLocaleString()}.`}
+              </div>
+              <Link to={`/events/${ev.id}/refund`}>{ev.status === 'CANCELLED' ? 'See refund' : 'Keep or refund'}</Link>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {refunds.length > 0 && (
+        <section aria-label="Refunds">
+          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Refunds ({refunds.length})</div>
+          <div className="tl-lcu-refund-list">
+            {refunds.map((r) => (
+              <div key={r.id} className="tl-lcu-refund-row">
+                <span>
+                  {r.event?.name}
+                  {r.ticket?.seat ? ` · Row ${r.ticket.seat.row}, Seat ${r.ticket.seat.seatNumber}` : ''}
+                  {r.providerRef ? ` · Ref ${r.providerRef}` : ''}
+                </span>
+                <span className={r.status === 'SUCCEEDED' ? 'is-done' : 'is-wait'}>
+                  Rs. {Number(r.amount).toLocaleString()} · {r.status === 'SUCCEEDED' ? 'Refunded' : r.status === 'FAILED' ? 'Delayed, retrying' : 'Processing'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       {orders.length === 0 ? (
@@ -142,7 +192,7 @@ export default function MyBookings() {
                         : 'bg-amber-50 text-amber-800 border border-amber-200'
                         }`}
                     >
-                      {order.status} • {order.paymentMethod}
+                      {ORDER_STATUS[order.status] || order.status} • {order.paymentMethod}
                     </span>
                   </div>
                 </div>

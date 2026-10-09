@@ -588,7 +588,13 @@ export default function VenueEditor() {
   return (
     <div className="max-w-7xl mx-auto space-y-5 pb-16 text-slate-800">
       <DashHead
-        eyebrow={<Link to={`/organizer/events/${eventId}/edit`}>← Event details</Link>}
+        eyebrow={
+          setup && window.history.state?.idx > 0 ? (
+            <button type="button" onClick={() => navigate(-1)} style={{ font: 'inherit', color: 'inherit', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>← Back</button>
+          ) : (
+            <Link to={`/organizer/events/${eventId}/edit`}>← Event details</Link>
+          )
+        }
         title="Venue & seating"
         segment={
           <span className="tl-dash-actions" style={{ paddingBottom: 6 }}>

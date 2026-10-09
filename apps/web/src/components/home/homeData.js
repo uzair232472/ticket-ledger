@@ -71,10 +71,14 @@ export const MORE_CATEGORIES = [
   { type: 'THEATRE', name: 'Theatre', panel: '#16a34a', strip: '#15803d', ink: '#ffffff', image: unsplash('1459749411175-04bf5292ceea', 640, 640) },
   { type: 'CONFERENCE', name: 'Conferences', panel: '#166534', strip: '#14532d', ink: '#ffffff', image: unsplash('1470225620780-dba8ba36b745', 640, 640) },
   { type: 'GENERAL_ADMISSION', name: 'General admission', panel: '#14532d', strip: '#0f3d22', ink: '#ffffff', image: unsplash('1470229722913-7c0e2dbbafd3', 640, 640) },
+  // Every category organizers add themselves (EventType OTHER); each event shows its own category name
+  { type: 'OTHER', name: 'More categories', panel: '#0f3d22', strip: '#0b2e19', ink: '#ffffff', image: unsplash('1492684223066-81342ee5ff30', 640, 640) },
 ];
 export const ALL_CATEGORIES = [...CATEGORIES, ...MORE_CATEGORIES];
 
-export const categoryName = (type) => ALL_CATEGORIES.find((c) => c.type === type)?.name || 'Event';
+// `label` is the event's own category name, used for organizer-added categories (type OTHER)
+export const categoryName = (type, label) =>
+  (type === 'OTHER' && label) || ALL_CATEGORIES.find((c) => c.type === type)?.name || label || 'Event';
 
 // Number of strips in the shutter reveal (the reference uses 19 on desktop)
 export const STRIP_COUNT = 19;

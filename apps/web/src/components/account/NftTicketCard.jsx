@@ -11,7 +11,7 @@ const pkr = (n) => `PKR ${Number(n || 0).toLocaleString('en-PK')}`;
  * On-chain ticket card: event photo with a "Verified ticket" badge, then event, seat strip, original and
  * maximum resale price (110% cap) and the resale action. Stacks on narrow screens.
  */
-export default function NftTicketCard({ ticket: t, onList, onCancelListing, cancelling, onExplorer }) {
+export default function NftTicketCard({ ticket: t, onList, onCancelListing, onRelist, cancelling, onExplorer }) {
   const { event = {}, seat, blockchain } = t;
   const [menu, setMenu] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -50,7 +50,7 @@ export default function NftTicketCard({ ticket: t, onList, onCancelListing, canc
 
       <div className="tl-nft-body">
         <div className="tl-nft-top">
-          <p className="tl-nft-kicker">{[categoryName(event.type), event.city].filter(Boolean).join(' • ')}</p>
+          <p className="tl-nft-kicker">{[categoryName(event.type, event.categoryLabel), event.city].filter(Boolean).join(' • ')}</p>
           <div ref={menuRef} className="tl-nft-menu-wrap">
             <button type="button" className="tl-nft-dots" aria-label="More options" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
               <MoreHorizontal className="w-6 h-6" aria-hidden="true" />
@@ -96,7 +96,17 @@ export default function NftTicketCard({ ticket: t, onList, onCancelListing, canc
 
         <div className="tl-nft-foot">
           <span className="tl-nft-protected"><ShieldCheck className="w-6 h-6" aria-hidden="true" /> Resale protected</span>
-          {listing ? (
+          {listing?.status === 'PAUSED' ? (
+            <div className="tl-nft-listed">
+              <span>Listing paused: the event moved</span>
+              <button type="button" className="tl-pass-btn tl-pass-btn--primary" onClick={() => onRelist?.(listing.id)} disabled={cancelling}>
+                <Tag className="w-4 h-4" aria-hidden="true" /> Relist
+              </button>
+              <button type="button" className="tl-pass-btn tl-pass-btn--outline" onClick={() => onCancelListing(listing.id)} disabled={cancelling}>
+                <X className="w-4 h-4" aria-hidden="true" /> {cancelling ? 'Cancelling…' : 'Cancel listing'}
+              </button>
+            </div>
+          ) : listing ? (
             <div className="tl-nft-listed">
               <span>Listed at {pkr(listing.resalePrice)}</span>
               <button type="button" className="tl-pass-btn tl-pass-btn--outline" onClick={() => onCancelListing(listing.id)} disabled={cancelling}>

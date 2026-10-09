@@ -4,6 +4,8 @@ import app from './app.js';
 import { connectRedis } from './config/redis.js';
 import { corsOrigin } from './config/cors.js';
 import { setIO } from './config/socket.js';
+import { retryRefunds } from './services/refundService.js';
+import { runLifecycleJobs } from './services/eventLifecycleService.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -45,6 +47,18 @@ io.on('connection', (socket) => {
 // Start Server
 async function startServer() {
   await connectRedis();
+
+  // Hourly: retry failed refunds, cancel events postponed too long, remind holders before refund windows close
+  const hourly = async () => {
+    try {
+      await retryRefunds();
+      await runLifecycleJobs();
+    } catch (e) {
+      console.error('[Lifecycle jobs] failed:', e.message);
+    }
+  };
+  setTimeout(hourly, 60 * 1000).unref();
+  setInterval(hourly, 60 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log(`🚀 TicketLedger Express API is running on http://localhost:${PORT}`);

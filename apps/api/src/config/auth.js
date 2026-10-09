@@ -50,5 +50,19 @@ export const PASSWORD_RULES = [
   { test: (v) => /\d/.test(v), message: 'Password must contain at least 1 number' },
   { test: (v) => /[^A-Za-z0-9\s]/.test(v), message: 'Password must contain at least 1 special character (e.g. @ # $ % !)' },
 ];
+// New accounts must use a well-known email provider. Same list as the web app (apps/web/src/lib/validation.js)
+export const SIGNUP_EMAIL_DOMAINS = [
+  'gmail.com', 'googlemail.com',
+  'yahoo.com', 'ymail.com', 'rocketmail.com',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'icloud.com', 'me.com',
+  'aol.com', 'protonmail.com', 'proton.me', 'zoho.com',
+];
+export const EMAIL_LOCAL_PATTERN = /^[a-z0-9]+(?:[._+-][a-z0-9]+)*$/;
+// Letters with single spaces between words
+export const NAME_PATTERN = /^[A-Za-z]+(?: [A-Za-z]+)*$/;
+// Pakistani mobile after normalizing: operator codes 030-034 and 0355
+export const PK_MOBILE_PATTERN = /^\+923(?:[0-4]\d|55)\d{7}$/;
+
 /** Adds the password rules to a zod string schema. */
 export const withPasswordRules = (schema) => PASSWORD_RULES.reduce((s, r) => s.refine(r.test, r.message), schema);

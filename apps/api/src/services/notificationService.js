@@ -17,6 +17,18 @@ export const NOTIFICATION_TYPES = {
 };
 
 /**
+ * In-app notification for every active Super Admin (emailed by the Prisma hook in config/prisma.js, which
+ * also copies admin alerts to the admin inbox). Pass a transaction client to write inside it.
+ */
+export const notifyAdmins = async ({ type, title, message, link = null }, db = prisma) => {
+  const admins = await db.user.findMany({ where: { role: 'SUPER_ADMIN', status: 'ACTIVE' }, select: { id: true } });
+  if (admins.length) {
+    await db.notification.createMany({ data: admins.map((admin) => ({ userId: admin.id, type, title, message, link })) });
+  }
+  return admins.length;
+};
+
+/**
  * Dispatch multi-channel notification (In-App + Socket.io + Email + FCM Push)
  */
 export const dispatchNotification = async ({
@@ -119,4 +131,5 @@ export const dispatchNotification = async ({
 export default {
   NOTIFICATION_TYPES,
   dispatchNotification,
+  notifyAdmins,
 };

@@ -41,8 +41,13 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
       cardImageUrl: true,
       reviewComment: true,
       submittedAt: true,
+      createdAt: true,
+      priorityStatus: true,
+      heroStatus: true,
+      postponedAt: true,
     },
-    orderBy: { date: 'desc' },
+    // Newest first: an event the organizer has just created is at the top of every list and picker
+    orderBy: { createdAt: 'desc' },
   });
 
   const accessibleEventIds = organizerEvents.map((e) => e.id);
@@ -90,7 +95,8 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
   const successfulOrders = await prisma.order.findMany({
     where: {
       eventId: { in: activeEventIds },
-      status: 'SUCCESSFUL',
+      // Refunded orders count too; the refunds are subtracted below
+      status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED', 'REFUNDED'] },
     },
     include: {
       tickets: {
@@ -104,8 +110,37 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
   successfulOrders.forEach((o) => {
     totalRevenuePkr += Number(o.totalAmount);
   });
+  // Refunds: the organizer pays back face value (organizerShare); TicketLedger covers any resale premium
+  const refundRows = await prisma.refund.findMany({
+    where: { eventId: { in: activeEventIds } },
+    select: { eventId: true, amount: true, organizerShare: true, status: true },
+  });
+  const refundedPkr = refundRows.reduce((n, r) => n + Number(r.organizerShare), 0);
+  const refundsPending = refundRows.filter((r) => r.status !== 'SUCCEEDED').length;
+  const grossSalesPkr = totalRevenuePkr;
+  totalRevenuePkr -= refundedPkr;
   const platformFeePkr = Math.round(totalRevenuePkr * 0.05);
   const netRevenuePkr = totalRevenuePkr - platformFeePkr;
+
+  // Payouts are held until PAYOUT_HOLD_DAYS after each event ends, so refunds can always be paid
+  const PAYOUT_HOLD_DAYS = 3;
+  const releaseCutoff = Date.now() - PAYOUT_HOLD_DAYS * 24 * 60 * 60 * 1000;
+  const eventEnds = new Map(
+    (await prisma.event.findMany({ where: { id: { in: activeEventIds } }, select: { id: true, endsAt: true, date: true, status: true } })).map((e) => [e.id, e]),
+  );
+  const refundByEvent = new Map();
+  refundRows.forEach((r) => refundByEvent.set(r.eventId, (refundByEvent.get(r.eventId) || 0) + Number(r.organizerShare)));
+  const salesByEvent = new Map();
+  successfulOrders.forEach((o) => salesByEvent.set(o.eventId, (salesByEvent.get(o.eventId) || 0) + Number(o.totalAmount)));
+  let payoutReleasablePkr = 0;
+  let payoutHeldPkr = 0;
+  for (const [evId, gross] of salesByEvent) {
+    const net = Math.round((gross - (refundByEvent.get(evId) || 0)) * 0.95);
+    const ev = eventEnds.get(evId);
+    const ended = ev && ev.status !== 'CANCELLED' && (ev.endsAt || ev.date).getTime() < releaseCutoff;
+    if (ended) payoutReleasablePkr += net;
+    else payoutHeldPkr += net;
+  }
 
   // 4. Sales Graph (Aggregate sales by Date)
   const salesByDateMap = new Map();
@@ -255,6 +290,12 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
     selectedEvent: targetEventObj,
     metrics: {
       totalRevenuePkr,
+      grossSalesPkr,
+      refundedPkr,
+      refundsPending,
+      payoutHeldPkr,
+      payoutReleasablePkr,
+      payoutHoldDays: PAYOUT_HOLD_DAYS,
       platformFeePkr,
       netRevenuePkr,
       totalTicketsSold,

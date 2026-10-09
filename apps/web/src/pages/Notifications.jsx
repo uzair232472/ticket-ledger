@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import BasicShell from '../components/basic/BasicShell';
@@ -138,7 +139,7 @@ export default function Notifications() {
   // Filter items
   const filteredNotifications = notifications.filter((n) => {
     if (activeTab === 'UNREAD') return !n.isRead;
-    if (activeTab === 'BOOKINGS') return n.type.includes('BOOKING') || n.type.includes('PAYMENT');
+    if (activeTab === 'BOOKINGS') return ['BOOKING', 'PAYMENT', 'REFUND', 'EVENT_CANCELLED', 'EVENT_POSTPONED', 'EVENT_RESCHEDULED'].some((k) => n.type.includes(k));
     if (activeTab === 'TRANSFERS') return n.type.includes('TRANSFER') || n.type.includes('RESALE') || n.type.includes('TICKET');
     if (activeTab === 'SECURITY') return n.type.includes('FRAUD') || n.type.includes('ORGANIZER') || n.type.includes('ABANDONED');
     return true;
@@ -216,6 +217,9 @@ export default function Notifications() {
                       {!item.isRead && <span className="tl-nt-new">New</span>}
                     </div>
                     <p className="tl-nt-msg">{item.message}</p>
+                    {item.link && (
+                      <Link to={item.link} className="tl-nt-link" onClick={() => !item.isRead && handleMarkAsRead(item.id)}>Open →</Link>
+                    )}
                     <time className="tl-nt-time" dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time>
                   </div>
                   <div className="tl-nt-actions">
