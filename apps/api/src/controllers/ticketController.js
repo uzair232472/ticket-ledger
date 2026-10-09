@@ -89,7 +89,8 @@ export const getMyNFTTickets = async (req, res) => {
           select: { id: true, paymentMethod: true, status: true, createdAt: true },
         },
         resaleListings: {
-          where: { status: 'ACTIVE' },
+          // Paused: the event moved, the seller relists or cancels it
+          where: { status: { in: ['ACTIVE', 'PAUSED'] } },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -256,7 +257,8 @@ export const getCustomerWallet = async (req, res) => {
           select: { id: true, paymentMethod: true, status: true, createdAt: true },
         },
         resaleListings: {
-          where: { status: 'ACTIVE' },
+          // Paused: the event moved, the seller relists or cancels it
+          where: { status: { in: ['ACTIVE', 'PAUSED'] } },
         },
       },
       orderBy: { createdAt: 'desc' },

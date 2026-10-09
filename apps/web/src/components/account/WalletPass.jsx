@@ -86,7 +86,7 @@ export default function WalletPass({
     <article className={`tl-pass${isActive ? '' : ' is-muted'}`} data-reveal aria-label={`Ticket for ${ev.name}`}>
       <div className="tl-pass-main">
         <div className="tl-pass-top">
-          <p className="tl-pass-kicker">{[categoryName(ev.type), ev.city].filter(Boolean).join(' • ')}</p>
+          <p className="tl-pass-kicker">{[categoryName(ev.type, ev.categoryLabel), ev.city].filter(Boolean).join(' • ')}</p>
           <span className={`tl-pass-status is-${t.status?.toLowerCase()}`}>{t.status}</span>
         </div>
         <h3 className="tl-pass-title">{ev.name}</h3>

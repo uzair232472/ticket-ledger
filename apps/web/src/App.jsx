@@ -14,6 +14,11 @@ import EventSubmit from './pages/EventSubmit';
 import AdminEventApprovals from './pages/AdminEventApprovals';
 import EventDetails from './pages/EventDetails';
 import CreateEvent from './pages/CreateEvent';
+import CreateEventChoice from './pages/CreateEventChoice';
+import EventChanges from './pages/EventChanges';
+import EventRefund from './pages/EventRefund';
+import Prebookings from './pages/Prebookings';
+import PrebookForm from './pages/PrebookForm';
 import VenueEditor from './pages/VenueEditor';
 import SeatMap from './pages/SeatMap';
 import Checkout from './pages/Checkout';
@@ -158,6 +163,7 @@ export default function App() {
               <Route path="/wishlist" element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
               <Route path="/events/:id" element={<EventDetails />} />
               <Route path="/events/:id/seats" element={<SeatMap />} />
+              <Route path="/events/:id/refund" element={<ProtectedRoute><EventRefund /></ProtectedRoute>} />
               <Route path="/events/:id/checkout" element={<Checkout />} />
               <Route path="/checkout" element={<Checkout />} />
               {/* The cart page was replaced by checkout */}
@@ -189,9 +195,13 @@ export default function App() {
 
               {/* Protected Organizer Studio */}
               <Route path="/organizer/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><OrganizerDashboard /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/new" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEventChoice /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/prebook" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER']} requireApprovedCompany><Prebookings /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/prebook/:id" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER']} requireApprovedCompany><PrebookForm /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/create-event" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="create" /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/events/:id/venue" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><VenueEditor /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/events/:id/edit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="edit" /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/changes" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><EventChanges /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/events/:id/submit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><EventSubmit /></ProtectedRoute></DashShell>} />
 
               {/* Protected Super Admin Governance */}

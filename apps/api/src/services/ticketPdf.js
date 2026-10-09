@@ -198,7 +198,7 @@ export function drawTicketPdf(doc, ticket, { qrBuffer, photo, manualCode }) {
   doc.restore();
 
   const tx = M + 26;
-  const kicker = [CATEGORY[ev.type] || 'Event', ev.city].filter(Boolean).join(' • ').toUpperCase();
+  const kicker = [(ev.type === 'OTHER' && ev.categoryLabel) || CATEGORY[ev.type] || ev.categoryLabel || 'Event', ev.city].filter(Boolean).join(' • ').toUpperCase();
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#d6e7da');
   doc.text(kicker, tx, bY + 24, { characterSpacing: 2.4, lineBreak: false });
   const kW = doc.widthOfString(kicker, { characterSpacing: 2.4 });

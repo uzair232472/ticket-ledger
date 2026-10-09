@@ -187,6 +187,46 @@ class PaymentService {
       }
     }
   }
+
+  /**
+   * Send money back for one ticket. Stripe payments made with a real PaymentIntent are refunded through
+   * Stripe (partially, for one ticket of a bigger order); the sandbox gateways (JazzCash, EasyPaisa, mock
+   * and resale purchases, which have no gateway payment) simulate the reversal with a reference.
+   * Returns { success, providerRef, pending?, message? }.
+   */
+  async refund({ paymentMethod, paymentTxId, amount, reference }) {
+    const formattedAmount = Number(amount);
+    if (!(formattedAmount > 0)) return { success: false, message: 'Nothing to refund.' };
+    const ref = (prefix) => `${prefix}${Date.now()}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+    if (paymentMethod === 'STRIPE' && stripeClient && paymentTxId?.startsWith('pi_') && !paymentTxId.includes('_secret_') && !paymentTxId.includes('mock')) {
+      try {
+        const refund = await stripeClient.refunds.create(
+          { payment_intent: paymentTxId, amount: Math.round(formattedAmount * 100), metadata: { reference: reference || '' } },
+          { idempotencyKey: reference ? `refund_${reference}` : undefined },
+        );
+        if (refund.status === 'failed' || refund.status === 'canceled') {
+          return { success: false, providerRef: refund.id, message: `Stripe refund ${refund.status}.` };
+        }
+        // "pending" refunds complete on Stripe's side; the money is on its way either way
+        return { success: true, providerRef: refund.id, pending: refund.status === 'pending' };
+      } catch (err) {
+        console.error('[STRIPE REFUND ERROR]', err.message);
+        return { success: false, message: `Stripe refund failed: ${err.message}` };
+      }
+    }
+
+    switch (paymentMethod) {
+      case 'STRIPE':
+        return { success: true, providerRef: ref('re_sim_') };
+      case 'JAZZCASH':
+        return { success: true, providerRef: ref('JCR'), responseCode: '000' };
+      case 'EASYPAISA':
+        return { success: true, providerRef: ref('EPR'), responseCode: '0000' };
+      default:
+        return { success: true, providerRef: ref('MOCK_RF_') };
+    }
+  }
 }
 
 export default new PaymentService();

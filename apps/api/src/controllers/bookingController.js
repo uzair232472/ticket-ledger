@@ -51,7 +51,8 @@ export const initiateBooking = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    if (event.status !== 'PUBLISHED') {
+    // Hidden dates take no new bookings (tickets already sold stay valid)
+    if (event.status !== 'PUBLISHED' || event.isHidden) {
       return res.status(400).json({
         success: false,
         message: 'This event is not currently accepting bookings.',

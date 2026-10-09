@@ -4,6 +4,8 @@ import { ArrowDown, ArrowUpRight, Search, RefreshCw, CalendarDays, Wallet, MapPi
 import { useAuth } from '../context/AuthContext';
 import { useWishlist } from '../context/WishlistContext';
 import api from '../utils/api';
+import { getEventVisual, resolveMediaUrl } from '../utils/eventMedia';
+import { formatEventDate } from '../utils/eventTime';
 import markUrl from '../assets/ticketledger-mark.svg';
 import HomeHeader from '../components/home/HomeHeader';
 import EventCard from '../components/home/EventCard';
@@ -145,6 +147,25 @@ export default function Dashboard() {
     loadEvents();
   }, [loadEvents]);
 
+  // An organizer's event approved for the hero takes over the hero film (one per visit when there are several)
+  const [heroPromo, setHeroPromo] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api
+      .get('/events/promoted-hero')
+      .then((res) => {
+        const list = res.data?.data?.events || [];
+        if (alive && list.length) setHeroPromo(list[Math.floor(Math.random() * list.length)]);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  // Phones use the portrait cut when there is one; without any video the event banner is shown
+  const promoVideo = heroPromo && resolveMediaUrl(isPhone ? heroPromo.heroVideoMobileUrl || heroPromo.heroVideoUrl : heroPromo.heroVideoUrl);
+  const promoImage = heroPromo && getEventVisual(heroPromo, 0).bannerImage;
+
   // Scroll scenes: created once per mount, fully reverted on unmount (also covers React Strict Mode's double mount)
   useLayoutEffect(() => {
     const mm = initHomeMotion(rootRef.current);
@@ -181,9 +202,12 @@ export default function Dashboard() {
     });
   }, [status, events.length]);
 
+  // Soonest first, with events approved for "top of listings" ahead of the rest
   const upcoming = useMemo(() => {
     const now = Date.now();
-    return [...events].filter((e) => new Date(e.date).getTime() >= now).sort((a, b) => new Date(a.date) - new Date(b.date));
+    return [...events]
+      .filter((e) => new Date(e.date).getTime() >= now)
+      .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || new Date(a.date) - new Date(b.date));
   }, [events]);
   const featured = upcoming.slice(0, FEATURED_LIMIT);
 
@@ -273,18 +297,22 @@ export default function Dashboard() {
             </div>
 
             <div className="tl-hero-panel">
-              <video
-                key={isPhone ? 'portrait' : 'landscape'}
-                className="tl-hero-media"
-                src={isPhone ? HERO_VIDEO_MOBILE : HERO_VIDEO}
-                poster={HERO_IMAGE.src}
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="auto"
-                aria-hidden="true"
-              />
+              {heroPromo && !promoVideo ? (
+                <img className="tl-hero-media" src={promoImage} alt="" aria-hidden="true" />
+              ) : (
+                <video
+                  key={`${heroPromo?.id || 'site'}-${isPhone ? 'portrait' : 'landscape'}`}
+                  className="tl-hero-media"
+                  src={promoVideo || (isPhone ? HERO_VIDEO_MOBILE : HERO_VIDEO)}
+                  poster={heroPromo ? promoImage : HERO_IMAGE.src}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  aria-hidden="true"
+                />
+              )}
               <div className="tl-hero-panel-shade" />
               <div className="tl-hero-panel-dim" />
             </div>
@@ -299,6 +327,14 @@ export default function Dashboard() {
                     Explore events <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
                   </Link>
                 </div>
+                {heroPromo && (
+                  <Link to={`/events/${heroPromo.id}`} className="tl-hero-promo">
+                    <span className="tl-hero-promo-tag">Featured</span>
+                    <span className="tl-hero-promo-name">{heroPromo.name}</span>
+                    <span className="tl-hero-promo-meta">{formatEventDate(heroPromo.date, { day: 'numeric', month: 'short' })} · {heroPromo.city}</span>
+                    <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+                  </Link>
+                )}
               </div>
             </div>
 

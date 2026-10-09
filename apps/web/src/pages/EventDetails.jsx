@@ -40,6 +40,7 @@ function getSaleState(event) {
   const available = tiers.reduce((n, t) => n + Math.max(0, Number(t.availableQuantity) || 0), 0);
   if (event.status === 'CANCELLED') return { key: 'cancelled', label: 'Cancelled', note: 'This event has been cancelled. Tickets are no longer on sale.' };
   if (event.status === 'COMPLETED' || eventDayEnd(event.date) < Date.now()) return { key: 'ended', label: 'Event ended', note: 'This event has already taken place.' };
+  if (event.status === 'PAUSED' && event.postponedAt) return { key: 'paused', label: 'Postponed', note: 'This event is postponed. Tickets go back on sale once the new date is announced.' };
   if (event.status === 'PAUSED') return { key: 'paused', label: 'Sales paused', note: 'The organizer has paused ticket sales. Check back later.' };
   // Organizer / admin preview of an event that isn't approved yet (the API hides these from everyone else)
   const preview = {
@@ -391,7 +392,7 @@ function EventDetailsPage({ id }) {
                 <div className="tl-dt-hero-inner">
                   <div className="tl-dt-hero-main">
                     <p className="tl-dt-kicker">
-                      <span>{categoryName(event.type)}</span>
+                      <span>{categoryName(event.type, event.categoryLabel)}</span>
                       <span className={`tl-dt-status is-${sale.key}`}>{sale.label}</span>
                     </p>
                     <h1 id="tl-dt-title" className="tl-dt-title">{event.name}</h1>
@@ -419,6 +420,9 @@ function EventDetailsPage({ id }) {
                         <dd>
                           <time dateTime={new Date(event.date).toISOString().slice(0, 10)}>{formatEventDate(event.date)}</time>
                           {time && <><br />{time} PKT</>}
+                          {event.lastScheduleChange && !event.lastScheduleChange.minor && (
+                            <><br /><s className="tl-dt-was">Was {formatEventDate(event.lastScheduleChange.oldDate)}{event.lastScheduleChange.oldVenue !== event.venue ? ` at ${event.lastScheduleChange.oldVenue}` : ''}</s></>
+                          )}
                         </dd>
                       </div>
                       {organizer && (
@@ -438,6 +442,22 @@ function EventDetailsPage({ id }) {
                       {/* The booking button lives in the Tickets section below; here only the sale note is shown */}
                       {!bookingAction('hero') && <p className="tl-dt-book-note">{sale.note}</p>}
                     </div>
+                    {/* Cancelled, postponed or moved: what ticket holders can do */}
+                    {(event.status === 'CANCELLED' || event.postponedAt || (event.refundWindowEndsAt && new Date(event.refundWindowEndsAt) > new Date())) && (
+                      <div className={`tl-dt-change${event.status === 'CANCELLED' ? ' is-bad' : ''}`} role="status">
+                        <strong>
+                          {event.status === 'CANCELLED' ? 'This event is cancelled' : event.postponedAt ? 'This event is postponed' : 'This event has a new date'}
+                        </strong>
+                        <p>
+                          {event.status === 'CANCELLED'
+                            ? `${event.cancelReason ? `${event.cancelReason} ` : ''}Every ticket is refunded in full automatically.`
+                            : event.postponedAt
+                              ? `${event.postponeReason ? `${event.postponeReason} ` : ''}Tickets stay valid for the new date. Ticket holders can get a refund until it’s announced.`
+                              : `${event.lastScheduleChange?.reason ? `${event.lastScheduleChange.reason} ` : ''}Tickets stay valid. Ticket holders who can’t make it can get a full refund until ${new Date(event.refundWindowEndsAt).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })}.`}
+                        </p>
+                        <Link to={`/events/${event.id}/refund`}>Have tickets? See your options</Link>
+                      </div>
+                    )}
                     <ContactOrganizer email={event.organizerContactEmail} eventName={event.name} organizer={organizer} />
                   </div>
                 </div>
@@ -516,7 +536,7 @@ function EventDetailsPage({ id }) {
 
                 <Row label="Details">
                   <dl className="tl-dt-details">
-                    <div><dt>Category</dt><dd>{categoryName(event.type)}</dd></div>
+                    <div><dt>Category</dt><dd>{categoryName(event.type, event.categoryLabel)}</dd></div>
                     <div><dt>Date</dt><dd>{formatEventDate(event.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</dd></div>
                     {time && <div><dt>Time</dt><dd>{time} <span className="tl-dt-tz">{EVENT_TIMEZONE_LABEL}</span></dd></div>}
                     <div>

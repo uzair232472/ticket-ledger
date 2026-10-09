@@ -62,3 +62,6 @@ node_modules/
 
 # QR pass signing key (development; production uses QR_SIGNING_PRIVATE_KEY)
 apps/api/.keys/
+
+# User uploads (company documents, avatars, event media) stay on the server
+apps/api/uploads/

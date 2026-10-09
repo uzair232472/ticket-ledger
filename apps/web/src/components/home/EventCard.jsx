@@ -28,7 +28,8 @@ export default function EventCard({ event, index, isFavorite, onToggleFavorite }
         <img src={visual.image} alt="" loading="lazy" decoding="async" onError={(e) => e.currentTarget.classList.add('is-broken')} />
         {soldOut && <span className="tl-card-badge tl-card-badge--soldout">Sold out</span>}
         {limited && <span className="tl-card-badge">Only {available} left</span>}
-        <span className="tl-card-type">{categoryName(event.type)}</span>
+        {event.featured && !soldOut && !limited && <span className="tl-card-badge tl-card-badge--featured">Featured</span>}
+        <span className="tl-card-type">{categoryName(event.type, event.categoryLabel)}</span>
         <button
           type="button"
           className="tl-card-fav"

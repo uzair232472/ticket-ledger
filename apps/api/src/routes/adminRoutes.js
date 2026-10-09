@@ -13,6 +13,8 @@ import {
   getOrganizerDashboard,
 } from '../controllers/adminController.js';
 import { listEventsForReview, reviewEvent } from '../controllers/eventReviewController.js';
+import { listPromotions, reviewPromotion } from '../controllers/promotionController.js';
+import { listScheduleChanges, reviewScheduleChange, listRefunds, retryRefundsHandler } from '../controllers/lifecycleController.js';
 
 const router = Router();
 
@@ -28,6 +30,12 @@ router.get('/events', superAdminGuard, getAllEventsAdmin);
 // Event approvals: queue of submitted events, and approve / reject (with comment)
 router.get('/event-reviews', superAdminGuard, listEventsForReview);
 router.post('/event-reviews/:id', superAdminGuard, reviewEvent);
+router.get('/promotions', superAdminGuard, listPromotions);
+router.post('/promotions/:id', superAdminGuard, reviewPromotion);
+router.get('/schedule-changes', superAdminGuard, listScheduleChanges);
+router.post('/schedule-changes/:id', superAdminGuard, reviewScheduleChange);
+router.get('/refunds', superAdminGuard, listRefunds);
+router.post('/refunds/retry', superAdminGuard, retryRefundsHandler);
 router.get('/transactions', superAdminGuard, getAllTransactionsAdmin);
 router.get('/blockchain-logs', superAdminGuard, getBlockchainLogs);
 router.get('/fraud-alerts', superAdminGuard, getFraudAlerts);

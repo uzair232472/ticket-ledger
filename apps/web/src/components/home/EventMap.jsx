@@ -66,7 +66,7 @@ const buildCard = (event, index) => {
   const body = document.createElement('div');
   const type = document.createElement('span');
   type.className = 'tl-map-card-type';
-  type.textContent = categoryName(event.type);
+  type.textContent = categoryName(event.type, event.categoryLabel);
   const title = document.createElement('strong');
   title.textContent = event.name;
   const meta = document.createElement('span');

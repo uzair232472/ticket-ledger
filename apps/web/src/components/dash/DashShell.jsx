@@ -31,7 +31,8 @@ const CONSOLES = {
     label: 'Organizer studio',
     links: [
       { to: '/organizer/dashboard', label: 'Overview' },
-      { to: '/organizer/create-event', label: 'Create event' },
+      { to: '/organizer/events/new', label: 'Create event' },
+      { to: '/organizer/prebook', label: 'Prebookings' },
       { to: '/admin/purchase-intent', label: 'Purchase intent' },
       { to: '/admin/demand-forecast', label: 'Demand forecast' },
       { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
@@ -66,7 +67,7 @@ export default function DashShell({ children }) {
   const pageRef = useRef(null);
   const console_ = CONSOLES[user?.role];
   const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
-  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|events\/[^/]+\/(edit|submit))\/?$/.test(pathname);
+  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit)))\/?$/.test(pathname);
 
   useEffect(() => {
     if (navigationType !== 'POP') window.scrollTo({ top: 0, behavior: 'instant' });

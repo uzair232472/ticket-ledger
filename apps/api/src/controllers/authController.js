@@ -16,7 +16,16 @@ import {
   clearPendingSignupCookie,
   readPendingSignupUserId,
 } from '../services/tokenService.js';
-import { BLOCKED_STATUSES, OTP_RESEND_COOLDOWN_MS, MESSAGES, withPasswordRules } from '../config/auth.js';
+import {
+  BLOCKED_STATUSES,
+  OTP_RESEND_COOLDOWN_MS,
+  MESSAGES,
+  withPasswordRules,
+  SIGNUP_EMAIL_DOMAINS,
+  EMAIL_LOCAL_PATTERN,
+  NAME_PATTERN,
+  PK_MOBILE_PATTERN,
+} from '../config/auth.js';
 
 // The role is never taken from the client. Public signup can only create CUSTOMER or ORGANIZER accounts;
 // GATE_STAFF come from invites and SUPER_ADMIN from the seed script.
@@ -24,20 +33,36 @@ const ACCOUNT_TYPE_TO_ROLE = { customer: 'CUSTOMER', organizer: 'ORGANIZER' };
 
 // Validation Schemas (same rules as the frontend forms)
 const emailSchema = z.string().trim().toLowerCase().email('Invalid email address');
-const nameSchema = z.string().trim().min(2, 'Name must be at least 2 characters').max(50, 'Name must be at most 50 characters');
+// New accounts only: a known provider, a clean local part, and Gmail's own 6-30 character username rule
+const signupEmailSchema = emailSchema.superRefine((email, ctx) => {
+  const [local, domain] = email.split('@');
+  if (!EMAIL_LOCAL_PATTERN.test(local)) {
+    ctx.addIssue({ code: 'custom', message: 'Use letters, numbers and . _ + - before @' });
+  } else if (!SIGNUP_EMAIL_DOMAINS.includes(domain)) {
+    ctx.addIssue({ code: 'custom', message: 'Use an email from a known provider (Gmail, Yahoo, Outlook, Hotmail, iCloud...)' });
+  } else if (['gmail.com', 'googlemail.com'].includes(domain) && !/^[a-z0-9.]{6,30}$/.test(local.split('+')[0])) {
+    ctx.addIssue({ code: 'custom', message: 'Gmail usernames are 6 to 30 letters, numbers or dots' });
+  }
+});
+const nameSchema = z
+  .string()
+  .trim()
+  .min(2, 'Name must be at least 2 characters')
+  .max(50, 'Name must be at most 50 characters')
+  .regex(NAME_PATTERN, 'Name can contain letters and single spaces only');
 const passwordSchema = withPasswordRules(z.string());
 const codeSchema = z.string().regex(/^\d{6}$/, 'The code must be exactly 6 digits');
 
-// Accepts 03XXXXXXXXX or +92 3XX XXXXXXX (spaces/dashes allowed) and normalizes to +923XXXXXXXXX
+// Accepts 03XXXXXXXXX, 923XXXXXXXXX or +92 3XX XXXXXXX (spaces/dashes allowed) and normalizes to +923XXXXXXXXX
 const phoneSchema = z
   .string()
   .transform((v) => v.replace(/[\s-]/g, ''))
-  .transform((v) => (v.startsWith('03') ? `+92${v.slice(1)}` : v))
-  .refine((v) => /^\+923\d{9}$/.test(v), 'Phone must be a Pakistani mobile number (+923XXXXXXXXX)');
+  .transform((v) => (v.startsWith('03') ? `+92${v.slice(1)}` : v.startsWith('923') ? `+${v}` : v))
+  .refine((v) => PK_MOBILE_PATTERN.test(v), 'Phone must be a Pakistani mobile number (e.g. 0300 1234567)');
 
 const signupSchema = z.object({
   name: nameSchema,
-  email: emailSchema,
+  email: signupEmailSchema,
   password: passwordSchema,
   // A Pakistani mobile number is required to sign up
   phone: z.string({ required_error: 'Mobile number is required' }).trim().min(1, 'Mobile number is required').pipe(phoneSchema),

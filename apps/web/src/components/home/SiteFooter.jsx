@@ -9,7 +9,7 @@ export function organizerAction(user, isAuthenticated) {
   switch (user.role) {
     case 'ORGANIZER':
       return user.companyStatus === 'APPROVED'
-        ? { primary: { label: 'Create an event', to: '/organizer/create-event' }, secondary: { label: 'Organizer dashboard', to: '/organizer/dashboard' } }
+        ? { primary: { label: 'Create an event', to: '/organizer/events/new' }, secondary: { label: 'Organizer dashboard', to: '/organizer/dashboard' } }
         : { primary: { label: 'Finish company setup', to: '/company' } };
     case 'SUPER_ADMIN':
       return { primary: { label: 'Review organizer approvals', to: '/admin/companies' } };

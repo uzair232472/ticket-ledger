@@ -174,7 +174,7 @@ export default function CompanyRegistration() {
   const organizerNav = approved
     ? [
         { to: '/organizer/dashboard', label: 'Organizer dashboard' },
-        { to: '/organizer/create-event', label: 'Create event' },
+        { to: '/organizer/events/new', label: 'Create event' },
         { to: '/scanner', label: 'Gate scanner' },
         { to: '/company', label: 'Company' },
       ]
@@ -197,7 +197,7 @@ export default function CompanyRegistration() {
     actions = (
       <>
         {approved ? (
-          <Link to="/organizer/create-event" className="tl-btn tl-btn--green">
+          <Link to="/organizer/events/new" className="tl-btn tl-btn--green">
             Create an event <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
           </Link>
         ) : (

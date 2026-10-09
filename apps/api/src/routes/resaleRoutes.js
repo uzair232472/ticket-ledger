@@ -6,6 +6,7 @@ import {
   getMarketListings,
   getMyListings,
   buyResaleTicket,
+  relistResaleListing,
 } from '../controllers/resaleController.js';
 
 const router = Router();
@@ -18,5 +19,6 @@ router.post('/list', requireAuth, listTicketForResale);
 router.post('/cancel/:listingId', requireAuth, cancelResaleListing);
 router.get('/my-listings', requireAuth, getMyListings);
 router.post('/buy/:listingId', requireAuth, buyResaleTicket);
+router.post('/relist/:listingId', requireAuth, relistResaleListing);
 
 export default router;

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { requireApprovedCompany } from '../middlewares/auth.js';
 import { uploadFile } from '../utils/storage.js';
+import { notifyAdmins } from '../services/notificationService.js';
 
 const MAX_COMPANY_DOCUMENTS = 4;
 
@@ -112,6 +113,14 @@ export const registerCompany = async (req, res) => {
         title: 'Company Verification Submitted',
         message: `Your registration for "${company.companyName}" has been received and is pending Super Admin approval.`,
       },
+    });
+
+    // Ask the admins to review it
+    const resubmitted = existingCompany?.status === 'REJECTED';
+    await notifyAdmins({
+      type: 'ADMIN_COMPANY_REVIEW_REQUEST',
+      title: `${resubmitted ? 'Organizer registration resubmitted' : 'New organizer registration'}: ${company.companyName}`,
+      message: `${company.companyName} (${company.ownerName}, ${company.city}) ${resubmitted ? 'corrected and resubmitted its' : 'submitted a'} company verification with ${documentUrls.length} document${documentUrls.length === 1 ? '' : 's'}. Please review it and approve or reject the request.`,
     });
 
     // Record audit log
@@ -289,6 +298,16 @@ export const updateCompanyStatus = async (req, res) => {
         title: notifTitle,
         message: notifMessage,
       },
+    });
+
+    // Confirm the decision to the admins (the reviewer and the rest of the team)
+    const decision = { APPROVED: 'approved', REJECTED: 'rejected', SUSPENDED: 'suspended' }[validated.status] || validated.status.toLowerCase();
+    await notifyAdmins({
+      type: 'ADMIN_COMPANY_REVIEWED',
+      title: `Organizer ${decision}: ${company.companyName}`,
+      message:
+        `${adminUser.email} ${decision} the organizer registration for "${company.companyName}". The organizer has been notified.` +
+        (validated.status === 'REJECTED' ? ` Rejection reason: ${validated.rejectionReason}` : ''),
     });
 
     // Audit log

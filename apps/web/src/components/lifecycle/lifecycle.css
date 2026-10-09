@@ -1,0 +1,43 @@
+/* Ticket holders: cancelled / postponed / moved events, refund choices and refund history */
+.tl-lcu { display: grid; gap: 18px; max-width: 860px; }
+.tl-lcu-muted { display: flex; align-items: center; gap: 8px; color: #4b5563; font-size: 14.5px; }
+.tl-lcu-error { display: flex; align-items: center; gap: 8px; color: #be123c; font-size: 14.5px; }
+
+.tl-lcu-banner { display: flex; gap: 12px; padding: 16px 18px; border-radius: 8px; border: 1px solid; font-size: 14.5px; line-height: 1.55; }
+.tl-lcu-banner > svg { flex: none; margin-top: 2px; }
+.tl-lcu-banner strong { display: block; font-size: 16px; margin-bottom: 2px; }
+.tl-lcu-banner p { margin: 2px 0 0; }
+.tl-lcu-banner.is-bad { background: #fff1f2; border-color: #fecdd3; color: #881337; }
+.tl-lcu-banner.is-wait { background: #fff7e6; border-color: #f5d9a8; color: #78350f; }
+.tl-lcu-banner.is-ok { background: #ecfdf3; border-color: #bbf7d0; color: #14532d; }
+.tl-lcu-was { text-decoration: line-through; opacity: 0.75; }
+.tl-lcu-now { font-weight: 700; }
+
+.tl-lcu-window { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14.5px; line-height: 1.55; color: #1f2937; }
+.tl-lcu-window svg { flex: none; color: #15803d; }
+
+.tl-lcu-card { padding: 18px; }
+.tl-lcu-card h2 { font-size: 18px; font-weight: 700; margin-bottom: 10px; }
+.tl-lcu-tickets { display: grid; gap: 8px; }
+.tl-lcu-tickets li { border: 1px solid rgba(11, 11, 11, 0.12); border-radius: 6px; background: #fff; }
+.tl-lcu-tickets label, .tl-lcu-refund { display: flex; align-items: center; gap: 10px; padding: 12px 14px; font-size: 14px; }
+.tl-lcu-tickets label { cursor: pointer; }
+.tl-lcu-tickets input { width: 18px; height: 18px; flex: none; accent-color: #16a34a; }
+.tl-lcu-tickets svg { flex: none; color: #15803d; }
+.tl-lcu-tickets strong { display: block; }
+.tl-lcu-tickets small { display: block; color: #4b5563; font-size: 13px; }
+.tl-lcu-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+
+/* My orders: event updates and refunds above the purchases */
+.tl-lcu-notices { display: grid; gap: 10px; margin-bottom: 18px; }
+.tl-lcu-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px; border-radius: 8px; border: 1px solid; font-size: 14px; line-height: 1.5; }
+.tl-lcu-notice > div { flex: 1 1 260px; min-width: 0; }
+.tl-lcu-notice strong { display: block; }
+.tl-lcu-notice.is-bad { background: #fff1f2; border-color: #fecdd3; color: #881337; }
+.tl-lcu-notice.is-wait { background: #fff7e6; border-color: #f5d9a8; color: #78350f; }
+.tl-lcu-notice a { flex: none; font-weight: 700; text-decoration: underline; color: inherit; }
+.tl-lcu-refund-list { display: grid; gap: 6px; margin-bottom: 18px; }
+.tl-lcu-refund-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding: 10px 14px; border: 1px solid rgba(11, 11, 11, 0.12); border-radius: 6px; background: #fff; font-size: 13.5px; }
+.tl-lcu-refund-row span:last-child { font-weight: 700; }
+.tl-lcu-refund-row .is-done { color: #15803d; }
+.tl-lcu-refund-row .is-wait { color: #b45309; }

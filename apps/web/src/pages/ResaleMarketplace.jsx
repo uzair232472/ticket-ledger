@@ -375,7 +375,7 @@ export default function ResaleMarketplace() {
                   <article key={item.id} className="tl-card tl-rs-card">
                     <div className="tl-card-media">
                       <img src={visual.image} alt="" loading="lazy" decoding="async" onError={hideBroken} />
-                      <span className="tl-card-type">{categoryName(event?.type)}</span>
+                      <span className="tl-card-type">{categoryName(event?.type, event?.categoryLabel)}</span>
                       <span className="tl-rs-badge tl-rs-badge--cap">
                         <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" /> Within 110% cap
                       </span>

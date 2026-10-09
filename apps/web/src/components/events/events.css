@@ -335,3 +335,5 @@
 .tl-wl-empty-icon { display: grid; place-items: center; width: 72px; height: 72px; border: 1px solid rgba(11, 11, 11, 0.14); border-radius: 50%; color: #e11d48; }
 .tl-wl-hint { margin-top: -8px; font-size: 14px; color: rgba(11, 11, 11, 0.6); }
 @media (max-width: 767px) { .tl-wl-count { justify-self: start; } }
+/* Approved "top of listings" promotion; sits above a sold-out / low-stock flag */
+.tl-tile-flag.is-featured { top: 10px; bottom: auto; background: #22c55e; color: #052e16; font-weight: 700; }

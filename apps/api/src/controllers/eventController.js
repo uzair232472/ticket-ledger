@@ -5,6 +5,8 @@ import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
 import { canManageEvent } from '../utils/eventAccess.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import mlService from '../services/mlService.js';
+import { CategoryError, categoryColumns, listCategories, addCustomCategory } from '../services/categoryService.js';
+import { ScheduleError, RELEASED_STATUSES, resolveSchedule, assertVenueFree, findScheduleConflicts, occupiedInterval, toPktParts, parseTimeOfDay } from '../services/eventScheduleService.js';
 
 // Schemas
 const ticketTierSchema = z.object({
@@ -28,9 +30,14 @@ const createEventSchema = z.object({
     'THEATRE',
     'CONFERENCE',
     'GENERAL_ADMISSION',
+    'OTHER', // organizer-added category, given by customCategoryId
   ]),
+  customCategoryId: z.preprocess((v) => (v === '' || v == null ? undefined : v), z.string().uuid('Choose a valid category').optional()),
   date: z.string().refine((val) => !isNaN(Date.parse(val)), 'Invalid date format'),
   time: z.string().min(1, 'Event time is required'),
+  // End of the event in PKT; the end date is the next day for events that run past midnight
+  endDate: z.string({ required_error: 'Event end date is required' }).refine((val) => !isNaN(Date.parse(val)), 'Invalid end date format'),
+  endTime: z.string({ required_error: 'Event end time is required' }).min(1, 'Event end time is required'),
   city: z.string().min(2, 'City is required'),
   venue: z.string().min(2, 'Venue is required'),
   status: z.enum([
@@ -56,7 +63,7 @@ const createEventSchema = z.object({
 
 // Editable event details (status, tiers and pricing keep their own endpoints)
 const updateEventDetailsSchema = createEventSchema
-  .pick({ name: true, description: true, type: true, date: true, time: true, city: true, venue: true, latitude: true, longitude: true, locationAddress: true, contactEmail: true })
+  .pick({ name: true, description: true, type: true, customCategoryId: true, date: true, time: true, endDate: true, endTime: true, city: true, venue: true, latitude: true, longitude: true, locationAddress: true, contactEmail: true })
   .partial();
 
 const SINGLE_IMAGE_FIELDS = [
@@ -69,6 +76,44 @@ const galleryOrderSchema = z
   .array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ upload: z.number().int().min(0) }).strict()]))
   .max(EVENT_IMAGE_SPECS.gallery.maxCount, `Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
 
+
+// Same name once case, spacing and punctuation are ignored ("PSL Final 2026" = "psl final-2026")
+const sameNameKey = (name) => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/**
+ * The company's own events with the same name that haven't ended yet: most likely the same event entered
+ * twice (or re-entered with a changed date). Cancelled and rejected ones are ignored. Same-day matches come
+ * first; `sameDay` and `sameSlot` (same venue and start) say how close each one is.
+ */
+async function findDuplicateEvents({ companyId, name, startsAt, venue, excludeEventId }) {
+  const key = sameNameKey(name);
+  if (!companyId || !key || !startsAt) return [];
+  const day = toPktParts(startsAt).date;
+  const candidates = await prisma.event.findMany({
+    where: {
+      companyId,
+      status: { notIn: RELEASED_STATUSES },
+      ...(excludeEventId ? { id: { not: excludeEventId } } : {}),
+      OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+    },
+    select: { id: true, name: true, status: true, date: true, time: true, venue: true, city: true, startsAt: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  return candidates
+    .filter((e) => sameNameKey(e.name) === key)
+    .map((e) => {
+      const start = occupiedInterval(e).start;
+      return {
+        ...e,
+        sameDay: toPktParts(start).date === day,
+        sameSlot: start.getTime() === startsAt.getTime() && sameNameKey(e.venue) === sameNameKey(venue),
+      };
+    })
+    .sort((a, b) => Number(b.sameDay) - Number(a.sameDay));
+}
+
+const companyIdFor = async (user) =>
+  user.role === 'SUPER_ADMIN' ? null : (await prisma.company.findUnique({ where: { userId: user.id }, select: { id: true } }))?.id || null;
 
 /**
  * Organizer creates an event with ticket tiers
@@ -97,6 +142,25 @@ export const createEvent = async (req, res) => {
 
     const validatedTiers = z.array(ticketTierSchema).parse(rawTiers);
     const validatedData = createEventSchema.parse(req.body);
+    const category = await categoryColumns(validatedData.type, validatedData.customCategoryId);
+    const schedule = { ...resolveSchedule(validatedData), city: validatedData.city, venue: validatedData.venue };
+    // The same event entered twice by mistake: ask the organizer first (they can still create it on purpose,
+    // e.g. a second show of the same name later that day). Checked before the venue so the message is clear.
+    if (!['true', true].includes(req.body.allowDuplicate)) {
+      const [duplicate] = await findDuplicateEvents({ companyId: company.id, name: validatedData.name, startsAt: schedule.startsAt, venue: validatedData.venue });
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          field: 'duplicate',
+          message: duplicate.sameSlot
+            ? `You already created “${duplicate.name}” at the same venue and time.`
+            : `You already have an event called “${duplicate.name}”${duplicate.sameDay ? ' on this date' : ''}.`,
+          duplicate,
+        });
+      }
+    }
+    // Checked before uploading images, and again under the venue lock when saving
+    await assertVenueFree(schedule);
 
     // Organizer images (validated from their bytes, all optional). With no banner the web app shows the
     // category artwork, so nothing is stored for it.
@@ -122,17 +186,20 @@ export const createEvent = async (req, res) => {
 
     // Atomic transaction: create event + ticket tiers
     const createdEvent = await prisma.$transaction(async (tx) => {
+      await assertVenueFree(schedule, tx);
       const event = await tx.event.create({
         data: {
           companyId: company.id,
           name: validatedData.name,
           description: validatedData.description,
-          type: validatedData.type,
+          ...category,
           // Organizers' events start unpublished and go on sale only after admin approval
           status: req.user.role === 'SUPER_ADMIN' ? validatedData.status : validatedData.status === 'PRELAUNCH_ANALYSIS' ? 'PRELAUNCH_ANALYSIS' : 'DRAFT',
           ...(req.user.role === 'SUPER_ADMIN' && validatedData.status === 'PUBLISHED' ? { approvedAt: new Date() } : {}),
           date: new Date(validatedData.date),
           time: validatedData.time,
+          startsAt: schedule.startsAt,
+          endsAt: schedule.endsAt,
           city: validatedData.city,
           venue: validatedData.venue,
           latitude: validatedData.latitude ?? null,
@@ -211,6 +278,9 @@ export const createEvent = async (req, res) => {
     if (error instanceof MediaValidationError) {
       return res.status(400).json({ success: false, message: error.message });
     }
+    if (error instanceof ScheduleError || error instanceof CategoryError) {
+      return res.status(error.status).json({ success: false, message: error.message, ...error.details });
+    }
     console.error('Error creating event:', error);
     return res.status(500).json({
       success: false,
@@ -220,20 +290,86 @@ export const createEvent = async (req, res) => {
   }
 };
 
+/** GET /api/events/categories: the fixed categories plus the ones organizers have added. */
+export const getCategories = async (req, res) => {
+  try {
+    return res.json({ success: true, data: await listCategories() });
+  } catch (error) {
+    console.error('Error listing categories:', error);
+    return res.status(500).json({ success: false, message: 'Could not load categories' });
+  }
+};
+
+/**
+ * POST /api/events/categories { name }: adds a custom category when none of the fixed ones fits. A name
+ * that matches a fixed category is refused; one that already exists is returned instead of duplicated.
+ */
+export const createCategory = async (req, res) => {
+  try {
+    const { category, created } = await addCustomCategory(req.body?.name, req.user.id);
+    return res.status(created ? 201 : 200).json({
+      success: true,
+      message: created ? `Added “${category.name}”.` : `“${category.name}” already exists, so it was selected.`,
+      data: { category, created },
+    });
+  } catch (error) {
+    if (error instanceof CategoryError) return res.status(error.status).json({ success: false, message: error.message, ...error.details });
+    console.error('Error adding category:', error);
+    return res.status(500).json({ success: false, message: 'Could not add the category' });
+  }
+};
+
+/**
+ * GET /api/events/schedule-check: live venue check for the create / edit form.
+ * Query: city, venue, date, time, endDate, endTime (PKT) and, when editing, excludeEventId.
+ * Answers { available, field?, message?, conflicts } with the same rules and wording the save uses.
+ */
+export const checkEventSchedule = async (req, res) => {
+  try {
+    const { city, venue, date, time, endDate, endTime, excludeEventId, name } = req.query;
+    const schedule = resolveSchedule({ date, time, endDate, endTime });
+    const conflicts = await findScheduleConflicts({ ...schedule, city, venue, excludeEventId: excludeEventId || undefined });
+    // With the event name: the organizer's own events that look like this one (same name, same day)
+    const duplicates = name
+      ? await findDuplicateEvents({ companyId: await companyIdFor(req.user), name, startsAt: schedule.startsAt, venue, excludeEventId: excludeEventId || undefined })
+      : [];
+    return res.status(200).json({
+      success: true,
+      data: {
+        duplicates,
+        available: conflicts.length === 0,
+        ...(conflicts.length ? { field: 'schedule', message: conflicts[0].message } : {}),
+        conflicts: conflicts.map((c) => c.message),
+      },
+    });
+  } catch (error) {
+    if (error instanceof ScheduleError) {
+      return res.status(200).json({ success: true, data: { available: false, field: error.details.field, message: error.message, conflicts: [] } });
+    }
+    console.error('Error checking event schedule:', error);
+    return res.status(500).json({ success: false, message: 'Could not check the venue schedule' });
+  }
+};
+
 /**
  * Public discovery endpoint with multi-criteria filtering
  */
 export const getEvents = async (req, res) => {
   try {
-    const { type, city, search, startDate, endDate, minPrice, maxPrice, status } = req.query;
+    const { type, category, city, search, startDate, endDate, minPrice, maxPrice, status } = req.query;
 
-    const where = {};
+    // Dates their organizer keeps hidden stay off discovery (they keep their slot and sold tickets)
+    const where = { isHidden: false };
 
     // Discovery only lists public events (unapproved or draft events stay private)
     where.status = ['PUBLISHED', 'COMPLETED', 'PAUSED'].includes(status) ? status : 'PUBLISHED';
 
     if (type) {
       where.type = type;
+    }
+    // One organizer-added category, by its slug
+    if (category) {
+      where.customCategory = { slug: String(category) };
     }
 
     if (city) {
@@ -281,7 +417,7 @@ export const getEvents = async (req, res) => {
     });
 
     // Compute min and max pricing for quick frontend badge display
-    const formattedEvents = events.map((event) => {
+    const formattedEvents = events.map(({ promotionNote, promotionComment, ...event }) => {
       const prices = event.tiers.map((t) => Number(t.price));
       const minP = prices.length ? Math.min(...prices) : 0;
       const maxP = prices.length ? Math.max(...prices) : 0;
@@ -289,6 +425,8 @@ export const getEvents = async (req, res) => {
 
       return {
         ...event,
+        // Approved "top of listings" request: listed before the other events
+        featured: event.priorityStatus === 'APPROVED',
         pricing: {
           minPrice: minP,
           maxPrice: maxP,
@@ -296,6 +434,8 @@ export const getEvents = async (req, res) => {
         },
       };
     });
+    // Featured events first, each group still in date order (the sort is stable)
+    formattedEvents.sort((a, b) => Number(b.featured) - Number(a.featured));
 
     if (type) {
       behaviorService.trackBehavior({
@@ -364,12 +504,31 @@ export const getEventById = async (req, res) => {
     if (event.company) delete event.company.user;
 
     // Draft, pending and rejected events: only the organizer and admins can open them (as a preview)
+    // Hidden dates: the organizer, admins and people who already hold tickets can still open them
+    const holdsTicket = async () =>
+      Boolean(req.user) && (await prisma.ticket.count({ where: { eventId: event.id, userId: req.user.id } })) > 0;
+    if (event.isHidden && ['PUBLISHED', 'PAUSED', 'COMPLETED'].includes(event.status) && !(await canManageEvent(req.user, event)) && !(await holdsTicket())) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
     const isPublic = ['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status);
     if (!isPublic) {
       if (!(await canManageEvent(req.user, event))) {
         return res.status(404).json({ success: false, message: 'Event not found' });
       }
       return res.status(200).json({ success: true, data: { event, preview: true } });
+    }
+
+    // The organizer's promotion message and the admin's reply stay between them
+    delete event.promotionNote;
+    delete event.promotionComment;
+
+    // "Was / now" banner after a date or venue change
+    if (event.rescheduledAt) {
+      event.lastScheduleChange = await prisma.eventScheduleChange.findFirst({
+        where: { eventId: event.id, status: 'APPROVED' },
+        orderBy: { reviewedAt: 'desc' },
+        select: { oldDate: true, oldTime: true, oldStartsAt: true, oldVenue: true, oldCity: true, newStartsAt: true, reason: true, minor: true, reviewedAt: true },
+      });
     }
 
     behaviorService.trackBehavior({
@@ -477,6 +636,17 @@ export const updateEventStatus = async (req, res) => {
       }
     }
 
+    // Cancelling refunds every ticket holder: it has its own endpoint (POST /events/:id/cancel)
+    if (status === 'CANCELLED' && event.status !== 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Cancel the event from “Cancel or change date”, so ticket holders are refunded and told.' });
+    }
+    if (event.status === 'CANCELLED' && status !== 'CANCELLED') {
+      return res.status(409).json({ success: false, message: 'A cancelled event can’t be reopened: its tickets have been refunded. Create a new event instead.' });
+    }
+    if (event.postponedAt && status === 'PUBLISHED') {
+      return res.status(409).json({ success: false, message: 'This event is postponed. Set its new date with Reschedule; it goes back on sale once the date is confirmed.' });
+    }
+
     // Organizers can pause and resume live sales, cancel or complete, but going on sale needs admin approval
     if (req.user.role !== 'SUPER_ADMIN') {
       if (status === 'PUBLISHED' && event.status !== 'PAUSED') {
@@ -490,10 +660,17 @@ export const updateEventStatus = async (req, res) => {
       }
     }
 
-    const updated = await prisma.event.update({
-      where: { id },
-      data: { status, ...(req.user.role === 'SUPER_ADMIN' && status === 'PUBLISHED' && !event.approvedAt ? { approvedAt: new Date() } : {}) },
-      include: { tiers: true },
+    // A cancelled or rejected event released its venue slot; bringing it back needs the slot to still be free
+    const updated = await prisma.$transaction(async (tx) => {
+      if (RELEASED_STATUSES.includes(event.status) && !RELEASED_STATUSES.includes(status)) {
+        const { start, end } = occupiedInterval(event);
+        await assertVenueFree({ city: event.city, venue: event.venue, startsAt: start, endsAt: end, excludeEventId: id }, tx);
+      }
+      return tx.event.update({
+        where: { id },
+        data: { status, ...(req.user.role === 'SUPER_ADMIN' && status === 'PUBLISHED' && !event.approvedAt ? { approvedAt: new Date() } : {}) },
+        include: { tiers: true },
+      });
     });
 
     return res.status(200).json({
@@ -502,6 +679,9 @@ export const updateEventStatus = async (req, res) => {
       data: { event: updated },
     });
   } catch (error) {
+    if (error instanceof ScheduleError) {
+      return res.status(error.status).json({ success: false, message: error.message, ...error.details });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to update event status',
@@ -807,7 +987,11 @@ export const getEventForEdit = async (req, res) => {
     if (!(await canManageEvent(req.user, event))) {
       return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
     }
-    return res.status(200).json({ success: true, data: { event } });
+    // The form edits the end as PKT date + time; older events have no end yet
+    const end = event.endsAt ? toPktParts(event.endsAt) : null;
+    // With ticket holders, the date and venue change through Reschedule (approval, notices, refunds)
+    const ticketsHeld = await prisma.ticket.count({ where: { eventId: event.id, status: { in: ['ACTIVE', 'SCANNED'] } } });
+    return res.status(200).json({ success: true, data: { event: { ...event, endDate: end?.date ?? null, endTime: end?.time ?? null, ticketsHeld } } });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to load event', error: error.message });
   }
@@ -817,7 +1001,8 @@ export const getEventForEdit = async (req, res) => {
  * Organizer updates event details and media in one save.
  *
  * Multipart body:
- * - Detail fields (name, description, type, date, time, city, venue); omitted fields are unchanged.
+ * - Detail fields (name, description, type, date, time, endDate, endTime, city, venue); omitted fields are
+ *   unchanged. Changing the venue or schedule re-checks the venue for clashes (one-hour gap rule).
  * - banner / cardImage / galleryWide: a new file replaces the image; `<field>Action=remove` clears it;
  *   otherwise the saved image is kept.
  * - galleryImages: new files; galleryOrder: JSON list of { id } (saved image) or { upload: n } (nth new
@@ -843,6 +1028,44 @@ export const updateEvent = async (req, res) => {
 
     const detailKeys = Object.keys(updateEventDetailsSchema.shape).filter((k) => req.body[k] !== undefined);
     const details = updateEventDetailsSchema.parse(Object.fromEntries(detailKeys.map((k) => [k, req.body[k]])));
+
+    // Venue or schedule changes: resolve the full schedule (saved values fill omitted fields) and check the venue
+    const scheduleKeys = ['date', 'time', 'endDate', 'endTime', 'city', 'venue'];
+    let schedule = null;
+    if (scheduleKeys.some((k) => details[k] !== undefined)) {
+      const savedEnd = event.endsAt ? toPktParts(event.endsAt) : {};
+      // Ticket holders must be told about (and can opt out of) a new date or venue: that goes through Reschedule
+      const ticketsHeld = await prisma.ticket.count({ where: { eventId: id, status: { in: ['ACTIVE', 'SCANNED'] } } });
+      const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+      const moved =
+        (details.date !== undefined && String(details.date).slice(0, 10) !== event.date.toISOString().slice(0, 10)) ||
+        (details.time !== undefined && parseTimeOfDay(details.time) !== parseTimeOfDay(event.time)) ||
+        // Older events have no stored end: adding one isn't a move
+        (event.endsAt && details.endDate !== undefined && String(details.endDate).slice(0, 10) !== savedEnd.date) ||
+        (event.endsAt && details.endTime !== undefined && parseTimeOfDay(details.endTime) !== parseTimeOfDay(savedEnd.time)) ||
+        (details.city !== undefined && !sameText(details.city, event.city)) ||
+        (details.venue !== undefined && !sameText(details.venue, event.venue));
+      if (ticketsHeld > 0 && moved) {
+        return res.status(409).json({
+          success: false,
+          field: 'schedule',
+          code: 'RESCHEDULE_REQUIRED',
+          message: `${ticketsHeld} ticket${ticketsHeld === 1 ? ' is' : 's are'} already sold, so the date, time and venue can only be changed with Reschedule. Attendees are told and can get a refund.`,
+        });
+      }
+      schedule = {
+        ...resolveSchedule({
+          date: details.date ?? event.date,
+          time: details.time ?? event.time,
+          endDate: details.endDate ?? savedEnd.date,
+          endTime: details.endTime ?? savedEnd.time,
+        }),
+        city: details.city ?? event.city,
+        venue: details.venue ?? event.venue,
+        excludeEventId: id,
+      };
+      if (event.status !== 'CANCELLED') await assertVenueFree(schedule);
+    }
 
     const files = req.files || {};
     const uploads = [];
@@ -901,10 +1124,16 @@ export const updateEvent = async (req, res) => {
       else singleChanges[SINGLE_IMAGE_FIELDS.find((f) => f.field === u.field).column] = urls[i];
     });
 
-    const data = { ...details, ...singleChanges };
+    const { endDate, endTime, type, customCategoryId, ...detailColumns } = details;
+    const data = { ...detailColumns, ...singleChanges };
+    if (type !== undefined || customCategoryId !== undefined) {
+      Object.assign(data, await categoryColumns(type ?? event.type, customCategoryId ?? event.customCategoryId));
+    }
     if (details.date) data.date = new Date(details.date);
+    if (schedule) Object.assign(data, { startsAt: schedule.startsAt, endsAt: schedule.endsAt });
 
     const updated = await prisma.$transaction(async (tx) => {
+      if (schedule && event.status !== 'CANCELLED') await assertVenueFree(schedule, tx);
       await tx.event.update({ where: { id }, data });
 
       if (galleryPlan) {
@@ -954,6 +1183,9 @@ export const updateEvent = async (req, res) => {
     }
     if (error instanceof MediaValidationError) {
       return res.status(400).json({ success: false, message: error.message });
+    }
+    if (error instanceof ScheduleError || error instanceof CategoryError) {
+      return res.status(error.status).json({ success: false, message: error.message, ...error.details });
     }
     console.error('Error updating event:', error);
     return res.status(500).json({ success: false, message: 'Failed to update event', error: error.message });

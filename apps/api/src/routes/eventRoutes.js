@@ -12,8 +12,21 @@ import {
   getEventForEdit,
   updateEvent,
   deleteEvent,
+  checkEventSchedule,
+  getCategories,
+  createCategory,
 } from '../controllers/eventController.js';
-import { EVENT_IMAGE_SPECS, LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
+import { EVENT_IMAGE_SPECS, HERO_VIDEO_SPECS, LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
+import { requestPromotion, withdrawPromotion, getHeroPromotions } from '../controllers/promotionController.js';
+import {
+  getLifecycle,
+  cancelEventHandler,
+  postponeEventHandler,
+  rescheduleEventHandler,
+  withdrawRescheduleHandler,
+  getRefundOptions,
+  requestRefundHandler,
+} from '../controllers/lifecycleController.js';
 import {
   joinEventWaitlist,
   getEventWaitlistStatus,
@@ -53,8 +66,29 @@ const eventMediaUpload = (req, res, next) =>
     return next(err);
   });
 
+// Hero promo videos (promotion requests): their own size limit, checked again per placement
+const promoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: HERO_VIDEO_SPECS.desktop.maxBytes, files: 2 } });
+const promoVideoUpload = (req, res, next) =>
+  promoUpload.fields([{ name: 'heroVideo', maxCount: 1 }, { name: 'heroVideoMobile', maxCount: 1 }])(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      const message = err.code === 'LIMIT_FILE_SIZE' ? `A video is larger than ${HERO_VIDEO_SPECS.desktop.maxBytes / (1024 * 1024)} MB.` : MULTER_MESSAGES[err.code] || err.message;
+      return res.status(400).json({ success: false, message });
+    }
+    return next(err);
+  });
+
+// Event categories: the fixed list plus organizer-added ones (adding needs an approved organizer company)
+router.get('/categories', getCategories);
+router.post('/categories', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), requireApprovedOrganizer, createCategory);
+
+// Live venue / schedule check for the organizer's create and edit form (before /:id so it isn't an event id)
+router.get('/schedule-check', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), checkEventSchedule);
+
 // Public discovery endpoints with optional authentication to attribute user views
 router.get('/', optionalAuth, getEvents);
+// Events approved for the home page hero (before /:id so it isn't an event id)
+router.get('/promoted-hero', getHeroPromotions);
 router.get('/:id', optionalAuth, getEventById);
 
 // Waitlist endpoints
@@ -97,6 +131,22 @@ router.get(
 // Review & submit: readiness check, and sending the event to admins for approval
 router.get('/:id/submission', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), getSubmissionStatus);
 router.post('/:id/submit', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), submitEventForReview);
+
+// Promotion requests: top of listings and the home page hero (owning organizer or Super Admin)
+router.post('/:id/promotion', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), promoVideoUpload, requestPromotion);
+router.delete('/:id/promotion/:kind', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), withdrawPromotion);
+
+// Cancel, postpone or move an event with ticket holders (owning organizer or Super Admin)
+const manageGuard = [authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN')];
+router.get('/:id/lifecycle', manageGuard, getLifecycle);
+router.post('/:id/cancel', manageGuard, cancelEventHandler);
+router.post('/:id/postpone', manageGuard, postponeEventHandler);
+router.post('/:id/reschedule', manageGuard, rescheduleEventHandler);
+router.delete('/:id/reschedule', manageGuard, withdrawRescheduleHandler);
+
+// Ticket holders: refund choices after a reschedule or postponement
+router.get('/:id/refund-options', authenticateJWT, getRefundOptions);
+router.post('/:id/refund-request', authenticateJWT, requestRefundHandler);
 
 // Delete an event (owning organizer or Super Admin; refused while tickets are sold or being paid for)
 router.delete('/:id', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), deleteEvent);

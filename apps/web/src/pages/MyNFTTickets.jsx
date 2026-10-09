@@ -147,7 +147,21 @@ export default function MyNFTTickets() {
     }
   };
 
-  const listedCount = tickets.filter((t) => t.activeResaleListing).length;
+  // A listing paused because the event moved goes back on the market with the new date
+  const handleRelist = async (listingId) => {
+    if (!(await dialog.confirm({ title: 'Relist this ticket?', message: 'Buyers will see the event’s new date. The price stays the same.', confirmLabel: 'Relist', cancelLabel: 'Not now', tone: 'info' }))) return;
+    setCancellingListingId(listingId);
+    try {
+      await axios.post(`${API_BASE_URL}/api/resale/relist/${listingId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      fetchNFTs();
+    } catch (err) {
+      dialog.alert({ tone: 'error', title: 'Couldn’t relist the ticket', message: err.response?.data?.message || 'Please try again.' });
+    } finally {
+      setCancellingListingId(null);
+    }
+  };
+
+  const listedCount = tickets.filter((t) => t.activeResaleListing?.status === 'ACTIVE').length;
 
   return (
     <AccountShell
@@ -221,6 +235,7 @@ export default function MyNFTTickets() {
               ticket={t}
               onList={() => handleOpenResaleModal(t)}
               onCancelListing={handleCancelListing}
+              onRelist={handleRelist}
               cancelling={cancellingListingId === t.activeResaleListing?.id}
               onExplorer={() => setSelectedTicketForExplorer(t)}
             />

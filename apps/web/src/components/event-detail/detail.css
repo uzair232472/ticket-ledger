@@ -113,6 +113,12 @@
 .tl-dt-price { font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
 .tl-dt-price span { font-size: 14px; color: var(--dt-dim); margin-right: 4px; }
 .tl-dt-book-note { max-width: 34ch; font-size: 14px; color: var(--dt-dim); text-align: right; }
+/* Cancelled / postponed / moved: what ticket holders can do (over the dark hero) */
+.tl-dt-change { max-width: 46ch; padding: 14px 16px; border: 1px solid rgba(250, 204, 21, 0.55); border-radius: 6px; background: rgba(0, 0, 0, 0.55); font-size: 14px; line-height: 1.5; }
+.tl-dt-change.is-bad { border-color: rgba(251, 113, 133, 0.7); }
+.tl-dt-change strong { display: block; font-size: 15px; margin-bottom: 2px; }
+.tl-dt-change a { display: inline-block; margin-top: 6px; font-weight: 700; text-decoration: underline; color: #4ade80; }
+.tl-dt-was { color: var(--dt-dim); font-size: 13.5px; }
 
 /* Primary action: mono uppercase, like the menu button */
 .tl-dt-cta {
