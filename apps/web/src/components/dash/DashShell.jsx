@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, TrendingDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getEventVisual } from '../../utils/eventMedia';
+import api from '../../utils/api';
 import markUrl from '../../assets/ticketledger-mark.svg';
 import HomeHeader from '../home/HomeHeader';
 import SiteFooter from '../home/SiteFooter';
@@ -17,8 +18,8 @@ const CONSOLES = {
     label: 'Admin console',
     links: [
       { to: '/admin/dashboard', label: 'Overview' },
-      { to: '/admin/companies', label: 'Approvals' },
-      { to: '/admin/event-approvals', label: 'Event approvals' },
+      { to: '/admin/companies', label: 'Approvals', badge: 'companies' },
+      { to: '/admin/event-approvals', label: 'Event approvals', badge: 'eventApprovals' },
       { to: '/admin/fraud-watchlist', label: 'Fraud watchlist' },
       { to: '/admin/demand-forecast', label: 'Demand forecast' },
       { to: '/admin/purchase-intent', label: 'Purchase intent' },
@@ -54,6 +55,33 @@ const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/inte
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
 const STUDIO_ROUTES = ['/scanner', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
 
+// Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
+// 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
+export const notifyPendingChanged = () => window.dispatchEvent(new Event('tl:pending-changed'));
+function usePendingCounts(enabled, pathname) {
+  const [counts, setCounts] = useState({});
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    const load = () =>
+      api
+        .get('/admin/pending-counts')
+        .then((res) => alive && setCounts(res.data.data))
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 30000);
+    window.addEventListener('tl:pending-changed', load);
+    window.addEventListener('focus', load);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener('tl:pending-changed', load);
+      window.removeEventListener('focus', load);
+    };
+  }, [enabled, pathname]);
+  return counts;
+}
+
 /**
  * Static console layout for organizers, super admins and gate staff: the site header and footer around the
  * paper background, a slash-separated nav of the role's console areas, then the page. `.tl-dash-skin`
@@ -66,6 +94,7 @@ export default function DashShell({ children }) {
   const { user } = useAuth();
   const pageRef = useRef(null);
   const console_ = CONSOLES[user?.role];
+  const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
   const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
   const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit)))\/?$/.test(pathname);
 
@@ -108,6 +137,11 @@ export default function DashShell({ children }) {
                     aria-current={current.startsWith(l.to) ? 'page' : undefined}
                   >
                     {l.label}
+                    {l.badge && pending[l.badge] > 0 && (
+                      <span className="tl-dash-nav-badge" aria-label={`${pending[l.badge]} waiting`}>
+                        {pending[l.badge] > 99 ? '99+' : pending[l.badge]}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>

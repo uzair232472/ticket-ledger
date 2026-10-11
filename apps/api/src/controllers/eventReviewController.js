@@ -187,3 +187,22 @@ export const reviewEvent = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to save the review.' });
   }
 };
+
+/**
+ * Super Admin: what is waiting for a decision, for the badges on the console nav (like unread counts).
+ * Event approvals counts new events, promotion requests and date changes; Approvals counts companies.
+ */
+export const getPendingCounts = async (req, res) => {
+  try {
+    const [events, promotions, changes, companies] = await Promise.all([
+      prisma.event.count({ where: { status: 'PENDING_APPROVAL' } }),
+      prisma.event.count({ where: { OR: [{ priorityStatus: 'REQUESTED' }, { heroStatus: 'REQUESTED' }] } }),
+      prisma.eventScheduleChange.count({ where: { status: 'PENDING' } }),
+      prisma.company.count({ where: { status: 'PENDING' } }),
+    ]);
+    return res.json({ success: true, data: { events, promotions, changes, companies, eventApprovals: events + promotions + changes } });
+  } catch (error) {
+    console.error('Pending counts failed:', error);
+    return res.status(500).json({ success: false, message: 'Failed to load pending counts.' });
+  }
+};

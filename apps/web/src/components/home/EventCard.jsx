@@ -26,9 +26,14 @@ export default function EventCard({ event, index, isFavorite, onToggleFavorite }
     <article className="tl-card">
       <div className="tl-card-media">
         <img src={visual.image} alt="" loading="lazy" decoding="async" onError={(e) => e.currentTarget.classList.add('is-broken')} />
-        {soldOut && <span className="tl-card-badge tl-card-badge--soldout">Sold out</span>}
-        {limited && <span className="tl-card-badge">Only {available} left</span>}
-        {event.featured && !soldOut && !limited && <span className="tl-card-badge tl-card-badge--featured">Featured</span>}
+        {/* A running promotion keeps its tag next to the availability one */}
+        {(event.featured || soldOut || limited) && (
+          <div className="tl-card-badges">
+            {event.featured && <span className="tl-card-badge tl-card-badge--featured">Featured</span>}
+            {soldOut && <span className="tl-card-badge tl-card-badge--soldout">Sold out</span>}
+            {limited && <span className="tl-card-badge">Only {available} left</span>}
+          </div>
+        )}
         <span className="tl-card-type">{categoryName(event.type, event.categoryLabel)}</span>
         <button
           type="button"

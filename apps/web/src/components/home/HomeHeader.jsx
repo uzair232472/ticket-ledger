@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import gsap from 'gsap';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
@@ -91,7 +91,6 @@ function useMenuGroups(onCategories) {
  * `pageRef` is the page content, made inert while the menu is open.
  */
 export default function HomeHeader({ pageRef, onCategories, tone = 'dark', minimal = false }) {
-  const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -252,8 +251,7 @@ export default function HomeHeader({ pageRef, onCategories, tone = 'dark', minim
 
   const onLogout = async () => {
     setOpen(false);
-    await logout();
-    navigate('/');
+    await logout(); // opens the login page; Back can't return to pages from before
   };
 
   return (

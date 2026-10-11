@@ -370,6 +370,15 @@ model Event {
   promotionNote        String? // the organizer's message with the request
   promotionComment     String? // the admin's reply
   promotionReviewedAt  DateTime?
+  // Each promotion runs for a time window the admin sets on approval (the organizer suggests a length in
+  // days). It shows while now is inside the window; the latest start is listed first. A renewal request
+  // leaves the running window in place until the admin decides.
+  priorityDays         Int?
+  priorityStartsAt     DateTime?
+  priorityEndsAt       DateTime?
+  heroDays             Int?
+  heroStartsAt         DateTime?
+  heroEndsAt           DateTime?
   // Cancellation, postponement and rescheduling (refunds are in Refund)
   cancelledAt          DateTime?
   cancelReason         String?

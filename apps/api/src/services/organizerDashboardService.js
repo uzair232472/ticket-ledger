@@ -44,6 +44,10 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
       createdAt: true,
       priorityStatus: true,
       heroStatus: true,
+      priorityStartsAt: true,
+      priorityEndsAt: true,
+      heroStartsAt: true,
+      heroEndsAt: true,
       postponedAt: true,
     },
     // Newest first: an event the organizer has just created is at the top of every list and picker

@@ -5,33 +5,62 @@ import { getEventVisual, resolveMediaUrl } from '../../utils/eventMedia';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
 import { Badge } from '../dash/Studio';
 import { useDialog } from '../ui/DialogProvider';
+import { DAY_MS, DEFAULT_PROMOTION_DAYS, formatPromoDay, fromDateInput, isPromotionActive, promoTimeLeft, toDateInput } from '../../utils/promotion';
 
 const KINDS = [
-  { kind: 'PRIORITY', field: 'priorityStatus', at: 'priorityRequestedAt', icon: ArrowUpToLine, title: 'Top of listings' },
-  { kind: 'HERO', field: 'heroStatus', at: 'heroRequestedAt', icon: Clapperboard, title: 'Home page hero banner' },
+  { kind: 'PRIORITY', key: 'priority', field: 'priorityStatus', at: 'priorityRequestedAt', icon: ArrowUpToLine, title: 'Top of listings' },
+  { kind: 'HERO', key: 'hero', field: 'heroStatus', at: 'heroRequestedAt', icon: Clapperboard, title: 'Home page hero banner' },
 ];
 const TONE = { REQUESTED: 'amber', APPROVED: 'green', REJECTED: 'rose' };
 const LABEL = { REQUESTED: 'Waiting', APPROVED: 'Approved', REJECTED: 'Rejected' };
 
-/** Super Admin: one event's promotion requests, each approved or rejected on its own. */
+/**
+ * Dates a promotion runs: an approved one keeps its own; a request starts today for the days asked.
+ * A renewal (asked while one runs) starts today too, so the event moves back to the top.
+ */
+function initialWindow(event, key) {
+  const today = toDateInput(Date.now());
+  if (event[`${key}Status`] === 'APPROVED' && event[`${key}EndsAt`]) {
+    return { from: toDateInput(event[`${key}StartsAt`] || Date.now()), until: toDateInput(event[`${key}EndsAt`]) };
+  }
+  const days = event[`${key}Days`] || DEFAULT_PROMOTION_DAYS;
+  return { from: today, until: toDateInput(Date.now() + (days - 1) * DAY_MS) };
+}
+
+/** Super Admin: one event's promotion requests, each approved or rejected on its own, with its dates. */
 export default function PromotionReviewCard({ event, onReviewed }) {
   const dialog = useDialog();
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [windows, setWindows] = useState(() => Object.fromEntries(KINDS.map((k) => [k.kind, initialWindow(event, k.key)])));
+  const setWindow = (kind, part) => (e) => setWindows((w) => ({ ...w, [kind]: { ...w[kind], [part]: e.target.value } }));
   const time = formatEventTime(event.time);
   const requests = KINDS.filter((k) => event[k.field] && event[k.field] !== 'NONE');
 
   const decide = async (kind, decision) => {
+    const { key } = KINDS.find((k) => k.kind === kind);
     if (decision === 'REJECT' && comment.trim().length < 5) {
       setError('Add a comment so the organizer knows why.');
+      return;
+    }
+    const range = windows[kind];
+    if (decision === 'APPROVE' && (!range.from || !range.until || range.until < range.from)) {
+      setError('Choose a start date and an end date on or after it.');
       return;
     }
     setBusy(`${kind}-${decision}`);
     setError('');
     try {
-      const res = await api.post(`/admin/promotions/${event.id}`, { kind, decision, comment: comment.trim() });
-      await dialog.alert({ tone: decision === 'APPROVE' ? 'success' : 'info', title: decision === 'APPROVE' ? 'Promotion approved' : 'Promotion rejected', message: `${res.data.message} The organizer has been notified.` });
+      // From the start of the first day (or now, if that is today) to the end of the last day, Pakistan time
+      // An approved promotion whose start day is unchanged keeps its exact start (and its place in the order)
+      const today = toDateInput(Date.now());
+      const savedStart = event[`${key}StartsAt`];
+      const keepStart = event[`${key}Status`] === 'APPROVED' && savedStart && toDateInput(savedStart) === range.from;
+      const start = keepStart ? new Date(savedStart) : range.from === today ? new Date() : fromDateInput(range.from);
+      const dates = decision === 'APPROVE' ? { startsAt: start.toISOString(), endsAt: fromDateInput(range.until, true).toISOString() } : {};
+      const res = await api.post(`/admin/promotions/${event.id}`, { kind, decision, comment: comment.trim(), ...dates });
+      await dialog.alert({ tone: decision === 'APPROVE' ? 'success' : 'info', title: decision === 'APPROVE' ? 'Promotion saved' : 'Promotion rejected', message: `${res.data.message} The organizer has been notified.` });
       setComment('');
       onReviewed(res.data.message);
     } catch (err) {
@@ -61,13 +90,40 @@ export default function PromotionReviewCard({ event, onReviewed }) {
         {event.promotionComment && <p className="tl-ap-meta">Last admin note: “{event.promotionComment}”</p>}
 
         <div className="tl-ap-promo">
-          {requests.map(({ kind, field, at, icon: Icon, title }) => (
+          {requests.map(({ kind, key, field, at, icon: Icon, title }) => (
             <div key={kind} className="tl-ap-promo-item">
               <h4>
                 <Icon className="w-4 h-4" aria-hidden="true" /> {title}
                 <Badge tone={TONE[event[field]]}>{LABEL[event[field]]}</Badge>
+                {isPromotionActive(event, key) && <Badge tone="green">Running</Badge>}
               </h4>
-              {event[at] && <p className="tl-ap-meta">Requested {new Date(event[at]).toLocaleString()}</p>}
+              {event[at] && (
+                <p className="tl-ap-meta">
+                  Requested {new Date(event[at]).toLocaleString()}
+                  {event[`${key}Days`] ? ` · for ${event[`${key}Days`]} days` : ''}
+                </p>
+              )}
+              {isPromotionActive(event, key) && event[`${key}EndsAt`] && (
+                <p className="tl-ap-meta">
+                  Running since {formatPromoDay(event[`${key}StartsAt`] || event.promotionReviewedAt)}, until {formatPromoDay(event[`${key}EndsAt`])} ({promoTimeLeft(event[`${key}EndsAt`])})
+                  {event[field] === 'REQUESTED' && '. Approving starts a new window from today and moves it back to the top.'}
+                </p>
+              )}
+              {event[field] === 'APPROVED' && !isPromotionActive(event, key) && event[`${key}EndsAt`] && (
+                <p className="tl-ap-meta">
+                  {new Date(event[`${key}StartsAt`]) > new Date() ? 'Scheduled' : 'Ran'} {formatPromoDay(event[`${key}StartsAt`])} to {formatPromoDay(event[`${key}EndsAt`])}
+                </p>
+              )}
+              <div className="tl-ap-promo-dates">
+                <label>
+                  <span>From</span>
+                  <input type="date" className="tl-wz-input" value={windows[kind].from} onChange={setWindow(kind, 'from')} />
+                </label>
+                <label>
+                  <span>Until (end of day)</span>
+                  <input type="date" className="tl-wz-input" value={windows[kind].until} min={windows[kind].from} onChange={setWindow(kind, 'until')} />
+                </label>
+              </div>
               {kind === 'HERO' && (
                 event.heroVideoUrl || event.heroVideoMobileUrl ? (
                   <div className="tl-ap-promo-videos">
@@ -79,11 +135,9 @@ export default function PromotionReviewCard({ event, onReviewed }) {
                 )
               )}
               <div className="tl-ap-actions">
-                {event[field] !== 'APPROVED' && (
-                  <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={() => decide(kind, 'APPROVE')} disabled={Boolean(busy)}>
-                    <CheckCircle2 className="w-4 h-4" /> {busy === `${kind}-APPROVE` ? 'Approving…' : 'Approve'}
-                  </button>
-                )}
+                <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={() => decide(kind, 'APPROVE')} disabled={Boolean(busy)}>
+                  <CheckCircle2 className="w-4 h-4" /> {busy === `${kind}-APPROVE` ? 'Saving…' : event[field] === 'APPROVED' ? 'Save dates' : 'Approve for these dates'}
+                </button>
                 {event[field] !== 'REJECTED' && (
                   <button type="button" className="tl-wz-btn tl-ap-btn-reject" onClick={() => decide(kind, 'REJECT')} disabled={Boolean(busy)}>
                     <XCircle className="w-4 h-4" /> {busy === `${kind}-REJECT` ? 'Sending…' : event[field] === 'APPROVED' ? 'End with comment' : 'Reject with comment'}
