@@ -7,6 +7,7 @@ import { DashHead, DashCard, Kpi, Chip, Tile, Notice, DashState } from '../compo
 import { ColumnChart, LineChart, Legend, Ring, Meter, SERIES, NEUTRAL, compactPkr, formatPkr } from '../components/dash/charts';
 import { getEventVisual } from '../utils/eventMedia';
 import api from '../utils/api';
+import { formatPromoDay, isPromotionActive } from '../utils/promotion';
 import { useDialog } from '../components/ui/DialogProvider';
 import {
   Ticket,
@@ -78,11 +79,16 @@ function EventCard({ event, index, totals, selected, onStats, onDelete }) {
       <Link to={`/events/${event.id}`} className="tl-st-ev-media" tabIndex={-1} aria-hidden="true">
         <img src={image} alt="" loading="lazy" onError={(e) => e.currentTarget.classList.add('is-broken')} />
         <span className={`tl-st-ev-badge ${badgeClass}`}>{event.postponedAt ? 'Postponed' : badge}</span>
-        {(event.priorityStatus === 'APPROVED' || event.heroStatus === 'APPROVED') && (
-          <span className="tl-st-ev-badge is-live tl-st-ev-promo">
-            {event.heroStatus === 'APPROVED' ? 'Hero banner' : 'Top of listings'}
-          </span>
-        )}
+        {/* Promotion running now, with its end date */}
+        {(isPromotionActive(event, 'hero') || isPromotionActive(event, 'priority')) && (() => {
+          const kind = isPromotionActive(event, 'hero') ? 'hero' : 'priority';
+          const ends = event[`${kind}EndsAt`];
+          return (
+            <span className="tl-st-ev-badge is-live tl-st-ev-promo" title={ends ? `Until ${formatPromoDay(ends)}` : undefined}>
+              {kind === 'hero' ? 'Hero banner' : 'Top of listings'}{ends ? ` · until ${formatPromoDay(ends)}` : ''}
+            </span>
+          );
+        })()}
       </Link>
       <div className="tl-st-ev-body">
         <h3><Link to={`/events/${event.id}`}>{event.name}</Link></h3>

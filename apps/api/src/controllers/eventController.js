@@ -3,6 +3,8 @@ import prisma from '../config/prisma.js';
 import { MediaValidationError, uploadEventImages } from '../services/eventMediaService.js';
 import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
 import { canManageEvent } from '../utils/eventAccess.js';
+import { applySeatAvailability } from '../services/venueService.js';
+import { isPromotionActive, promotionStartedAt } from '../services/promotionWindow.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import mlService from '../services/mlService.js';
 import { CategoryError, categoryColumns, listCategories, addCustomCategory } from '../services/categoryService.js';
@@ -415,6 +417,8 @@ export const getEvents = async (req, res) => {
       },
       orderBy: { date: 'asc' },
     });
+    // Ticket counts from the seats, so "sold out" here matches the seat map
+    await applySeatAvailability(events);
 
     // Compute min and max pricing for quick frontend badge display
     const formattedEvents = events.map(({ promotionNote, promotionComment, ...event }) => {
@@ -425,8 +429,10 @@ export const getEvents = async (req, res) => {
 
       return {
         ...event,
-        // Approved "top of listings" request: listed before the other events
-        featured: event.priorityStatus === 'APPROVED',
+        // "Top of listings" running now: listed before the other events, the latest promotion first
+        featured: isPromotionActive(event, 'priority'),
+        featuredSince: isPromotionActive(event, 'priority') ? new Date(promotionStartedAt(event, 'priority')).toISOString() : null,
+        featuredUntil: isPromotionActive(event, 'priority') ? event.priorityEndsAt : null,
         pricing: {
           minPrice: minP,
           maxPrice: maxP,
@@ -434,8 +440,8 @@ export const getEvents = async (req, res) => {
         },
       };
     });
-    // Featured events first, each group still in date order (the sort is stable)
-    formattedEvents.sort((a, b) => Number(b.featured) - Number(a.featured));
+    // Featured events first (the latest promotion on top), the rest still in date order (the sort is stable)
+    formattedEvents.sort((a, b) => Number(b.featured) - Number(a.featured) || (a.featured ? new Date(b.featuredSince) - new Date(a.featuredSince) : 0));
 
     if (type) {
       behaviorService.trackBehavior({
@@ -498,6 +504,8 @@ export const getEventById = async (req, res) => {
     if (!event) {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
+    // Ticket counts from the seats, so "sold out" on the event page matches the seat map
+    await applySeatAvailability(event);
 
     // "Contact organizer": the event's own contact email, else the organizer's company / account email
     event.organizerContactEmail = event.contactEmail || event.company?.email || event.company?.user?.email || null;
@@ -987,11 +995,12 @@ export const getEventForEdit = async (req, res) => {
     if (!(await canManageEvent(req.user, event))) {
       return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
     }
-    // The form edits the end as PKT date + time; older events have no end yet
-    const end = event.endsAt ? toPktParts(event.endsAt) : null;
+    // The form edits the end as PKT date + time. Older events have no stored end: prefill the end the
+    // venue checks already assume for them (start + 3 hours), so the form isn't blocked on an empty field
+    const end = toPktParts(occupiedInterval(event).end);
     // With ticket holders, the date and venue change through Reschedule (approval, notices, refunds)
     const ticketsHeld = await prisma.ticket.count({ where: { eventId: event.id, status: { in: ['ACTIVE', 'SCANNED'] } } });
-    return res.status(200).json({ success: true, data: { event: { ...event, endDate: end?.date ?? null, endTime: end?.time ?? null, ticketsHeld } } });
+    return res.status(200).json({ success: true, data: { event: { ...event, endDate: end.date, endTime: end.time, ticketsHeld } } });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to load event', error: error.message });
   }
@@ -1033,7 +1042,7 @@ export const updateEvent = async (req, res) => {
     const scheduleKeys = ['date', 'time', 'endDate', 'endTime', 'city', 'venue'];
     let schedule = null;
     if (scheduleKeys.some((k) => details[k] !== undefined)) {
-      const savedEnd = event.endsAt ? toPktParts(event.endsAt) : {};
+      const savedEnd = toPktParts(occupiedInterval(event).end);
       // Ticket holders must be told about (and can opt out of) a new date or venue: that goes through Reschedule
       const ticketsHeld = await prisma.ticket.count({ where: { eventId: id, status: { in: ['ACTIVE', 'SCANNED'] } } });
       const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();

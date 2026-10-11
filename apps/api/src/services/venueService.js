@@ -585,3 +585,35 @@ export async function protectedKeys(eventId) {
   });
   return seats.map((s) => ({ key: s.layoutKey, state: s.status === 'SOLD' || s.ticket ? 'booked' : 'held' }));
 }
+
+/**
+ * Ticket counts as the seat map shows them. The stored tier counters can drift from the seats (older
+ * data, seeded sales, refunds), so event pages read the seats instead: a tier's available tickets are its
+ * free seats (FREE_SQL, the same test the seat map and holds use) and its total its sellable seats.
+ * Mutates `events[].tiers` in place; tiers without seats keep their stored counts, and a tier with no
+ * seats and no tickets at all (left out of the seating plan) is dropped rather than shown as sold out.
+ */
+export async function applySeatAvailability(events) {
+  const list = (Array.isArray(events) ? events : [events]).filter(Boolean);
+  const ids = list.map((e) => e.id);
+  if (!ids.length) return events;
+  const rows = await prisma.$queryRaw`
+    SELECT s."tierId" AS "tierId",
+           COUNT(*) FILTER (WHERE ${FREE_SQL})::int AS free,
+           COUNT(*) FILTER (WHERE s.status <> 'BLOCKED')::int AS sellable
+    FROM "Seat" s
+    WHERE s."eventId" IN (${Prisma.join(ids)})
+    GROUP BY s."tierId"`;
+  const byTier = new Map(rows.map((r) => [r.tierId, r]));
+  for (const event of list) {
+    if (!event.tiers) continue;
+    for (const tier of event.tiers) {
+      const seats = byTier.get(tier.id);
+      if (!seats) continue;
+      tier.availableQuantity = seats.free;
+      tier.totalQuantity = seats.sellable;
+    }
+    event.tiers = event.tiers.filter((tier) => byTier.has(tier.id) || tier.totalQuantity > 0);
+  }
+  return events;
+}

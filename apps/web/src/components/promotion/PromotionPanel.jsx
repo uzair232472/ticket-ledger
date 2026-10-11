@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useState } from 'react';
 import { AlertCircle, ArrowUpToLine, CheckCircle2, Clapperboard, Clock, Film, Megaphone, Send, Upload, X, XCircle } from 'lucide-react';
 import api from '../../utils/api';
 import { useDialog } from '../ui/DialogProvider';
 import { HERO_VIDEO_GUIDE, HERO_VIDEO_SPECS, checkHeroVideo } from '../../utils/heroVideoSpecs';
 import { resolveMediaUrl } from '../../utils/eventMedia';
+import { DEFAULT_PROMOTION_DAYS, PROMOTION_DAY_CHOICES, formatPromoDay, isPromotionActive, isPromotionUpcoming, promoTimeLeft } from '../../utils/promotion';
 
 const STATE = {
   REQUESTED: { icon: Clock, label: 'Waiting for admin review', cls: 'is-wait' },
@@ -75,25 +76,29 @@ function VideoField({ kind, file, savedUrl, onChange }) {
 /**
  * Organizer: ask TicketLedger to promote this event (top of listings and/or the home page hero) and see
  * each request's state. An admin approves or rejects each one; they apply while the event is on sale.
+ * The ref exposes the ticked-but-unsent request, so "Send to admin for approval" on the review page sends
+ * it too instead of dropping it.
  */
-export default function PromotionPanel({ event, onChanged }) {
+const PromotionPanel = forwardRef(function PromotionPanel({ event, onChanged }, ref) {
   const dialog = useDialog();
   const [wanted, setWanted] = useState({ priority: false, hero: false });
   const [videos, setVideos] = useState({ desktop: null, mobile: null });
   const [note, setNote] = useState('');
+  const [days, setDays] = useState(DEFAULT_PROMOTION_DAYS);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
-  if (['CANCELLED', 'COMPLETED'].includes(event.status)) return null;
-
   const status = (opt) => event[opt.statusField] || 'NONE';
-  // Pending or approved requests can't be ticked again; an approved hero can still take a new video
-  const canPick = (opt) => !['REQUESTED', 'APPROVED'].includes(status(opt)) || (opt.key === 'hero' && status(opt) === 'APPROVED');
+  const running = (opt) => isPromotionActive(event, opt.key);
+  const endsAt = (opt) => event[`${opt.key}EndsAt`];
+  // Anything not already waiting can be asked for, including again while one runs: approved, the new
+  // window starts then and moves the event back to the top
+  const canPick = (opt) => status(opt) !== 'REQUESTED';
   const heroChosen = wanted.hero;
   const anything = wanted.priority || wanted.hero;
-  const heroNeedsVideo = heroChosen && status(OPTIONS[1]) === 'APPROVED' && !videos.desktop && !videos.mobile;
 
-  const send = async () => {
+  // `quiet`: sent along with the event submission, which shows its own confirmation
+  const send = async ({ quiet = false } = {}) => {
     setSending(true);
     setError('');
     try {
@@ -101,34 +106,48 @@ export default function PromotionPanel({ event, onChanged }) {
       form.append('priority', String(wanted.priority));
       form.append('hero', String(wanted.hero));
       form.append('note', note.trim());
+      form.append('days', String(days));
       if (wanted.hero && videos.desktop) form.append('heroVideo', videos.desktop);
       if (wanted.hero && videos.mobile) form.append('heroVideoMobile', videos.mobile);
       const res = await api.post(`/events/${event.id}/promotion`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
       setWanted({ priority: false, hero: false });
       setVideos({ desktop: null, mobile: null });
       setNote('');
-      dialog.alert({ tone: 'success', title: 'Request sent', message: res.data.message });
+      setDays(DEFAULT_PROMOTION_DAYS);
+      if (!quiet) dialog.alert({ tone: 'success', title: 'Request sent', message: res.data.message });
       onChanged?.();
+      return true;
     } catch (err) {
       setError(err.response?.data?.message || 'Could not send the request.');
+      document.getElementById('promote')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      return false;
     } finally {
       setSending(false);
     }
   };
 
+  useImperativeHandle(ref, () => ({
+    hasPending: () => wanted.priority || wanted.hero,
+    sendPending: () => send({ quiet: true }),
+  }));
+
   const withdraw = async (opt) => {
-    const approved = status(opt) === 'APPROVED';
+    const stopping = opt.stop || status(opt) !== 'REQUESTED';
     const ok = await dialog.confirm({
       tone: 'warning',
-      title: approved ? `Stop “${opt.title}”?` : `Withdraw “${opt.title}”?`,
-      message: approved
-        ? 'Your event stops being promoted this way. To get it back, you’ll need to request it and be approved again.'
-        : 'Your request is removed from the admin queue.',
-      confirmLabel: approved ? 'Stop promotion' : 'Withdraw request',
+      title: stopping ? `Stop “${opt.title}”?` : `Withdraw “${opt.title}”?`,
+      message: stopping
+        ? 'Your event stops being promoted this way now, even if time is left. To get it back, you’ll need to request it and be approved again.'
+        : running(opt)
+          ? `Your new request is removed from the admin queue. The promotion that is running carries on until ${formatPromoDay(endsAt(opt))}.`
+          : 'Your request is removed from the admin queue.',
+      confirmLabel: stopping ? 'Stop promotion' : 'Withdraw request',
       cancelLabel: 'Keep it',
     });
     if (!ok) return;
     try {
+      // Stopping a running promotion that also has a renewal waiting: withdraw the renewal, then stop it
+      if (opt.stop && status(opt) === 'REQUESTED') await api.delete(`/events/${event.id}/promotion/${opt.kind.toLowerCase()}`);
       await api.delete(`/events/${event.id}/promotion/${opt.kind.toLowerCase()}`);
       onChanged?.();
     } catch (err) {
@@ -136,13 +155,15 @@ export default function PromotionPanel({ event, onChanged }) {
     }
   };
 
+  if (['CANCELLED', 'COMPLETED'].includes(event.status)) return null;
+
   return (
     <section className="tl-wz-card tl-pr" aria-labelledby="pr-title">
       <div className="tl-pr-head">
         <span aria-hidden="true"><Megaphone className="w-5 h-5" /></span>
         <div>
           <h2 id="pr-title">Promote this event</h2>
-          <p>Ask TicketLedger to put your event in front of more people. An admin reviews each request, and it applies while your event is on sale.</p>
+          <p>Ask TicketLedger to put your event in front of more people, for as long as you choose. An admin reviews each request and sets the dates; it shows while your event is on sale. The latest promotion is listed first, so you can ask again to move back to the top.</p>
         </div>
       </div>
 
@@ -166,17 +187,39 @@ export default function PromotionPanel({ event, onChanged }) {
                   <small>{opt.text}</small>
                 </span>
               </label>
-              {st && (
+              {/* The running window, whatever the latest request's state */}
+              {running(opt) && (
+                <div className="tl-pr-state is-ok">
+                  <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+                  <span>
+                    {endsAt(opt) ? `Running until ${formatPromoDay(endsAt(opt))} · ${promoTimeLeft(endsAt(opt))}` : 'Running'}
+                    {event.status !== 'PUBLISHED' && ' · shows while your event is on sale'}
+                  </span>
+                  <button type="button" onClick={() => withdraw({ ...opt, stop: true })}>Stop</button>
+                </div>
+              )}
+              {status(opt) === 'APPROVED' && isPromotionUpcoming(event, opt.key) && (
+                <div className="tl-pr-state is-wait">
+                  <Clock className="w-4 h-4" aria-hidden="true" />
+                  <span>Scheduled {formatPromoDay(event[`${opt.key}StartsAt`])} to {formatPromoDay(endsAt(opt))}</span>
+                  <button type="button" onClick={() => withdraw(opt)}>Cancel</button>
+                </div>
+              )}
+              {status(opt) === 'APPROVED' && !running(opt) && !isPromotionUpcoming(event, opt.key) && endsAt(opt) && (
+                <div className="tl-pr-state">
+                  <Clock className="w-4 h-4" aria-hidden="true" />
+                  <span>Ended {formatPromoDay(endsAt(opt))}. Tick it to ask again.</span>
+                </div>
+              )}
+              {st && status(opt) !== 'APPROVED' && (
                 <div className={`tl-pr-state ${st.cls}`}>
                   <st.icon className="w-4 h-4" aria-hidden="true" />
                   <span>
                     {st.label}
-                    {status(opt) === 'APPROVED' && event.status !== 'PUBLISHED' && ' · shows once your event is on sale'}
+                    {status(opt) === 'REQUESTED' && event[`${opt.key}Days`] && ` · ${event[`${opt.key}Days`]} days asked`}
                     {status(opt) === 'REJECTED' && event.promotionComment && <em> “{event.promotionComment}”</em>}
                   </span>
-                  {status(opt) !== 'REJECTED' && (
-                    <button type="button" onClick={() => withdraw(opt)}>{status(opt) === 'APPROVED' ? 'Stop' : 'Withdraw'}</button>
-                  )}
+                  {status(opt) === 'REQUESTED' && <button type="button" onClick={() => withdraw(opt)}>Withdraw</button>}
                 </div>
               )}
             </div>
@@ -199,16 +242,22 @@ export default function PromotionPanel({ event, onChanged }) {
             <VideoField kind="desktop" file={videos.desktop} savedUrl={event.heroVideoUrl} onChange={(f) => setVideos((v) => ({ ...v, desktop: f }))} />
             <VideoField kind="mobile" file={videos.mobile} savedUrl={event.heroVideoMobileUrl} onChange={(f) => setVideos((v) => ({ ...v, mobile: f }))} />
           </div>
-          {heroNeedsVideo && <p className="tl-wz-hint">Your hero banner is already approved. Choose a new video to send it for review again.</p>}
         </div>
       )}
 
       {anything && (
         <div className="tl-pr-send">
+          <label htmlFor="pr-days">How long should it run?</label>
+          <select id="pr-days" className="tl-wz-input" value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ maxWidth: 220 }}>
+            {PROMOTION_DAY_CHOICES.map((d) => (
+              <option key={d} value={d}>{d} days</option>
+            ))}
+          </select>
+          <p className="tl-wz-hint">The admin confirms the dates when approving and can adjust them.</p>
           <label htmlFor="pr-note">Message for the TicketLedger team <span>(optional)</span></label>
           <textarea id="pr-note" className="tl-wz-input" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. We’d like the hero banner for the two weeks before the match." />
           {error && <p className="tl-wz-error" role="alert"><AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />{error}</p>}
-          <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={send} disabled={sending || heroNeedsVideo}>
+          <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={() => send()} disabled={sending}>
             <Send className="w-4 h-4" /> {sending ? 'Sending…' : 'Send promotion request'}
           </button>
         </div>
@@ -216,4 +265,6 @@ export default function PromotionPanel({ event, onChanged }) {
       {!anything && error && <p className="tl-wz-error" role="alert"><AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />{error}</p>}
     </section>
   );
-}
+});
+
+export default PromotionPanel;

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { API_URL, setAccessToken, setSessionHandlers } from '../lib/session';
 
 const AuthContext = createContext(null);
@@ -9,6 +9,27 @@ const REFRESH_LEAD_MS = 60 * 1000;
 // Inactivity sign-out (matches the API's SESSION_IDLE_TIMEOUT_MS). Activity is shared across tabs.
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const ACTIVITY_KEY = 'tl_last_active';
+// After signing out, Back must not reopen the pages from before: the history position of the login page
+// shown at sign-out is kept for this tab, and going back past it lands on the login page again.
+// Pages opened after signing out keep their normal Back. Cleared on the next sign-in.
+const SIGNED_OUT_KEY = 'tl_signed_out_at';
+const historyIndex = () => window.history.state?.idx;
+const readSignedOutAt = () => {
+  try {
+    const v = sessionStorage.getItem(SIGNED_OUT_KEY);
+    return v === null ? null : Number(v);
+  } catch {
+    return null;
+  }
+};
+const writeSignedOutAt = (idx) => {
+  try {
+    if (idx == null) sessionStorage.removeItem(SIGNED_OUT_KEY);
+    else sessionStorage.setItem(SIGNED_OUT_KEY, String(idx));
+  } catch {
+    /* storage unavailable: Back falls back to the route guards */
+  }
+};
 const readLastActive = () => {
   try {
     return Number(localStorage.getItem(ACTIVITY_KEY)) || 0;
@@ -64,6 +85,7 @@ export function AuthProvider({ children }) {
   const refreshInFlight = useRef(null);
 
   const applySession = useCallback((session) => {
+    writeSignedOutAt(null);
     setAccessToken(session.token);
     setToken(session.token);
     setUser(session.user);
@@ -74,6 +96,27 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
   }, []);
+
+  // Signed out: show the login page in place of the current one and remember where that is in history
+  const goToLoginAfterSignOut = useCallback(
+    (state) => {
+      navigate('/login', { replace: true, state });
+      writeSignedOutAt(historyIndex() ?? 0);
+    },
+    [navigate],
+  );
+
+  // Back / Forward to a page from before signing out: the login page instead
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  useLayoutEffect(() => {
+    if (user || navigationType !== 'POP') return;
+    const boundary = readSignedOutAt();
+    const idx = historyIndex();
+    if (boundary != null && idx != null && idx < boundary && location.pathname !== '/login') {
+      navigate('/login', { replace: true });
+    }
+  }, [location.key, navigationType, user, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSuspended = useCallback(() => {
     clearSession();
@@ -171,7 +214,7 @@ export function AuthProvider({ children }) {
         /* the server ends idle sessions on its own too */
       }
       clearSession();
-      navigate('/login', { replace: true, state: { from: window.location.pathname, notice: 'You were signed out after 30 minutes of inactivity. Log in again to continue.' } });
+      goToLoginAfterSignOut({ from: window.location.pathname, notice: 'You were signed out after 30 minutes of inactivity. Log in again to continue.' });
     };
     writeLastActive(Date.now());
     const events = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll', 'mousemove'];
@@ -184,7 +227,7 @@ export function AuthProvider({ children }) {
       document.removeEventListener('visibilitychange', onVisible);
       clearInterval(id);
     };
-  }, [signedIn, clearSession, navigate]);
+  }, [signedIn, clearSession, goToLoginAfterSignOut]);
 
   const login = async (email, password) => {
     const data = await authRequest('/login', { body: { email, password } });
@@ -238,6 +281,7 @@ export function AuthProvider({ children }) {
       /* the local session is cleared regardless */
     }
     clearSession();
+    goToLoginAfterSignOut();
   };
 
   return (

@@ -4,7 +4,7 @@ import api from '../utils/api';
 import { getEventVisual } from '../utils/eventMedia';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 import { categoryName } from '../components/home/homeData';
-import { Notice } from '../components/dash/DashShell';
+import { Notice, notifyPendingChanged } from '../components/dash/DashShell';
 import { StudioHead, Badge } from '../components/dash/Studio';
 import { useDialog } from '../components/ui/DialogProvider';
 import PromotionReviewCard from '../components/promotion/PromotionReviewCard';
@@ -158,6 +158,7 @@ export default function AdminEventApprovals() {
       if (tab === 'PROMOTIONS') setEvents(promo.data.data.events);
       setChanges(change.data.data.changes);
       setCounts((prev) => ({ ...(res ? res.data.data.counts || {} : prev), PROMOTIONS: promo.data.data.waiting, CHANGES: change.data.data.waiting }));
+      notifyPendingChanged(); // the nav badge follows this page's numbers
       setError('');
     } catch (err) {
       setError(err.response?.data?.message || 'Could not load events for review.');

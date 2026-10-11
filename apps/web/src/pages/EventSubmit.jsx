@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle, ArrowLeft, Armchair, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink, Eye,
@@ -42,6 +42,7 @@ export default function EventSubmit() {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState('');
+  const promotionRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -67,9 +68,13 @@ export default function EventSubmit() {
     setSending(true);
     setError('');
     try {
+      // A promotion ticked in the panel but not sent yet goes to the admins with the event
+      const promotion = promotionRef.current;
+      const withPromotion = Boolean(promotion?.hasPending());
+      if (withPromotion && !(await promotion.sendPending())) return;
       const res = await api.post(`/events/${id}/submit`);
       setNotice(res.data.message);
-      dialog.alert({ tone: 'success', title: 'Sent for approval', message: 'A TicketLedger admin will review your event. You’ll get an email with the decision.' });
+      dialog.alert({ tone: 'success', title: 'Sent for approval', message: `A TicketLedger admin will review your event${withPromotion ? ' and your promotion request' : ''}. You’ll get an email with the decision.` });
       await load();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
@@ -206,7 +211,7 @@ export default function EventSubmit() {
           </section>
 
           <div id="promote">
-            <PromotionPanel event={event} onChanged={load} />
+            <PromotionPanel ref={promotionRef} event={event} onChanged={load} />
           </div>
         </div>
 

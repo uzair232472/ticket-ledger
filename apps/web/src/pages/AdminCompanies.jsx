@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Ticket,
 } from 'lucide-react';
-import { Notice } from '../components/dash/DashShell';
+import { Notice, notifyPendingChanged } from '../components/dash/DashShell';
 import { StudioHead, ApStat, UnderlineTabs, RecordCard, Badge } from '../components/dash/Studio';
 import { useDialog } from '../components/ui/DialogProvider';
 
@@ -51,6 +51,7 @@ export default function AdminCompanies() {
       if (res.ok) {
         setCompanies(data.data.companies || []);
         setCounts(data.data.counts || {});
+        notifyPendingChanged(); // the nav badge follows this page's numbers
       }
     } catch (err) {
       console.error('Failed to load companies:', err);

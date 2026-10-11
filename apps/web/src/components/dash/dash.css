@@ -97,6 +97,9 @@
 .tl-dash-nav-link.is-active, .tl-dash-seg button[aria-pressed='true'] { text-decoration: underline; text-decoration-thickness: 1px; }
 .tl-dash-nav-link:not(.is-active), .tl-dash-seg button[aria-pressed='false'] { opacity: 0.6; }
 .tl-dash-nav-link:not(.is-active):hover, .tl-dash-seg button[aria-pressed='false']:hover { opacity: 1; }
+/* Waiting-for-decision count on an admin nav link, like an unread-messages badge */
+.tl-dash-nav-badge { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 2px; padding: 0 6px; border-radius: 999px; background: #22c55e; color: #fff; font: 700 11px/1 Inter, system-ui, sans-serif; letter-spacing: 0; text-decoration: none; vertical-align: 1px; box-shadow: 0 0 0 2px #fff; }
+.tl-dash-nav-link:not(.is-active):has(.tl-dash-nav-badge) { opacity: 1; }
 
 /* ---------- Page heading: Explore's editorial title, segmented row underneath ---------- */
 .tl-dash-head {

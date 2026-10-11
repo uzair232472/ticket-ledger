@@ -202,12 +202,12 @@ export default function Dashboard() {
     });
   }, [status, events.length]);
 
-  // Soonest first, with events approved for "top of listings" ahead of the rest
+  // Soonest first, with running "top of listings" promotions ahead of the rest (the latest promotion first)
   const upcoming = useMemo(() => {
     const now = Date.now();
     return [...events]
       .filter((e) => new Date(e.date).getTime() >= now)
-      .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || new Date(a.date) - new Date(b.date));
+      .sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || (a.featured ? new Date(b.featuredSince) - new Date(a.featuredSince) : 0) || new Date(a.date) - new Date(b.date));
   }, [events]);
   const featured = upcoming.slice(0, FEATURED_LIMIT);
 

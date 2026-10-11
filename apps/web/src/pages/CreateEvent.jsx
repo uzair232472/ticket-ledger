@@ -89,6 +89,49 @@ function scheduleOrderError({ date, time, endDate, endTime }) {
 
 const SCHEDULE_FIELDS = ['date', 'time', 'endDate', 'endTime', 'city', 'venue'];
 
+const BLANK_EVENT = {
+  name: '',
+  description: '',
+  type: 'CRICKET_MATCH',
+  customCategoryId: '',
+  date: '',
+  time: '7:00 PM PKT',
+  endDate: '',
+  endTime: '10:00 PM PKT',
+  city: 'Lahore',
+  venue: '',
+  contactEmail: '',
+  bannerUrl: '',
+};
+const BLANK_TIERS = () => [
+  { name: 'General Enclosure', price: 1500, totalQuantity: 500 },
+  { name: 'VIP Pavilion', price: 5000, totalQuantity: 100 },
+];
+const BLANK_LOCATION = { latitude: null, longitude: null, locationAddress: null };
+
+// A new event that isn't created yet stays as a draft until it is created or discarded (leaving the form,
+// Back from another page or a reload keep it). The fields are kept in localStorage; picked image files
+// can't be, so they stay in memory for this tab only.
+const draftKey = (userId) => `tl-create-event-draft:${userId || 'me'}`;
+let draftFiles = null; // { key, images, gallery }
+const readDraft = (key) => {
+  try {
+    return JSON.parse(localStorage.getItem(key) || 'null');
+  } catch {
+    return null;
+  }
+};
+const clearDraft = (key) => {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+  draftFiles = null;
+};
+// Image previews are revoked when the form unmounts; a restored file gets a fresh one
+const withPreview = (item) => (item?.file ? { ...item, previewUrl: URL.createObjectURL(item.file) } : item);
+
 const STATUS_LABEL = {
   DRAFT: 'Draft',
   PRELAUNCH_ANALYSIS: 'Pre-launch',
@@ -138,7 +181,7 @@ function Tips({ title, intro, items, note }) {
 export default function CreateEvent() {
   const dialog = useDialog();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { id: editId } = useParams();
   const isEdit = Boolean(editId);
 
@@ -168,20 +211,7 @@ export default function CreateEvent() {
   const savingRef = useRef(false); // blocks a second save from a double click before React re-renders
   const tiersTouched = useRef(false); // until the organizer edits tiers, they follow the chosen category
 
-  const [eventData, setEventData] = useState({
-    name: '',
-    description: '',
-    type: 'CRICKET_MATCH',
-    customCategoryId: '',
-    date: '',
-    time: '7:00 PM PKT',
-    endDate: '',
-    endTime: '10:00 PM PKT',
-    city: 'Lahore',
-    venue: '',
-    contactEmail: '',
-    bannerUrl: '',
-  });
+  const [eventData, setEventData] = useState(BLANK_EVENT);
 
   // Organizer images: nothing is uploaded until the form is saved, so cancelling leaves the event as it was
   const [images, setImages] = useState(() => emptyImages(null));
@@ -190,12 +220,53 @@ export default function CreateEvent() {
   const [loadError, setLoadError] = useState('');
 
   // Exact venue location (map pin); optional, the event falls back to its city centre
-  const [location, setLocation] = useState({ latitude: null, longitude: null, locationAddress: null });
+  const [location, setLocation] = useState(BLANK_LOCATION);
 
-  const [tiers, setTiers] = useState([
-    { name: 'General Enclosure', price: 1500, totalQuantity: 500 },
-    { name: 'VIP Pavilion', price: 5000, totalQuantity: 100 },
-  ]);
+  const [tiers, setTiers] = useState(BLANK_TIERS);
+
+  // ---------- Unsaved draft (new events) ----------
+  const draftId = draftKey(user?.id);
+  const [draftChecked, setDraftChecked] = useState(isEdit);
+  const [draftRestored, setDraftRestored] = useState(false);
+  useEffect(() => {
+    if (isEdit || draftChecked || !user) return;
+    const saved = readDraft(draftId);
+    let restored = false;
+    if (saved?.eventData) {
+      setEventData({ ...BLANK_EVENT, ...saved.eventData });
+      if (Array.isArray(saved.tiers) && saved.tiers.length) setTiers(saved.tiers);
+      tiersTouched.current = Boolean(saved.tiersTouched);
+      if (saved.location) setLocation(saved.location);
+      restored = true;
+    }
+    if (draftFiles?.key === draftId) {
+      setImages(Object.fromEntries(Object.entries(draftFiles.images).map(([k, v]) => [k, withPreview(v)])));
+      setGallery(draftFiles.gallery.map(withPreview));
+      restored = true;
+    }
+    setDraftRestored(restored);
+    setDraftChecked(true);
+  }, [isEdit, draftChecked, user, draftId]);
+
+  const hasDraft =
+    Boolean(eventData.name.trim() || eventData.description.trim() || eventData.venue.trim() || eventData.date || eventData.contactEmail.trim()) ||
+    tiersTouched.current ||
+    location.latitude != null ||
+    gallery.length > 0 ||
+    Object.values(images).some((v) => v.file);
+  useEffect(() => {
+    if (isEdit || !draftChecked) return;
+    if (!hasDraft) {
+      clearDraft(draftId);
+      return;
+    }
+    try {
+      localStorage.setItem(draftId, JSON.stringify({ eventData, tiers, tiersTouched: tiersTouched.current, location, savedAt: Date.now() }));
+    } catch {
+      /* storage full or unavailable: the draft still lives in memory below */
+    }
+    draftFiles = { key: draftId, images, gallery };
+  }, [isEdit, draftChecked, hasDraft, draftId, eventData, tiers, location, images, gallery]);
 
   // Company approval status
   useEffect(() => {
@@ -232,7 +303,7 @@ export default function CreateEvent() {
           customCategoryId: ev.customCategoryId || '',
           date: new Date(ev.date).toISOString().slice(0, 10),
           time: ev.time,
-          // Older events have no end yet: the organizer is asked to add one before saving
+          // The API fills in an end for older events saved before end times existed
           endDate: ev.endDate || new Date(ev.date).toISOString().slice(0, 10),
           endTime: ev.endTime ? fromTimeInput(ev.endTime) : '',
           city: ev.city,
@@ -337,20 +408,26 @@ export default function CreateEvent() {
   };
   const totalCapacity = tiers.reduce((n, t) => n + (Number(t.totalQuantity) || 0), 0);
 
+  // Edit mode with tickets sold: the date, time and venue fields are read-only (changed through Reschedule)
+  const scheduleLocked = isEdit && ticketsHeld > 0;
+
   // ---------- Validation per step ----------
   const validateStep = (index) => {
     const errs = {};
     if (index === 0) {
       if (eventData.name.trim().length < 3) errs.name = 'Enter the event name or match title.';
       if (eventData.type === 'OTHER' && !eventData.customCategoryId) errs.type = 'Choose a category, or add yours.';
-      if (!eventData.venue.trim()) errs.venue = 'Enter the venue or stadium.';
-      if (!eventData.date) errs.date = 'Choose the event date.';
-      else if (!isEdit && eventData.date < todayIso()) errs.date = 'The date can’t be in the past.';
-      if (!toTimeInput(eventData.time)) errs.time = 'Choose the start time.';
-      if (!eventData.endDate) errs.endDate = 'Choose the end date.';
-      if (!toTimeInput(eventData.endTime)) errs.endTime = 'Choose the end time.';
-      Object.assign(errs, scheduleOrderError(eventData));
-      if (venueCheck.status === 'conflict') errs.schedule = venueCheck.message;
+      // Locked schedule fields can't be changed here, so they never block moving on
+      if (!scheduleLocked) {
+        if (!eventData.venue.trim()) errs.venue = 'Enter the venue or stadium.';
+        if (!eventData.date) errs.date = 'Choose the event date.';
+        else if (!isEdit && eventData.date < todayIso()) errs.date = 'The date can’t be in the past.';
+        if (!toTimeInput(eventData.time)) errs.time = 'Choose the start time.';
+        if (!eventData.endDate) errs.endDate = 'Choose the end date.';
+        if (!toTimeInput(eventData.endTime)) errs.endTime = 'Choose the end time.';
+        Object.assign(errs, scheduleOrderError(eventData));
+        if (venueCheck.status === 'conflict') errs.schedule = venueCheck.message;
+      }
       if (eventData.description.trim().length < 10) errs.description = 'Add a short description (at least 10 characters).';
       if (eventData.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(eventData.contactEmail.trim())) errs.contactEmail = 'Enter a valid email address, or leave it empty.';
     }
@@ -392,7 +469,7 @@ export default function CreateEvent() {
   }, [step]);
 
   // Opening a later step directly (reload, browser Forward) still needs the earlier steps to be valid
-  const formReady = !loading && (!isEdit || Boolean(eventData.name));
+  const formReady = !loading && (isEdit ? Boolean(eventData.name) : draftChecked);
   useEffect(() => {
     if (!formReady) return;
     for (let i = 0; i < step; i += 1) {
@@ -433,6 +510,28 @@ export default function CreateEvent() {
       confirmLabel: 'Create anyway',
       cancelLabel: 'Don’t create',
     });
+  };
+
+  const discardDraft = async () => {
+    const ok = await dialog.confirm({
+      tone: 'warning',
+      title: 'Discard this event?',
+      message: 'Everything you entered for this event will be cleared. This can’t be undone.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+    });
+    if (!ok) return;
+    clearDraft(draftId);
+    tiersTouched.current = false;
+    setEventData(BLANK_EVENT);
+    setTiers(BLANK_TIERS());
+    setLocation(BLANK_LOCATION);
+    setImages(emptyImages(null));
+    setGallery([]);
+    setFieldErrors({});
+    setError('');
+    setDraftRestored(false);
+    setStep(0, { replace: true });
   };
 
   // ---------- Save ----------
@@ -483,9 +582,14 @@ export default function CreateEvent() {
         return;
       }
 
-      // The event is saved unpublished. With a forecast: adjust prices first; either way step 4 is seating.
-      if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${data.data.event.id}&setup=1`);
-      else navigate(`/organizer/events/${data.data.event.id}/venue?setup=1`);
+      // The event is saved unpublished: the draft is done, and this form's history entry becomes the saved
+      // event's edit page, so Back from the next page shows what was entered instead of an empty form.
+      const newId = data.data.event.id;
+      clearDraft(draftId);
+      navigate(`/organizer/events/${newId}/edit?step=3`, { replace: true });
+      // With a forecast: adjust prices first; either way step 4 is seating
+      if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${newId}&setup=1`);
+      else navigate(`/organizer/events/${newId}/venue?setup=1`);
     } catch (err) {
       setError(err.message);
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -509,7 +613,8 @@ export default function CreateEvent() {
     setSubmitting('SAVE');
     try {
       const formData = new FormData();
-      ['name', 'description', 'type', 'customCategoryId', 'date', 'time', 'endDate', 'endTime', 'city', 'venue', 'contactEmail'].forEach((key) => formData.append(key, eventData[key]));
+      // A locked schedule isn't sent, so saving other details never re-checks the venue slot
+      ['name', 'description', 'type', 'customCategoryId', 'contactEmail', ...(scheduleLocked ? [] : SCHEDULE_FIELDS)].forEach((key) => formData.append(key, eventData[key]));
       if (location.latitude != null) {
         formData.append('latitude', String(location.latitude));
         formData.append('longitude', String(location.longitude));
@@ -579,7 +684,6 @@ export default function CreateEvent() {
   // New events go back to "Register or prebook", where the organizer came from
   const backHref = isEdit ? `/events/${editId}` : '/organizer/events/new';
   const profile = categoryProfile(eventData.type);
-  const scheduleLocked = isEdit && ticketsHeld > 0;
 
   return (
     <div>
@@ -618,6 +722,13 @@ export default function CreateEvent() {
       )}
 
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
+      {!isEdit && draftRestored && hasDraft && (
+        <div className="tl-wz-draft" role="status">
+          <Info className="w-4 h-4" aria-hidden="true" />
+          <span>We kept the event you were setting up. Carry on where you left off, or discard it to start over.</span>
+          <button type="button" onClick={discardDraft}>Discard</button>
+        </div>
+      )}
 
       <form
         noValidate
@@ -970,6 +1081,11 @@ export default function CreateEvent() {
           )}
 
           <div className="tl-wz-foot-right">
+            {!isEdit && hasDraft && (
+              <button type="button" className="tl-wz-btn tl-wz-btn--discard" onClick={discardDraft} disabled={Boolean(submitting)}>
+                <Trash2 className="w-4 h-4" /> Discard
+              </button>
+            )}
             {isEdit && ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(eventStatus) && (
               <Link to={`/organizer/events/${editId}/submit`} className="tl-wz-btn">
                 <Send className="w-4 h-4" /> Review &amp; submit

@@ -1,0 +1,129 @@
+/*
+ * /organizer/events/new: "Make it happen." with two tickets (register / prebook). Both ticket bodies are
+ * mint; the stubs differ (bright green for going live, forest green for planning ahead). Uses the studio
+ * tokens from studio.css.
+ */
+
+.tl-cc-page { max-width: 1040px; margin: 0 auto; padding: 8px 16px 64px; }
+
+.tl-cc-head { margin-bottom: 26px; }
+.tl-cc-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.tl-cc-head .tl-sh-crumbs span + span::before { content: '/'; margin: 0 10px 0 6px; }
+.tl-cc-back { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; color: var(--st-ink); text-decoration: none; }
+.tl-cc-back:hover { color: var(--st-green); }
+/* Same size as the other studio titles, kept on one line */
+.tl-cc-title { white-space: nowrap; font-size: min(clamp(44px, 5.6vw, 84px), 12.5vw); }
+.tl-cc-title span { color: var(--st-green); }
+.tl-cc-intro { margin-top: 12px; font-size: clamp(16px, 1.8vw, 21px); line-height: 1.4; color: var(--st-muted); }
+
+.tl-cc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 24px; }
+
+/* ---------- Ticket ---------- */
+.tl-cc-ticket {
+  --notch: 13px;
+  container-type: inline-size;
+  --stub-h: 88px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: var(--st-mint);
+  border: 1px solid var(--st-mint-line);
+  color: var(--st-ink);
+  text-decoration: none;
+  box-shadow: 0 18px 40px -28px rgba(15, 58, 35, 0.45);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.tl-cc-ticket:hover { transform: translateY(-3px); box-shadow: 0 26px 48px -26px rgba(15, 58, 35, 0.5); }
+.tl-cc-ticket:focus-visible { outline: 3px solid var(--st-green-2); outline-offset: 3px; }
+
+.tl-cc-body {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  padding: 38px 40px 30px;
+  border-radius: 15px 15px 0 0;
+  border-bottom: 2px dashed rgba(15, 58, 35, 0.35);
+  background:
+    linear-gradient(rgba(21, 128, 61, 0.06) 1px, transparent 1px) 0 0 / 34px 34px,
+    linear-gradient(90deg, rgba(21, 128, 61, 0.06) 1px, transparent 1px) 0 0 / 34px 34px,
+    var(--st-mint);
+}
+
+/* Notches: half circles cut into both edges at the middle of the body and at the perforation */
+.tl-cc-ticket::before,
+.tl-cc-ticket::after,
+.tl-cc-body::before,
+.tl-cc-body::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  width: calc(var(--notch) * 2);
+  height: calc(var(--notch) * 2);
+  border-radius: 50%;
+  background: var(--st-page, #f6f8f4);
+  border: 1px solid var(--st-mint-line);
+}
+.tl-cc-ticket::before { left: calc(var(--notch) * -1 - 1px); bottom: calc(var(--stub-h) - var(--notch)); clip-path: inset(0 0 0 50%); }
+.tl-cc-ticket::after { right: calc(var(--notch) * -1 - 1px); bottom: calc(var(--stub-h) - var(--notch)); clip-path: inset(0 50% 0 0); }
+.tl-cc-body::before { left: calc(var(--notch) * -1 - 1px); top: 50%; transform: translateY(-50%); clip-path: inset(0 0 0 50%); }
+.tl-cc-body::after { right: calc(var(--notch) * -1 - 1px); top: 50%; transform: translateY(-50%); clip-path: inset(0 50% 0 0); }
+
+
+.tl-cc-art { position: absolute; z-index: 0; top: 10px; right: -16px; width: 46%; max-width: 280px; height: auto; pointer-events: none; }
+.tl-cc-art--tickets { filter: drop-shadow(0 14px 18px rgba(15, 58, 35, 0.3)); }
+.tl-cc-art--calendar { filter: drop-shadow(0 12px 16px rgba(15, 58, 35, 0.16)); }
+
+.tl-cc-kicker,
+.tl-cc-name,
+.tl-cc-text,
+.tl-cc-steps { position: relative; z-index: 1; }
+.tl-cc-kicker { font: 700 12.5px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.16em; text-transform: uppercase; color: var(--st-green); }
+.tl-cc-name { margin-top: 14px; font-size: clamp(38px, 4.4vw, 54px); line-height: 0.95; font-weight: 800; letter-spacing: -0.05em; color: var(--st-ink); }
+.tl-cc-text { margin-top: 18px; max-width: 54%; font-size: 16.5px; line-height: 1.45; color: #34443a; }
+.tl-cc-steps { display: flex; flex-wrap: wrap; gap: 4px 0; margin-top: 22px; font: 600 12.5px/1.4 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: var(--st-ink); }
+.tl-cc-steps span:not(:last-child)::after { content: '/'; margin: 0 14px; color: var(--st-faint); }
+
+/* ---------- Stub ---------- */
+.tl-cc-stub {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: var(--stub-h);
+  padding: 0 24px 0 40px;
+  border-radius: 0 0 15px 15px;
+}
+.tl-cc-barcode { flex: none; width: 56px; height: 38px; fill: currentColor; }
+.tl-cc-cta { flex: 1; min-width: 0; padding-left: 18px; border-left: 2px solid currentColor; font-size: clamp(19px, 2.2vw, 26px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.tl-cc-go { display: grid; place-items: center; flex: none; width: 56px; height: 56px; border-radius: 50%; transition: transform 0.18s ease; }
+.tl-cc-ticket:hover .tl-cc-go { transform: translateX(3px); }
+
+.tl-cc-ticket--live .tl-cc-stub { background: linear-gradient(90deg, #22c55e, #2fd36c); color: #052e16; }
+.tl-cc-ticket--live .tl-cc-cta { color: #fff; border-left-color: rgba(5, 46, 22, 0.55); }
+.tl-cc-ticket--live .tl-cc-go { background: var(--st-forest); color: #fff; }
+
+.tl-cc-ticket--plan .tl-cc-stub { background: var(--st-forest); color: #fff; }
+.tl-cc-ticket--plan .tl-cc-cta { border-left-color: rgba(255, 255, 255, 0.55); }
+.tl-cc-ticket--plan .tl-cc-go { background: var(--st-green-2); color: #fff; }
+
+.tl-cc-note { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 26px; font-size: 13.5px; color: var(--st-muted); text-align: center; }
+
+@media (max-width: 560px) {
+  .tl-cc-body { padding: 30px 24px 24px; }
+  .tl-cc-art { width: 46%; right: -18px; top: 6px; }
+  .tl-cc-text { max-width: 62%; }
+  .tl-cc-stub { gap: 14px; padding: 0 16px 0 24px; }
+  .tl-cc-go { width: 46px; height: 46px; }
+}
+
+/* Narrow tickets (phones, two columns on tablets): drop the barcode so the button text keeps one line */
+@container (max-width: 440px) {
+  .tl-cc-barcode { display: none; }
+  .tl-cc-cta { padding-left: 0; border-left: 0; font-size: 21px; }
+  .tl-cc-stub { padding-left: 28px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-cc-ticket, .tl-cc-go { transition: none; }
+  .tl-cc-ticket:hover, .tl-cc-ticket:hover .tl-cc-go { transform: none; }
+}

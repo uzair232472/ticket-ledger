@@ -12,7 +12,7 @@ import {
   getAuditLogs,
   getOrganizerDashboard,
 } from '../controllers/adminController.js';
-import { listEventsForReview, reviewEvent } from '../controllers/eventReviewController.js';
+import { listEventsForReview, reviewEvent, getPendingCounts } from '../controllers/eventReviewController.js';
 import { listPromotions, reviewPromotion } from '../controllers/promotionController.js';
 import { listScheduleChanges, reviewScheduleChange, listRefunds, retryRefundsHandler } from '../controllers/lifecycleController.js';
 
@@ -28,6 +28,7 @@ router.get('/users', superAdminGuard, getUsersList);
 router.put('/users/:id/status', superAdminGuard, updateUserStatus);
 router.get('/events', superAdminGuard, getAllEventsAdmin);
 // Event approvals: queue of submitted events, and approve / reject (with comment)
+router.get('/pending-counts', superAdminGuard, getPendingCounts);
 router.get('/event-reviews', superAdminGuard, listEventsForReview);
 router.post('/event-reviews/:id', superAdminGuard, reviewEvent);
 router.get('/promotions', superAdminGuard, listPromotions);

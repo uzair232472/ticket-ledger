@@ -1189,6 +1189,17 @@
   color: #1a1a00;
 }
 
+.tl-card-badges {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  right: 56px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tl-card-badges .tl-card-badge { position: static; }
+
 .tl-card-badge--soldout {
   background: #f1f5f9;
   color: #0f172a;

@@ -53,8 +53,8 @@ const sortEvents = (list, sort) => {
   if (sort === 'date-desc') sorted.sort((a, b) => time(b) - time(a));
   else if (sort === 'price-asc') sorted.sort((a, b) => price(a) - price(b) || time(a) - time(b));
   else if (sort === 'price-desc') sorted.sort((a, b) => (price(b) === Infinity ? -1 : price(a) === Infinity ? 1 : price(b) - price(a)) || time(a) - time(b));
-  // Default order: events approved for "top of listings" first, then soonest first
-  else sorted.sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || time(a) - time(b));
+  // Default order: running "top of listings" promotions first (the latest promotion first), then soonest first
+  else sorted.sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)) || (a.featured ? new Date(b.featuredSince) - new Date(a.featuredSince) : 0) || time(a) - time(b));
   return sorted;
 };
 
