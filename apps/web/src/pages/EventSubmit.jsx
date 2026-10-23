@@ -12,6 +12,7 @@ import { googleMapsUrl } from '../utils/maps';
 import SetupStepper from '../components/dash/SetupStepper';
 import { useDialog } from '../components/ui/DialogProvider';
 import PromotionPanel from '../components/promotion/PromotionPanel';
+import ReviewThread, { slotLabel } from '../components/review/ReviewThread';
 
 const pkr = (n) => `PKR ${Number(n || 0).toLocaleString('en-PK')}`;
 const SUBMITTABLE = ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'];
@@ -42,6 +43,7 @@ export default function EventSubmit() {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState('');
+  const [reply, setReply] = useState('');
   const promotionRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -60,9 +62,69 @@ export default function EventSubmit() {
 
   // "Promote" from the dashboard opens this page at the promotion panel
   const loaded = Boolean(data);
+  // A prebooked date approved as a reservation: its last step is a final approval with tickets and seating
+  const reservedDate = Boolean(data?.event.prebookDraftId && data?.event.reservedAt);
   useEffect(() => {
     if (loaded && window.location.hash === '#promote') document.getElementById('promote')?.scrollIntoView({ block: 'start' });
   }, [loaded]);
+
+  const setVisible = async (visible) => {
+    setSending(true);
+    setError('');
+    try {
+      const res = await api.patch(`/prebook/events/${id}/visibility`, { hidden: !visible });
+      setNotice(res.data.message);
+      await load();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not change the visibility.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // Answer the admin's question; accepting moves the event to the suggested slot (checked again by the API)
+  const sendReply = async (acceptSuggestion) => {
+    if (reply.trim().length < 2) {
+      setError('Write a reply for the admin.');
+      return;
+    }
+    setSending(true);
+    setError('');
+    try {
+      const res = await api.post(`/events/${id}/review-reply`, { message: reply.trim(), acceptSuggestion });
+      setReply('');
+      setNotice(res.data.message);
+      await load();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not send the reply.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const withdraw = async () => {
+    const ok = await dialog.confirm({
+      tone: 'warning',
+      title: 'Withdraw from review?',
+      message: 'It comes off the admins’ list so you can make changes. Your slot stays held. Send it again when it’s ready.',
+      confirmLabel: 'Withdraw',
+      cancelLabel: 'Keep it in review',
+    });
+    if (!ok) return;
+    setSending(true);
+    setError('');
+    try {
+      const res = await api.post(`/events/${id}/review-withdraw`);
+      setNotice(res.data.message);
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not withdraw it.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const submit = async () => {
     setSending(true);
@@ -74,7 +136,7 @@ export default function EventSubmit() {
       if (withPromotion && !(await promotion.sendPending())) return;
       const res = await api.post(`/events/${id}/submit`);
       setNotice(res.data.message);
-      dialog.alert({ tone: 'success', title: 'Sent for approval', message: `A TicketLedger admin will review your event${withPromotion ? ' and your promotion request' : ''}. You’ll get an email with the decision.` });
+      dialog.alert({ tone: 'success', title: reservedDate ? 'Sent for final approval' : 'Sent for approval', message: `A TicketLedger admin will review your ${reservedDate ? 'tickets, prices and seating' : 'event'}${withPromotion ? ' and your promotion request' : ''}. You’ll get an email with the decision.` });
       await load();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
@@ -98,12 +160,15 @@ export default function EventSubmit() {
     return <div className="tl-dash-state"><RefreshCw className="w-8 h-8 tl-dash-spin" style={{ color: 'var(--st-green)' }} aria-label="Loading" /></div>;
   }
 
-  const { event, seating, canSubmit } = data;
+  const { event, seating, canSubmit, canLaunch, waitingForOrganizer } = data;
+  const launch = event.launchStatus;
+  const askedLast = [...(event.reviewMessages || [])].reverse().find((m) => m.kind === 'CHANGES_REQUESTED');
   const status = event.status;
   const visual = getEventVisual(event, 0);
   const time = formatEventTime(event.time);
   const capacity = event.tiers.reduce((n, t) => n + t.totalQuantity, 0);
   const inSetup = setup || SUBMITTABLE.includes(status);
+  const ready = event.tiers.length > 0 && (seating.published || seating.seats > 0);
 
   return (
     <div>
@@ -119,7 +184,8 @@ export default function EventSubmit() {
         <div>
           <h1 className="tl-wz-title">Review &amp; submit</h1>
           <p className="tl-wz-step-text">
-            {inSetup ? 'Step 5 of 5 · ' : ''}Check how your event looks, then send it to TicketLedger for approval.
+            {inSetup ? 'Step 5 of 5 · ' : ''}
+            {reservedDate ? 'Check your reserved date with its tickets and seating, then send it for final approval.' : 'Check how your event looks, then send it to TicketLedger for approval.'}
           </p>
         </div>
         {inSetup && <SetupStepper current={4} />}
@@ -128,8 +194,37 @@ export default function EventSubmit() {
       {notice && <div className="tl-rv-banner is-ok" role="status"><CheckCircle2 className="w-5 h-5" aria-hidden="true" />{notice}</div>}
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
 
+      {/* The admin asked something: reply (and accept a suggested slot) before they decide */}
+      {waitingForOrganizer && (
+        <div className="tl-rv-banner is-wait" role="alert">
+          <MessageSquareWarning className="w-5 h-5" aria-hidden="true" />
+          <div style={{ flex: 1 }}>
+            <strong>TicketLedger needs your reply</strong>
+            {askedLast?.message && <p className="tl-rv-comment">“{askedLast.message}”</p>}
+            {event.suggestedStartsAt && (
+              <p><strong>Suggested instead:</strong> {slotLabel(event.suggestedStartsAt, event.suggestedEndsAt)} (PKT) at {event.venue}, {event.city}.</p>
+            )}
+            <p>Nothing is decided yet and your slot is still held. Edit anything that needs changing, then reply.</p>
+            <div className="tl-rt-reply">
+              <label htmlFor="rv-reply" className="sr-only">Your reply</label>
+              <textarea id="rv-reply" value={reply} maxLength={2000} onChange={(e) => setReply(e.target.value)} placeholder="e.g. Yes, the new date works for us. We’ve also updated the banner." />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {event.suggestedStartsAt && (
+                  <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={() => sendReply(true)} disabled={sending}>
+                    <CalendarDays className="w-4 h-4" /> Accept suggested date &amp; reply
+                  </button>
+                )}
+                <button type="button" className={`tl-wz-btn${event.suggestedStartsAt ? '' : ' tl-wz-btn--green'}`} onClick={() => sendReply(false)} disabled={sending}>
+                  <Send className="w-4 h-4" /> {sending ? 'Sending…' : event.suggestedStartsAt ? 'Reply, keep my date' : 'Send reply'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Review outcome */}
-      {status === 'PENDING_APPROVAL' && (
+      {status === 'PENDING_APPROVAL' && !waitingForOrganizer && (
         <div className="tl-rv-banner is-wait" role="status">
           <Clock className="w-5 h-5" aria-hidden="true" />
           <div>
@@ -148,7 +243,31 @@ export default function EventSubmit() {
           </div>
         </div>
       )}
-      {['PUBLISHED', 'PAUSED'].includes(status) && (
+      {reservedDate && ['NONE', 'PENDING'].includes(launch) && (
+        <div className="tl-rv-banner is-wait" role="status">
+          {launch === 'PENDING' ? <Clock className="w-5 h-5" aria-hidden="true" /> : <ShieldCheck className="w-5 h-5" aria-hidden="true" />}
+          <div>
+            <strong>{launch === 'PENDING' ? 'Reserved · waiting for final approval' : 'Reserved · hidden from the public'}</strong>
+            <p>
+              {launch === 'PENDING'
+                ? `Sent ${event.launchSubmittedAt ? new Date(event.launchSubmittedAt).toLocaleString() : ''}. It goes public and on sale once an admin approves your tickets, prices and seating.`
+                : ready
+                  ? 'Tickets and seating are ready. Send them for final approval; the date goes on sale once it’s approved.'
+                  : 'Add ticket tiers and save a seating plan, then send it for final approval.'}
+            </p>
+          </div>
+        </div>
+      )}
+      {reservedDate && launch === 'APPROVED' && event.isHidden && (
+        <div className="tl-rv-banner is-wait" role="status">
+          <ShieldCheck className="w-5 h-5" aria-hidden="true" />
+          <div>
+            <strong>Approved · hidden by you</strong>
+            <p>Show it publicly whenever you’re ready.</p>
+          </div>
+        </div>
+      )}
+      {['PUBLISHED', 'PAUSED'].includes(status) && !(reservedDate && (launch !== 'APPROVED' || event.isHidden)) && (
         <div className="tl-rv-banner is-ok" role="status">
           <ShieldCheck className="w-5 h-5" aria-hidden="true" />
           <div>
@@ -210,6 +329,13 @@ export default function EventSubmit() {
             </div>
           </section>
 
+          {event.reviewMessages?.length > 0 && (
+            <section className="tl-wz-card" aria-labelledby="rv-history">
+              <h2 id="rv-history" style={{ fontSize: 20, marginBottom: 10 }}>Review history</h2>
+              <ReviewThread messages={event.reviewMessages} viewer="ORGANIZER" />
+            </section>
+          )}
+
           <div id="promote">
             <PromotionPanel ref={promotionRef} event={event} onChanged={load} />
           </div>
@@ -245,8 +371,36 @@ export default function EventSubmit() {
               </button>
               <p className="tl-rv-fine">An admin checks your event before it goes on sale. You’ll get an email with the decision and any comments.</p>
             </>
-          ) : status === 'PENDING_APPROVAL' ? (
-            <p className="tl-rv-fine"><Clock className="w-4 h-4" aria-hidden="true" /> Sent. Editing is still possible; the admin sees the latest version.</p>
+          ) : reservedDate && launch === 'NONE' ? (
+            <>
+              <button type="button" className="tl-wz-btn tl-wz-btn--green tl-rv-send" onClick={submit} disabled={!canLaunch || sending}>
+                <Send className="w-4 h-4" /> {sending ? 'Sending…' : 'Send for final approval'}
+              </button>
+              <p className="tl-rv-fine">Your date is reserved. An admin now checks the tickets, prices and seating before it goes public and on sale.</p>
+            </>
+          ) : reservedDate && launch === 'PENDING' ? (
+            <>
+              <p className="tl-rv-fine"><Clock className="w-4 h-4" aria-hidden="true" /> Sent for final approval. Tickets, prices and seating are locked while the admin reviews them.</p>
+              <button type="button" className="tl-wz-btn" style={{ marginTop: 10 }} onClick={withdraw} disabled={sending}>Withdraw to make changes</button>
+            </>
+          ) : reservedDate && launch === 'APPROVED' && ['PUBLISHED', 'PAUSED'].includes(status) ? (
+            <>
+              {event.isHidden ? (
+                <button type="button" className="tl-wz-btn tl-wz-btn--green tl-rv-send" onClick={() => setVisible(true)} disabled={!ready || sending}>
+                  <Eye className="w-4 h-4" /> {sending ? 'Saving…' : 'Show publicly'}
+                </button>
+              ) : (
+                <button type="button" className="tl-wz-btn tl-rv-send" onClick={() => setVisible(false)} disabled={sending}>
+                  <Eye className="w-4 h-4" /> {sending ? 'Saving…' : 'Hide from public'}
+                </button>
+              )}
+              <p className="tl-rv-fine">Final approval given. Hiding keeps the reservation and any sold tickets.</p>
+            </>
+          ) : status === 'PENDING_APPROVAL' && !waitingForOrganizer ? (
+            <>
+              <p className="tl-rv-fine"><Clock className="w-4 h-4" aria-hidden="true" /> Sent. The event is locked while the admin reviews it, so they approve exactly what you sent.</p>
+              <button type="button" className="tl-wz-btn" style={{ marginTop: 10 }} onClick={withdraw} disabled={sending}>Withdraw to make changes</button>
+            </>
           ) : null}
 
           {inSetup && (

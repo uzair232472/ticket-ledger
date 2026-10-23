@@ -4,6 +4,7 @@ import { LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
 import { authenticateJWT, requireRole } from '../middlewares/auth.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 import {
+  availabilityCalendar,
   checkAvailability,
   createDraft,
   deleteDraft,
@@ -35,6 +36,7 @@ router.put('/drafts/:id', saveDraft);
 router.delete('/drafts/:id', deleteDraft);
 router.post('/drafts/:id/submit', submitDraft);
 router.post('/check', checkAvailability);
+router.get('/availability', availabilityCalendar);
 router.post('/images', singleImage, uploadImage);
 router.patch('/events/:eventId/visibility', setVisibility);
 

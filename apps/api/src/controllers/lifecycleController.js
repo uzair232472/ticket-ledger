@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
-import { canManageEvent } from '../utils/eventAccess.js';
+import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE } from '../utils/eventAccess.js';
 import { ScheduleError } from '../services/eventScheduleService.js';
 import { MAX_REFUND_ATTEMPTS, processRefunds } from '../services/refundService.js';
 import {
@@ -82,6 +82,7 @@ export const postponeEventHandler = async (req, res) => {
   try {
     const event = await managedEvent(req, res);
     if (!event) return undefined;
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
     const { reason } = reasonSchema.parse(req.body);
     const result = await postponeEvent({ event, actor: req.user, reason });
     return res.json({ success: true, message: `“${event.name}” is postponed. Sales are paused and ${result.holders} attendee${result.holders === 1 ? ' has' : 's have'} been emailed.`, data: result });
@@ -95,9 +96,10 @@ export const rescheduleEventHandler = async (req, res) => {
   try {
     const event = await managedEvent(req, res);
     if (!event) return undefined;
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
     const result = await requestReschedule({ event, actor: req.user, input: req.body || {} });
     const message = !result.applied
-      ? 'Sent for approval. Attendees are emailed once a TicketLedger admin approves the new date.'
+      ? 'Sent for approval. The event keeps its current date until a TicketLedger admin approves the new one; any ticket holders are emailed then.'
       : result.minor
         ? 'The new time is live and attendees have been emailed.'
         : 'The new date is live.';

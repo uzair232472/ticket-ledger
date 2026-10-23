@@ -5,18 +5,20 @@ import {
   ScheduleError,
   conflictMessage,
   findScheduleConflicts,
+  findVenueBookings,
   lockVenue,
-  normalizeVenue,
   parseTimeOfDay,
+  pktInstant,
   resolveSchedule,
+  sameVenue,
   slotsClash,
 } from './eventScheduleService.js';
 import { noticeSubmitted } from './eventReviewNotices.js';
 
 /*
  * Prebooking: an organizer reserves one or more future dates / venue slots in one form. Shared details are
- * entered once; each row (date) has its own venue and schedule and may override the name, images and public
- * visibility. The form is autosaved as a PrebookDraft. Submitting turns each chosen row into its own Event
+ * entered once; each row (date) has its own venue (picked on the map), schedule and public visibility, and
+ * may override the name and images. The form is autosaved as a PrebookDraft. Submitting turns each chosen row into its own Event
  * (PENDING_APPROVAL, which holds the slot); an admin's approval confirms the reservation (reservedAt).
  */
 
@@ -37,6 +39,8 @@ const imagesSchema = z
   .partial()
   .default({});
 const text = (max) => z.string().max(max).optional().default('');
+// A place picked on the map: Google Places, or OpenStreetMap when no Google key is configured
+export const PLACE_ID = /^(google:[A-Za-z0-9_-]{10,250}|osm:(node|way|relation)\/\d{1,20})$/;
 
 // What an autosave may store: anything half-filled is fine; completeness is checked when submitting
 export const draftDataSchema = z.object({
@@ -55,7 +59,11 @@ export const draftDataSchema = z.object({
     .array(
       z.object({
         key: z.string().regex(/^[A-Za-z0-9_-]{4,40}$/),
+        // Typed venue from forms saved before venues were picked on the map: shown, never submitted
         venue: text(200),
+        placeId: z.string().regex(PLACE_ID).nullable().optional(),
+        placeName: text(200),
+        space: text(120),
         latitude: z.number().min(-90).max(90).nullable().optional(),
         longitude: z.number().min(-180).max(180).nullable().optional(),
         locationAddress: z.string().max(300).nullable().optional(),
@@ -64,6 +72,7 @@ export const draftDataSchema = z.object({
         endDate: text(10),
         endTime: text(20),
         customize: z.boolean().optional().default(false),
+        // isPublic applies whether or not the date is customized
         custom: z
           .object({ name: text(150), images: imagesSchema, isPublic: z.boolean().optional().default(true) })
           .partial()
@@ -105,8 +114,16 @@ export function effectiveRow(shared, row) {
     cardImageUrl: ci.cardImageUrl || si.cardImageUrl || null,
     galleryWideUrl: ci.galleryWideUrl || si.galleryWideUrl || null,
     gallery: Array.isArray(ci.gallery) ? ci.gallery : si.gallery || [],
-    isPublic: row.customize ? custom.isPublic !== false : true,
+    isPublic: row.custom?.isPublic !== false,
   };
+}
+
+/** A row's venue: the place picked on the map, plus the space inside it when one is named. Null until picked. */
+export function rowVenue(row) {
+  const name = row.placeName?.trim();
+  if (!row.placeId || !name) return null;
+  const space = row.space?.trim() || null;
+  return { venue: space ? `${name} – ${space}` : name, venuePlaceId: row.placeId, venueSpace: space };
 }
 
 /** Problems with the shared details (they block every date). */
@@ -121,13 +138,14 @@ export function sharedProblems(shared) {
   return problems;
 }
 
-/** Schedule of one row, or { field, message } when it isn't complete or valid. */
+/** Venue and schedule of one row, or { field, message } when it isn't complete or valid. */
 export function rowSchedule(row, now = new Date()) {
-  if (row.venue.trim().length < 2) return { error: { field: 'venue', message: 'Enter the venue for this date.' } };
+  const place = rowVenue(row);
+  if (!place) return { error: { field: 'venue', message: 'Find the venue on the map for this date.' } };
   try {
     const schedule = resolveSchedule(row);
     if (schedule.startsAt <= now) return { error: { field: 'date', message: 'This date has already started or passed. Choose a future date.' } };
-    return { schedule };
+    return { schedule, place };
   } catch (error) {
     if (error instanceof ScheduleError) return { error: { field: error.details.field, message: error.message } };
     throw error;
@@ -144,31 +162,29 @@ export async function checkRows(city, rows, { labels = {} } = {}) {
   const accepted = [];
   for (const [index, row] of rows.entries()) {
     const label = labels[row.key] || `Date ${index + 1}`;
-    const { schedule, error } = rowSchedule(row);
+    const { schedule, place, error } = rowSchedule(row);
     if (error) {
-      results.push({ key: row.key, ok: false, incomplete: !row.venue.trim() || !row.date || !row.time || !row.endDate || !row.endTime, ...error });
+      results.push({ key: row.key, ok: false, incomplete: !rowVenue(row) || !row.date || !row.time || !row.endDate || !row.endTime, ...error });
       continue;
     }
     const proposed = { start: schedule.startsAt, end: schedule.endsAt };
-    const sameVenue = accepted.find(
-      (other) => normalizeVenue(other.venue) === normalizeVenue(row.venue) && slotsClash(proposed, other),
-    );
-    if (sameVenue) {
+    const clash = accepted.find((other) => sameVenue(place, other) && slotsClash(proposed, other));
+    if (clash) {
       results.push({
         key: row.key,
         ok: false,
         field: 'schedule',
-        clashesWith: sameVenue.key,
-        message: conflictMessage(proposed, sameVenue, { who: `${sameVenue.label} in this form`, you: 'This date' }),
+        clashesWith: clash.key,
+        message: conflictMessage(proposed, clash, { who: `${clash.label} in this form`, you: 'This date' }),
       });
       continue;
     }
-    const conflicts = city ? await findScheduleConflicts({ city, venue: row.venue, ...schedule }) : [];
+    const conflicts = city ? await findScheduleConflicts({ city, ...place, ...schedule }) : [];
     if (conflicts.length) {
       results.push({ key: row.key, ok: false, field: 'schedule', message: conflicts[0].message.replace('Your event', 'This date'), more: conflicts.length - 1 });
       continue;
     }
-    accepted.push({ key: row.key, label, venue: row.venue, ...proposed });
+    accepted.push({ key: row.key, label, ...place, ...proposed });
     results.push({ key: row.key, ok: true });
   }
   return results;
@@ -212,7 +228,7 @@ export async function submitDraftRows(draft, company, rowKeys) {
       results.push({ ...base, status: 'invalid', field: 'shared', message: problems[0] });
       continue;
     }
-    const { schedule, error } = rowSchedule(row);
+    const { schedule, place, error } = rowSchedule(row);
     if (error) {
       results.push({ ...base, status: 'invalid', ...error });
       continue;
@@ -221,8 +237,8 @@ export async function submitDraftRows(draft, company, rowKeys) {
     const eff = effectiveRow(shared, row);
     try {
       const event = await prisma.$transaction(async (tx) => {
-        await lockVenue(tx, { city: shared.city, venue: row.venue });
-        const conflicts = await findScheduleConflicts({ city: shared.city, venue: row.venue, ...schedule }, tx);
+        await lockVenue(tx, { city: shared.city, ...place });
+        const conflicts = await findScheduleConflicts({ city: shared.city, ...place, ...schedule }, tx);
         if (conflicts.length) {
           // Name the clashing date when it is one submitted from this same form
           const sibling = conflicts[0].eventId
@@ -246,7 +262,9 @@ export async function submitDraftRows(draft, company, rowKeys) {
             startsAt: schedule.startsAt,
             endsAt: schedule.endsAt,
             city: shared.city.trim(),
-            venue: row.venue.trim(),
+            venue: place.venue,
+            venuePlaceId: place.venuePlaceId,
+            venueSpace: place.venueSpace,
             latitude: row.latitude ?? null,
             longitude: row.longitude ?? null,
             locationAddress: row.locationAddress ?? null,
@@ -289,10 +307,35 @@ export async function rowEvents(draftId) {
   const events = await prisma.event.findMany({
     where: { prebookDraftId: draftId },
     select: {
-      id: true, prebookRowKey: true, name: true, status: true, reservedAt: true, isHidden: true,
+      id: true, prebookRowKey: true, name: true, status: true, reservedAt: true, isHidden: true, launchStatus: true, reviewRequest: true,
       reviewComment: true, venue: true, startsAt: true, endsAt: true,
       _count: { select: { tiers: true, tickets: true } },
     },
   });
   return Object.fromEntries(events.map(({ prebookRowKey, ...event }) => [prebookRowKey, event]));
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_CALENDAR_DAYS = 70;
+
+/**
+ * What the availability calendar shows for a venue: every booking that touches the PKT days `from` to `to`
+ * (inclusive). The organizer's own bookings carry their name and status; other organizers' only the time taken.
+ */
+export async function venueCalendar({ city, placeId, space, from, to }, companyId) {
+  const start = pktInstant(from, '00:00');
+  const end = pktInstant(to, '00:00');
+  if (!start || !end || end < start) throw new PrebookError(400, 'Choose a valid date range.');
+  if ((end - start) / DAY_MS > MAX_CALENDAR_DAYS) throw new PrebookError(400, `Ask for at most ${MAX_CALENDAR_DAYS} days at a time.`);
+  const bookings = await findVenueBookings({ city, venuePlaceId: placeId, venueSpace: space || null, from: start, to: new Date(end.getTime() + DAY_MS) });
+  return bookings.map((b) => {
+    const own = b.companyId === companyId;
+    return {
+      start: b.start,
+      end: b.end,
+      space: b.venueSpace || null,
+      own,
+      ...(own ? { eventId: b.id, name: b.name, status: b.status, reserved: Boolean(b.reservedAt) } : {}),
+    };
+  });
 }

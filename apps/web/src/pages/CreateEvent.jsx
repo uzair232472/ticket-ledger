@@ -190,6 +190,11 @@ export default function CreateEvent() {
   const [eventStatus, setEventStatus] = useState(null); // edit mode: the saved event's status
   // Edit mode: with tickets sold, the date, time and venue change through "Cancel or change date"
   const [ticketsHeld, setTicketsHeld] = useState(0);
+  // Edit mode: an event saved without ticket tiers (a reserved prebooked date) finishes setup through the same
+  // Tickets → Seating → Review steps as a new event
+  const [needsTiers, setNeedsTiers] = useState(false);
+  // Edit mode: waiting for an admin's decision, so nothing can change until it is withdrawn or decided
+  const [underReview, setUnderReview] = useState(false);
   const [company, setCompany] = useState(null);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState({});
@@ -295,6 +300,7 @@ export default function CreateEvent() {
         if (!alive) return;
         const ev = res.data.data.event;
         setEventStatus(ev.status);
+        setUnderReview((ev.status === 'PENDING_APPROVAL' && ev.reviewRequest !== 'CHANGES_REQUESTED') || ev.launchStatus === 'PENDING');
         setTicketsHeld(ev.ticketsHeld || 0);
         setEventData({
           name: ev.name,
@@ -311,7 +317,12 @@ export default function CreateEvent() {
           contactEmail: ev.contactEmail || '',
           bannerUrl: ev.bannerUrl || '',
         });
-        setTiers(ev.tiers.map((t) => ({ name: t.name, price: Number(t.price), totalQuantity: t.totalQuantity })));
+        setNeedsTiers(ev.tiers.length === 0);
+        setTiers(
+          ev.tiers.length
+            ? ev.tiers.map((t) => ({ name: t.name, price: Number(t.price), totalQuantity: t.totalQuantity }))
+            : categoryProfile(ev.type).tiers.map((t) => ({ ...t })),
+        );
         setLocation({ latitude: ev.latitude ?? null, longitude: ev.longitude ?? null, locationAddress: ev.locationAddress ?? null });
         setImages(emptyImages(ev));
         const saved = galleryItemsFromSaved(ev.galleryImages);
@@ -409,7 +420,9 @@ export default function CreateEvent() {
   const totalCapacity = tiers.reduce((n, t) => n + (Number(t.totalQuantity) || 0), 0);
 
   // Edit mode with tickets sold: the date, time and venue fields are read-only (changed through Reschedule)
-  const scheduleLocked = isEdit && ticketsHeld > 0;
+  // An approved (or reserved) event keeps the slot an admin approved: a new date is a date-change request
+  const approvedEvent = isEdit && ['PUBLISHED', 'PAUSED'].includes(eventStatus);
+  const scheduleLocked = isEdit && (ticketsHeld > 0 || approvedEvent);
 
   // ---------- Validation per step ----------
   const validateStep = (index) => {
@@ -431,7 +444,7 @@ export default function CreateEvent() {
       if (eventData.description.trim().length < 10) errs.description = 'Add a short description (at least 10 characters).';
       if (eventData.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(eventData.contactEmail.trim())) errs.contactEmail = 'Enter a valid email address, or leave it empty.';
     }
-    if (index === 2 && !isEdit) {
+    if (index === 2 && (!isEdit || needsTiers)) {
       tiers.forEach((t, i) => {
         if (!t.name.trim()) errs[`tier-${i}-name`] = 'Enter a tier name.';
         if (!(t.price > 0)) errs[`tier-${i}-price`] = 'Enter a price above 0.';
@@ -484,8 +497,8 @@ export default function CreateEvent() {
 
   // Until the organizer edits the tiers, a new event's tiers follow the chosen category
   useEffect(() => {
-    if (!isEdit && !tiersTouched.current) setTiers(categoryProfile(eventData.type).tiers.map((t) => ({ ...t })));
-  }, [eventData.type, isEdit]);
+    if ((!isEdit || needsTiers) && !tiersTouched.current) setTiers(categoryProfile(eventData.type).tiers.map((t) => ({ ...t })));
+  }, [eventData.type, isEdit, needsTiers]);
 
   /**
    * The API found an event of yours with the same name. Same venue and time: offer to open it instead.
@@ -600,6 +613,30 @@ export default function CreateEvent() {
   };
 
   // Details and images in one request; the API swaps images only after every upload succeeds
+  const putEdits = async () => {
+    const formData = new FormData();
+    // A locked schedule isn't sent, so saving other details never re-checks the venue slot
+    ['name', 'description', 'type', 'customCategoryId', 'contactEmail', ...(scheduleLocked ? [] : SCHEDULE_FIELDS)].forEach((key) => formData.append(key, eventData[key]));
+    if (location.latitude != null) {
+      formData.append('latitude', String(location.latitude));
+      formData.append('longitude', String(location.longitude));
+      if (location.locationAddress) formData.append('locationAddress', location.locationAddress);
+    }
+    Object.entries(images).forEach(([field, value]) => {
+      if (value.file) formData.append(field, value.file);
+      else if (value.removed) formData.append(`${field}Action`, 'remove');
+    });
+    let upload = 0;
+    const order = gallery.map((item) => {
+      if (item.id) return { id: item.id };
+      formData.append('galleryImages', item.file);
+      return { upload: upload++ };
+    });
+    formData.append('galleryOrder', JSON.stringify(order));
+
+    await api.put(`/events/${editId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  };
+
   const saveEdits = async () => {
     if (savingRef.current) return;
     const errs = validateStep(0);
@@ -612,27 +649,7 @@ export default function CreateEvent() {
     setError('');
     setSubmitting('SAVE');
     try {
-      const formData = new FormData();
-      // A locked schedule isn't sent, so saving other details never re-checks the venue slot
-      ['name', 'description', 'type', 'customCategoryId', 'contactEmail', ...(scheduleLocked ? [] : SCHEDULE_FIELDS)].forEach((key) => formData.append(key, eventData[key]));
-      if (location.latitude != null) {
-        formData.append('latitude', String(location.latitude));
-        formData.append('longitude', String(location.longitude));
-        if (location.locationAddress) formData.append('locationAddress', location.locationAddress);
-      }
-      Object.entries(images).forEach(([field, value]) => {
-        if (value.file) formData.append(field, value.file);
-        else if (value.removed) formData.append(`${field}Action`, 'remove');
-      });
-      let upload = 0;
-      const order = gallery.map((item) => {
-        if (item.id) return { id: item.id };
-        formData.append('galleryImages', item.file);
-        return { upload: upload++ };
-      });
-      formData.append('galleryOrder', JSON.stringify(order));
-
-      await api.put(`/events/${editId}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      await putEdits();
       await dialog.alert({ tone: 'success', title: 'Changes saved', message: `“${eventData.name}” has been updated.` });
       navigate(`/events/${editId}`);
     } catch (err) {
@@ -642,6 +659,36 @@ export default function CreateEvent() {
       setSubmitting(null);
     }
   };
+
+  // An event without tiers (a reserved prebooked date): save the details, add its tiers, then continue to the
+  // forecast or the seating plan exactly like a new event
+  const continueSetup = async (status) => {
+    if (savingRef.current) return;
+    for (let i = 0; i < 3; i += 1) {
+      const errs = validateStep(i);
+      if (Object.keys(errs).length) {
+        if (i !== step) setStep(i, { replace: true });
+        setFieldErrors(errs);
+        return;
+      }
+    }
+    savingRef.current = true;
+    setError('');
+    setSubmitting(status);
+    try {
+      await putEdits();
+      await api.post(`/events/${editId}/tiers`, { tiers: tiers.map((t) => ({ ...t, name: t.name.trim() })) });
+      setNeedsTiers(false);
+      if (status === 'PRELAUNCH_ANALYSIS') navigate(`/demand-forecast?eventId=${editId}&setup=1`);
+      else navigate(`/organizer/events/${editId}/venue?setup=1`);
+    } catch (err) {
+      showServerError(err.response?.data, err.message || 'Failed to save the ticket tiers');
+    } finally {
+      savingRef.current = false;
+      setSubmitting(null);
+    }
+  };
+  const proceed = (status) => (isEdit ? continueSetup(status) : createEvent(status));
 
   // ---------- States ----------
   if (isEdit && loadError) {
@@ -676,10 +723,10 @@ export default function CreateEvent() {
   const STEP_TEXT = [
     'Tell attendees about your event.',
     'Add images for your event.',
-    isEdit ? 'Review ticket tiers and save your changes.' : 'Set ticket tiers, then continue with or without a demand forecast.',
+    isEdit && !needsTiers ? 'Review ticket tiers and save your changes.' : 'Set ticket tiers, then continue with or without a demand forecast.',
   ];
   // New events show all five setup steps (seating and review come after the event is created)
-  const STEPS = isEdit ? SETUP_STEPS.slice(0, 3) : SETUP_STEPS;
+  const STEPS = isEdit && !needsTiers ? SETUP_STEPS.slice(0, 3) : SETUP_STEPS;
   const err = (key) => fieldErrors[key];
   // New events go back to "Register or prebook", where the organizer came from
   const backHref = isEdit ? `/events/${editId}` : '/organizer/events/new';
@@ -722,6 +769,13 @@ export default function CreateEvent() {
       )}
 
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
+      {isEdit && underReview && (
+        <div className="tl-wz-draft" role="status">
+          <Info className="w-4 h-4" aria-hidden="true" />
+          <span>This event is waiting for a TicketLedger admin, so it can’t be changed right now. Withdraw it from review to make changes, then send it again.</span>
+          <Link to={`/organizer/events/${editId}/submit`}>Open Review</Link>
+        </div>
+      )}
       {!isEdit && draftRestored && hasDraft && (
         <div className="tl-wz-draft" role="status">
           <Info className="w-4 h-4" aria-hidden="true" />
@@ -804,8 +858,8 @@ export default function CreateEvent() {
                     <div className="tl-wz-dupe" role="note">
                       <CalendarDays className="w-4 h-4" aria-hidden="true" />
                       <div>
-                        <strong>{ticketsHeld} ticket{ticketsHeld === 1 ? ' is' : 's are'} sold, so the date, time and venue are locked here</strong>
-                        <p>Ticket holders have to be told about a new date and offered a refund. <Link to={`/organizer/events/${editId}/changes`}>Change the date or venue</Link>, postpone, or cancel the event there.</p>
+                        <strong>{ticketsHeld > 0 ? `${ticketsHeld} ticket${ticketsHeld === 1 ? ' is' : 's are'} sold, so the date, time and venue are locked here` : 'This event is approved, so the date, time and venue are locked here'}</strong>
+                        <p>A new date, time or venue has to be approved by a TicketLedger admin{ticketsHeld > 0 ? ', and ticket holders are told and can get a refund' : ''}. <Link to={`/organizer/events/${editId}/changes`}>Request a date or venue change</Link>, or postpone or cancel the event there.</p>
                       </div>
                     </div>
                   </div>
@@ -906,7 +960,7 @@ export default function CreateEvent() {
         {/* ---------- Step 3: tickets & pricing ---------- */}
         <div className="tl-wz-body" hidden={step !== 2}>
           <div className="tl-wz-main">
-            {isEdit ? (
+            {isEdit && !needsTiers ? (
               <section className="tl-wz-card">
                 <div className="tl-wz-card-head is-plain">
                   <div>
@@ -1007,12 +1061,12 @@ export default function CreateEvent() {
                     </div>
                   </div>
                   <div className="tl-next-options">
-                    <button type="button" className="tl-next-option is-recommended" onClick={() => createEvent('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting)}>
+                    <button type="button" className="tl-next-option is-recommended" onClick={() => proceed('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting)}>
                       <span aria-hidden="true"><BarChart3 className="w-6 h-6" /></span>
                       <strong>{submitting === 'PRELAUNCH_ANALYSIS' ? 'Saving event…' : 'With demand forecast'}</strong>
                       <p>Preview expected demand and adjust prices, then set up seating.</p>
                     </button>
-                    <button type="button" className="tl-next-option" onClick={() => createEvent('DRAFT')} disabled={Boolean(submitting)}>
+                    <button type="button" className="tl-next-option" onClick={() => proceed('DRAFT')} disabled={Boolean(submitting)}>
                       <span aria-hidden="true"><Send className="w-6 h-6" /></span>
                       <strong>{submitting === 'DRAFT' ? 'Saving event…' : 'Without forecast'}</strong>
                       <p>Keep the tier prices above and go straight to the seating plan.</p>
@@ -1022,7 +1076,7 @@ export default function CreateEvent() {
               </>
             )}
           </div>
-          {isEdit ? (
+          {isEdit && !needsTiers ? (
             <aside className="tl-ed-side" aria-label="Before you save">
               <section className="tl-wz-card">
                 <h2>Before you save</h2>
@@ -1096,17 +1150,17 @@ export default function CreateEvent() {
                 Next: {STEPS[step + 1].label} <ArrowRight className="w-4 h-4" />
               </button>
             )}
-            {step === 2 && isEdit && (
-              <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={saveEdits} disabled={Boolean(submitting)}>
+            {step === 2 && isEdit && !needsTiers && (
+              <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={saveEdits} disabled={Boolean(submitting) || underReview}>
                 <Save className="w-4 h-4" /> {submitting ? 'Saving changes…' : 'Save changes'}
               </button>
             )}
-            {step === 2 && !isEdit && (
+            {step === 2 && (!isEdit || needsTiers) && (
               <>
-                <button type="button" className="tl-wz-btn tl-wz-btn--forecast" onClick={() => createEvent('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting)}>
+                <button type="button" className="tl-wz-btn tl-wz-btn--forecast" onClick={() => proceed('PRELAUNCH_ANALYSIS')} disabled={Boolean(submitting) || underReview}>
                   <Sparkles className="w-4 h-4" /> {submitting === 'PRELAUNCH_ANALYSIS' ? 'Saving event…' : 'Continue with demand forecast'}
                 </button>
-                <button type="button" className="tl-wz-btn tl-wz-btn--publish" onClick={() => createEvent('DRAFT')} disabled={Boolean(submitting)}>
+                <button type="button" className="tl-wz-btn tl-wz-btn--publish" onClick={() => proceed('DRAFT')} disabled={Boolean(submitting) || underReview}>
                   <Armchair className="w-4 h-4" /> {submitting === 'DRAFT' ? 'Saving event…' : 'Next: Seating plan (no forecast)'}
                 </button>
               </>

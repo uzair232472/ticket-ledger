@@ -414,11 +414,64 @@ export default function VenueEditor() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Editing shortcuts (outside text fields): Delete removes the selected section, Ctrl+Z / Ctrl+Y undo and redo,
+  // Ctrl+D duplicates, Ctrl+S saves, Esc closes the section settings
+  useEffect(() => {
+    if (!layout || tool === 'draw') return undefined;
+    const onKey = (e) => {
+      if (confirm || previewKey) return;
+      const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      if (mod && k === 's') {
+        e.preventDefault();
+        if (busy || payload.event.underReview) return;
+        if (published) saveDraft();
+        else if (layout.sections.length) publish();
+        return;
+      }
+      if (typing) return;
+      if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+      else if (mod && k === 'd' && selected) { e.preventDefault(); duplicateSection(selected); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { e.preventDefault(); removeSection(selected); }
+      else if (e.key === 'Escape' && (selected || featureSelected)) { setSelectedId(null); setFeatureSelected(false); if (tool === 'block') setTool('select'); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   const handleUnits = 7 / (zoomPx || 1);
   const mapClickPoint = (e) => {
     const p = mapRef.current.toSvg(e.clientX, e.clientY);
     if (drawPoints.length >= 3 && Math.hypot(p.x - drawPoints[0][0], p.y - drawPoints[0][1]) < handleUnits * 2) return finishDrawing();
     setDrawPoints((pts) => [...pts, [p.x, p.y]]);
+  };
+
+  // ---------- Removing and duplicating ----------
+  // Removing is one undo step, so it happens straight away; only a section with held or booked seats asks first
+  const removeSection = (sec) => {
+    const apply = () => {
+      update((cur) => ({ ...cur, sections: cur.sections.filter((s) => s.id !== sec.id) }));
+      if (selectedId === sec.id) setSelectedId(null);
+      setConfirm(null);
+      setStatus({ tone: 'info', text: `Removed “${sec.name}”. Save to keep this change.`, undo: true });
+    };
+    if (!protectedBySection[sec.id]) return apply();
+    setConfirm({
+      title: `Remove “${sec.name}”?`,
+      body: <p>This section has held or booked seats, so publishing will be refused while it is missing. You can undo this until you publish.</p>,
+      confirmLabel: 'Remove section',
+      tone: 'danger',
+      onConfirm: apply,
+    });
+  };
+  const duplicateSection = (sec) => {
+    const id = newSectionId();
+    const copy = JSON.parse(JSON.stringify(sec));
+    const shift = (sh) => (sh.type === 'arc' ? { ...sh, a0: sh.a0 + (sh.a1 - sh.a0) + 2, a1: sh.a1 + (sh.a1 - sh.a0) + 2 } : sh.type === 'rect' ? { ...sh, x: sh.x + 30, y: sh.y + 30 } : { ...sh, points: sh.points.map(([x, y]) => [x + 30, y + 30]) });
+    update((cur) => ({ ...cur, sections: [...cur.sections, { ...copy, id, name: uniqueName(sec.name.replace(/\s+\d+$/, '')), shape: shift(copy.shape) }] }));
+    setSelectedId(id);
   };
 
   const toggleBlocked = (key, section) => {
@@ -623,20 +676,20 @@ export default function VenueEditor() {
             </button>
             {published ? (
               <>
-                <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy} className="tl-dash-btn" title="Saves your work without changing the seats attendees see">
+                <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy || payload.event.underReview} className="tl-dash-btn" title="Saves your work without changing the seats attendees see">
                   <Save className="w-4 h-4" /> {busy === 'save' ? 'Saving…' : 'Save draft'}
                 </button>
-                <button type="button" onClick={publish} disabled={busy || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
+                <button type="button" onClick={publish} disabled={busy || payload.event.underReview || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
                   <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish changes'}
                 </button>
               </>
             ) : (
               // No plan yet: saving creates the seats, so attendees can see them (a draft alone shows nothing)
-              <button type="button" onClick={publish} disabled={busy || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
+              <button type="button" onClick={publish} disabled={busy || payload.event.underReview || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
                 <Save className="w-4 h-4" /> {busy === 'publish' ? 'Saving…' : setup ? 'Save & continue' : 'Save seating plan'}
               </button>
             )}
-            {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status)) && (
+            {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status) || (ev.prebookDraftId && ev.isHidden)) && (
               <Link to={`/organizer/events/${eventId}/submit${setup ? '?setup=1' : ''}`} className="tl-dash-btn tl-dash-btn--green">
                 Next: Review &amp; submit
               </Link>
@@ -652,6 +705,11 @@ export default function VenueEditor() {
             <p><strong>Step 4 of 5: Seating plan.</strong> Your event is saved privately. Choose a plan, set each section’s seats and price tier, then press <strong>Save &amp; continue</strong> to review your event and send it for approval.</p>
           </Banner>
         </>
+      )}
+      {ev.underReview && (
+        <Banner tone="warn" icon={AlertTriangle}>
+          <p><strong>Waiting for a TicketLedger admin.</strong> The seating plan and ticket tiers are locked while they review them, so nothing you change here can be saved. <Link className="underline font-semibold" to={`/organizer/events/${eventId}/submit`}>Withdraw it from review</Link> to make changes.</p>
+        </Banner>
       )}
       {payload.legacy?.seats > 0 && (
         <Banner tone={payload.legacy.booked ? 'warn' : 'info'}>
@@ -671,7 +729,12 @@ export default function VenueEditor() {
       ) : null}
       {status && (
         <Banner tone={status.tone} icon={status.tone === 'ok' ? CheckCircle2 : AlertCircle} onClose={() => setStatus(null)}>
-          <p>{status.text}</p>
+          <p>
+            {status.text}
+            {status.undo && history.current.past.length > 0 && (
+              <button type="button" className="ml-2 font-bold underline" onClick={() => { undo(); setStatus(null); }}>Undo</button>
+            )}
+          </p>
           {status.list?.length > 0 && (
             <ul className="list-disc pl-4 space-y-0.5">
               {status.list.map((m, i) => <li key={i}>{m}</li>)}
@@ -737,6 +800,9 @@ export default function VenueEditor() {
                         </span>
                         {hasError && <AlertTriangle className="w-4 h-4 text-rose-500" aria-label="Has problems" />}
                         <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                      <button type="button" className="tl-ve-sec-del" onClick={() => removeSection(sec)} aria-label={`Remove ${sec.name}`} title="Remove section">
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </li>
                   );
@@ -838,7 +904,7 @@ export default function VenueEditor() {
                   <button type="button" className="tl-vm-btn" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out"><Minus className="w-4 h-4" /></button>
                 </div>
                 <span className="tl-vm-hint hidden md:inline">
-                  {tool === 'block' ? 'Click seats to block or unblock them' : tool === 'draw' ? `Drawing: ${drawPoints.length} point${drawPoints.length === 1 ? '' : 's'}` : 'Click a section to configure it · drag to move · Ctrl + scroll to zoom'}
+                  {tool === 'block' ? 'Click seats to block or unblock them' : tool === 'draw' ? `Drawing: ${drawPoints.length} point${drawPoints.length === 1 ? '' : 's'}` : 'Click a section to configure it · drag to move · Delete removes it · Ctrl + Z undo · Ctrl + scroll to zoom'}
                 </span>
               </div>
           </section>
@@ -852,7 +918,10 @@ export default function VenueEditor() {
                     <h2>{selected.name}</h2>
                     <p>Section settings</p>
                   </div>
-                  <button type="button" className="tl-vm-btn" onClick={() => setSelectedId(null)} aria-label="Close section settings"><X className="w-4 h-4" /></button>
+                  <div className="flex gap-1.5">
+                    <button type="button" className="tl-vm-btn tl-ve-delbtn" onClick={() => removeSection(selected)} aria-label={`Remove ${selected.name}`} title="Remove section (Delete)"><Trash2 className="w-4 h-4" /></button>
+                    <button type="button" className="tl-vm-btn" onClick={() => setSelectedId(null)} aria-label="Close section settings" title="Close (Esc)"><X className="w-4 h-4" /></button>
+                  </div>
                 </div>
                 <SectionInspector
                   key={selected.id}
@@ -867,26 +936,8 @@ export default function VenueEditor() {
                     setTool((t) => (t === 'block' ? 'select' : 'block'));
                     mapRef.current?.fitSection(selected.id);
                   }}
-                  onDuplicate={() => {
-                    const id = newSectionId();
-                    const copy = JSON.parse(JSON.stringify(selected));
-                    const shift = (sh) => (sh.type === 'arc' ? { ...sh, a0: sh.a0 + (sh.a1 - sh.a0) + 2, a1: sh.a1 + (sh.a1 - sh.a0) + 2 } : sh.type === 'rect' ? { ...sh, x: sh.x + 30, y: sh.y + 30 } : { ...sh, points: sh.points.map(([x, y]) => [x + 30, y + 30]) });
-                    update((cur) => ({ ...cur, sections: [...cur.sections, { ...copy, id, name: uniqueName(selected.name.replace(/\s+\d+$/, '')), shape: shift(copy.shape) }] }));
-                    setSelectedId(id);
-                  }}
-                  onDelete={() =>
-                    setConfirm({
-                      title: `Remove “${selected.name}”?`,
-                      body: <p>{protectedBySection[selected.id] ? 'This section has held or booked seats, so publishing will be refused while it is missing.' : 'You can undo this until you publish.'}</p>,
-                      confirmLabel: 'Remove section',
-                      tone: 'danger',
-                      onConfirm: () => {
-                        update((cur) => ({ ...cur, sections: cur.sections.filter((s) => s.id !== selected.id) }));
-                        setSelectedId(null);
-                        setConfirm(null);
-                      },
-                    })
-                  }
+                  onDuplicate={() => duplicateSection(selected)}
+                  onDelete={() => removeSection(selected)}
                 />
               </>
             ) : (
@@ -958,7 +1009,24 @@ export default function VenueEditor() {
               {errorCount ? <AlertTriangle className="w-5 h-5" aria-hidden="true" /> : <CheckCircle2 className="w-5 h-5" aria-hidden="true" />}
               <div>
                 <strong>{errorCount ? `${errorCount} problem${errorCount === 1 ? '' : 's'} to fix` : dirty ? 'Unsaved changes' : published ? 'Seating saved' : 'Ready to save'}</strong>
-                <small>{errorCount ? 'See the list below.' : dirty ? 'Save to keep your changes.' : 'All changes saved.'}</small>
+                <small>{errorCount ? 'See the list below.' : dirty ? 'Save to keep your changes (Ctrl+S).' : 'All changes saved.'}</small>
+              </div>
+              {/* The same save as the page header, always in reach at the bottom of the screen */}
+              <div className="tl-ve-ready-actions">
+                {published ? (
+                  <button type="button" onClick={publish} disabled={busy || payload.event.underReview || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
+                    <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish changes'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={publish} disabled={busy || payload.event.underReview || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
+                    <Save className="w-4 h-4" /> {busy === 'publish' ? 'Saving…' : setup ? 'Save & continue' : 'Save seating plan'}
+                  </button>
+                )}
+                {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status) || (ev.prebookDraftId && ev.isHidden)) && (
+                  <Link to={`/organizer/events/${eventId}/submit${setup ? '?setup=1' : ''}`} className="tl-dash-btn tl-dash-btn--green">
+                    Next: Review <ChevronRight className="w-4 h-4" />
+                  </Link>
+                )}
               </div>
             </div>
           </div>

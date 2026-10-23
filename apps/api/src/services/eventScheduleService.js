@@ -2,7 +2,7 @@ import prisma from '../config/prisma.js';
 
 // Event schedules are entered as Pakistan wall-clock time (PKT, UTC+5, no daylight saving) and stored as
 // instants in Event.startsAt / Event.endsAt. Two events at the same venue need at least an hour between
-// them; different venues (even inside the same campus or stadium complex) never conflict.
+// them; different venues, and different spaces picked inside the same place, never conflict.
 
 const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
 export const MIN_GAP_MS = 60 * 60 * 1000;
@@ -128,28 +128,57 @@ export function conflictMessage(proposed, other, { who = 'Another event', you = 
 // Statuses that don't hold a venue slot: cancelled events, and rejected requests (rechecked on resubmit)
 export const RELEASED_STATUSES = ['CANCELLED', 'REJECTED'];
 
+/** An event's venue, as the conflict checks take it. */
+export const venueOf = (event) => ({ city: event.city, venue: event.venue, venuePlaceId: event.venuePlaceId || null, venueSpace: event.venueSpace || null });
+
 /**
- * Events at the same venue (same city and venue name) that overlap the proposed schedule or sit less than
- * an hour from it. A gap of exactly one hour is allowed. Every other status holds the slot, including
- * pending requests and hidden reserved dates; cancelled events and rejected requests don't.
+ * Whether two bookings are at the same venue. Both picked on the map: the same place, and the same space
+ * inside it unless either one takes the whole place. Otherwise the venue text has to match.
  */
-export async function findScheduleConflicts({ city, venue, startsAt, endsAt, excludeEventId }, db = prisma) {
-  const key = normalizeVenue(venue);
-  if (!key || !city) return [];
+export function sameVenue(a, b) {
+  if (a.venuePlaceId && b.venuePlaceId) {
+    if (a.venuePlaceId !== b.venuePlaceId) return false;
+    const spaceA = normalizeVenue(a.venueSpace);
+    const spaceB = normalizeVenue(b.venueSpace);
+    return !spaceA || !spaceB || spaceA === spaceB;
+  }
+  return normalizeVenue(a.venue) === normalizeVenue(b.venue);
+}
+
+/**
+ * Bookings at a venue (see sameVenue) that occupy any part of [from, to): every status except cancelled
+ * events and rejected requests, so pending requests and hidden reserved dates count. Earliest first.
+ */
+export async function findVenueBookings({ city, venue, venuePlaceId, venueSpace, from, to, excludeEventId }, db = prisma) {
+  if (!city || !(venuePlaceId || normalizeVenue(venue))) return [];
   const candidates = await db.event.findMany({
     where: {
       city: { equals: String(city).trim(), mode: 'insensitive' },
       status: { notIn: RELEASED_STATUSES },
       ...(excludeEventId ? { id: { not: excludeEventId } } : {}),
-      OR: [{ endsAt: null }, { endsAt: { gt: new Date(startsAt.getTime() - MIN_GAP_MS) } }],
+      OR: [{ endsAt: null }, { endsAt: { gt: from } }],
     },
-    select: { id: true, venue: true, date: true, time: true, startsAt: true, endsAt: true },
+    select: { id: true, companyId: true, name: true, status: true, reservedAt: true, venue: true, venuePlaceId: true, venueSpace: true, date: true, time: true, startsAt: true, endsAt: true },
   });
+  const here = { venue, venuePlaceId, venueSpace };
   return candidates
-    .filter((event) => normalizeVenue(event.venue) === key)
-    .map((event) => ({ id: event.id, ...occupiedInterval(event) }))
+    .filter((event) => sameVenue(here, event))
+    .map((event) => ({ ...event, ...occupiedInterval(event) }))
+    .filter((event) => event.end > from && event.start < to)
+    .sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Events at the same venue that overlap the proposed schedule or sit less than an hour from it. A gap of
+ * exactly one hour is allowed.
+ */
+export async function findScheduleConflicts({ city, venue, venuePlaceId, venueSpace, startsAt, endsAt, excludeEventId }, db = prisma) {
+  const bookings = await findVenueBookings(
+    { city, venue, venuePlaceId, venueSpace, from: new Date(startsAt.getTime() - MIN_GAP_MS), to: new Date(endsAt.getTime() + MIN_GAP_MS), excludeEventId },
+    db,
+  );
+  return bookings
     .filter((other) => slotsClash({ start: startsAt, end: endsAt }, other))
-    .sort((a, b) => a.start - b.start)
     .map((other) => ({
       eventId: other.id,
       startsAt: other.start,
@@ -158,9 +187,12 @@ export async function findScheduleConflicts({ city, venue, startsAt, endsAt, exc
     }));
 }
 
-/** Transaction-scoped lock on one venue: concurrent checks-then-writes for that venue run one at a time. */
-export async function lockVenue(tx, { city, venue }) {
-  const lockKey = `venue:${String(city).trim().toLowerCase()}:${normalizeVenue(venue)}`;
+/**
+ * Transaction-scoped lock on one venue: concurrent checks-then-writes for that venue run one at a time.
+ * A place picked on the map is locked as a whole, so its spaces are checked one at a time too.
+ */
+export async function lockVenue(tx, { city, venue, venuePlaceId }) {
+  const lockKey = venuePlaceId ? `place:${venuePlaceId}` : `venue:${String(city).trim().toLowerCase()}:${normalizeVenue(venue)}`;
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))::text`;
 }
 
