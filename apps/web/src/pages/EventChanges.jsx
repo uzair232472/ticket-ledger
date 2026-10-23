@@ -137,8 +137,8 @@ export default function EventChanges() {
         tone: 'warning',
         title: 'Change the date?',
         message: summary.holders
-          ? `${summary.holders} ticket holder${summary.holders === 1 ? '' : 's'} will be emailed the new date once it’s live, and can get a full refund until 48 hours before it (at most 14 days). Small same-day changes (two hours or less, same venue) go live straight away; anything else is checked by a TicketLedger admin first.`
-          : 'No tickets are sold yet, so the new date goes live straight away.',
+          ? `A TicketLedger admin approves the change first. Then ${summary.holders} ticket holder${summary.holders === 1 ? '' : 's'} are emailed the new date and can get a full refund until 48 hours before it (at most 14 days).`
+          : 'A TicketLedger admin approves the change first. The event keeps its current date until then.',
         confirmLabel: 'Send the change',
         cancelLabel: 'Not yet',
       });
@@ -276,8 +276,8 @@ export default function EventChanges() {
               <>
                 <p className="tl-lc-text">
                   {summary.holders
-                    ? 'Ticket holders keep their seats and QR codes for the new date, and can get a full refund if they can’t make it. A same-day shift of two hours or less at the same venue goes live straight away; other changes are approved by an admin first.'
-                    : 'No tickets are sold yet, so the new date goes live straight away.'}
+                    ? 'Every change is approved by a TicketLedger admin first. Ticket holders then keep their seats and QR codes for the new date, and can get a full refund if they can’t make it.'
+                    : 'No tickets are sold yet. The change is approved by a TicketLedger admin first, and the event keeps its current date until then.'}
                 </p>
                 <div className="tl-wz-grid">
                   <div className={`tl-wz-field${fieldError.date ? ' has-error' : ''}`}>

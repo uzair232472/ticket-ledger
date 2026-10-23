@@ -2,13 +2,13 @@ import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { MediaValidationError, uploadEventImages } from '../services/eventMediaService.js';
 import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
-import { canManageEvent } from '../utils/eventAccess.js';
+import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE } from '../utils/eventAccess.js';
 import { applySeatAvailability } from '../services/venueService.js';
 import { isPromotionActive, promotionStartedAt } from '../services/promotionWindow.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import mlService from '../services/mlService.js';
 import { CategoryError, categoryColumns, listCategories, addCustomCategory } from '../services/categoryService.js';
-import { ScheduleError, RELEASED_STATUSES, resolveSchedule, assertVenueFree, findScheduleConflicts, occupiedInterval, toPktParts, parseTimeOfDay } from '../services/eventScheduleService.js';
+import { ScheduleError, RELEASED_STATUSES, resolveSchedule, assertVenueFree, findScheduleConflicts, occupiedInterval, toPktParts, parseTimeOfDay, venueOf } from '../services/eventScheduleService.js';
 
 // Schemas
 const ticketTierSchema = z.object({
@@ -672,7 +672,7 @@ export const updateEventStatus = async (req, res) => {
     const updated = await prisma.$transaction(async (tx) => {
       if (RELEASED_STATUSES.includes(event.status) && !RELEASED_STATUSES.includes(status)) {
         const { start, end } = occupiedInterval(event);
-        await assertVenueFree({ city: event.city, venue: event.venue, startsAt: start, endsAt: end, excludeEventId: id }, tx);
+        await assertVenueFree({ ...venueOf(event), startsAt: start, endsAt: end, excludeEventId: id }, tx);
       }
       return tx.event.update({
         where: { id },
@@ -870,6 +870,7 @@ export const updateEventPricing = async (req, res) => {
         return res.status(403).json({ success: false, message: 'Unauthorized to modify pricing' });
       }
     }
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
 
     // Update each tier in parallel
     for (const t of tiers) {
@@ -925,6 +926,7 @@ export const publishEventWithPricing = async (req, res) => {
         return res.status(403).json({ success: false, message: 'Unauthorized to publish event' });
       }
     }
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
 
     // If tiers were adjusted, update them
     if (Array.isArray(tiers) && tiers.length > 0) {
@@ -1007,6 +1009,44 @@ export const getEventForEdit = async (req, res) => {
 };
 
 /**
+ * POST /api/events/:id/tiers { tiers: [{ name, price, totalQuantity }] }: the first ticket tiers of an event
+ * created without any (a prebooked date, once reserved), so it continues through the same Tickets → Seating →
+ * Review steps as a registered event. Refused once the event has tiers; those change through seating and pricing.
+ */
+export const setInitialTiers = async (req, res) => {
+  try {
+    const tiers = z.array(ticketTierSchema).min(1, 'Add at least one ticket tier.').max(20).parse(req.body.tiers);
+    const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { _count: { select: { tiers: true } } } });
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
+    if (!(await canManageEvent(req.user, event, { requireApproved: true }))) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
+    }
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
+    if (event._count.tiers > 0) {
+      return res.status(409).json({ success: false, message: 'This event already has ticket tiers. Change them in Venue & seating or Demand forecast.' });
+    }
+    const created = await prisma.$transaction(async (tx) => {
+      // Re-checked inside the transaction, so a double submit can't add the tiers twice
+      if (await tx.ticketTier.count({ where: { eventId: event.id } })) return null;
+      return Promise.all(
+        tiers.map((t) =>
+          tx.ticketTier.create({ data: { eventId: event.id, name: t.name.trim(), price: t.price, totalQuantity: t.totalQuantity, availableQuantity: t.totalQuantity } })
+        )
+      );
+    });
+    if (!created) return res.status(409).json({ success: false, message: 'This event already has ticket tiers.' });
+    await prisma.auditLog.create({
+      data: { userId: req.user.id, action: 'EVENT_TIERS_ADDED', targetType: 'Event', targetId: event.id, details: { eventName: event.name, tiers: tiers.map((t) => ({ name: t.name, price: t.price })) } },
+    });
+    return res.status(201).json({ success: true, message: 'Ticket tiers saved.', data: { tiers: created } });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Invalid tiers' });
+    console.error('Set initial tiers failed:', error);
+    return res.status(500).json({ success: false, message: 'Failed to save the ticket tiers.' });
+  }
+};
+
+/**
  * Organizer updates event details and media in one save.
  *
  * Multipart body:
@@ -1034,6 +1074,7 @@ export const updateEvent = async (req, res) => {
     if (!(await canManageEvent(req.user, event, { requireApproved: true }))) {
       return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
     }
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
 
     const detailKeys = Object.keys(updateEventDetailsSchema.shape).filter((k) => req.body[k] !== undefined);
     const details = updateEventDetailsSchema.parse(Object.fromEntries(detailKeys.map((k) => [k, req.body[k]])));
@@ -1041,6 +1082,7 @@ export const updateEvent = async (req, res) => {
     // Venue or schedule changes: resolve the full schedule (saved values fill omitted fields) and check the venue
     const scheduleKeys = ['date', 'time', 'endDate', 'endTime', 'city', 'venue'];
     let schedule = null;
+    let venueMoved = false;
     if (scheduleKeys.some((k) => details[k] !== undefined)) {
       const savedEnd = toPktParts(occupiedInterval(event).end);
       // Ticket holders must be told about (and can opt out of) a new date or venue: that goes through Reschedule
@@ -1054,12 +1096,17 @@ export const updateEvent = async (req, res) => {
         (event.endsAt && details.endTime !== undefined && parseTimeOfDay(details.endTime) !== parseTimeOfDay(savedEnd.time)) ||
         (details.city !== undefined && !sameText(details.city, event.city)) ||
         (details.venue !== undefined && !sameText(details.venue, event.venue));
-      if (ticketsHeld > 0 && moved) {
+      // An approved (or reserved) event keeps the slot an admin approved: moving it is a date-change request the
+      // admins approve, and ticket holders are told and can get a refund
+      const approved = ['PUBLISHED', 'PAUSED'].includes(event.status);
+      if ((ticketsHeld > 0 || approved) && moved && req.user.role !== 'SUPER_ADMIN') {
         return res.status(409).json({
           success: false,
           field: 'schedule',
           code: 'RESCHEDULE_REQUIRED',
-          message: `${ticketsHeld} ticket${ticketsHeld === 1 ? ' is' : 's are'} already sold, so the date, time and venue can only be changed with Reschedule. Attendees are told and can get a refund.`,
+          message: ticketsHeld > 0
+            ? `${ticketsHeld} ticket${ticketsHeld === 1 ? ' is' : 's are'} already sold, so the date, time and venue can only be changed with a date-change request. A TicketLedger admin approves it, and attendees are told and can get a refund.`
+            : 'This event is approved, so a new date, time or venue has to be requested and approved by a TicketLedger admin. Use “Change date or venue”.',
         });
       }
       schedule = {
@@ -1073,6 +1120,9 @@ export const updateEvent = async (req, res) => {
         venue: details.venue ?? event.venue,
         excludeEventId: id,
       };
+      // The place picked on the map stays with the venue; typing a different venue lets go of it
+      venueMoved = (details.city !== undefined && !sameText(details.city, event.city)) || (details.venue !== undefined && !sameText(details.venue, event.venue));
+      if (!venueMoved) Object.assign(schedule, { venuePlaceId: event.venuePlaceId, venueSpace: event.venueSpace });
       if (event.status !== 'CANCELLED') await assertVenueFree(schedule);
     }
 
@@ -1140,6 +1190,7 @@ export const updateEvent = async (req, res) => {
     }
     if (details.date) data.date = new Date(details.date);
     if (schedule) Object.assign(data, { startsAt: schedule.startsAt, endsAt: schedule.endsAt });
+    if (venueMoved) Object.assign(data, { venuePlaceId: null, venueSpace: null });
 
     const updated = await prisma.$transaction(async (tx) => {
       if (schedule && event.status !== 'CANCELLED') await assertVenueFree(schedule, tx);

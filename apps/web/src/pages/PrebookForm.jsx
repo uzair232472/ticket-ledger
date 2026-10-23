@@ -19,13 +19,27 @@ import api from '../utils/api';
 import { StudioHead, Badge } from '../components/dash/Studio';
 import CategoryField from '../components/event-form/CategoryField';
 import { UploadedGalleryField, UploadedImageField } from '../components/prebook/UploadedImageFields';
+import VenuePicker from '../components/prebook/VenuePicker';
+import AvailabilityCalendar, { pktInstant } from '../components/prebook/AvailabilityCalendar';
 import { resolveMediaUrl } from '../utils/eventMedia';
 import { useDialog } from '../components/ui/DialogProvider';
 
 const CITIES = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar', 'Quetta'];
 
 const newKey = () => `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-const emptyRow = (venue = '') => ({ key: newKey(), venue, date: '', time: '19:00', endDate: '', endTime: '22:00', customize: false, custom: {} });
+const NO_PLACE = { placeId: null, placeName: '', space: '', latitude: null, longitude: null, locationAddress: null };
+// A new date starts at the previous date's venue (place and space)
+const placeOf = (row) => (row ? { placeId: row.placeId ?? null, placeName: row.placeName || '', space: row.space || '', latitude: row.latitude ?? null, longitude: row.longitude ?? null, locationAddress: row.locationAddress ?? null } : NO_PLACE);
+const emptyRow = (from) => ({ key: newKey(), venue: '', ...placeOf(from), date: '', time: '19:00', endDate: '', endTime: '22:00', customize: false, custom: {} });
+// The venue a date is booked under: the picked place, plus the space inside it
+const venueText = (row) => (row.placeName ? (row.space?.trim() ? `${row.placeName} – ${row.space.trim()}` : row.placeName) : '');
+// Same rule as the API: same place, and the same space unless either takes the whole place
+const samePlace = (a, b) => {
+  if (!a.placeId || a.placeId !== b.placeId) return false;
+  const sa = (a.space || '').trim().toLowerCase();
+  const sb = (b.space || '').trim().toLowerCase();
+  return !sa || !sb || sa === sb;
+};
 const emptyData = () => ({
   shared: { name: '', description: '', type: 'CONFERENCE', customCategoryId: null, city: 'Lahore', contactEmail: '', images: {} },
   rows: [emptyRow()],
@@ -56,7 +70,12 @@ function sharedProblems(shared) {
 /** Where a submitted date stands. "Reserved" only once an admin approved it and the slot is secured. */
 function eventState(ev) {
   if (!ev) return { tone: 'grey', label: 'Draft · not reserved' };
-  if (ev.status === 'PENDING_APPROVAL') return { tone: 'amber', label: 'Requested · awaiting approval', note: 'The slot is held for your request, but it isn’t reserved until an admin approves it.' };
+  if (ev.status === 'PENDING_APPROVAL' && ev.reviewRequest === 'CHANGES_REQUESTED') return { tone: 'amber', label: 'Reply needed', note: 'TicketLedger asked you something or suggested another date. Open Review to reply.', reply: true };
+  if (ev.reservedAt && ev.launchStatus === 'CHANGES_REQUESTED') return { tone: 'amber', label: 'Reserved · reply needed', note: 'TicketLedger asked about your tickets or seating. Open Review to reply.', reply: true };
+  if (ev.reservedAt && ev.launchStatus === 'PENDING') return { tone: 'amber', label: 'Reserved · awaiting final approval', note: 'Tickets and seating were sent. It goes public once an admin approves them.' };
+  if (ev.reservedAt && ev.launchStatus === 'NONE') return { tone: 'green', label: 'Reserved · setup needed', note: 'Add tickets, prices and a seating plan, then send it for final approval.' };
+  if (ev.status === 'PENDING_APPROVAL') return { tone: 'amber', label: 'Slot held · event in review', note: 'The date was free and is now held for you, so no one else can book it. TicketLedger is reviewing the event itself; once it’s approved, the date is reserved.' };
+  if (ev.status === 'DRAFT') return { tone: 'grey', label: 'Withdrawn · not sent', note: 'You took this request back to change it. The slot is still held; send it again when it’s ready.' };
   if (ev.status === 'REJECTED') return { tone: 'rose', label: 'Rejected · not reserved', note: ev.reviewComment ? `Reason: ${ev.reviewComment}` : 'The slot was released.' };
   if (ev.status === 'CANCELLED') return { tone: 'rose', label: 'Cancelled' };
   if (ev.reservedAt) return { tone: 'green', label: 'Reserved' };
@@ -76,9 +95,10 @@ function Field({ id, label, error, wide, hint, children }) {
 
 /**
  * /organizer/prebook/:id: one form to reserve one or more dates. Shared details are entered once; each
- * date has its own venue and schedule and can override the name, images and public visibility. The form
- * autosaves, every unsubmitted date is checked against the venue calendar as it changes, and a clash never
- * throws away what was entered: fix that date, or submit the others and keep it as a draft.
+ * date has its own venue (picked on the map), schedule and visibility, with a calendar of that venue's
+ * bookings, and with several dates it can override the name and images. The form autosaves, every
+ * unsubmitted date is checked against the venue as it changes, and a clash never throws away what was
+ * entered: fix that date, or submit the others and keep it as a draft.
  */
 export default function PrebookForm() {
   const { id } = useParams();
@@ -155,8 +175,9 @@ export default function PrebookForm() {
 
   // ---------- Live availability for unsubmitted dates ----------
   const openRows = useMemo(() => (data ? data.rows.filter((r) => !rowEvents[r.key]) : []), [data, rowEvents]);
+  const checkRow = ({ key, placeId, placeName, space, date, time, endDate, endTime }) => ({ key, placeId, placeName, space, date, time, endDate, endTime });
   const checkSig = useMemo(
-    () => JSON.stringify({ city: data?.shared.city, rows: openRows.map(({ key, venue, date, time, endDate, endTime }) => [key, venue, date, time, endDate, endTime]) }),
+    () => JSON.stringify({ city: data?.shared.city, rows: openRows.map(checkRow) }),
     [data?.shared.city, openRows],
   );
   const checkSeq = useRef(0);
@@ -170,7 +191,7 @@ export default function PrebookForm() {
         const res = await api.post('/prebook/check', {
           city: data.shared.city,
           labels,
-          rows: openRows.map(({ key, venue, date, time, endDate, endTime }) => ({ key, venue, date, time, endDate, endTime })),
+          rows: openRows.map(checkRow),
         });
         if (seq !== checkSeq.current) return;
         setChecks(Object.fromEntries(res.data.data.results.map((r) => [r.key, r])));
@@ -205,8 +226,9 @@ export default function PrebookForm() {
       ...d,
       rows: d.rows.map((r) => (r.key === key ? { ...r, custom: { ...r.custom, images: { ...(r.custom?.images || {}), [field]: value } } } : r)),
     }));
+  const setPlace = (key, place) => setRow(key, place ? { ...place, venue: '' } : { ...NO_PLACE, space: '' });
   const addRow = () => {
-    setData((d) => ({ ...d, rows: [...d.rows, emptyRow(d.rows[d.rows.length - 1]?.venue || '')] }));
+    setData((d) => ({ ...d, rows: [...d.rows, emptyRow(d.rows[d.rows.length - 1])] }));
     setDecision(null);
   };
   const removeRow = async (key, index) => {
@@ -343,7 +365,7 @@ export default function PrebookForm() {
       <StudioHead
         crumbs={['Organizer', 'Prebookings', shared.name.trim() || 'New prebooking']}
         title="Prebook an event"
-        intro="Enter the event details once, then add each date you want to reserve. Dates are reserved only after TicketLedger approves them."
+        intro="Enter the event details once, then pick each venue and date. The calendar shows straight away which days are free. Sending holds the slot for you while TicketLedger reviews the event."
         actions={
           <span className="tl-wz-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} aria-live="polite">
             <saveBadge.icon className={`w-4 h-4${save.state === 'saving' ? ' animate-spin' : ''}`} aria-hidden="true" /> {saveBadge.text}
@@ -364,7 +386,7 @@ export default function PrebookForm() {
                   : <AlertCircle className="w-4 h-4" style={{ color: 'var(--st-rose)', flex: 'none', marginTop: 2 }} aria-hidden="true" />}
                 <span>
                   <strong>{r.label || labelOf(r.key)}:</strong>{' '}
-                  {r.status === 'submitted' && 'submitted, awaiting approval (not reserved yet).'}
+                  {r.status === 'submitted' && 'sent. The slot is held for you while TicketLedger reviews the event.'}
                   {r.status === 'already_submitted' && 'already submitted earlier, not sent again.'}
                   {(r.status === 'conflict' || r.status === 'invalid') && <>kept as a draft. {r.message}</>}
                 </span>
@@ -379,7 +401,7 @@ export default function PrebookForm() {
         <div className="tl-wz-card-head">
           <div>
             <h2>Event details</h2>
-            <p>Used for every date unless you customize a date below.</p>
+            <p>Entered once and used for every date below.</p>
           </div>
         </div>
         <div className="tl-wz-grid">
@@ -401,7 +423,8 @@ export default function PrebookForm() {
             <input id="pb-contact" className="tl-wz-input" type="email" value={shared.contactEmail} maxLength={200} onChange={(e) => setShared({ contactEmail: e.target.value })} placeholder="events@yourcompany.pk" />
           </Field>
         </div>
-        <h3 style={{ fontSize: 17, fontWeight: 700, margin: '22px 0 10px' }}>Shared images (optional)</h3>
+        <h3 style={{ fontSize: 17, fontWeight: 700, margin: '22px 0 4px' }}>Event images (optional)</h3>
+        <p className="tl-wz-hint" style={{ marginBottom: 10 }}>Upload them once here and every date uses them. You can also add them later; they carry over when you set up tickets.</p>
         <div className="tl-wz-grid">
           <div className="tl-wz-field"><UploadedImageField kind="card" url={shared.images.cardImageUrl || null} onChange={(u) => setSharedImage('cardImageUrl', u)} /></div>
           <div className="tl-wz-field"><UploadedImageField kind="banner" url={shared.images.bannerUrl || null} onChange={(u) => setSharedImage('bannerUrl', u)} /></div>
@@ -449,24 +472,37 @@ export default function PrebookForm() {
                     {ev.startsAt && `${pktDate(ev.startsAt)}, ${pktTime(ev.startsAt)} – ${pktDate(ev.endsAt) === pktDate(ev.startsAt) ? '' : `${pktDate(ev.endsAt)}, `}${pktTime(ev.endsAt)}`}
                   </p>
                   {state.note && <p className="tl-wz-hint">{state.note}</p>}
-                  {ev.reservedAt && ev.isHidden && <p className="tl-wz-hint">Hidden dates keep their reservation and any sold tickets. Add tickets and a seating plan, then show it publicly when you’re ready.</p>}
+                  {ev.reservedAt && ev.isHidden && <p className="tl-wz-hint">Hidden dates keep their reservation and any sold tickets. Set up tickets and a seating plan (the same steps as registering an event), then send it for final approval. It goes public once TicketLedger approves it.</p>}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {ev.reservedAt && (
+                    {ev.reservedAt && (!ev.isHidden || ev.launchStatus === 'APPROVED') && (
                       <button type="button" className="tl-wz-btn" style={{ minHeight: 42 }} disabled={busyRow === row.key} onClick={() => setHidden(row.key, ev.id, !ev.isHidden)}>
                         {ev.isHidden ? <><Eye className="w-4 h-4" /> Show publicly</> : <><EyeOff className="w-4 h-4" /> Hide from public</>}
                       </button>
                     )}
-                    {ev.reservedAt && (
-                      <Link to={`/organizer/events/${ev.id}/venue`} className="tl-wz-btn" style={{ minHeight: 42 }}>
-                        <Settings2 className="w-4 h-4" /> Tickets &amp; seating
+                    {/* A reserved date without tickets continues through the same steps as a registered event:
+                        details, images, tickets & pricing, seating plan, review */}
+                    {/* Details and images came from this form, so setup starts at Tickets & pricing */}
+                    {ev.reservedAt && !ev._count?.tiers && (
+                      <Link to={`/organizer/events/${ev.id}/edit?step=3`} className="tl-wz-btn tl-wz-btn--green" style={{ minHeight: 42 }}>
+                        <Settings2 className="w-4 h-4" /> Set up tickets &amp; seating
                       </Link>
                     )}
-                    {['PENDING_APPROVAL', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(ev.status) && (
+                    {ev.reservedAt && ev._count?.tiers > 0 && (
+                      <Link to={`/organizer/events/${ev.id}/venue`} className="tl-wz-btn" style={{ minHeight: 42 }}>
+                        <Settings2 className="w-4 h-4" /> Seating plan
+                      </Link>
+                    )}
+                    {(state.reply || (ev.reservedAt && ev._count?.tiers > 0)) && (
+                      <Link to={`/organizer/events/${ev.id}/submit`} className={`tl-wz-btn${state.reply ? ' tl-wz-btn--green' : ''}`} style={{ minHeight: 42 }}>
+                        <CheckCircle2 className="w-4 h-4" /> {state.reply ? 'Reply to TicketLedger' : 'Review & send'}
+                      </Link>
+                    )}
+                    {['DRAFT', 'REJECTED', 'PUBLISHED', 'PAUSED'].includes(ev.status) && (
                       <Link to={`/organizer/events/${ev.id}/edit`} className="tl-wz-btn" style={{ minHeight: 42 }}>
                         <Pencil className="w-4 h-4" /> Edit this date
                       </Link>
                     )}
-                    {ev.status === 'REJECTED' && (
+                    {['DRAFT', 'REJECTED'].includes(ev.status) && (
                       <button type="button" className="tl-wz-btn tl-wz-btn--green" style={{ minHeight: 42 }} disabled={busyRow === row.key} onClick={() => requestAgain(row.key, ev.id)}>
                         <Send className="w-4 h-4" /> Request again
                       </button>
@@ -476,9 +512,40 @@ export default function PrebookForm() {
               ) : (
                 <>
                   <div className="tl-wz-grid">
-                    <Field id={`v-${row.key}`} label="Venue" wide error={check && !check.ok && check.field === 'venue' && row.venue ? check.message : null} hint="Name the exact space, e.g. “Air University – FMC Parking”. Different spaces at the same campus can host events at the same time.">
-                      <input id={`v-${row.key}`} className="tl-wz-input" value={row.venue} maxLength={200} onChange={(e) => setRow(row.key, { venue: e.target.value })} placeholder="e.g. Air University – FMC Parking" />
-                    </Field>
+                    <div className="tl-wz-field is-wide">
+                      <label htmlFor={`v-${row.key}`}>Venue</label>
+                      <VenuePicker
+                        id={`v-${row.key}`}
+                        city={shared.city}
+                        value={row}
+                        legacyVenue={!row.placeId && row.venue ? row.venue : ''}
+                        onChange={(place) => setPlace(row.key, place)}
+                        error={decision?.blocked.some((r) => r.key === row.key) && !row.placeId}
+                      />
+                    </div>
+                    {row.placeId && (
+                      <>
+                        <Field id={`s-${row.key}`} label="Space inside the venue (optional)" wide hint="e.g. Hall 2 or FMC Parking. Leave it empty to book the whole venue. Different spaces at the same venue can host events at the same time.">
+                          <input id={`s-${row.key}`} className="tl-wz-input" value={row.space || ''} maxLength={120} onChange={(e) => setRow(row.key, { space: e.target.value })} placeholder="Whole venue" />
+                        </Field>
+                        <div className="tl-wz-field is-wide">
+                          <span className="tl-wz-label">Pick a date</span>
+                          <AvailabilityCalendar
+                            city={shared.city}
+                            placeId={row.placeId}
+                            space={row.space?.trim() || ''}
+                            date={row.date}
+                            onPick={(iso) => setRow(row.key, { date: iso })}
+                            refreshKey={Object.keys(rowEvents).length}
+                            formBookings={data.rows
+                              .map((other, i) => ({ other, i }))
+                              .filter(({ other }) => other.key !== row.key && !rowEvents[other.key] && samePlace(row, other))
+                              .map(({ other, i }) => ({ formLabel: `Date ${i + 1}`, start: pktInstant(other.date, other.time), end: pktInstant(other.endDate, other.endTime) }))
+                              .filter((b) => b.end > b.start)}
+                          />
+                        </div>
+                      </>
+                    )}
                     <Field id={`d-${row.key}`} label="Start date" error={check && !check.ok && check.field === 'date' && row.date ? check.message : null}>
                       <input id={`d-${row.key}`} className="tl-wz-input" type="date" min={todayIso()} value={row.date} onChange={(e) => setRow(row.key, { date: e.target.value })} />
                     </Field>
@@ -502,7 +569,7 @@ export default function PrebookForm() {
                       ) : check?.ok ? (
                         <p className="tl-wz-hint" style={{ color: '#16a34a' }}>
                           <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" style={{ display: 'inline', marginRight: 6, verticalAlign: '-2px' }} />
-                          Available: {row.venue.trim()}, {twelveHour(row.time)} – {row.endDate !== row.date ? `${row.endDate}, ` : ''}{twelveHour(row.endTime)}, with at least an hour around other bookings.
+                          Free: {venueText(row)}, {twelveHour(row.time)} – {row.endDate !== row.date ? `${row.endDate}, ` : ''}{twelveHour(row.endTime)}, with at least an hour around other bookings.
                         </p>
                       ) : (
                         <p className="tl-wz-hint">Running past midnight? Set the end date to the next day. Bookings at the same venue need at least one hour between them.</p>
@@ -510,15 +577,31 @@ export default function PrebookForm() {
                     </div>
                   </div>
 
-                  {/* ---------- Per-date customization ---------- */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, fontWeight: 600, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={row.customize} onChange={(e) => setRow(row.key, { customize: e.target.checked })} />
-                    Customize this date
-                  </label>
-                  {!row.customize && <p className="tl-wz-hint">Uses the event name and images above, and is shown publicly once it’s approved and has tickets.</p>}
+                  <div style={{ marginTop: 16 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={row.custom?.isPublic !== false} onChange={(e) => setCustom(row.key, { isPublic: e.target.checked })} />
+                      Show this date publicly
+                    </label>
+                    <p className="tl-wz-hint">
+                      {row.custom?.isPublic !== false
+                        ? 'It appears on TicketLedger once it’s approved and has tickets and seating.'
+                        : 'It stays hidden after approval. The reservation is kept, and you can show it later.'}
+                    </p>
+                  </div>
+
+                  {/* ---------- Per-date overrides: only useful when the form has more than one date ---------- */}
+                  {(data.rows.length > 1 || row.customize) && (
+                    <>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontWeight: 600, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={row.customize} onChange={(e) => setRow(row.key, { customize: e.target.checked })} />
+                        Use a different name or images for {label.toLowerCase()}
+                      </label>
+                      {!row.customize && <p className="tl-wz-hint">Optional. Leave it off and this date uses the event name and images above.</p>}
+                    </>
+                  )}
                   {row.customize && (
                     <div style={{ marginTop: 12, paddingTop: 14, borderTop: '1px solid var(--st-line-soft)' }}>
-                      <p className="tl-wz-hint" style={{ marginBottom: 12 }}>Anything you leave empty uses the shared value. Changes here only affect {label}.</p>
+                      <p className="tl-wz-hint" style={{ marginBottom: 12 }}>All optional. Only fill in what should differ for {label}; anything left empty uses the event name and images above, so there’s no need to upload them again.</p>
                       <div className="tl-wz-grid">
                         <Field id={`n-${row.key}`} label="Name for this date (optional)" wide>
                           <input id={`n-${row.key}`} className="tl-wz-input" maxLength={150} value={row.custom?.name || ''} onChange={(e) => setCustom(row.key, { name: e.target.value })} placeholder={shared.name || 'Uses the event name'} />
@@ -540,17 +623,6 @@ export default function PrebookForm() {
                           {Array.isArray(ci.gallery)
                             ? <UploadedGalleryField urls={ci.gallery} onChange={(urls) => setCustomImage(row.key, 'gallery', urls)} />
                             : <p className="tl-wz-hint">Uses the shared gallery ({(shared.images.gallery || []).length} image{(shared.images.gallery || []).length === 1 ? '' : 's'}).</p>}
-                        </div>
-                        <div className="tl-wz-field is-wide">
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600, cursor: 'pointer' }}>
-                            <input type="checkbox" checked={row.custom?.isPublic !== false} onChange={(e) => setCustom(row.key, { isPublic: e.target.checked })} />
-                            Show this date publicly
-                          </label>
-                          <p className="tl-wz-hint">
-                            {row.custom?.isPublic !== false
-                              ? 'It appears on TicketLedger once it’s approved and has tickets and seating.'
-                              : 'It stays hidden after approval. The reservation is kept, and you can show it later.'}
-                          </p>
                         </div>
                       </div>
                     </div>
@@ -577,7 +649,7 @@ export default function PrebookForm() {
           <ul style={{ margin: '10px 0 16px', display: 'grid', gap: 6, fontSize: 14.5 }}>
             {decision.blocked.map((r) => (
               <li key={r.key}>
-                <strong>{labelOf(r.key)}:</strong> {checks[r.key]?.incomplete ? 'Fill in its venue, dates and times.' : checks[r.key]?.message}
+                <strong>{labelOf(r.key)}:</strong> {checks[r.key]?.incomplete ? 'Pick its venue on the map, then its dates and times.' : checks[r.key]?.message}
               </li>
             ))}
           </ul>
@@ -599,13 +671,13 @@ export default function PrebookForm() {
 
       <footer className="tl-wz-card" style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
         <p className="tl-wz-hint" style={{ maxWidth: 560 }}>
-          Submitting sends each date to TicketLedger for approval. A date is <strong>Reserved</strong> only after it’s approved. Until then the slot is held for your request.
+          The calendar already shows whether a date is free. Sending a request holds that slot for you straight away, so no one else can take it. TicketLedger then reviews the event itself, and once it’s approved the date is <strong>Reserved</strong>.
         </p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button type="button" className="tl-wz-btn" onClick={discard}><Trash2 className="w-4 h-4" /> Discard form</button>
           <button type="button" className="tl-wz-btn tl-wz-btn--green" onClick={submit} disabled={submitting || !openRows.length}>
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {openRows.length ? `Submit ${openRows.length} date${openRows.length === 1 ? '' : 's'} for approval` : 'All dates submitted'}
+            {openRows.length ? `Request reservation${openRows.length === 1 ? '' : ` for ${openRows.length} dates`}` : 'All dates sent'}
           </button>
         </div>
       </footer>

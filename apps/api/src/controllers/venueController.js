@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
-import { canManageEvent } from '../utils/eventAccess.js';
+import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE, underAdminReview } from '../utils/eventAccess.js';
 import { MediaValidationError, validateEventImage } from '../services/eventMediaService.js';
 import { uploadFile } from '../utils/storage.js';
 import {
@@ -33,6 +33,8 @@ async function managedEvent(req, { write = false } = {}) {
   if (!(await canManageEvent(req.user, event, { requireApproved: write }))) {
     throw new VenueError(403, 'You are not authorized to manage this event’s venue.');
   }
+  // Seating and tiers are part of what the admin is reviewing
+  if (write && reviewLocked(req.user, event)) throw new VenueError(409, REVIEW_LOCK_MESSAGE);
   return event;
 }
 
@@ -134,7 +136,7 @@ async function editorPayload(event) {
   const legacySeats = await prisma.seat.count({ where: { eventId: event.id, layoutKey: null } });
   const legacyBooked = legacySeats ? await prisma.seat.count({ where: { eventId: event.id, layoutKey: null, OR: [{ status: 'SOLD' }, { ticket: { isNot: null } }] } }) : 0;
   return {
-    event: { id: event.id, name: event.name, type: event.type, status: event.status, venue: event.venue, city: event.city },
+    event: { id: event.id, name: event.name, type: event.type, status: event.status, venue: event.venue, city: event.city, isHidden: event.isHidden, prebookDraftId: event.prebookDraftId, underReview: req.user.role !== 'SUPER_ADMIN' && underAdminReview(event) },
     suggestedTemplate: suggestTemplate(event.type),
     tiers,
     draft: draft && { id: draft.id, data: draft.data, updatedAt: draft.updatedAt },

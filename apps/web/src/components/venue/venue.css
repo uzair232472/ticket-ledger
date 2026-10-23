@@ -189,6 +189,11 @@
 .tl-ve-sections h2 { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; color: #0b1a10; margin-bottom: 10px; }
 .tl-ve-level select { width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid #e2e8e1; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; font-weight: 600; color: #0b1a10; }
 .tl-ve-sections ul { display: grid; gap: 4px; margin-top: 10px; }
+.tl-ve-sections li { display: flex; align-items: center; gap: 2px; }
+.tl-ve-sections li button.tl-ve-sec-del { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; color: #9aa69e; }
+.tl-ve-sections li button.tl-ve-sec-del:hover { background: #fff1f2; border-color: #fecdd3; color: #be123c; }
+.tl-ve-delbtn { color: #be123c !important; border-color: #fecdd3 !important; }
+.tl-ve-delbtn:hover { background: #fff1f2 !important; }
 .tl-ve-sections li button {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto auto;
@@ -236,12 +241,18 @@
   border: 1px solid #e2e8e1;
   border-radius: 12px;
   background: #ffffff;
+  /* Stays on screen while scrolling, so the save button is always in reach */
+  position: sticky;
+  bottom: 12px;
+  z-index: 20;
+  box-shadow: 0 8px 24px rgba(11, 26, 16, 0.12);
 }
 .tl-ve-stat { display: flex; align-items: center; gap: 12px; padding: 4px 12px; border-right: 1px solid #edf1ec; color: #5b6b61; }
 .tl-ve-stat small { display: block; font-size: 12px; }
 .tl-ve-stat strong { font-size: 20px; font-weight: 800; color: #0b1a10; }
 .tl-ve-stat strong.is-green { color: #15803d; }
-.tl-ve-ready { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid; }
+.tl-ve-ready { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid; }
+.tl-ve-ready-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 .tl-ve-ready strong { display: block; font-size: 14px; }
 .tl-ve-ready small { font-size: 12px; opacity: 0.85; }
 .tl-ve-ready.is-ok { background: #eef7ef; border-color: #d3ead7; color: #15803d; }

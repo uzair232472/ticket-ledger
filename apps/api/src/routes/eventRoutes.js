@@ -15,6 +15,7 @@ import {
   checkEventSchedule,
   getCategories,
   createCategory,
+  setInitialTiers,
 } from '../controllers/eventController.js';
 import { EVENT_IMAGE_SPECS, HERO_VIDEO_SPECS, LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
 import { requestPromotion, withdrawPromotion, getHeroPromotions } from '../controllers/promotionController.js';
@@ -34,7 +35,7 @@ import {
 import { authenticateJWT, requireRole, optionalAuth } from '../middlewares/auth.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 
-import { getSubmissionStatus, submitEventForReview } from '../controllers/eventReviewController.js';
+import { getSubmissionStatus, submitEventForReview, replyToReview, withdrawFromReview } from '../controllers/eventReviewController.js';
 
 const router = express.Router();
 
@@ -121,6 +122,9 @@ router.put(
   updateEvent
 );
 
+// First ticket tiers of an event created without any (a reserved prebooked date)
+router.post('/:id/tiers', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), setInitialTiers);
+
 router.get(
   '/organizer/my-events',
   authenticateJWT,
@@ -131,6 +135,10 @@ router.get(
 // Review & submit: readiness check, and sending the event to admins for approval
 router.get('/:id/submission', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), getSubmissionStatus);
 router.post('/:id/submit', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), submitEventForReview);
+// Answer an admin's question (and optionally accept the date they suggested)
+router.post('/:id/review-reply', authenticateJWT, requireRole('ORGANIZER'), replyToReview);
+// Take it back from review to change it (editing is locked while an admin reviews it)
+router.post('/:id/review-withdraw', authenticateJWT, requireRole('ORGANIZER'), withdrawFromReview);
 
 // Promotion requests: top of listings and the home page hero (owning organizer or Super Admin)
 router.post('/:id/promotion', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), promoVideoUpload, requestPromotion);

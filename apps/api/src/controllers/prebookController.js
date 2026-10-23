@@ -3,12 +3,14 @@ import prisma from '../config/prisma.js';
 import { canManageEvent } from '../utils/eventAccess.js';
 import { MediaValidationError, uploadEventImages } from '../services/eventMediaService.js';
 import {
+  PLACE_ID,
   PrebookError,
   checkRows,
   draftDataSchema,
   draftTitle,
   rowEvents,
   submitDraftRows,
+  venueCalendar,
 } from '../services/prebookService.js';
 
 /*
@@ -110,6 +112,25 @@ export const checkAvailability = async (req, res) => {
   }
 };
 
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const calendarSchema = z.object({
+  city: z.string().trim().min(2).max(60),
+  placeId: z.string().regex(PLACE_ID, 'Pick the venue on the map first.'),
+  space: z.string().trim().max(120).optional().default(''),
+  from: isoDay,
+  to: isoDay,
+});
+
+/** GET /api/prebook/availability?city&placeId&space&from&to: bookings at a venue, for the date calendar. */
+export const availabilityCalendar = async (req, res) => {
+  try {
+    const bookings = await venueCalendar(calendarSchema.parse(req.query), req.company.id);
+    return res.json({ success: true, data: { bookings } });
+  } catch (error) {
+    return fail(res, error, 'Could not load this venue’s calendar.');
+  }
+};
+
 /**
  * POST /api/prebook/drafts/:id/submit { rowKeys? }: sends the chosen dates (default: all) for approval.
  * Answers one result per date; dates left out, or that clash, stay in the draft to fix and submit later.
@@ -125,7 +146,7 @@ export const submitDraft = async (req, res) => {
     const message = failed
       ? `${submitted} date${submitted === 1 ? '' : 's'} submitted. ${failed} need${failed === 1 ? 's' : ''} changes and stay${failed === 1 ? 's' : ''} in your draft.`
       : submitted
-        ? `${submitted} date${submitted === 1 ? '' : 's'} submitted for approval. They are not reserved until an admin approves them.`
+        ? `${submitted} date${submitted === 1 ? '' : 's'} sent. The slots are held for you while TicketLedger reviews the event.`
         : 'These dates were already submitted.';
     return res.status(failed && !submitted ? 409 : 200).json({
       success: !failed,
@@ -173,6 +194,10 @@ export const setVisibility = async (req, res) => {
       ]);
       if (!tiers || !(plan || seats)) {
         throw new PrebookError(400, 'Add ticket prices and publish a seating plan for this date before showing it publicly.');
+      }
+      // A prebooked date goes public only through its final admin approval, never by the organizer alone
+      if (event.prebookDraftId && event.launchStatus !== 'APPROVED') {
+        throw new PrebookError(400, 'Send this date for final approval first. It is shown publicly once TicketLedger approves it.');
       }
     }
     const updated = await prisma.event.update({ where: { id: event.id }, data: { isHidden: hidden }, select: { id: true, isHidden: true, status: true, reservedAt: true } });

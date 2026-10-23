@@ -10,8 +10,9 @@ import { ScheduleError, findScheduleConflicts, lockVenue, normalizeVenue, occupi
  * - Cancel: tickets stop working, open resale listings close, and everyone who paid is refunded in full.
  * - Postpone (no new date yet): sales pause and tickets stay valid; holders can get a refund at any time.
  *   With no new date after POSTPONE_LIMIT_DAYS the hourly job cancels the event (with refunds).
- * - Reschedule: an event with ticket holders can't just be edited. The organizer requests the change; an
- *   admin approves it unless it is minor (same venue and day, start and end within two hours). Tickets stay
+ * - Reschedule: an approved event's date, time or venue can't just be edited. The organizer requests the
+ *   change and an admin approves it (a minor change, same venue and day within two hours, opens no refund
+ *   window). Tickets stay
  *   valid for the new date, open resale listings are paused, and holders can get a full refund until the
  *   refund window closes (14 days, or 48 hours before the new date, whichever is first).
  *
@@ -238,8 +239,7 @@ async function assertSlotFree(db, eventId, slot) {
 }
 
 /**
- * Organizer asks to move the event. With no ticket holders it is applied right away; a minor change is
- * applied right away and holders are told; anything else waits for an admin.
+ * Organizer asks to move an approved event. Every change waits for an admin, who applies it on approval.
  */
 export async function requestReschedule({ event, actor, input }) {
   if (!['PUBLISHED', 'PAUSED'].includes(event.status)) {
@@ -251,6 +251,8 @@ export async function requestReschedule({ event, actor, input }) {
   if (startsAt < new Date()) throw new LifecycleError(400, 'The new date has to be in the future.', { field: 'date' });
   const next = { startsAt, endsAt, city: String(input.city || event.city).trim(), venue: String(input.venue || event.venue).trim() };
   if (next.venue.length < 2) throw new LifecycleError(400, 'Enter the venue.', { field: 'venue' });
+  // Same venue: it is still the place picked on the map
+  if (normalizeVenue(event.venue) === normalizeVenue(next.venue) && event.city === next.city) Object.assign(next, { venuePlaceId: event.venuePlaceId, venueSpace: event.venueSpace });
   const { start, end } = occupiedInterval(event);
   if (start.getTime() === startsAt.getTime() && end.getTime() === endsAt.getTime() && normalizeVenue(event.venue) === normalizeVenue(next.venue) && event.city === next.city) {
     throw new LifecycleError(400, 'That’s the current date, time and venue. Change at least one of them.');
@@ -287,16 +289,13 @@ export async function requestReschedule({ event, actor, input }) {
     },
   });
 
-  // Nobody to protect, or a small same-day shift: apply now
-  if (holders === 0 || minor) {
-    await applyScheduleChange({ changeId: change.id, reviewer: null });
-    return { applied: true, minor, change };
-  }
+  // Every date, time or venue change of an approved event is approved by an admin first (a small same-day
+  // shift still gets no refund window once applied)
 
   await notifyAdmins({
     type: 'ADMIN_SCHEDULE_CHANGE_REQUEST',
     title: `Date change to review: ${event.name}`,
-    message: `${event.company.companyName} wants to move “${event.name}” from ${slotText(event)} to ${slotText({ ...next, date: change.newDate, time: change.newTime })}. ${holders} ticket${holders === 1 ? '' : 's'} sold. Reason: ${reason}`,
+    message: `${event.company.companyName} wants to move “${event.name}” from ${slotText(event)} to ${slotText({ ...next, date: change.newDate, time: change.newTime })}. ${holders ? `${holders} ticket${holders === 1 ? '' : 's'} sold.` : 'No tickets sold yet.'} Reason: ${reason}`,
     link: '/admin/event-approvals?tab=changes',
   });
   await prisma.notification.create({
@@ -304,15 +303,15 @@ export async function requestReschedule({ event, actor, input }) {
       userId: event.company.userId,
       type: 'SCHEDULE_CHANGE_SUBMITTED',
       title: `Date change sent for approval: ${event.name}`,
-      message: `Your request to move “${event.name}” to ${slotText({ ...next, date: change.newDate, time: change.newTime })} is waiting for a TicketLedger admin. Attendees are emailed once it’s approved.`,
+      message: `Your request to move “${event.name}” to ${slotText({ ...next, date: change.newDate, time: change.newTime })} is waiting for a TicketLedger admin. The event keeps its current date until it’s approved${holders ? ', and attendees are emailed once it is' : ''}.`,
       link: `/organizer/events/${event.id}/changes`,
     },
   });
   await prisma.auditLog.create({ data: { userId: actor.id, action: 'EVENT_RESCHEDULE_REQUESTED', targetType: 'Event', targetId: event.id, details: { changeId: change.id, reason } } });
-  return { applied: false, minor: false, change };
+  return { applied: false, minor, change };
 }
 
-/** Applies an approved (or minor / no-holder) change and tells everyone. `reviewer` is the admin, if any. */
+/** Applies an approved change and tells everyone. `reviewer` is the admin who approved it. */
 export async function applyScheduleChange({ changeId, reviewer, comment = '' }) {
   const change = await prisma.eventScheduleChange.findUnique({ where: { id: changeId }, include: { event: { include: { company: true } } } });
   if (!change || change.status !== 'PENDING') throw new LifecycleError(409, 'This date change is no longer waiting for approval.');
@@ -323,6 +322,8 @@ export async function applyScheduleChange({ changeId, reviewer, comment = '' }) 
   const now = new Date();
   const refundWindowEndsAt = giveWindow ? refundWindowFor(change.newStartsAt) : null;
   const slot = { city: change.newCity, venue: change.newVenue, startsAt: change.newStartsAt, endsAt: change.newEndsAt };
+  const venueKept = normalizeVenue(change.newVenue) === normalizeVenue(event.venue) && change.newCity === event.city;
+  if (venueKept) Object.assign(slot, { venuePlaceId: event.venuePlaceId, venueSpace: event.venueSpace });
 
   const { updated, paused } = await prisma.$transaction(async (tx) => {
     await lockVenue(tx, slot);
@@ -344,6 +345,7 @@ export async function applyScheduleChange({ changeId, reviewer, comment = '' }) 
         latitude: change.newLatitude,
         longitude: change.newLongitude,
         locationAddress: change.newLocationAddress,
+        ...(venueKept ? {} : { venuePlaceId: null, venueSpace: null }),
         rescheduledAt: now,
         ...(giveWindow ? { refundWindowEndsAt, refundReminderSentAt: null } : {}),
         // A postponed event goes back on sale with its new date

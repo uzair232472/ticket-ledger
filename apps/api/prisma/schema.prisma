@@ -95,6 +95,15 @@ enum EventStatus {
   CANCELLED
 }
 
+// Final "go live" review of a prebooked date: after its reservation is approved the organizer adds tickets and
+// seating, then sends it again; it is shown publicly only once an admin approves that too
+enum LaunchStatus {
+  NONE
+  PENDING // sent with tickets and seating, waiting for an admin
+  CHANGES_REQUESTED // an admin asked a question or suggested a change; waiting for the organizer
+  APPROVED // may be shown publicly and sold
+}
+
 // Organizer promotion requests (top of listings, home hero banner), decided by a Super Admin
 enum PromotionStatus {
   NONE
@@ -315,17 +324,17 @@ model Company {
 }
 
 model Event {
-  id                   String          @id @default(uuid())
+  id                   String               @id @default(uuid())
   companyId            String
-  company              Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name                 String
   description          String
   type                 EventType
   // Set when type is OTHER; categoryLabel copies its name so every page can show it without a join
   customCategoryId     String?
-  customCategory       CustomCategory? @relation(fields: [customCategoryId], references: [id])
+  customCategory       CustomCategory?      @relation(fields: [customCategoryId], references: [id])
   categoryLabel        String?
-  status               EventStatus     @default(DRAFT)
+  status               EventStatus          @default(DRAFT)
   date                 DateTime
   time                 String
   // Exact schedule (Pakistan time entered by the organizer, stored as instants). `date` and `time` above
@@ -335,13 +344,17 @@ model Event {
   // Set once the venue slot is secured (admin approval). Only then is the date shown as "Reserved".
   reservedAt           DateTime?
   // Kept off public pages and new sales by the organizer. The slot stays held and sold tickets stay valid.
-  isHidden             Boolean         @default(false)
+  isHidden             Boolean              @default(false)
   // Dates submitted from a prebooking form: one event per form row, so a retried submit never duplicates one
   prebookDraftId       String?
-  prebookDraft         PrebookDraft?   @relation(fields: [prebookDraftId], references: [id], onDelete: SetNull)
+  prebookDraft         PrebookDraft?        @relation(fields: [prebookDraftId], references: [id], onDelete: SetNull)
   prebookRowKey        String?
   city                 String
   venue                String
+  // The map place the venue was picked from ("google:<place id>" or "osm:<type>/<id>") and the space inside it
+  // ("Hall 2"). Two events at the same place clash unless both name different spaces.
+  venuePlaceId         String?
+  venueSpace           String?
   // Exact venue location picked on the map by the organizer (home map pin, "Open in Google Maps")
   latitude             Float?
   longitude            Float?
@@ -358,12 +371,22 @@ model Event {
   reviewedAt           DateTime?
   reviewedBy           String?
   reviewComment        String?
+  // An admin asked a question or suggested another slot instead of deciding: the request stays pending and
+  // keeps its slot, but waits for the organizer's reply ("CHANGES_REQUESTED"); null otherwise
+  reviewRequest        String?
+  // The slot the admin suggested with that request (the organizer can accept it in one step)
+  suggestedStartsAt    DateTime?
+  suggestedEndsAt      DateTime?
+  // Prebooked dates only: the final review with tickets and seating (see LaunchStatus)
+  launchStatus         LaunchStatus         @default(NONE)
+  launchSubmittedAt    DateTime?
+  reviewMessages       EventReviewMessage[]
   // Promotion requests. Priority lists the event above the others on discovery pages; hero puts it in the
   // home page hero (its promo video, or its banner when no video was given). Both apply only while the
   // event is on sale, and only once an admin approves them.
-  priorityStatus       PromotionStatus @default(NONE)
+  priorityStatus       PromotionStatus      @default(NONE)
   priorityRequestedAt  DateTime?
-  heroStatus           PromotionStatus @default(NONE)
+  heroStatus           PromotionStatus      @default(NONE)
   heroRequestedAt      DateTime?
   heroVideoUrl         String?
   heroVideoMobileUrl   String?
@@ -387,8 +410,8 @@ model Event {
   rescheduledAt        DateTime?
   refundWindowEndsAt   DateTime? // after a reschedule: holders can ask for a refund until then
   refundReminderSentAt DateTime?
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   galleryImages    EventGalleryImage[]
   venueLayouts     VenueLayout[]
@@ -791,4 +814,24 @@ model PrebookDraft {
   events Event[]
 
   @@index([companyId, updatedAt])
+}
+
+// The conversation between an organizer and the admins about one event's review: submissions, questions,
+// suggested dates, replies and decisions, oldest first. Kept as a record of what was asked and agreed.
+model EventReviewMessage {
+  id                 String    @id @default(uuid())
+  eventId            String
+  event              Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  authorId           String
+  authorEmail        String
+  authorRole         String // ADMIN | ORGANIZER
+  stage              String // RESERVATION (first approval) | LAUNCH (prebooked date going public)
+  kind               String // SUBMITTED | APPROVED | REJECTED | CHANGES_REQUESTED | REPLY
+  message            String?
+  suggestedStartsAt  DateTime?
+  suggestedEndsAt    DateTime?
+  acceptedSuggestion Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+
+  @@index([eventId, createdAt])
 }

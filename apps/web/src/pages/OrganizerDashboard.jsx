@@ -31,6 +31,13 @@ import {
   ScanLine,
   ShieldAlert,
   Megaphone,
+  Pencil,
+  Armchair,
+  ClipboardCheck,
+  CalendarClock,
+  BarChart3,
+  Trash2,
+  MessageSquareWarning,
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -46,11 +53,28 @@ const STATUS_BADGE = {
   DRAFT: ['Draft', 'is-warn'],
   PRELAUNCH_ANALYSIS: ['Pre-launch', 'is-warn'],
   PENDING_APPROVAL: ['Awaiting approval', 'is-warn'],
-  REJECTED: ['Changes requested', 'is-warn'],
+  REJECTED: ['Rejected', 'is-warn'],
   PAUSED: ['Paused', 'is-warn'],
   COMPLETED: ['Completed', ''],
   CANCELLED: ['Cancelled', ''],
 };
+/** Badge for where an event stands, including the review states (a reply needed, a prebooked date's final approval). */
+function eventBadge(event) {
+  if (event.postponedAt) return ['Postponed', 'is-warn'];
+  if (event.status === 'PENDING_APPROVAL' && event.reviewRequest === 'CHANGES_REQUESTED') return ['Reply needed', 'is-warn'];
+  if (event.prebookDraftId && event.reservedAt && ['PUBLISHED', 'PAUSED'].includes(event.status)) {
+    if (event.launchStatus === 'CHANGES_REQUESTED') return ['Reserved · reply needed', 'is-warn'];
+    if (event.launchStatus === 'PENDING') return ['Reserved · in review', 'is-warn'];
+    if (event.launchStatus !== 'APPROVED') return ['Reserved · setup needed', 'is-warn'];
+  }
+  if (event.status === 'PUBLISHED' && event.isHidden) return ['Hidden', 'is-warn'];
+  return STATUS_BADGE[event.status] || [event.status, ''];
+}
+// Needs the Review page: not on sale yet, a question to answer, or a reserved date still to be approved
+const needsReview = (event) =>
+  !['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status) || (event.prebookDraftId && event.reservedAt && event.launchStatus !== 'APPROVED');
+const replyNeeded = (event) => event.reviewRequest === 'CHANGES_REQUESTED' || event.launchStatus === 'CHANGES_REQUESTED';
+
 const startOfToday = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -73,12 +97,13 @@ function totalsByEvent(tiers) {
 /** Event card: photo with status, title, date and venue, revenue / tickets box, quick links. */
 function EventCard({ event, index, totals, selected, onStats, onDelete }) {
   const image = getEventVisual(event, index).image;
-  const [badge, badgeClass] = STATUS_BADGE[event.status] || [event.status, ''];
+  const [badge, badgeClass] = eventBadge(event);
+  const promoPending = event.priorityStatus === 'REQUESTED' || event.heroStatus === 'REQUESTED';
   return (
     <article className={`tl-st-ev${selected ? ' is-selected' : ''}`}>
       <Link to={`/events/${event.id}`} className="tl-st-ev-media" tabIndex={-1} aria-hidden="true">
         <img src={image} alt="" loading="lazy" onError={(e) => e.currentTarget.classList.add('is-broken')} />
-        <span className={`tl-st-ev-badge ${badgeClass}`}>{event.postponedAt ? 'Postponed' : badge}</span>
+        <span className={`tl-st-ev-badge ${badgeClass}`}>{badge}</span>
         {/* Promotion running now, with its end date */}
         {(isPromotionActive(event, 'hero') || isPromotionActive(event, 'priority')) && (() => {
           const kind = isPromotionActive(event, 'hero') ? 'hero' : 'priority';
@@ -110,26 +135,30 @@ function EventCard({ event, index, totals, selected, onStats, onDelete }) {
             </div>
           </div>
         </div>
-        <div className="tl-st-ev-links">
-          <button type="button" onClick={onStats} aria-pressed={selected}>Stats</button>
-          <Link to={`/organizer/events/${event.id}/edit`}>Edit</Link>
-          <Link to={`/organizer/events/${event.id}/venue`}>Seating</Link>
-          {/* Not on sale yet: preview the details and send it (or see its review state) */}
-          {!['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status) && (
-            <Link to={`/organizer/events/${event.id}/submit`}>{event.status === 'PENDING_APPROVAL' ? 'Preview' : 'Preview & submit'}</Link>
-          )}
-          {!['CANCELLED', 'COMPLETED'].includes(event.status) && (
-            <Link to={`/organizer/events/${event.id}/submit#promote`} title="Ask for top of listings or the home page hero banner">
-              <Megaphone className="w-3.5 h-3.5" aria-hidden="true" style={{ display: 'inline', verticalAlign: '-2px', marginRight: 3 }} />
-              {event.priorityStatus === 'REQUESTED' || event.heroStatus === 'REQUESTED' ? 'Promotion pending' : 'Promote'}
+        {/* Actions wrap into a grid at any card width; Stats, Delete and the event page sit on their own row */}
+        <div className="tl-st-ev-actions">
+          {needsReview(event) && (
+            <Link to={`/organizer/events/${event.id}/submit`} className={replyNeeded(event) ? 'is-primary' : ''}>
+              {replyNeeded(event) ? <MessageSquareWarning className="w-4 h-4" aria-hidden="true" /> : <ClipboardCheck className="w-4 h-4" aria-hidden="true" />}
+              {replyNeeded(event) ? 'Reply' : event.status === 'PENDING_APPROVAL' || event.launchStatus === 'PENDING' ? 'Review status' : 'Review & send'}
             </Link>
           )}
-          {/* Live events with buyers are cancelled (refunds) or moved here, not deleted or edited */}
-          {['PUBLISHED', 'PAUSED'].includes(event.status) && (
-            <Link to={`/organizer/events/${event.id}/changes`}>Cancel or change date</Link>
+          <Link to={`/organizer/events/${event.id}/edit`}><Pencil className="w-4 h-4" aria-hidden="true" /> Edit</Link>
+          <Link to={`/organizer/events/${event.id}/venue`}><Armchair className="w-4 h-4" aria-hidden="true" /> Seating</Link>
+          {!['CANCELLED', 'COMPLETED'].includes(event.status) && (
+            <Link to={`/organizer/events/${event.id}/submit#promote`} title="Ask for top of listings or the home page hero banner">
+              <Megaphone className="w-4 h-4" aria-hidden="true" /> {promoPending ? 'Promo pending' : 'Promote'}
+            </Link>
           )}
-          <button type="button" className="tl-st-ev-delete" onClick={onDelete}>Delete</button>
-          <Link to={`/events/${event.id}`} className="tl-st-ev-open" aria-label={`Open the ${event.name} event page`}>
+          {/* Live events are moved (with admin approval) or cancelled with refunds here */}
+          {['PUBLISHED', 'PAUSED'].includes(event.status) && (
+            <Link to={`/organizer/events/${event.id}/changes`}><CalendarClock className="w-4 h-4" aria-hidden="true" /> Date / cancel</Link>
+          )}
+        </div>
+        <div className="tl-st-ev-links">
+          <button type="button" onClick={onStats} aria-pressed={selected}><BarChart3 className="w-4 h-4" aria-hidden="true" /> {selected ? 'Hide stats' : 'Stats'}</button>
+          <button type="button" className="tl-st-ev-delete" onClick={onDelete}><Trash2 className="w-4 h-4" aria-hidden="true" /> Delete</button>
+          <Link to={`/events/${event.id}`} className="tl-st-ev-open" aria-label={`Open the ${event.name} event page`} title="Open the event page">
             <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
           </Link>
         </div>
