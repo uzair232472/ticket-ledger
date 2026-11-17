@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StatCard, Panel, Badge, Avatar } from '../components/dash/Studio';
 import { useDialog } from '../components/ui/DialogProvider';
+import api from '../utils/api';
+import { can } from '../lib/permissions';
 import {
   Users,
   BarChart3,
@@ -23,6 +25,54 @@ import {
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+/**
+ * Automatic reminders (organizations only): after a checkout lapses unpaid, wait N hours, then remind the customer
+ * once (optionally with a personal code). Shows how many reminded customers bought tickets afterwards.
+ */
+function AutoRecovery() {
+  const [data, setData] = useState(null);
+  const [form, setForm] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const load = () => api.get('/org/recovery').then((r) => { setData(r.data.data); setForm(r.data.data.settings); }).catch(() => setData(false));
+  useEffect(() => { load(); }, []);
+  if (data === false || !form) return null;
+  const save = async (patch) => {
+    const next = { ...form, ...patch };
+    setForm(next);
+    try {
+      const r = await api.put('/org/recovery', next);
+      setData(r.data.data);
+      setForm(r.data.data.settings);
+      setMsg({ tone: 'good', text: r.data.message });
+    } catch (e) {
+      setMsg({ tone: 'bad', text: e.response?.data?.message || 'Could not save.' });
+      load();
+    }
+  };
+  const s = data.last30Days;
+  return (
+    <Panel icon={Zap} title="Automatic reminders" badge={form.recoveryEnabled ? 'On' : 'Off'} badgeTone={form.recoveryEnabled ? 'green' : 'grey'}
+      sub={`When a checkout lapses unpaid, the customer gets one reminder (at most one per event every ${data.limits.cooldownDays} days, never after they bought).`}>
+      {msg && <Notice tone={msg.tone} onDismiss={() => setMsg(null)}>{msg.text}</Notice>}
+      <div className="flex flex-wrap gap-4 items-end">
+        <label className="flex items-center gap-2 text-sm font-bold">
+          <input type="checkbox" checked={form.recoveryEnabled} onChange={(e) => save({ recoveryEnabled: e.target.checked })} /> Send automatically
+        </label>
+        <label className="grid gap-1 text-xs"><span className="font-bold">Wait (hours)</span>
+          <input className="tl-dash-input" type="number" min={1} max={data.limits.windowHours - 1} value={form.recoveryDelayHours} onChange={(e) => setForm({ ...form, recoveryDelayHours: Number(e.target.value) })} onBlur={() => save({})} style={{ width: 90 }} />
+        </label>
+        <label className="grid gap-1 text-xs"><span className="font-bold">Personal discount (%)</span>
+          <input className="tl-dash-input" type="number" min={0} max={data.limits.maxPercent} value={form.recoveryDiscountPercent} onChange={(e) => setForm({ ...form, recoveryDiscountPercent: Number(e.target.value) })} onBlur={() => save({})} style={{ width: 90 }} />
+        </label>
+        <label className="grid gap-1 text-xs"><span className="font-bold">Code valid (hours)</span>
+          <input className="tl-dash-input" type="number" min={1} max={168} disabled={!form.recoveryDiscountPercent} value={form.recoveryValidHours} onChange={(e) => setForm({ ...form, recoveryValidHours: Number(e.target.value) })} onBlur={() => save({})} style={{ width: 90 }} />
+        </label>
+      </div>
+      <p className="text-sm mt-3">Last 30 days: <b>{s.sent}</b> reminders ({s.automatic} automatic, {s.manual} by hand) · <b>{s.recovered}</b> customers bought afterwards ({s.rate}%) · {s.codesUsed} codes used</p>
+    </Panel>
+  );
+}
 
 const REASONS = {
   PAYMENT_FRICTION: { tone: 'rose', label: 'Payment friction' },
@@ -58,7 +108,7 @@ function Journey({ item }) {
 export default function AbandonedIntentDashboard() {
   const dialog = useDialog();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   // Filters
   const [eventsList, setEventsList] = useState([]);
@@ -251,6 +301,9 @@ export default function AbandonedIntentDashboard() {
           note="Most common friction point across abandoned sessions"
         />
       </div>
+
+      {/* Automatic reminders (organization members who contact attendees) */}
+      {user?.role !== 'SUPER_ADMIN' && can(user, 'attendee.contact') && <div style={{ marginBottom: 20 }}><AutoRecovery /></div>}
 
       {/* Recovery actions */}
       <div className="tl-ab-actions">

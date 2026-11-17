@@ -39,6 +39,7 @@ export const dispatchNotification = async ({
   data = {},
   sendEmail = true,
   sendPush = true,
+  link = null, // page the notification (and its email button) opens
 }) => {
   if (!userId) {
     throw new Error('User ID is required to dispatch notification');
@@ -67,6 +68,7 @@ export const dispatchNotification = async ({
       type,
       title,
       message,
+      link: link || data?.actionUrl || null,
       isRead: false,
     },
   });

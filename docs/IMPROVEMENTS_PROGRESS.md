@@ -1,6 +1,6 @@
 # Improvements progress
 
-Status of the planned improvements for **A. Organization management** and **B. Booking and checkout**.
+Status of the planned improvements: **A. Organization management**, **B. Booking and checkout**, **D. Customer support** and **G. Gate management**.
 Last updated: 17 November 2026.
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
@@ -54,15 +54,15 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 | Payment-to-ticket issuance recovery | ✅ | Booking is kept, ticket valid, NFT retried with backoff (8 tries), admins alerted after 3; admin Retry / Reissue / Waive |
 | Payment retry without creating duplicate bookings | ✅ | See below |
 | Promo and discount codes | ✅ | Discount codes page (`/organizer/discounts`) + code field at checkout |
-| Abandoned cart recovery | ✅ | Reminders carry real codes (personal single-use, existing, or none). Sent by the organizer, not automatically |
-| Checkout price breakdown | 🟡 | Tickets, discount, service fee (always 0) and total are shown and stored on the order; no configurable fees yet |
-| Shopping cart with multiple ticket categories | ⬜ | One checkout already takes seats from several tiers of one event; no multi-event cart |
-| Group bookings | ⬜ | |
-| Gift tickets | ⬜ | Ticket transfer exists, but not buying for someone else at checkout |
-| Maximum tickets per customer | ⬜ | Only the per-order limit (10) exists, not a per-customer limit per event |
-| Tax and service fee configuration | ⬜ | |
-| Booking modification where policy permits | ⬜ | |
-| Downloadable booking invoices | ⬜ | Orders now store subtotal, discount and total, which an invoice can use |
+| Abandoned cart recovery | ✅ | Reminders carry real codes (personal single-use, existing, or none), sent by hand or **automatically** (Abandoned intents → Automatic reminders) |
+| Checkout price breakdown | ✅ | Tickets, discount (code or group), service fee, tax and total: shown at checkout, stored on the order, printed on the invoice |
+| Shopping cart with multiple ticket categories | ✅ | One checkout takes several ticket types of an event; the **cart** (`/cart`) pays for several events with one payment |
+| Group bookings | ✅ | Automatic group discount per event (N+ tickets → X% off), and handing each ticket of a booking to a group member |
+| Gift tickets | ✅ | My bookings → Send as a gift: to an account at once, or a claim link by email for someone without one |
+| Maximum tickets per customer | ✅ | Per event (Checkout settings), counted across all of a customer's orders for it |
+| Tax and service fee configuration | ✅ | Per organization (Checkout settings): service fee as a percent or per ticket, tax percent and name, tax registration number |
+| Booking modification where policy permits | ✅ | Seat changes: to another free seat of the same type, when the event allows it, until a cut-off before the start (up to 3 per ticket) |
+| Downloadable booking invoices | ✅ | PDF invoice per paid booking (INV-2026-000123), from My bookings |
 
 ### Payment retry without duplicates
 - Retrying checkout for the same seats (and code) **reuses the open order and its existing payment**: no second order, no second Stripe PaymentIntent.
@@ -84,19 +84,76 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 
 ---
 
+## D. Customer support (helpdesk)
+
+| Improvement | Status | What exists |
+|---|---|---|
+| Customer creates a support ticket | ✅ | **Help & Support** page (`/support`, in the account menu; linked from Contact us) |
+| Selects an issue category | ✅ | Bookings, payments, refunds, ticket access, event, account, organizers, technical, other |
+| Attaches screenshots or documents | ✅ | Images or PDF, 5 MB each, 5 per message (on the request and every reply) |
+| Receives a ticket / reference number | ✅ | e.g. `SUP-261117-7K3Q`, shown at once and in a notification + email |
+| Tracks complaint status | ✅ | Open · In progress · Waiting for your reply · Escalated · Resolved · Closed |
+| Replies to support staff | ✅ | Thread on `/support/SUP-…`; a reply reopens a resolved request (within 14 days) |
+| Support staff assign and resolve | ✅ | **Support desk** (`/support/desk`): queues (needs a reply, mine, unassigned, escalated, all, closed), assign, status, priority, resolve |
+| Admin escalates unresolved issues | ✅ | Admins escalate with a reason (priority raised, admins notified); **automatic escalation** hourly: no answer within 24 h, or a customer reply waiting 48 h |
+| Complete communication history | ✅ | Every message, attachment and change (status, assignment, priority, escalation) is in the thread; staff-only internal notes; audit log entries |
+
+- **Support agents:** admins add or remove them on the desk's *Agents* tab (by account email). Admins are always agents. Removing an agent unassigns their open requests.
+- Agents see the linked booking / event next to the conversation. Customers only see an agent's first name.
+- Resolved requests close automatically after 14 days.
+- **Who is told (in-app + email):** the customer when the request is received, on every agent reply, and when it is resolved or closed (always emailed, even with email notifications turned off). Every agent and admin on a new request; the assigned agent on a customer reply (every agent if nobody is assigned); the assignee when a request is assigned to them; every admin on an escalation.
+- Customers see status changes in the history, but not who it is assigned to, the priority, or why it was escalated (those lines are staff only).
+
+---
+
+## G. Gate management
+
+| Improvement | Status | What exists |
+|---|---|---|
+| Gate-level assignments | ✅ | Gates page → *Gate staff*: tick the gates each person may scan at (none ticked = every gate) |
+| Multiple entry and exit types | ✅ | Gates are *Entry only*, *Exit only* or *Entry & exit*; a gate can admit only some ticket types (e.g. VIP entrance); scanner has an entries / exits switch |
+| Re-entry policies | ✅ | Per event: no re-entry, unlimited, or limited to N re-entries (after an exit scan) |
+| Check-in reversal by authorized supervisors | ✅ | *Check-ins* → Reverse (reason required); the ticket becomes valid again; only the latest admission can be reversed |
+| Manual exception approval with audit logs | ✅ | Scanner: "Ask a supervisor to approve" on a refused scan → *Exceptions* tab: approve (admits the ticket) or deny, note required; audited |
+| Device registration | ✅ | A phone / tablet registers on its first scan (who, when), can be renamed |
+| Device revocation | ✅ | *Devices* → Revoke (reason required): the device can't scan, sync or download lists, and wipes its copy; can be restored |
+| Gate capacity monitoring | ✅ | Capacity per hour per gate; *Live* tab shows the last-15-minute rate, load %, and warns at 90%; people inside now |
+| Scanner synchronization status | ✅ | Devices report every 30 s: in sync, uploading, offline, offline with scans not uploaded, not seen; waiting scans, last upload, list age |
+| Gate-specific attendance reports | ✅ | *Reports* tab + CSV: entries, re-entries, exits, turned away, duplicates, exceptions, reversed, busiest 15 minutes, first/last scan, top staff per gate |
+
+- **Who supervises:** new permission `gate.supervise` (Owner, Admin, Event Manager by default). Page: `/organizer/gates` ("Gates" in the studio menu).
+- Events without gates keep working as before (staff type a gate name). Once gates are added, every scan must name one of them.
+- Offline mode follows the same rules on the device (gate ticket types, exits, re-entry) and uploads them in order.
+
+---
+
 ## Checks still to do
 
 - [ ] Commit the work (still uncommitted).
 - [ ] Click through the new screens once in the browser: Organization (Profile, Documents, Payouts & tax, Branches), Discount codes, Checkout with a code, Abandoned intents reminder, Admin → Approvals payout panel.
+- [ ] Helpdesk: open a request as a customer (with a screenshot), answer it from Support desk as admin, add an agent.
+- [ ] Gates: add gates for an event, set re-entry, scan entries and exits on a phone, raise and approve an exception, revoke and restore the device, download the report.
 - [ ] Production: set `FINANCE_ENCRYPTION_KEY` (the server refuses to start without it). Keep it with the database backups: changing it makes stored account numbers unreadable.
-- [ ] Production / other machines: apply the migration `20261117000000_org_profile_finance_branches_discounts` (`npm run prisma:deploy` in `apps/api`).
+- [ ] Production / other machines: apply all migrations (`npm run prisma:deploy` in `apps/api`); today's add org profile/finance/discounts, helpdesk & gates, private attachments, organizer support, abandoned-checkout automation, and checkout fees/gifts/cart/payouts.
+- [ ] Checkout: set fees/tax and event rules (Checkout settings), buy with a group discount, download the invoice, send a ticket as a gift, change a seat, pay two events in the cart.
+- [ ] Payouts: verify an organization's payout details, let an event end, mark its payout paid in Admin → Payouts.
+
+## Gaps fixed (17 November 2026)
+
+- **Payout engine** — one payout per ended event (sales after discounts + service fees + tax − refunds − 5% platform fee), scheduled by the organization's payout schedule, held until payout details are verified, then paid by the finance team and recorded with the bank reference (Admin → Payouts; organizers: Organization → Payouts).
+- **Helpdesk for organizers** — members with `support.respond` (owners, admins, event managers for their events) see and answer requests about their events (studio → Support requests). Status, assignment, escalation and internal notes stay with TicketLedger support.
+- **Private support attachments** — stored outside the public folder (or as authenticated Cloudinary files) and opened only through links signed for one viewer, valid for an hour.
+- **Automatic abandoned-checkout reminders** — per organization: wait N hours after a checkout lapses, then one reminder (optionally a personal code); never twice in a week per customer and event, never after they bought. Results (reminders sent, customers who then bought) on the Abandoned intents page.
+- **Outdated tests** — every in-process test file passes again. Along the way: the **venue editor and venue publishing were broken** for everyone (`req is not defined` in `venueController.editorPayload`); fixed.
+- **Checkout** — all remaining items of section B (see the table above).
 
 ## Known gaps / next steps
 
-1. **Payout engine** — payout details are stored and verified, but nothing pays organizers yet.
-2. **Automatic abandoned-checkout reminders** — e.g. a reminder 2 hours after checkout is abandoned, without the organizer pressing send.
-3. **Outdated test scripts** — `test_auth`, `test_company`, `test_events`, `test_venue_layouts` fail because they predate newer rules (stronger passwords, required event end date) and seed data renamed by earlier runs. Not caused by these features; worth updating.
-4. Remaining checkout items from section B: invoices, tax / service-fee configuration, maximum tickets per customer, gift tickets, group bookings, multi-event cart, booking modification.
+1. **Payouts are recorded, not sent** — TicketLedger has no bank API: the finance team makes the transfer and records its reference.
+2. **Seat changes keep the price** — moving to a seat of a different (dearer) ticket type with payment of the difference is not built.
+3. **The cart takes wallet and test payments** — card payments and discount codes go through each event's own checkout.
+4. **Refunds return ticket prices** — the service fee and tax are not refunded automatically.
+5. **One order is still at most 10 tickets** — a group larger than 10 books twice.
 
 ## Tests
 
@@ -105,6 +162,13 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 ```
 cd apps/api
 $env:NODE_ENV="test"; node --test test_org_profile_checkout.mjs
+```
+
+`apps/api/test_helpdesk_gates.mjs` (13 checks) covers the helpdesk and gate management:
+
+```
+cd apps/api
+$env:NODE_ENV="test"; node --test test_helpdesk_gates.mjs
 ```
 
 Also passing: `test_org_membership`, `test_staff_invites`, `test_seats`, `test_mint_recovery`, `test_mint_failure_modes`, `test_mint_resolution`.
@@ -117,4 +181,6 @@ Also passing: `test_org_membership`, `test_staff_invites`, `test_seats`, `test_m
 | Discount codes | `services/discountService.js`, `routes/orgRoutes.js` (`/org/discounts`), `POST /bookings/discount/quote` | `pages/OrganizerDiscounts.jsx`, `pages/Checkout.jsx` |
 | Checkout retries | `controllers/bookingController.js` (`initiateBooking`, `confirmBooking`), `services/paymentService.js` | `pages/Checkout.jsx` |
 | Recovery reminders | `services/intentAnalyticsService.js` | `pages/AbandonedIntentDashboard.jsx` |
-| Database | `prisma/schema.prisma`, migration `20261117000000_org_profile_finance_branches_discounts` | — |
+| Helpdesk | `services/supportService.js`, `controllers/supportController.js`, `routes/supportRoutes.js` (`/api/support`), hourly job in `server.js` | `pages/Support.jsx`, `pages/SupportTicketPage.jsx`, `pages/SupportDesk.jsx`, `components/support/` |
+| Gate management | `services/gateService.js`, `services/checkinService.js`, `controllers/checkinController.js`, `routes/checkinRoutes.js` (`/api/checkin/manage/…`) | `pages/GateManagement.jsx`, `pages/GateScanner.jsx`, `lib/gateOffline.js` |
+| Database | `prisma/schema.prisma`, migrations `20261117000000_org_profile_finance_branches_discounts`, `20261117120000_helpdesk_gate_management` | — |

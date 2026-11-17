@@ -111,6 +111,7 @@ export const sendEmailNotification = async ({ to, subject, type, title, message,
     subject: mailOptions.subject,
     type,
     title,
+    actionUrl: action?.url || null,
     messageId: info.messageId || 'msg_' + Math.random().toString(36).substring(7),
     timestamp: new Date().toISOString(),
   };

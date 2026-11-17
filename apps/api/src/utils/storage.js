@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 // Configure Cloudinary if credentials are provided in .env
 const isCloudinaryConfigured = 
@@ -88,4 +89,52 @@ export const uploadFile = async (file, folder = 'company_docs', options = {}) =>
     publicId: filename,
     provider: 'local_storage',
   };
+};
+
+/*
+ * Private files (support attachments): never served from the public /uploads folder. Locally they go to
+ * private_uploads/<folder>/ (outside every static route); with Cloudinary they are uploaded as "authenticated"
+ * assets. Callers keep the returned `key` and serve the file through an access-checked route
+ * (privateFileAccess → { path } to stream, or { url } a short-lived signed Cloudinary link).
+ */
+export const uploadPrivateFile = async (file, folder = 'private') => {
+  if (!file?.buffer && !file?.path) throw new Error('No file provided for upload.');
+  if (isCloudinaryConfigured) {
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream({ folder: `ticketledger/${folder}`, resource_type: 'auto', type: 'authenticated' }, (error, r) => (error ? reject(error) : resolve(r)));
+        if (file.buffer) stream.end(file.buffer);
+        else fs.createReadStream(file.path).pipe(stream);
+      });
+      return { key: `cld:${result.resource_type}:${result.format || ''}:${result.public_id}`, provider: 'cloudinary' };
+    } catch (err) {
+      console.warn('Cloudinary private upload failed, storing locally:', err.message);
+    }
+  }
+  const dir = path.resolve('private_uploads', folder);
+  fs.mkdirSync(dir, { recursive: true });
+  const ext = (path.extname(file.originalname || '') || '').toLowerCase().replace(/[^.a-z0-9]/g, '').slice(0, 8);
+  const name = `${crypto.randomBytes(16).toString('hex')}${ext}`;
+  const target = path.join(dir, name);
+  if (file.buffer) fs.writeFileSync(target, file.buffer);
+  else fs.copyFileSync(file.path, target);
+  return { key: `local:${folder}/${name}`, provider: 'local_storage' };
+};
+
+/** Where to read a private file: { path } (local) or { url } (signed, valid 5 minutes). Null when unknown. */
+export const privateFileAccess = (key) => {
+  if (!key) return null;
+  if (key.startsWith('local:')) {
+    const rel = key.slice(6);
+    const base = path.resolve('private_uploads');
+    const full = path.resolve(base, rel);
+    if (!full.startsWith(base + path.sep) || !fs.existsSync(full)) return null;
+    return { path: full };
+  }
+  if (key.startsWith('cld:') && isCloudinaryConfigured) {
+    const [, resourceType, format, ...rest] = key.split(':');
+    const publicId = rest.join(':');
+    return { url: cloudinary.utils.private_download_url(publicId, format, { resource_type: resourceType, type: 'authenticated', expires_at: Math.floor(Date.now() / 1000) + 300 }) };
+  }
+  return null;
 };

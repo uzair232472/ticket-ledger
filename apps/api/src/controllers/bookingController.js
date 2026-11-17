@@ -13,6 +13,8 @@ import mlService from '../services/mlService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { expireStaleHolds } from '../services/venueService.js';
 import { DiscountError, markRedeemed, normalizeCode, quote as quoteDiscount, reserve as reserveDiscount } from '../services/discountService.js';
+import { COMPANY_FEES, priceOrder } from '../services/pricingService.js';
+import { invoicePdf, loadInvoiceOrder, nextInvoiceNumber } from '../services/invoiceService.js';
 
 const money = (n) => Math.round(Number(n) * 100) / 100;
 // The same seats in any order
@@ -27,18 +29,42 @@ function idempotencyKeyFrom(req) {
 const ORDER_PRICING_INCLUDE = {
   tickets: { include: { seat: { include: { tier: true } } } },
   discountCode: { select: { code: true, type: true, value: true, description: true } },
+  event: { select: { company: { select: { taxLabel: true } } } },
 };
 
-/** What the customer pays: ticket prices, the discount and the total (the order's own stored figures). */
-export const priceBreakdown = (order) => ({
+/** What the customer pays: tickets, discount (code or group), service fee, tax and total (the order's stored figures). */
+export const priceBreakdown = (order, taxLabel = order.event?.company?.taxLabel || 'Tax') => ({
   subtotal: Number(order.subtotalAmount ?? order.totalAmount),
   discount: Number(order.discountAmount || 0),
   discountCode: order.discountCode?.code || null,
   discountLabel: order.discountCode ? (order.discountCode.type === 'PERCENT' ? `${Number(order.discountCode.value)}% off` : `PKR ${Number(order.discountCode.value)} off`) : null,
-  serviceFee: 0,
+  groupDiscount: Number(order.groupDiscountAmount || 0),
+  serviceFee: Number(order.serviceFeeAmount || 0),
+  tax: Number(order.taxAmount || 0),
+  taxPercent: Number(order.taxPercent || 0),
+  taxLabel,
   total: Number(order.totalAmount),
   currency: 'PKR',
 });
+
+/**
+ * Tickets this customer bought for the event (their own and gifted on), in orders that are paid or waiting for
+ * payment, leaving out the orders this checkout replaces. Used for the event's limit per customer.
+ */
+export async function ticketsBoughtFor(userId, eventId, excludeOrderIds = []) {
+  return prisma.ticket.count({
+    where: { eventId, status: { in: ['ACTIVE', 'SCANNED', 'TRANSFERRED'] }, order: { userId, status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED', 'PENDING'] }, id: { notIn: excludeOrderIds } } },
+  });
+}
+
+/**
+ * The chain seat key for a new ticket on this seat. A ticket that moved away from the seat (a seat change)
+ * keeps the seat's key for its NFT, so a later buyer of the seat gets a fresh key (`<seat>~m<n>`).
+ */
+async function chainSeatFor(tx, seatId) {
+  const moved = await tx.ticket.count({ where: { chainSeatId: { startsWith: seatId }, seatId: { not: seatId } } });
+  return moved ? `${seatId}~m${moved}` : null;
+}
 
 /** This customer's unpaid order for exactly these seats (or the one their Idempotency-Key created). */
 async function findMyPendingOrder(userId, eventId, wantedSeats, idemKey = null) {
@@ -65,6 +91,11 @@ const paidElsewhere = (res, order, state) => res.status(409).json({
  * every retry (paymentService.initiatePayment with the stored paymentRef).
  */
 async function sendPayment(req, res, order, { reused }) {
+  // Part of a multi-event checkout: the order is priced and held, the payment comes with the cart
+  if (req.body?.cart) {
+    const full = await prisma.order.findUnique({ where: { id: order.id }, include: ORDER_PRICING_INCLUDE });
+    return res.status(reused ? 200 : 201).json({ success: true, message: 'Added to your checkout.', data: { orderId: full.id, reused, totalAmount: Number(full.totalAmount), currency: 'PKR', priceBreakdown: priceBreakdown(full), cart: true } });
+  }
   const params = await paymentService.initiatePayment({
     orderId: order.id,
     amount: order.totalAmount,
@@ -111,6 +142,8 @@ const initiateBookingSchema = z.object({
   paymentMethod: z.enum(['STRIPE', 'JAZZCASH', 'EASYPAISA', 'MOCK']).default('MOCK'),
   customerPhone: z.string().optional(),
   discountCode: z.string().trim().max(40).optional(),
+  // true: create the order only; it is paid together with other events' orders (POST /bookings/cart/checkout)
+  cart: z.boolean().optional(),
   telemetry: z.object({
     checkoutDurationSeconds: z.number().optional(),
     clicksPerMinute: z.number().optional(),
@@ -123,7 +156,7 @@ const initiateBookingSchema = z.object({
 const discountQuoteSchema = z.object({
   eventId: z.string().uuid('Invalid event ID'),
   seatIds: z.array(z.string().uuid()).min(1, 'Select at least 1 seat').max(10),
-  code: z.string().trim().min(1, 'Enter a discount code.').max(40),
+  code: z.string().trim().max(40).optional().transform((v) => v || undefined),
 });
 
 const confirmBookingSchema = z.object({
@@ -333,9 +366,21 @@ export const initiateBooking = async (req, res) => {
     }
     const supersededOrders = myOrders;
 
-    // Ticket prices, then the discount (checked again with the code locked inside the transaction)
+    // The event's limit of tickets per customer (purchases, counted before this checkout's replaced orders)
+    if (event.maxTicketsPerCustomer) {
+      const already = await ticketsBoughtFor(userId, eventId, myOrders.map((o) => o.id));
+      if (already + seats.length > event.maxTicketsPerCustomer) {
+        const left = Math.max(0, event.maxTicketsPerCustomer - already);
+        return res.status(409).json({ success: false, code: 'CUSTOMER_LIMIT', message: left ? `You can buy ${left} more ticket${left === 1 ? '' : 's'} for this event (limit ${event.maxTicketsPerCustomer} per customer).` : `You already have the most tickets one customer can buy for this event (${event.maxTicketsPerCustomer}).` });
+      }
+    }
+
+    // Ticket prices, then discount, service fee and tax (the code is checked again, locked, inside the transaction)
     const subtotal = money(seats.reduce((sum, seat) => sum + Number(seat.tier.price), 0));
-    if (discountInput) await quoteDiscount(prisma, { code: discountInput, event, userId, ticketCount: seats.length, subtotal });
+    const company = await prisma.company.findUnique({ where: { id: event.companyId }, select: COMPANY_FEES });
+    const codeQuote = discountInput ? await quoteDiscount(prisma, { code: discountInput, event, userId, ticketCount: seats.length, subtotal }) : null;
+    let price = priceOrder({ subtotal, ticketCount: seats.length, codeDiscount: codeQuote?.discount || 0, event, company });
+    const priceData = (pr) => ({ subtotalAmount: pr.subtotal, discountAmount: pr.codeDiscount, groupDiscountAmount: pr.groupDiscount, serviceFeeAmount: pr.serviceFee, taxAmount: pr.tax, taxPercent: pr.taxPercent, totalAmount: pr.total });
 
     // Group seat counts by tier for inventory decrement
     const tierCounts = {};
@@ -367,24 +412,25 @@ export const initiateBooking = async (req, res) => {
           data: {
             userId,
             eventId,
-            subtotalAmount: subtotal,
-            totalAmount: subtotal,
+            ...priceData(price),
             status: 'PENDING',
             paymentMethod,
             idempotencyKey: idemKey,
           },
         });
 
-        // 1b. Reserve the discount code for this order
-        if (discountInput) {
+        // 1b. Reserve the discount code for this order (unless the group discount is the better deal)
+        if (discountInput && price.useCode) {
           const q = await reserveDiscount(tx, { code: discountInput, event, userId, ticketCount: seats.length, subtotal, orderId: newOrder.id });
-          newOrder = await tx.order.update({ where: { id: newOrder.id }, data: { discountCodeId: q.code.id, discountAmount: q.discount, totalAmount: q.total } });
+          price = priceOrder({ subtotal, ticketCount: seats.length, codeDiscount: q.discount, event, company });
+          newOrder = await tx.order.update({ where: { id: newOrder.id }, data: { discountCodeId: q.code.id, ...priceData(price) } });
         }
 
         // 2. Create placeholder tickets for each seat (one ticket per seat is enforced by the database)
         for (const seat of seats) {
           await tx.ticket.create({
             data: {
+              chainSeatId: await chainSeatFor(tx, seat.id),
               orderId: newOrder.id,
               eventId,
               seatId: seat.id,
@@ -471,17 +517,31 @@ export const initiateBooking = async (req, res) => {
 export const quoteBookingDiscount = async (req, res) => {
   try {
     const { eventId, seatIds, code } = discountQuoteSchema.parse(req.body);
-    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, companyId: true } });
+    const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, companyId: true, groupMinTickets: true, groupDiscountPercent: true, maxTicketsPerCustomer: true } });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
     const seats = await prisma.seat.findMany({ where: { id: { in: seatIds }, eventId }, include: { tier: { select: { price: true } } } });
     if (seats.length !== seatIds.length) return res.status(400).json({ success: false, message: 'One or more seats do not belong to this event.' });
     const subtotal = money(seats.reduce((n, s) => n + Number(s.tier.price), 0));
     // A retry of this customer's open order for these seats doesn't count against the code's limits
     const mine = await findMyPendingOrder(req.user.id, eventId, seatKey(seatIds));
-    const q = await quoteDiscount(prisma, { code, event, userId: req.user.id, ticketCount: seats.length, subtotal, excludeOrderId: mine?.id });
+    const q = code ? await quoteDiscount(prisma, { code, event, userId: req.user.id, ticketCount: seats.length, subtotal, excludeOrderId: mine?.id }) : null;
+    const company = await prisma.company.findUnique({ where: { id: event.companyId }, select: COMPANY_FEES });
+    const price = priceOrder({ subtotal, ticketCount: seats.length, codeDiscount: q?.discount || 0, event, company });
     return res.json({
       success: true,
-      data: { code: q.code.code, description: q.code.description, type: q.code.type, value: Number(q.code.value), subtotal, discount: q.discount, total: q.total, endsAt: q.code.endsAt },
+      data: {
+        ...(q ? { code: q.code.code, description: q.code.description, type: q.code.type, value: Number(q.code.value), endsAt: q.code.endsAt, codeApplied: price.useCode } : {}),
+        subtotal: price.subtotal,
+        discount: price.codeDiscount,
+        groupDiscount: price.groupDiscount,
+        group: event.groupMinTickets && event.groupDiscountPercent ? { minTickets: event.groupMinTickets, percent: event.groupDiscountPercent } : null,
+        serviceFee: price.serviceFee,
+        tax: price.tax,
+        taxPercent: price.taxPercent,
+        taxLabel: company?.taxLabel || 'Tax',
+        total: price.total,
+        maxTicketsPerCustomer: event.maxTicketsPerCustomer,
+      },
     });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message });
@@ -530,6 +590,150 @@ async function refundLatePayment(req, order, paymentDetails, verification = null
     },
   });
   return { providerRef: refund.providerRef };
+}
+
+/**
+ * Marks a verified order paid, exactly once: status SUCCESSFUL with its payment, seats SOLD, discount redeemed,
+ * invoice number, audit and notice; then releases the holds, starts NFT minting and records the purchase.
+ * Returns null when the order was no longer PENDING (another confirmation or the hold expiry got there first).
+ * Used for one order (confirmBooking) and for each order of a multi-event checkout (confirmCart).
+ */
+async function finalizePaidOrder(req, order, { transactionId, userId }) {
+  // Atomic transaction: mark order SUCCESSFUL, seats SOLD, release Redis locks
+  const updatedOrder = await prisma.$transaction(async (tx) => {
+    // 1. Move the order out of PENDING exactly once. If a parallel confirmation or the hold expiry
+    //    got there first, this request changes nothing.
+    const transition = await tx.order.updateMany({
+      where: { id: order.id, status: 'PENDING' },
+      data: { status: 'SUCCESSFUL', paymentTxId: transactionId },
+    });
+    if (!transition.count) return null;
+    await markRedeemed(tx, order.id);
+    await tx.order.update({ where: { id: order.id }, data: { invoiceNumber: await nextInvoiceNumber(tx) } });
+    const completedOrder = await tx.order.findUnique({
+      where: { id: order.id },
+      include: {
+        discountCode: { select: { code: true, type: true, value: true } },
+        event: { include: { company: { select: { taxLabel: true } } } },
+        tickets: {
+          include: {
+            seat: {
+              include: { tier: true },
+            },
+          },
+        },
+      },
+    });
+
+    // 2. Mark all seats as SOLD and clear lock fields
+    for (const ticket of order.tickets) {
+      await tx.seat.update({
+        where: { id: ticket.seatId },
+        data: {
+          status: 'SOLD',
+          lockedUntil: null,
+          lockedByUserId: null,
+        },
+      });
+    }
+
+    // 3. Log Audit entry
+    await tx.auditLog.create({
+      data: {
+        userId,
+        action: 'BOOKING_CONFIRMED',
+        targetType: 'Order',
+        targetId: order.id,
+        details: {
+          totalAmount: Number(order.totalAmount),
+          paymentMethod: order.paymentMethod,
+          transactionId: transactionId,
+          seatCount: order.tickets.length,
+        },
+      },
+    });
+
+    // 4. Create in-app notification
+    await tx.notification.create({
+      data: {
+        userId,
+        type: 'BOOKING_CONFIRMED',
+        title: '🎟️ Booking Confirmed!',
+        message: `Your booking for ${order.event.name} (${order.tickets.length} seats) has been successfully confirmed. Ref: ${order.id.substring(0, 8)}`,
+      },
+    });
+
+    return completedOrder;
+  });
+
+  if (!updatedOrder) return null;
+
+  // 5. Release Redis locks and broadcast Socket.io seat update
+  const io = getIO();
+  for (const ticket of order.tickets) {
+    await releaseSeatLock(ticket.seatId, userId);
+
+    if (io) {
+      io.emit('seat:status_change', {
+        eventId: order.eventId,
+        seatId: ticket.seatId,
+        key: ticket.seat.layoutKey,
+        sectionKey: ticket.seat.sectionKey,
+        section: ticket.seat.section,
+        row: ticket.seat.row,
+        seatNumber: ticket.seat.seatNumber,
+        status: 'SOLD',
+        lockedUntil: null,
+        lockedByUserId: null,
+      });
+    }
+  }
+
+  // 6. Mint the ERC721 NFTs. The order is already paid and its tickets valid, so a failed mint is recorded on
+  //    each ticket and retried in the background (services/nftService.js), never undoing the booking.
+  let mintedNFTs = [];
+  let issuance = { status: 'PENDING', minted: 0, pending: updatedOrder.tickets.length, total: updatedOrder.tickets.length };
+  try {
+    const mintResult = await nftService.batchMintOrderTickets(updatedOrder.id);
+    mintedNFTs = mintResult.nfts || [];
+    const pending = updatedOrder.tickets.length - mintResult.totalMinted;
+    issuance = { status: pending ? 'PENDING' : 'MINTED', minted: mintResult.totalMinted, pending, total: updatedOrder.tickets.length };
+  } catch (mintErr) {
+    console.warn('⚠️ NFT minting deferred to the background job:', mintErr.message);
+  }
+  // The order's tickets with their mint state as it now stands
+  updatedOrder.tickets = await prisma.ticket.findMany({
+    where: { orderId: updatedOrder.id },
+    include: { seat: { include: { tier: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Module 13: Track payment_completed and ticket_purchased
+  behaviorService.trackBehavior({
+    req,
+    userId,
+    action: BEHAVIOR_ACTIONS.PAYMENT_COMPLETED,
+    eventId: order.eventId,
+    metadata: {
+      orderId: updatedOrder.id,
+      amount: updatedOrder.totalAmount,
+      transactionId: transactionId,
+      gateway: order.paymentMethod,
+    },
+  });
+
+  behaviorService.trackBehavior({
+    req,
+    userId,
+    action: BEHAVIOR_ACTIONS.TICKET_PURCHASED,
+    eventId: order.eventId,
+    metadata: {
+      orderId: updatedOrder.id,
+      ticketCount: updatedOrder.tickets.length,
+    },
+  });
+
+  return { updatedOrder, issuance, mintedNFTs };
 }
 
 /**
@@ -587,6 +791,10 @@ export const confirmBooking = async (req, res) => {
     if (order.status !== 'PENDING') {
       return res.status(200).json({ success: true, message: 'Order has already been confirmed.', data: { order } });
     }
+    if (order.checkoutGroupId) {
+      const group = await prisma.checkoutGroup.findUnique({ where: { id: order.checkoutGroupId }, select: { status: true } });
+      if (group?.status === 'PENDING') return res.status(409).json({ success: false, code: 'PAY_THROUGH_CART', groupId: order.checkoutGroupId, message: 'This order is part of a checkout for several events. Pay for them together.' });
+    }
 
     // Verify payment with Payment Service (a real payment must be this order's, for this order's amount).
     // Without a PaymentIntent id from the browser, the order's own one is checked (a paid earlier checkout).
@@ -627,72 +835,8 @@ export const confirmBooking = async (req, res) => {
       });
     }
 
-    // Atomic transaction: mark order SUCCESSFUL, seats SOLD, release Redis locks
-    const updatedOrder = await prisma.$transaction(async (tx) => {
-      // 1. Move the order out of PENDING exactly once. If a parallel confirmation or the hold expiry
-      //    got there first, this request changes nothing.
-      const transition = await tx.order.updateMany({
-        where: { id: orderId, status: 'PENDING' },
-        data: { status: 'SUCCESSFUL', paymentTxId: verification.transactionId },
-      });
-      if (!transition.count) return null;
-      await markRedeemed(tx, orderId);
-      const completedOrder = await tx.order.findUnique({
-        where: { id: orderId },
-        include: {
-          event: true,
-          discountCode: { select: { code: true, type: true, value: true } },
-          tickets: {
-            include: {
-              seat: {
-                include: { tier: true },
-              },
-            },
-          },
-        },
-      });
-
-      // 2. Mark all seats as SOLD and clear lock fields
-      for (const ticket of order.tickets) {
-        await tx.seat.update({
-          where: { id: ticket.seatId },
-          data: {
-            status: 'SOLD',
-            lockedUntil: null,
-            lockedByUserId: null,
-          },
-        });
-      }
-
-      // 3. Log Audit entry
-      await tx.auditLog.create({
-        data: {
-          userId,
-          action: 'BOOKING_CONFIRMED',
-          targetType: 'Order',
-          targetId: orderId,
-          details: {
-            totalAmount: Number(order.totalAmount),
-            paymentMethod: order.paymentMethod,
-            transactionId: verification.transactionId,
-            seatCount: order.tickets.length,
-          },
-        },
-      });
-
-      // 4. Create in-app notification
-      await tx.notification.create({
-        data: {
-          userId,
-          type: 'BOOKING_CONFIRMED',
-          title: '🎟️ Booking Confirmed!',
-          message: `Your booking for ${order.event.name} (${order.tickets.length} seats) has been successfully confirmed. Ref: ${orderId.substring(0, 8)}`,
-        },
-      });
-
-      return completedOrder;
-    });
-
+    const done = await finalizePaidOrder(req, order, { transactionId: verification.transactionId, userId });
+    const updatedOrder = done?.updatedOrder;
     if (!updatedOrder) {
       const current = await prisma.order.findUnique({ where: { id: orderId }, include: { event: true, tickets: { include: { seat: { include: { tier: true } } } } } });
       if (current?.status === 'SUCCESSFUL') {
@@ -708,70 +852,7 @@ export const confirmBooking = async (req, res) => {
       });
     }
 
-    // 5. Release Redis locks and broadcast Socket.io seat update
-    const io = getIO();
-    for (const ticket of order.tickets) {
-      await releaseSeatLock(ticket.seatId, userId);
-
-      if (io) {
-        io.emit('seat:status_change', {
-          eventId: order.eventId,
-          seatId: ticket.seatId,
-          key: ticket.seat.layoutKey,
-          sectionKey: ticket.seat.sectionKey,
-          section: ticket.seat.section,
-          row: ticket.seat.row,
-          seatNumber: ticket.seat.seatNumber,
-          status: 'SOLD',
-          lockedUntil: null,
-          lockedByUserId: null,
-        });
-      }
-    }
-
-    // 6. Mint the ERC721 NFTs. The order is already paid and its tickets valid, so a failed mint is recorded on
-    //    each ticket and retried in the background (services/nftService.js), never undoing the booking.
-    let mintedNFTs = [];
-    let issuance = { status: 'PENDING', minted: 0, pending: updatedOrder.tickets.length, total: updatedOrder.tickets.length };
-    try {
-      const mintResult = await nftService.batchMintOrderTickets(updatedOrder.id);
-      mintedNFTs = mintResult.nfts || [];
-      const pending = updatedOrder.tickets.length - mintResult.totalMinted;
-      issuance = { status: pending ? 'PENDING' : 'MINTED', minted: mintResult.totalMinted, pending, total: updatedOrder.tickets.length };
-    } catch (mintErr) {
-      console.warn('⚠️ NFT minting deferred to the background job:', mintErr.message);
-    }
-    // The order's tickets with their mint state as it now stands
-    updatedOrder.tickets = await prisma.ticket.findMany({
-      where: { orderId: updatedOrder.id },
-      include: { seat: { include: { tier: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    // Module 13: Track payment_completed and ticket_purchased
-    behaviorService.trackBehavior({
-      req,
-      userId,
-      action: BEHAVIOR_ACTIONS.PAYMENT_COMPLETED,
-      eventId: order.eventId,
-      metadata: {
-        orderId: updatedOrder.id,
-        amount: updatedOrder.totalAmount,
-        transactionId: verification.transactionId,
-        gateway: order.paymentMethod,
-      },
-    });
-
-    behaviorService.trackBehavior({
-      req,
-      userId,
-      action: BEHAVIOR_ACTIONS.TICKET_PURCHASED,
-      eventId: order.eventId,
-      metadata: {
-        orderId: updatedOrder.id,
-        ticketCount: updatedOrder.tickets.length,
-      },
-    });
+    const { issuance, mintedNFTs } = done;
 
     return res.status(200).json({
       success: true,
@@ -798,6 +879,114 @@ export const confirmBooking = async (req, res) => {
     }
     console.error('Error confirming booking:', error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ── Multi-event checkout (cart) ────────────────────────────────────────────────────────────────────────
+
+const ORDER_FOR_CONFIRM = { event: true, tickets: { include: { seat: { include: { tier: true } } } } };
+const cartCheckoutSchema = z.object({
+  orderIds: z.array(z.string().uuid()).min(1, 'Add at least one event').max(10, 'Up to 10 events in one checkout'),
+  paymentMethod: z.enum(['STRIPE', 'JAZZCASH', 'EASYPAISA', 'MOCK']).default('MOCK'),
+  customerPhone: z.string().optional(),
+});
+
+/**
+ * POST /api/bookings/cart/checkout: one payment for several events' unpaid orders (each created with
+ * initiate + cart: true). The same orders again (a retry) reuse the checkout and its payment.
+ */
+export const checkoutCart = async (req, res) => {
+  try {
+    const { orderIds, paymentMethod, customerPhone } = cartCheckoutSchema.parse(req.body);
+    const userId = req.user.id;
+    const ids = [...new Set(orderIds)];
+    const orders = await prisma.order.findMany({ where: { id: { in: ids }, userId }, include: { event: { select: { name: true } } } });
+    if (orders.length !== ids.length) return res.status(404).json({ success: false, message: 'One of these orders was not found.' });
+    const closed = orders.find((o) => o.status !== 'PENDING');
+    if (closed) return res.status(409).json({ success: false, code: 'ORDER_CLOSED', orderId: closed.id, message: `Your reservation for ${closed.event.name} has expired or was already paid. Remove it and try again.` });
+
+    // The same set of orders in an open checkout: reuse it (and its payment)
+    const groupIds = [...new Set(orders.map((o) => o.checkoutGroupId).filter(Boolean))];
+    let group = null;
+    if (groupIds.length === 1) {
+      const g = await prisma.checkoutGroup.findUnique({ where: { id: groupIds[0] }, include: { orders: { select: { id: true } } } });
+      if (g?.status === 'PENDING' && g.orders.length === ids.length && g.paymentMethod === paymentMethod) group = g;
+    }
+    if (!group) {
+      for (const gid of groupIds) {
+        const state = await paymentService.paymentStatus(await prisma.checkoutGroup.findUnique({ where: { id: gid } }));
+        if (state === 'succeeded' || state === 'processing') return res.status(409).json({ success: false, code: 'PAYMENT_ALREADY_RECEIVED', groupId: gid, message: 'A payment for an earlier checkout of these events was received. Confirming that one instead.' });
+      }
+      const total = money(orders.reduce((n, o) => n + Number(o.totalAmount), 0));
+      group = await prisma.$transaction(async (tx) => {
+        if (groupIds.length) await tx.checkoutGroup.updateMany({ where: { id: { in: groupIds }, status: 'PENDING' }, data: { status: 'FAILED' } });
+        const g = await tx.checkoutGroup.create({ data: { userId, totalAmount: total, paymentMethod } });
+        await tx.order.updateMany({ where: { id: { in: ids } }, data: { checkoutGroupId: g.id, paymentMethod, paymentRef: null } });
+        return g;
+      });
+    }
+    const params = await paymentService.initiatePayment({ orderId: group.id, amount: group.totalAmount, paymentMethod, customerPhone: customerPhone || req.user.phone, customerEmail: req.user.email, paymentRef: group.paymentRef });
+    if (params.paymentRef && params.paymentRef !== group.paymentRef) await prisma.checkoutGroup.update({ where: { id: group.id }, data: { paymentRef: params.paymentRef } });
+    return res.status(201).json({
+      success: true,
+      message: 'Checkout ready. Complete the payment to confirm every event.',
+      data: { groupId: group.id, totalAmount: Number(group.totalAmount), currency: 'PKR', paymentMethod, paymentParams: params, orders: orders.map((o) => ({ id: o.id, event: o.event.name, totalAmount: Number(o.totalAmount) })) },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message });
+    console.error('Cart checkout failed:', error);
+    return res.status(500).json({ success: false, message: 'Could not start the checkout.' });
+  }
+};
+
+/**
+ * POST /api/bookings/cart/confirm: verify the one payment, then confirm each event's order. An order whose
+ * reservation lapsed meanwhile is not confirmed; a real card payment for it is refunded at once.
+ */
+export const confirmCart = async (req, res) => {
+  try {
+    const { groupId, paymentDetails } = z.object({ groupId: z.string().uuid(), paymentDetails: z.record(z.any()).default({}) }).parse(req.body);
+    const userId = req.user.id;
+    const group = await prisma.checkoutGroup.findUnique({ where: { id: groupId }, include: { orders: { include: ORDER_FOR_CONFIRM } } });
+    if (!group || group.userId !== userId) return res.status(404).json({ success: false, message: 'Checkout not found.' });
+    if (group.status === 'SUCCESSFUL') return res.status(200).json({ success: true, message: 'Already paid.', data: { groupId, orders: group.orders.map((o) => ({ id: o.id, status: o.status })) } });
+    if (group.status !== 'PENDING') return res.status(409).json({ success: false, message: 'This checkout has ended. Start again from your cart.' });
+
+    const details = group.paymentMethod === 'STRIPE' && !paymentDetails.paymentIntentId && group.paymentRef?.startsWith('pi_') ? { ...paymentDetails, paymentIntentId: group.paymentRef } : paymentDetails;
+    const v = await paymentService.verifyPayment({ paymentMethod: group.paymentMethod, paymentDetails: details, expectedAmount: group.totalAmount, orderId: group.id });
+    if (!v.success) return res.status(400).json({ success: false, message: v.message || 'Payment authorization failed.' });
+    if (group.paymentMethod !== 'MOCK' && v.transactionId) {
+      const used = await prisma.order.findFirst({ where: { paymentTxId: v.transactionId, checkoutGroupId: { not: group.id } }, select: { id: true } });
+      if (used) return res.status(409).json({ success: false, code: 'PAYMENT_ALREADY_USED', message: 'This payment was already used for another booking.' });
+    }
+    const flipped = await prisma.checkoutGroup.updateMany({ where: { id: group.id, status: 'PENDING' }, data: { status: 'SUCCESSFUL', paymentTxId: v.transactionId } });
+    if (!flipped.count) return res.status(200).json({ success: true, message: 'Already paid.', data: { groupId } });
+
+    const confirmed = [];
+    const lapsed = [];
+    for (const order of group.orders) {
+      const done = order.status === 'PENDING' ? await finalizePaidOrder(req, order, { transactionId: v.transactionId, userId }) : null;
+      if (done) confirmed.push({ id: order.id, event: order.event.name, invoiceNumber: (await prisma.order.findUnique({ where: { id: order.id }, select: { invoiceNumber: true } })).invoiceNumber, issuance: done.issuance });
+      else {
+        // Paid, but its seats were released: give that part of the payment back
+        let refund = null;
+        if (v.real && paymentService.isRealPayment({ paymentMethod: group.paymentMethod, paymentTxId: v.transactionId })) {
+          refund = await paymentService.refund({ paymentMethod: group.paymentMethod, paymentTxId: v.transactionId, amount: order.totalAmount, reference: `cart_${group.id}_${order.id}` });
+          if (!refund.success) await notifyAdmins({ type: 'ADMIN_LATE_PAYMENT_REFUND_FAILED', title: 'Refund needed: part of a cart payment', message: `Cart ${group.id.slice(0, 8)}: order ${order.id.slice(0, 8)} (PKR ${Number(order.totalAmount)}) lapsed before payment and the automatic refund failed: ${refund.message}.` });
+        }
+        await prisma.auditLog.create({ data: { userId, action: 'CART_ORDER_LAPSED', targetType: 'Order', targetId: order.id, details: { groupId: group.id, amount: Number(order.totalAmount), refunded: Boolean(refund?.success), providerRef: refund?.providerRef || null } } });
+        lapsed.push({ id: order.id, event: order.event.name, amount: Number(order.totalAmount), refunded: Boolean(refund?.success) });
+      }
+    }
+    return res.status(200).json({
+      success: true,
+      message: lapsed.length ? `Paid. ${confirmed.length} event${confirmed.length === 1 ? '' : 's'} confirmed; ${lapsed.length} reservation${lapsed.length === 1 ? '' : 's'} had expired${lapsed.some((l) => l.refunded) ? ' and were refunded' : ''}.` : 'Paid. Every event is confirmed.',
+      data: { groupId, transactionId: v.transactionId, confirmed, lapsed },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message });
+    console.error('Cart confirm failed:', error);
+    return res.status(500).json({ success: false, message: 'Could not confirm the checkout.' });
   }
 };
 
@@ -921,6 +1110,21 @@ export const cancelBooking = async (req, res) => {
     });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+/** GET /api/bookings/:id/invoice: the paid booking's invoice as a PDF (the buyer, or a Super Admin). */
+export const downloadInvoice = async (req, res) => {
+  try {
+    const { order, error, message } = await loadInvoiceOrder(req.user, req.params.id);
+    if (error) return res.status(error).json({ success: false, message });
+    const pdf = await invoicePdf(order);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${order.invoiceNumber}.pdf"`);
+    return res.send(pdf);
+  } catch (error) {
+    console.error('Invoice failed:', error);
+    return res.status(500).json({ success: false, message: 'Could not create the invoice.' });
   }
 };
 

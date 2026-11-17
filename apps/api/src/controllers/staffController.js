@@ -361,6 +361,7 @@ export const revokeEventAccess = async (req, res) => {
     }
 
     const { count } = await prisma.staffEventAssignment.deleteMany({ where: { staffId, eventId } });
+    await prisma.gateAssignment.deleteMany({ where: { staffId, eventId } }); // their gates at this event go too
     if (!count) {
       return res.status(200).json({ success: true, message: `${staff.name} wasn’t assigned to ${event.name}.` });
     }

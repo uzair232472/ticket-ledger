@@ -176,3 +176,9 @@
 .tl-gs-drop.is-compact strong { color: #fff; font-size: 14px; }
 .tl-gs-drop.is-compact button { background: #fff; color: #0b1510; }
 @media (prefers-reduced-motion: reduce) { .tl-gv { animation: none; } }
+
+/* Exception request on the result card */
+.tl-gv-exception { display: grid; gap: 8px; width: 100%; text-align: left; }
+.tl-gv-exception label { font-size: 13px; font-weight: 700; }
+.tl-gv-exception input { width: 100%; padding: 12px 14px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; font: inherit; font-size: 15px; background: #fff; color: #0b0b0b; }
+.tl-gv-exception small { font-size: 12.5px; color: #991b1b; }

@@ -5,6 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection } from '../components/account/AccountShell';
 import { STAGE_IMAGE } from '../components/home/homeData';
 import '../components/lifecycle/lifecycle.css';
+import '../components/account/bookingTools.css';
+import api from '../utils/api';
+import BookingTools from '../components/account/BookingTools';
 import {
   Ticket,
   Calendar,
@@ -21,13 +24,24 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const ORDER_STATUS = { SUCCESSFUL: 'Paid', PENDING: 'Pending', FAILED: 'Failed', REFUNDED: 'Refunded', PARTIALLY_REFUNDED: 'Partly refunded' };
 
 export default function MyBookings() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => {
+    const again = () => setReloadKey((k) => k + 1);
+    window.addEventListener('tl:bookings-changed', again);
+    return () => window.removeEventListener('tl:bookings-changed', again);
+  }, []);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Events of mine that were cancelled, postponed or moved (with refunds open), and refunds paid to me
   const [notices, setNotices] = useState([]);
   const [refunds, setRefunds] = useState([]);
+  // Gifts I sent (status per ticket) and gifts waiting for my email
+  const [gifts, setGifts] = useState({ sent: [], waitingForMe: [] });
+  const [giftMsg, setGiftMsg] = useState('');
+  const loadGifts = () => api.get('/bookings/gifts').then((r) => setGifts(r.data.data)).catch(() => {});
+  useEffect(() => { loadGifts(); }, []);
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -54,7 +68,7 @@ export default function MyBookings() {
     };
 
     fetchBookings();
-  }, [token]);
+  }, [token, reloadKey]);
 
   const ticketCount = orders.reduce((n, o) => n + (o.tickets?.length || 0), 0);
 
@@ -127,6 +141,19 @@ export default function MyBookings() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {gifts.waitingForMe.length > 0 && (
+        <section className="tl-bt-panel mb-4" aria-label="Tickets sent to you">
+          <p className="font-bold">🎁 Tickets waiting for you</p>
+          {gifts.waitingForMe.map((g) => (
+            <div key={g.id} className="flex flex-wrap items-center justify-between gap-2">
+              <span>{g.kind === 'GROUP' ? 'A group ticket' : 'A gift'}{g.message ? ` · "${g.message}"` : ''}</span>
+              <button type="button" className="tl-bt-btn is-primary" onClick={async () => { try { const r = await api.post(`/bookings/gifts/${g.id}/claim`); setGiftMsg(r.data.message); loadGifts(); } catch (e) { setGiftMsg(e.response?.data?.message || 'Could not claim it.'); } }}>Claim ticket</button>
+            </div>
+          ))}
+          {giftMsg && <p className="tl-bt-msg" role="status">{giftMsg}</p>}
         </section>
       )}
 
@@ -221,6 +248,8 @@ export default function MyBookings() {
                     ))}
                   </div>
                 </div>
+
+                <BookingTools order={order} userId={user?.id} gifts={gifts.sent} onChanged={() => { loadGifts(); window.dispatchEvent(new Event('tl:bookings-changed')); }} />
 
                 {/* Footer link to receipt */}
                 <div className="pt-2 flex justify-end">

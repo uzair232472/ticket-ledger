@@ -1,0 +1,46 @@
+/* Helpdesk: customer pages (inside .tl-legal) and the agent desk (inside DashShell) */
+.tl-sp { --sp-ink: #0b1a10; --sp-dim: #55645a; --sp-line: #dbe4dc; --sp-green: #15803d; color: var(--sp-ink); }
+.tl-sp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px; margin-top: 32px; align-items: start; }
+.tl-sp-list { display: grid; gap: 10px; }
+.tl-sp-item { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 16px 18px; border: 1px solid var(--sp-line); border-radius: 14px; background: #fff; text-decoration: none; color: inherit; transition: border-color 0.15s ease; }
+.tl-sp-item:hover { border-color: var(--sp-green); }
+.tl-sp-item strong { font-size: 15px; }
+.tl-sp-item small { color: var(--sp-dim); font-size: 13px; }
+.tl-sp-ref { font: 600 12px/1.2 'JetBrains Mono', monospace; color: var(--sp-dim); }
+.tl-sp-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: #eef2ee; color: var(--sp-ink); white-space: nowrap; }
+.tl-sp-pill[data-s='OPEN'], .tl-sp-pill[data-s='IN_PROGRESS'] { background: #e0f2fe; color: #075985; }
+.tl-sp-pill[data-s='WAITING_ON_CUSTOMER'] { background: #fef3c7; color: #92400e; }
+.tl-sp-pill[data-s='ESCALATED'] { background: #fee2e2; color: #991b1b; }
+.tl-sp-pill[data-s='RESOLVED'] { background: #dcfce7; color: #166534; }
+.tl-sp-pill[data-s='CLOSED'] { background: #f1f5f9; color: #475569; }
+.tl-sp-tabs { display: flex; gap: 8px; margin: 22px 0 14px; flex-wrap: wrap; }
+.tl-sp-tabs button { padding: 8px 14px; border: 1px solid var(--sp-line); border-radius: 999px; background: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+.tl-sp-tabs button[aria-pressed='true'] { background: var(--sp-ink); color: #fff; border-color: var(--sp-ink); }
+.tl-sp-empty { padding: 36px 20px; border: 1px dashed var(--sp-line); border-radius: 14px; text-align: center; color: var(--sp-dim); }
+
+/* Thread */
+.tl-sp-thread { display: grid; gap: 14px; }
+.tl-sp-msg { padding: 14px 16px; border: 1px solid var(--sp-line); border-radius: 14px; background: #fff; }
+.tl-sp-msg.is-agent { background: #f0fdf4; border-color: #bbf7d0; }
+.tl-sp-msg.is-org { background: #eff6ff; border-color: #bfdbfe; }
+.tl-sp-msg.is-internal { background: #fffbeb; border-color: #fde68a; border-style: dashed; }
+.tl-sp-msg header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 13px; color: var(--sp-dim); }
+.tl-sp-msg header strong { color: var(--sp-ink); }
+.tl-sp-msg p { white-space: pre-wrap; font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }
+.tl-sp-system { display: flex; align-items: center; gap: 8px; padding: 2px 6px; font-size: 13px; color: var(--sp-dim); }
+.tl-sp-system::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--sp-line); }
+.tl-sp-files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tl-sp-files a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--sp-line); border-radius: 8px; font-size: 13px; color: var(--sp-ink); background: #fff; }
+.tl-sp-files img { width: 120px; height: 80px; object-fit: cover; border-radius: 6px; display: block; }
+.tl-sp-reply { display: grid; gap: 10px; margin-top: 18px; padding: 16px; border: 1px solid var(--sp-line); border-radius: 14px; background: #fff; }
+.tl-sp-reply textarea { width: 100%; min-height: 110px; padding: 12px 14px; border: 1px solid #cfdad1; border-radius: 10px; background: #f7f8f4; font: inherit; font-size: 15px; resize: vertical; }
+.tl-sp-reply-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.tl-sp-facts { display: grid; gap: 10px; padding: 18px; border: 1px solid var(--sp-line); border-radius: 14px; background: #fff; font-size: 14px; }
+.tl-sp-facts dt { font-size: 12px; color: var(--sp-dim); }
+.tl-sp-facts dd { font-weight: 600; }
+.tl-sp-notice { padding: 12px 14px; border-radius: 10px; font-size: 14px; background: #f0fdf4; color: #166534; }
+.tl-sp-notice.is-bad { background: #fef2f2; color: #991b1b; }
+
+@media (max-width: 900px) {
+  .tl-sp-grid { grid-template-columns: 1fr; }
+}

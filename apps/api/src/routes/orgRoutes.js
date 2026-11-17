@@ -69,6 +69,7 @@ router.post('/documents/:id/restore', can('org.documents'), c.restoreDocument);
 // Payout & tax details (?reveal=true shows full account numbers to finance.manage, and is audited)
 router.get('/finance', can('finance.view'), c.getFinance);
 router.put('/finance', can('finance.manage'), c.updateFinance);
+router.get('/payouts', can('finance.view'), c.listPayouts);
 
 // Branches / operating locations
 router.get('/branches', member, c.listBranches);
@@ -76,6 +77,15 @@ router.post('/branches', can('org.settings'), c.createBranch);
 router.patch('/branches/:id', can('org.settings'), c.updateBranch);
 router.delete('/branches/:id', can('org.settings'), c.deleteBranch);
 router.put('/events/:eventId/branch', can('event.edit'), c.setEventBranch);
+
+// Automatic abandoned-checkout reminders
+router.get('/recovery', can('attendee.contact'), c.getRecovery);
+router.put('/recovery', can('attendee.contact'), c.updateRecovery);
+
+// Checkout settings: fees and tax (finance.manage), each event's rules (event.edit)
+router.get('/checkout', member, c.getCheckout);
+router.put('/checkout/fees', can('finance.manage'), c.updateCheckoutFees);
+router.put('/events/:eventId/checkout-rules', can('event.edit'), c.updateEventCheckoutRules);
 
 // Discount codes
 router.get('/discounts', can('discount.manage'), c.listDiscounts);

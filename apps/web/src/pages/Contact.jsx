@@ -73,6 +73,7 @@ export default function Contact() {
         <p className="tl-legal-eyebrow">Contact us</p>
         <h1>We’re here to help.</h1>
         <p className="tl-legal-intro">Questions about a booking, a payment or hosting your event? Send us a message and a real person will reply.</p>
+        {user && <Link to="/support" className="tl-legal-switch">Signed in? Open a support request you can track →</Link>}
       </header>
 
       <div className="tl-info-contact">

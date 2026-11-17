@@ -96,9 +96,11 @@ test('Venue layouts: editor, publishing, holds and checkout', async (t) => {
         description: 'Event created by the venue layout test suite.',
         type: 'THEATRE',
         date: '2027-05-01',
-        time: '8:00 PM',
+        time: '20:00',
+        endDate: '2027-05-01',
+        endTime: '23:00',
         city: 'Lahore',
-        venue: 'Test Hall',
+        venue: `Test Hall ${stamp}`,
         status: 'PUBLISHED',
         tiers: [
           { name: 'Premium', price: 5000, totalQuantity: 999 },
@@ -387,6 +389,8 @@ test('Venue layouts: editor, publishing, holds and checkout', async (t) => {
       await prisma.behaviorEvent.deleteMany({ where: { eventId } }).catch(() => {});
       await prisma.event.delete({ where: { id: eventId } });
     }
+    await prisma.organizationMember.deleteMany({ where: { OR: [{ userId: { in: tempUsers } }, { company: { userId: { in: tempUsers } } }] } });
+    await prisma.user.updateMany({ where: { id: { in: tempUsers } }, data: { companyId: null } });
     await prisma.company.deleteMany({ where: { userId: { in: tempUsers } } });
     await prisma.behaviorEvent.deleteMany({ where: { userId: { in: tempUsers } } }).catch(() => {});
     await prisma.user.deleteMany({ where: { id: { in: tempUsers } } }).catch((e) => console.warn('user cleanup:', e.message));

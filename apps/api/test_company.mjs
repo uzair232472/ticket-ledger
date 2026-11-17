@@ -1,7 +1,9 @@
 import assert from 'node:assert';
 import test from 'node:test';
 import http from 'node:http';
+import bcrypt from 'bcryptjs';
 import app from './src/app.js';
+import prisma from './src/config/prisma.js';
 
 test('MODULE 4 - Company Registration & Super Admin Approval Tests', async (t) => {
   const server = http.createServer(app);
@@ -20,7 +22,22 @@ test('MODULE 4 - Company Registration & Super Admin Approval Tests', async (t) =
 
   const adminToken = await getToken('admin@ticketledger.pk');
   const approvedOrgToken = await getToken('organizer@ticketledger.pk');
-  const pendingOrgToken = await getToken('pending_organizer@ticketledger.pk');
+  // A throwaway pending organizer of its own, so runs don't depend on (or change) the seed data
+  const run = Date.now();
+  const pendingUser = await prisma.user.create({ data: { name: 'Test Pending Organizer', email: `pending_org_${run}@example.com`, passwordHash: await bcrypt.hash('Password@123', 10), role: 'ORGANIZER', status: 'ACTIVE', emailVerifiedAt: new Date(), isVerified: true } });
+  const pendingCompany = await prisma.company.create({ data: { userId: pendingUser.id, companyName: `Karachi Kings Sports & Festivals ${run}`, ownerName: 'Fahad Salman', phone: '+923001234566', email: `info_${run}@example.com`, city: 'Karachi', ntnCnic: '42101-9876543-1', documentUrl: '/uploads/company_docs/cnic.pdf', documentUrls: ['/uploads/company_docs/cnic.pdf'], status: 'PENDING' } });
+  await prisma.user.update({ where: { id: pendingUser.id }, data: { companyId: pendingCompany.id } });
+  await prisma.organizationMember.create({ data: { companyId: pendingCompany.id, userId: pendingUser.id, role: 'OWNER' } });
+  t.after(async () => {
+    await prisma.auditLog.deleteMany({ where: { OR: [{ companyId: pendingCompany.id }, { targetId: pendingCompany.id }, { userId: pendingUser.id }] } });
+    await prisma.notification.deleteMany({ where: { OR: [{ userId: pendingUser.id }, { message: { contains: String(run) } }, { title: { contains: String(run) } }] } });
+    await prisma.organizationMember.deleteMany({ where: { companyId: pendingCompany.id } });
+    await prisma.user.update({ where: { id: pendingUser.id }, data: { companyId: null } });
+    await prisma.company.delete({ where: { id: pendingCompany.id } });
+    await prisma.user.delete({ where: { id: pendingUser.id } });
+    await prisma.$disconnect();
+  });
+  const pendingOrgToken = await getToken(pendingUser.email);
   const customerToken = await getToken('customer@ticketledger.pk');
 
   let pendingCompanyId = '';
@@ -32,7 +49,7 @@ test('MODULE 4 - Company Registration & Super Admin Approval Tests', async (t) =
     const body = await res.json();
     assert.strictEqual(res.status, 200);
     assert.strictEqual(body.data.company.status, 'PENDING');
-    assert.strictEqual(body.data.company.companyName, 'Karachi Kings Sports & Festivals');
+    assert.strictEqual(body.data.company.companyName, pendingCompany.companyName);
     pendingCompanyId = body.data.company.id;
   });
 
@@ -110,10 +127,10 @@ test('MODULE 4 - Company Registration & Super Admin Approval Tests', async (t) =
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        companyName: 'Karachi Kings Sports & Festivals (Updated)',
+        companyName: `${pendingCompany.companyName} (Updated)`,
         ownerName: 'Fahad Salman',
         phone: '+923001234566',
-        email: 'info@karachikingsfest.pk',
+        email: pendingCompany.email,
         city: 'Karachi',
         ntnCnic: '42101-9876543-1',
         documentUrl: '/uploads/company_docs/clear_cnic_scan.pdf',
@@ -146,16 +163,6 @@ test('MODULE 4 - Company Registration & Super Admin Approval Tests', async (t) =
     const body = await res.json();
     assert.strictEqual(res.status, 200);
     assert.match(body.message, /fully APPROVED/i);
-
-    // Reset back to PENDING for subsequent test suites
-    await fetch(`${baseUrl}/companies/admin/${pendingCompanyId}/status`, {
-      method: 'PATCH',
-      headers: { 
-        Authorization: `Bearer ${adminToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status: 'PENDING' }),
-    });
   });
 
   await new Promise((resolve) => server.close(resolve));

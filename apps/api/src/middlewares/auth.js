@@ -13,6 +13,7 @@ const USER_SELECT = {
   walletAddress: true,
   companyId: true,
   emailVerifiedAt: true,
+  isSupportAgent: true,
 };
 
 const readBearer = (req) => {

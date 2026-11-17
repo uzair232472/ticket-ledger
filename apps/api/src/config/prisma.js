@@ -21,6 +21,8 @@ const ACTIONS = [
   [/^(EVENT_CANCELLED|EVENT_POSTPONED|EVENT_RESCHEDULED|REFUND_WINDOW)/, 'See your options', '/my-bookings'],
   [/^REFUND/, 'See your refunds', '/my-bookings'],
   [/^SCHEDULE_CHANGE/, 'Open organizer dashboard', '/organizer/dashboard'],
+  [/^SUPPORT_UPDATE/, 'Open your support request', '/support'],
+  [/^(SUPPORT_|ADMIN_SUPPORT)/, 'Open the support desk', '/support/desk'],
 ];
 // A notification's own link (e.g. one event's refund page) wins over the type's default page
 const actionFor = (type = '', link = null) => {
@@ -29,8 +31,9 @@ const actionFor = (type = '', link = null) => {
   return hit ? { label: hit[1], url: `${FRONTEND()}${hit[2]}` } : { label: 'Open your notifications', url: `${FRONTEND()}/notifications` };
 };
 
-// About a ticket holder's money or a changed event date: emailed even to users who turned email notifications off
-const ESSENTIAL = /^(EVENT_CANCELLED|EVENT_POSTPONED|EVENT_RESCHEDULED|REFUND)/;
+// About a ticket holder's money, a changed event date, or their own support request: emailed even to users who
+// turned email notifications off
+const ESSENTIAL = /^(EVENT_CANCELLED|EVENT_POSTPONED|EVENT_RESCHEDULED|REFUND|SUPPORT_UPDATE)/;
 
 let base;
 
