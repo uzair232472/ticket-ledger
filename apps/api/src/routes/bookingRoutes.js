@@ -6,6 +6,7 @@ import {
   cancelBooking,
   getMyBookings,
   getBookingById,
+  quoteBookingDiscount,
 } from '../controllers/bookingController.js';
 import { getMyRefunds, getMyEventNotices } from '../controllers/lifecycleController.js';
 
@@ -15,6 +16,8 @@ const router = Router();
 router.use(requireAuth);
 
 router.post('/initiate', initiateBooking);
+// Check a discount code for the held seats before paying
+router.post('/discount/quote', quoteBookingDiscount);
 router.post('/confirm', confirmBooking);
 router.post('/cancel', cancelBooking);
 router.get('/my-bookings', getMyBookings);

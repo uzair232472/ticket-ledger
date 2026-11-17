@@ -93,6 +93,12 @@ installAxiosInterceptor(axios);
 
 /** Where each role lands after login (brief, section 4). */
 export const getHomeRoute = (user) => {
+  // Organization members (any account type): their organization's studio, or the gate console for scanners
+  const org = user?.organization?.memberStatus === 'ACTIVE' ? user.organization : null;
+  if (org && user.role !== 'SUPER_ADMIN' && user.role !== 'ORGANIZER') {
+    if (org.permissions.includes('event.view')) return '/organizer/dashboard';
+    if (org.permissions.includes('gate.scan')) return '/staff/events';
+  }
   switch (user?.role) {
     case 'SUPER_ADMIN':
       return '/admin/dashboard';

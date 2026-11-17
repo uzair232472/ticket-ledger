@@ -558,7 +558,7 @@ export default function DigitalWallet() {
                   {transferModalTicket.seat?.tierName} • Section {transferModalTicket.seat?.section} • Row {transferModalTicket.seat?.row} #{transferModalTicket.seat?.seatNumber}
                 </div>
                 <div className="text-purple-700 font-mono text-[10px] pt-1">
-                  Polygon NFT #{transferModalTicket.nft?.tokenId || '1024'}
+                  {transferModalTicket.nft?.mintStatus === 'VERIFIED' ? `NFT #${transferModalTicket.nft.tokenId} · verified` : transferModalTicket.nft?.mintLabel || 'NFT pending'}
                 </div>
               </div>
 

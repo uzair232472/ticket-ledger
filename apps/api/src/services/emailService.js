@@ -256,6 +256,43 @@ export const sendStaffInviteEmail = async ({ to, inviteToken, eventName, company
   }
 };
 
+/**
+ * Organization invitation (any role). SMTP failures are logged and reported, never thrown.
+ */
+export const sendOrgInviteEmail = async ({ to, inviteToken, companyName, inviterName, roleLabel, eventNames = [], existingAccount = false }) => {
+  const inviteUrl = `${FRONTEND_URL()}/invite/${inviteToken}`;
+  const html = renderEmail({
+    preheader: `Join ${companyName} on TicketLedger as ${roleLabel}.`,
+    label: 'Team invite',
+    title: `Join ${esc(companyName)} on TicketLedger`,
+    body: `${paragraph(`${inviterName ? `<strong>${esc(inviterName)}</strong> has invited you` : 'You have been invited'} to join <strong>${esc(companyName)}</strong> on TicketLedger. ${existingAccount ? 'Sign in with this email address to accept.' : 'Set your password to create your account and accept.'}`)}${factCard([
+      ['Organization', esc(companyName)],
+      ['Your role', esc(roleLabel)],
+      ...(eventNames.length ? [['Events', esc(eventNames.slice(0, 5).join(', ') + (eventNames.length > 5 ? ` and ${eventNames.length - 5} more` : ''))]] : []),
+    ])}${button({ label: 'Review invite', url: inviteUrl })}`,
+    footnote: 'This link works once and expires in 72 hours. You can also decline it. If you weren’t expecting it, you can ignore this email.',
+  });
+  const mailOptions = {
+    from: MAIL_FROM(),
+    to,
+    subject: `You're invited to join ${companyName} on TicketLedger`,
+    text: `You have been invited to join ${companyName} on TicketLedger as ${roleLabel}. Review the invite (valid 72 hours, single use): ${inviteUrl}`,
+    html,
+    attachments: [logoAttachment()],
+  };
+  lastSentEmail = { to, subject: mailOptions.subject, type: 'ORG_INVITE', inviteToken, inviteUrl, timestamp: new Date().toISOString() };
+  try {
+    const info = await getTransporter().sendMail(mailOptions);
+    console.log(`[EMAIL DISPATCH] Sent organization invite to ${to} (MessageId: ${info.messageId || 'local'})`);
+    if (isDevTransport) logForLocalDev(`[LOCAL DEV INVITE] Invite link for ${to}: ${inviteUrl}`);
+    return { success: true };
+  } catch (error) {
+    console.warn(`[EMAIL WARNING] Failed to send organization invite via SMTP: ${error.message}.`);
+    logForLocalDev(`[LOCAL DEV INVITE] Invite link for ${to}: ${inviteUrl}`);
+    return { success: false, fallback: true };
+  }
+};
+
 export const mailFrom = () => MAIL_FROM();
 
 export default {

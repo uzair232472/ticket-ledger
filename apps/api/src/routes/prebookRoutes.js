@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, loadOrgContext } from '../middlewares/auth.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 import {
   availabilityCalendar,
@@ -19,7 +19,7 @@ import {
 const router = express.Router();
 
 // Prebooking belongs to an approved organizer company
-router.use(authenticateJWT, requireRole('ORGANIZER'), requireApprovedOrganizer);
+router.use(authenticateJWT, loadOrgContext, requireApprovedOrganizer);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: LARGEST_IMAGE_BYTES } });
 const singleImage = (req, res, next) =>

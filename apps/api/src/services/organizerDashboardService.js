@@ -1,17 +1,19 @@
+import { eventWhereFor, memberContext } from './orgAccess.js';
 import prisma from '../config/prisma.js';
 
 /**
  * Service to aggregate comprehensive organizer dashboard metrics, sales charts,
  * tier breakdowns, live turnstile entry pacing, attendance predictions, and fraud feeds.
  */
-export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = null }) => {
-  // 1. Identify Organizer Company
-  let companyId = null;
-  if (organizerUser.role !== 'SUPER_ADMIN') {
-    const company = await prisma.company.findUnique({
-      where: { userId: organizerUser.id },
-    });
-    if (!company) {
+export const getOrganizerDashboardMetrics = async (args) => withAccess(await buildDashboard(args), args);
+
+const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null }) => {
+  // 1. The organization (membership) and what this member may see. Super Admins see every event.
+  let ctx = null;
+  const eventWhere = {};
+  if (organizerUser.role !== 'SUPER_ADMIN' || orgContext) {
+    ctx = orgContext ?? (await memberContext(organizerUser));
+    if (!ctx || !ctx.permissions.has('event.view')) {
       return {
         hasCompany: false,
         message: 'No company registered for this organizer.',
@@ -19,14 +21,10 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
         metrics: null,
       };
     }
-    companyId = company.id;
+    Object.assign(eventWhere, eventWhereFor(ctx, 'event.view'));
   }
 
   // 2. Fetch accessible events for this organizer
-  const eventWhere = {};
-  if (companyId) {
-    eventWhere.companyId = companyId;
-  }
   const organizerEvents = await prisma.event.findMany({
     where: eventWhere,
     select: {
@@ -335,6 +333,29 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
     },
   };
 };
+
+/**
+ * Removes what the member's permissions don't cover: money figures without finance.view, the attendee fraud
+ * feed without attendee.view. Super Admins and owners see everything.
+ */
+async function withAccess(data, { organizerUser, orgContext = null }) {
+  if (organizerUser.role === 'SUPER_ADMIN' && !orgContext) return { ...data, access: { finance: true, attendees: true } };
+  const ctx = orgContext ?? (await memberContext(organizerUser));
+  const finance = Boolean(ctx?.permissions.has('finance.view'));
+  const attendees = Boolean(ctx?.permissions.has('attendee.view'));
+  const money = /pkr|revenue|payout|refund|fee|price|amount/i;
+  const strip = (obj) => {
+    if (Array.isArray(obj)) return obj.map(strip);
+    if (!obj || typeof obj !== 'object' || obj instanceof Date) return obj;
+    return Object.fromEntries(Object.entries(obj).filter(([k]) => !money.test(k)).map(([k, v]) => [k, strip(v)]));
+  };
+  const out = { ...data, access: { finance, attendees } };
+  if (!finance) {
+    for (const key of ['metrics', 'salesGraph', 'tierBreakdown', 'modulesPreview']) if (out[key]) out[key] = strip(out[key]);
+  }
+  if (!attendees) out.fraudFeed = [];
+  return out;
+}
 
 export default {
   getOrganizerDashboardMetrics,

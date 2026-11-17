@@ -9,18 +9,44 @@ const stripeClient = process.env.STRIPE_SECRET_KEY && !process.env.STRIPE_SECRET
  * Multi-Gateway Payment Service
  * Supports Stripe Sandbox, JazzCash Mock/Sandbox, EasyPaisa Mock/Sandbox, and 1-Click Mock.
  */
+// Stripe amounts are in paisa, with Stripe's minimum charge
+const stripeAmount = (pkr) => Math.max(100, Math.round(Number(pkr) * 100));
+
 class PaymentService {
   /**
    * Initiate payment with selected gateway
    */
-  async initiatePayment({ orderId, amount, paymentMethod, customerPhone, customerEmail }) {
+  /**
+   * One payment per order: `paymentRef` is the handle an earlier call returned for this order (Stripe
+   * PaymentIntent id, JazzCash / EasyPaisa reference, mock id). When it is given, the same payment is returned
+   * again instead of a new one, so a customer who retries checkout can never be charged twice for one order.
+   * The returned params carry `paymentRef` for the caller to store on the order.
+   */
+  async initiatePayment({ orderId, amount, paymentMethod, customerPhone, customerEmail, paymentRef = null }) {
     const formattedAmount = Number(amount);
 
     switch (paymentMethod) {
       case 'STRIPE': {
         if (stripeClient) {
           try {
-            const paisaAmount = Math.max(100, Math.round(formattedAmount * 100));
+            const paisaAmount = stripeAmount(formattedAmount);
+            // The order's existing PaymentIntent, while it can still be paid (or already was)
+            if (paymentRef?.startsWith('pi_')) {
+              const existing = await stripeClient.paymentIntents.retrieve(paymentRef).catch(() => null);
+              if (existing && existing.status !== 'canceled' && existing.amount === paisaAmount) {
+                return {
+                  gateway: 'STRIPE',
+                  clientSecret: existing.client_secret,
+                  paymentIntentId: existing.id,
+                  paymentRef: existing.id,
+                  alreadyPaid: existing.status === 'succeeded',
+                  currency: 'PKR',
+                  amount: formattedAmount,
+                  publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+                  instructions: 'Use simulated test card 4242 4242 4242 4242 with any future expiry and CVV 123.',
+                };
+              }
+            }
             const paymentIntent = await stripeClient.paymentIntents.create({
               amount: paisaAmount,
               currency: 'pkr',
@@ -31,12 +57,14 @@ class PaymentService {
                 customerPhone: customerPhone || '',
               },
               description: `TicketLedger Booking #${orderId}`,
-            });
+            }, paymentRef ? undefined : { idempotencyKey: `ticketledger_order_${orderId}_${paisaAmount}` });
 
             return {
               gateway: 'STRIPE',
               clientSecret: paymentIntent.client_secret,
               paymentIntentId: paymentIntent.id,
+              paymentRef: paymentIntent.id,
+              alreadyPaid: paymentIntent.status === 'succeeded',
               currency: 'PKR',
               amount: formattedAmount,
               publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
@@ -59,10 +87,11 @@ class PaymentService {
       }
 
       case 'JAZZCASH': {
-        const ppTxnRefNo = `JC${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
+        const ppTxnRefNo = paymentRef?.startsWith('JC') ? paymentRef : `JC${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
         return {
           gateway: 'JAZZCASH',
           ppTxnRefNo,
+          paymentRef: ppTxnRefNo,
           amount: formattedAmount,
           currency: 'PKR',
           phone: customerPhone || '03001234567',
@@ -72,10 +101,11 @@ class PaymentService {
       }
 
       case 'EASYPAISA': {
-        const epOrderId = `EP${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
+        const epOrderId = paymentRef?.startsWith('EP') ? paymentRef : `EP${Date.now()}${Math.floor(100 + Math.random() * 900)}`;
         return {
           gateway: 'EASYPAISA',
           epOrderId,
+          paymentRef: epOrderId,
           amount: formattedAmount,
           currency: 'PKR',
           phone: customerPhone || '03331234567',
@@ -86,9 +116,11 @@ class PaymentService {
 
       case 'MOCK':
       default: {
+        const mockTxId = paymentRef?.startsWith('MOCK_') ? paymentRef : `MOCK_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
         return {
           gateway: 'MOCK',
-          mockTxId: `MOCK_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+          mockTxId,
+          paymentRef: mockTxId,
           amount: formattedAmount,
           currency: 'PKR',
           instructions: 'Instant 1-click test checkout mode.',
@@ -100,7 +132,7 @@ class PaymentService {
   /**
    * Verify and finalize payment across gateways
    */
-  async verifyPayment({ paymentMethod, paymentDetails, expectedAmount }) {
+  async verifyPayment({ paymentMethod, paymentDetails, expectedAmount, orderId = null }) {
     switch (paymentMethod) {
       case 'STRIPE': {
         const { paymentIntentId, paymentTxId } = paymentDetails || {};
@@ -115,8 +147,16 @@ class PaymentService {
                 message: `Stripe payment status is '${intent.status}'. Please complete checkout.`,
               };
             }
+            // A payment belongs to one order: another order's PaymentIntent, or one for a different amount, is refused
+            if (orderId && intent.metadata?.orderId && intent.metadata.orderId !== orderId) {
+              return { success: false, code: 'PAYMENT_OTHER_ORDER', message: 'This payment belongs to a different booking.' };
+            }
+            if (expectedAmount != null && intent.amount !== stripeAmount(expectedAmount)) {
+              return { success: false, code: 'PAYMENT_AMOUNT_MISMATCH', message: 'The amount paid does not match this booking.' };
+            }
             return {
               success: true,
+              real: true,
               gateway: 'STRIPE',
               transactionId: intent.id,
               fee: 0,
@@ -186,6 +226,31 @@ class PaymentService {
         };
       }
     }
+  }
+
+  /**
+   * Where an order's payment stands at the gateway, without changing anything: 'succeeded', 'processing'
+   * (the customer is paying right now), 'open' (not paid) or 'unknown' (sandbox gateways, which have no
+   * payment until the customer confirms).
+   */
+  async paymentStatus({ paymentMethod, paymentRef }) {
+    if (paymentMethod === 'STRIPE' && stripeClient && paymentRef?.startsWith('pi_')) {
+      try {
+        const intent = await stripeClient.paymentIntents.retrieve(paymentRef);
+        if (intent.status === 'succeeded') return 'succeeded';
+        if (intent.status === 'processing' || intent.status === 'requires_capture') return 'processing';
+        return 'open';
+      } catch (err) {
+        console.error('[STRIPE STATUS ERROR]', err.message);
+        return 'unknown';
+      }
+    }
+    return 'unknown';
+  }
+
+  /** Gateway payments that really moved money (not the sandbox simulations): only these need a refund back. */
+  isRealPayment({ paymentMethod, paymentTxId }) {
+    return paymentMethod === 'STRIPE' && Boolean(stripeClient) && Boolean(paymentTxId?.startsWith('pi_')) && !paymentTxId.includes('_secret_') && !paymentTxId.includes('mock');
   }
 
   /**

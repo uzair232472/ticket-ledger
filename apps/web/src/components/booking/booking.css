@@ -371,6 +371,14 @@ fieldset.tl-bk-panel { min-width: 0; margin-inline: 0; }
 .tl-co-sum div { display: flex; justify-content: space-between; gap: 16px; }
 .tl-co-sum dt { color: var(--bk-dim); }
 .tl-co-sum dd { font: 600 13px/1.3 var(--bk-mono); text-align: right; }
+/* Discount code (checkout summary) */
+.tl-co-code { margin-top: 14px; display: grid; gap: 6px; }
+.tl-co-code-row { display: flex; gap: 8px; }
+.tl-co-code-row input { flex: 1; min-width: 0; padding: 10px 12px; background: #fff; border: 1px solid var(--bk-line); border-radius: 2px; font: 600 13px/1.2 var(--bk-mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--bk-ink); }
+.tl-co-code-row input[aria-invalid="true"] { border-color: var(--bk-error); }
+.tl-co-code-row .tl-bk-btn { flex: none; }
+.tl-co-code-applied { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px dashed var(--bk-accent); border-radius: 2px; background: #f0fdf4; color: var(--bk-ok); font-size: 13px; }
+.tl-co-code-applied b { font-family: var(--bk-mono); }
 .tl-co-total { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-top: 14px; margin-top: 6px; border-top: 1px solid var(--bk-ink); }
 .tl-co-total span { font-size: 15px; font-weight: 600; }
 .tl-co-total strong { font: 700 clamp(22px, 2.4vw, 28px)/1 var(--bk-mono); letter-spacing: -0.02em; }
@@ -388,6 +396,8 @@ fieldset.tl-bk-panel { min-width: 0; margin-inline: 0; }
 .tl-co-status.is-pending .tl-co-status-icon { background: #d97706; }
 .tl-co-status-title { font-size: clamp(30px, 4.4vw, 56px); line-height: 0.95; font-weight: 500; letter-spacing: -0.04em; }
 .tl-co-status p { max-width: 60ch; font-size: 15px; line-height: 1.55; color: var(--bk-dim); }
+/* Paid and valid, NFT still being minted */
+.tl-co-status p.tl-co-note { padding: 10px 14px; border-left: 3px solid #d97706; background: rgba(217, 119, 6, 0.08); color: var(--bk-ink); font-size: 14px; }
 .tl-co-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .tl-co-progress { width: min(360px, 100%); height: 2px; background: var(--bk-line); overflow: hidden; }
 .tl-co-progress::after { content: ''; display: block; width: 40%; height: 100%; background: var(--bk-ink); animation: tl-co-progress 1.4s var(--bk-ease) infinite; }

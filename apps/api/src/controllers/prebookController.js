@@ -140,6 +140,11 @@ export const submitDraft = async (req, res) => {
     const draft = await ownDraft(req);
     const rowKeys = z.array(z.string().max(40)).max(30).optional().parse(req.body?.rowKeys);
     const results = await submitDraftRows(draft, req.company, rowKeys);
+    // Event-scoped members (Event Managers) are assigned the dates they create
+    if (req.org?.eventScoped) {
+      const created = results.filter((r) => r.status === 'submitted' && r.eventId).map((r) => ({ staffId: req.user.id, eventId: r.eventId, assignedById: req.user.id }));
+      if (created.length) await prisma.staffEventAssignment.createMany({ data: created, skipDuplicates: true });
+    }
     const count = (status) => results.filter((r) => r.status === status).length;
     const submitted = count('submitted');
     const failed = count('conflict') + count('invalid');
@@ -182,7 +187,7 @@ export const setVisibility = async (req, res) => {
   try {
     const { hidden } = z.object({ hidden: z.boolean() }).parse(req.body);
     const event = await prisma.event.findUnique({ where: { id: req.params.eventId } });
-    if (!event || !(await canManageEvent(req.user, event, { requireApproved: true }))) throw new PrebookError(404, 'Event not found.');
+    if (!event || !(await canManageEvent(req.user, event, { requireApproved: true, permission: 'event.lifecycle', req }))) throw new PrebookError(404, 'Event not found.');
     if (!hidden) {
       if (!event.approvedAt || !['PUBLISHED', 'PAUSED', 'COMPLETED'].includes(event.status)) {
         throw new PrebookError(400, 'Only an approved date can be shown publicly.');

@@ -1,6 +1,40 @@
+import { canAccessEvent, eventWhereFor, memberContext } from './orgAccess.js';
 import prisma from '../config/prisma.js';
 import mlService from './mlService.js';
 import { dispatchNotification, NOTIFICATION_TYPES } from './notificationService.js';
+import { createRecoveryCode, normalizeCode, MAX_PERCENT } from './discountService.js';
+
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+
+/**
+ * The discount a recovery reminder carries:
+ *   - discountCode: an existing code of the organization that works on this event (shared by everyone reminded)
+ *   - discountPercent: a new personal, single-use code for this customer (valid `validHours`, default 48)
+ *   - neither: no discount, just the reminder
+ */
+async function recoveryDiscount({ event, targetUserId, discountCode, discountPercent, validHours, requesterUser }) {
+  const code = normalizeCode(discountCode);
+  if (code) {
+    const dc = await prisma.discountCode.findUnique({ where: { companyId_code: { companyId: event.companyId, code } } });
+    if (!dc || !dc.active || (dc.eventId && dc.eventId !== event.id)) throw httpError(400, `"${code}" is not an active discount code for this event. Create it under Discount codes first, or send a personal code instead.`);
+    if (dc.endsAt && dc.endsAt <= new Date()) throw httpError(400, `"${code}" has expired.`);
+    if (dc.restrictedToUserId && dc.restrictedToUserId !== targetUserId) throw httpError(400, `"${code}" is a personal code for another customer.`);
+    return dc;
+  }
+  if (discountPercent) {
+    const pct = Number(discountPercent);
+    if (!(pct >= 1 && pct <= MAX_PERCENT)) throw httpError(400, `The discount must be between 1 and ${MAX_PERCENT}%.`);
+    return createRecoveryCode({ companyId: event.companyId, eventId: event.id, userId: targetUserId, percent: pct, validHours: validHours || 48, createdById: requesterUser.id });
+  }
+  return null;
+}
+
+const offerText = (dc) => {
+  if (!dc) return '';
+  const amount = dc.type === 'PERCENT' ? `${Number(dc.value)}% off` : `PKR ${Number(dc.value).toLocaleString()} off`;
+  const until = dc.endsAt ? ` before ${dc.endsAt.toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Karachi' })}` : '';
+  return ` Use code ${dc.code} at checkout for ${amount}${until}.`;
+};
 
 /**
  * Service to aggregate purchase intent analytics, conversion funnels, and attendee engagement for an event
@@ -24,7 +58,7 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
   }
 
   // 2. Validate organizer access
-  if (requesterUser.role !== 'SUPER_ADMIN' && event.company.userId !== requesterUser.id) {
+  if (!(await canAccessEvent(requesterUser, event, { permission: 'attendee.view' }))) {
     const error = new Error('Access denied: You can only view analytics for your own events');
     error.status = 403;
     throw error;
@@ -300,7 +334,7 @@ export const sendAttendeeReminder = async ({
   }
 
   // Permission check
-  if (requesterUser.role !== 'SUPER_ADMIN' && event.company.userId !== requesterUser.id) {
+  if (!(await canAccessEvent(requesterUser, event, { permission: 'attendee.contact' }))) {
     const error = new Error('Access denied: You cannot send reminders for this event');
     error.status = 403;
     throw error;
@@ -420,12 +454,10 @@ export const getAbandonedIntentDashboard = async ({
   requesterUser,
 }) => {
   // 1. Determine events accessible by the requester
-  const eventWhere = {};
+  let eventWhere = {};
   if (requesterUser.role !== 'SUPER_ADMIN') {
-    const company = await prisma.company.findUnique({
-      where: { userId: requesterUser.id },
-    });
-    if (!company) {
+    const ctx = await memberContext(requesterUser);
+    if (!ctx || !ctx.permissions.has('attendee.view')) {
       return {
         summary: {
           totalAbandonedUsers: 0,
@@ -437,11 +469,11 @@ export const getAbandonedIntentDashboard = async ({
         abandonedUsers: [],
       };
     }
-    eventWhere.companyId = company.id;
+    eventWhere = eventWhereFor(ctx, 'attendee.view');
   }
 
   if (eventId) {
-    eventWhere.id = eventId;
+    eventWhere = { AND: [eventWhere, { id: eventId }] };
   }
 
   const accessibleEvents = await prisma.event.findMany({
@@ -692,8 +724,11 @@ export const sendAbandonedCartReminder = async ({
   targetUserId,
   eventId,
   customMessage = null,
-  discountCode = 'RECOVER10',
+  discountCode = null,
+  discountPercent = null,
+  validHours = 48,
   requesterUser,
+  sharedCode = undefined, // batch: one existing code checked once for everyone
 }) => {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -701,13 +736,11 @@ export const sendAbandonedCartReminder = async ({
   });
 
   if (!event) {
-    throw new Error('Event not found');
+    throw httpError(404, 'Event not found');
   }
 
-  if (requesterUser.role !== 'SUPER_ADMIN' && event.company.userId !== requesterUser.id) {
-    const error = new Error('Access denied: You cannot send reminders for this event');
-    error.status = 403;
-    throw error;
+  if (!(await canAccessEvent(requesterUser, event, { permission: 'attendee.contact' }))) {
+    throw httpError(403, 'Access denied: You cannot send reminders for this event');
   }
 
   const user = await prisma.user.findUnique({
@@ -715,11 +748,14 @@ export const sendAbandonedCartReminder = async ({
   });
 
   if (!user) {
-    throw new Error('Target user not found');
+    throw httpError(404, 'Target user not found');
   }
 
+  const dc = sharedCode !== undefined ? sharedCode : await recoveryDiscount({ event, targetUserId, discountCode, discountPercent, validHours, requesterUser });
   const title = `Your seats for ${event.name} are waiting!`;
-  const message = customMessage || `Hi ${user.name}, you left seats in your cart for ${event.name} in ${event.city}. Use code ${discountCode} for 10% off your checkout before seats are released!`;
+  const message = (customMessage || `Hi ${user.name}, you left seats in your cart for ${event.name} in ${event.city}. Seats are selling, so pick yours again soon.`) + offerText(dc);
+  // The link opens the event with the code ready to apply at checkout
+  const actionUrl = `/events/${event.id}${dc ? `?code=${encodeURIComponent(dc.code)}` : ''}`;
 
   const notificationRes = await dispatchNotification({
     userId: targetUserId,
@@ -730,14 +766,15 @@ export const sendAbandonedCartReminder = async ({
       eventId: event.id,
       eventName: event.name,
       city: event.city,
-      discountCode,
-      actionUrl: `/events/${event.id}`,
+      discountCode: dc?.code || null,
+      actionUrl,
     },
   });
 
   await prisma.auditLog.create({
     data: {
       userId: requesterUser.id,
+      companyId: event.companyId,
       action: 'ORGANIZER_SENT_ABANDONED_CART_REMINDER',
       targetType: 'User',
       targetId: targetUserId,
@@ -745,14 +782,17 @@ export const sendAbandonedCartReminder = async ({
         eventId: event.id,
         eventName: event.name,
         targetEmail: user.email,
-        discountCode,
+        discountCode: dc?.code || null,
+        discountCodeId: dc?.id || null,
+        personalCode: dc?.source === 'CART_RECOVERY',
       },
     },
   });
 
   return {
     success: true,
-    message: `Cart recovery reminder sent to ${user.name} (${user.email})!`,
+    message: `Cart recovery reminder sent to ${user.name} (${user.email})${dc ? ` with code ${dc.code}` : ''}!`,
+    discountCode: dc ? { code: dc.code, type: dc.type, value: Number(dc.value), endsAt: dc.endsAt, personal: dc.source === 'CART_RECOVERY' } : null,
     notification: {
       id: notificationRes.notification?.id,
       userId: targetUserId,
@@ -764,11 +804,14 @@ export const sendAbandonedCartReminder = async ({
 };
 
 /**
- * Batch send recovery reminders to all eligible abandoned users
+ * Batch send recovery reminders to all eligible abandoned users. With discountPercent everyone gets their own
+ * single-use code; with discountCode everyone gets the same existing code.
  */
 export const sendBatchAbandonedCartReminders = async ({
   eventId,
-  discountCode = 'RECOVER10',
+  discountCode = null,
+  discountPercent = null,
+  validHours = 48,
   requesterUser,
 }) => {
   const dashboard = await getAbandonedIntentDashboard({
@@ -778,14 +821,25 @@ export const sendBatchAbandonedCartReminders = async ({
 
   const eligibleUsers = dashboard.abandonedUsers.filter((a) => a.user.id);
 
+  // An existing code is checked once per event up front, so a bad code fails the batch instead of every send
+  const sharedByEvent = new Map();
+  if (normalizeCode(discountCode)) {
+    for (const eid of new Set(eligibleUsers.map((a) => a.event.id))) {
+      const event = await prisma.event.findUnique({ where: { id: eid }, select: { id: true, companyId: true } });
+      sharedByEvent.set(eid, await recoveryDiscount({ event, targetUserId: null, discountCode, requesterUser }));
+    }
+  }
+
   let sentCount = 0;
   for (const attendee of eligibleUsers) {
     try {
       await sendAbandonedCartReminder({
         targetUserId: attendee.user.id,
         eventId: attendee.event.id,
-        discountCode,
+        discountPercent: sharedByEvent.size ? null : discountPercent,
+        validHours,
         requesterUser,
+        ...(sharedByEvent.size ? { sharedCode: sharedByEvent.get(attendee.event.id) } : {}),
       });
       sentCount += 1;
     } catch (err) {

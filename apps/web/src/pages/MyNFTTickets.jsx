@@ -278,9 +278,10 @@ export default function MyNFTTickets() {
             <div className="space-y-3 font-mono text-xs">
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-[11px]">Transaction Status</span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-[#16a34a] border border-emerald-200 text-[10px] font-bold">
-                    <CheckCircle2 className="w-3 h-3" /> SUCCESS (Confirmed)
+                  <span className="text-slate-500 text-[11px]">NFT status</span>
+                  {/* Shown as confirmed only when ownership was read back from the chain */}
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${selectedTicketForExplorer.blockchain?.mintStatus === 'VERIFIED' ? 'bg-emerald-100 text-[#16a34a] border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+                    {selectedTicketForExplorer.blockchain?.mintStatus === 'VERIFIED' && <CheckCircle2 className="w-3 h-3" />} {selectedTicketForExplorer.blockchain?.mintLabel}
                   </span>
                 </div>
 
@@ -292,8 +293,8 @@ export default function MyNFTTickets() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-[11px]">Block Number</span>
-                  <span className="text-slate-900 font-bold">#14,920,482 (Amoy Testnet)</span>
+                  <span className="text-slate-500 text-[11px]">Ticket</span>
+                  <span className="text-slate-900 font-bold">{selectedTicketForExplorer.states?.entry.label}</span>
                 </div>
 
                 <div className="flex items-center justify-between">

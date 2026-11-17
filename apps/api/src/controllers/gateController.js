@@ -8,6 +8,7 @@ import {
 } from '../services/qrTicketService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { getScopedEventIds } from '../services/accessService.js';
+import { requestContext } from '../services/orgAccess.js';
 
 /**
  * 1. Process Gate Turnstile Scan (Dynamic QR Verification & Double-Entry Block)
@@ -82,8 +83,10 @@ export const getDynamicRotatingQR = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Ticket not found' });
     }
 
-    if (ticket.userId !== userId && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'GATE_STAFF') {
-      return res.status(403).json({ success: false, message: 'Access denied' });
+    // The holder, a Super Admin, or a member who scans this event (assigned, same organization)
+    if (ticket.userId !== userId && req.user.role !== 'SUPER_ADMIN') {
+      const scope = await getScopedEventIds(req.user, 'gate.scan');
+      if (!scope.includes(ticket.eventId)) return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
     const payload = createDynamicQRPayload(ticket);
@@ -114,11 +117,13 @@ export const getRecentScans = async (req, res) => {
     const { limit = 20, eventId } = req.query;
 
     const whereClause = {};
-    if (req.user.role === 'GATE_STAFF') {
+    // Scanner-only members (Gate Staff) see their own scans
+    const ctx = req.user.role === 'SUPER_ADMIN' ? null : await requestContext(req);
+    if (ctx?.role === 'GATE_STAFF' || (req.user.role === 'GATE_STAFF' && !ctx)) {
       whereClause.staffId = staffId;
     }
     // Organizers see scans for their own events only; Super Admins see everything
-    const scopedIds = await getScopedEventIds(req.user);
+    const scopedIds = await getScopedEventIds(req.user, 'gate.stats');
     if (eventId && scopedIds && !scopedIds.includes(eventId)) {
       return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
     }
@@ -163,7 +168,7 @@ export const getEventGateStats = async (req, res) => {
   try {
     const { eventId } = req.params;
 
-    const scopedIds = await getScopedEventIds(req.user);
+    const scopedIds = await getScopedEventIds(req.user, 'gate.stats');
     if (scopedIds && !scopedIds.includes(eventId)) {
       return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
     }

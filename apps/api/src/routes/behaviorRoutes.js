@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireRole, optionalAuth } from '../middlewares/auth.js';
+import { requireAuth, optionalAuth, orgGuard } from '../middlewares/auth.js';
 import {
   recordClientEvent,
   getMyBehaviorProfile,
@@ -19,6 +19,6 @@ router.post('/attach-session', requireAuth, linkSessionToUser);
 router.get('/profile', requireAuth, getMyBehaviorProfile);
 
 // 4. Admin / Organizer inspection of any user's profile
-router.get('/user/:userId', requireAuth, requireRole('SUPER_ADMIN', 'ORGANIZER'), getUserBehaviorProfileById);
+router.get('/user/:userId', ...orgGuard('attendee.view'), getUserBehaviorProfileById);
 
 export default router;

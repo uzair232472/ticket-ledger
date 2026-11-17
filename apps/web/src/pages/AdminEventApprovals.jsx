@@ -8,6 +8,7 @@ import { useDialog } from '../components/ui/DialogProvider';
 import PromotionReviewCard from '../components/promotion/PromotionReviewCard';
 import ScheduleChangeCard from '../components/lifecycle/ScheduleChangeCard';
 import RefundsAdmin from '../components/lifecycle/RefundsAdmin';
+import TicketIssuanceAdmin from '../components/lifecycle/TicketIssuanceAdmin';
 import ReviewThread from '../components/review/ReviewThread';
 
 const pkr = (n) => `PKR ${Number(n || 0).toLocaleString('en-PK')}`;
@@ -29,14 +30,17 @@ const TYPES = [
   { value: 'PROMOTIONS', label: 'Promotions' },
   { value: 'CHANGES', label: 'Date changes' },
   { value: 'REFUNDS', label: 'Refunds' },
+  { value: 'ISSUANCE', label: 'Ticket issuance' },
 ];
 const EVENT_TYPES = ['ALL', 'NEW', 'RESERVATION', 'FINAL'];
 // API status per type and status tab
 const EVENT_STATUS = { REVIEW: 'PENDING_APPROVAL', WAITING: 'WAITING_ORGANIZER', APPROVED: 'PUBLISHED', REJECTED: 'REJECTED' };
 const PROMO_STATUS = { REVIEW: 'REQUESTED', APPROVED: 'APPROVED', REJECTED: 'REJECTED' };
 const CHANGE_STATUS = { REVIEW: 'PENDING', APPROVED: 'APPROVED', REJECTED: 'REJECTED' };
-// ?tab=promotions | changes | refunds (links in admin emails)
-const TAB_PARAM = { promotions: 'PROMOTIONS', changes: 'CHANGES', refunds: 'REFUNDS' };
+// ?tab=promotions | changes | refunds | issuance (links in admin emails)
+const TAB_PARAM = { promotions: 'PROMOTIONS', changes: 'CHANGES', refunds: 'REFUNDS', issuance: 'ISSUANCE' };
+// Request types with their own list (no review-state tabs)
+const QUEUES = ['REFUNDS', 'ISSUANCE'];
 
 /** Which kind of event request this is: a new ticketed event, a prebooked date's reservation, or its final approval. */
 const kindOf = (event) => {
@@ -304,12 +308,14 @@ export default function AdminEventApprovals() {
     if (value !== 'REVIEW') return 0;
     return { PROMOTIONS: counts.PROMOTIONS, CHANGES: counts.CHANGES }[type] || 0;
   };
-  const waiting = isEvents ? counts.PENDING_APPROVAL || 0 : type === 'REFUNDS' ? counts.REFUNDS || 0 : tabCount('REVIEW');
+  const waiting = isEvents ? counts.PENDING_APPROVAL || 0 : QUEUES.includes(type) ? counts[type] || 0 : tabCount('REVIEW');
   const waitingText = type === 'REFUNDS'
     ? `${waiting} failed refund${waiting === 1 ? '' : 's'}`
-    : `${waiting} request${waiting === 1 ? ' needs' : 's need'} review`;
+    : type === 'ISSUANCE'
+      ? `${waiting} ticket${waiting === 1 ? '' : 's'} not minted`
+      : `${waiting} request${waiting === 1 ? ' needs' : 's need'} review`;
   const typeLabel = (t) => {
-    const n = { PROMOTIONS: counts.PROMOTIONS, CHANGES: counts.CHANGES, REFUNDS: counts.REFUNDS }[t.value];
+    const n = { PROMOTIONS: counts.PROMOTIONS, CHANGES: counts.CHANGES, REFUNDS: counts.REFUNDS, ISSUANCE: counts.ISSUANCE }[t.value];
     return n ? `${t.label} (${n})` : t.label;
   };
   const reviewed = (msg) => {
@@ -331,7 +337,7 @@ export default function AdminEventApprovals() {
       </header>
 
       <div className="tl-eva-bar">
-        {type !== 'REFUNDS' ? (
+        {!QUEUES.includes(type) ? (
           <div className="tl-eva-tabs" role="group" aria-label="Review state">
             {statuses.map((s) => (
               <button key={s.value} type="button" className="tl-eva-tab" aria-pressed={activeStatus === s.value} onClick={() => setStatus(s.value)}>
@@ -360,6 +366,11 @@ export default function AdminEventApprovals() {
 
       {type === 'REFUNDS' ? (
         <RefundsAdmin onCounts={(c) => setCounts((prev) => (prev.REFUNDS === (c.FAILED || 0) ? prev : { ...prev, REFUNDS: c.FAILED || 0 }))} />
+      ) : type === 'ISSUANCE' ? (
+        <TicketIssuanceAdmin onCounts={(c) => {
+          const n = (c.FAILED || 0) + (c.PENDING || 0);
+          setCounts((prev) => (prev.ISSUANCE === n ? prev : { ...prev, ISSUANCE: n }));
+        }} />
       ) : loading ? (
         <p className="tl-eva-hint">Loading…</p>
       ) : (type === 'CHANGES' ? changes : shown).length === 0 ? (

@@ -1,3 +1,5 @@
+import { acceptInvitation, previewInvitation, rejectInvitation } from '../services/orgService.js';
+import { AccessError, EVENT_SCOPED_ROLES, ROLE_LABELS, effectivePermissions, findMembership } from '../services/orgAccess.js';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
@@ -143,7 +145,25 @@ export const buildAuthUser = async (userId) => {
   if (!user) return null;
 
   const isOrganizer = user.role === 'ORGANIZER';
+  // Organization membership (separate from the account's role): what the frontend may show this person
+  const membership = await findMembership(user.id);
+  const organization = membership
+    ? {
+        id: membership.companyId,
+        name: membership.company.companyName,
+        status: membership.company.status,
+        memberId: membership.id,
+        memberStatus: membership.status,
+        role: membership.role,
+        roleLabel: ROLE_LABELS[membership.role],
+        permissions: membership.status === 'ACTIVE' ? effectivePermissions(membership.role, membership.grantedPermissions, membership.revokedPermissions) : [],
+        eventScoped: EVENT_SCOPED_ROLES.includes(membership.role),
+      }
+    : null;
+  const ownCompany = isOrganizer ? user.company : null;
+  const orgCompany = membership?.status === 'ACTIVE' ? membership.company : null;
   return {
+    organization,
     id: user.id,
     name: user.name,
     email: user.email,
@@ -155,8 +175,9 @@ export const buildAuthUser = async (userId) => {
     emailVerifiedAt: user.emailVerifiedAt,
     createdAt: user.createdAt,
     companyId: user.companyId,
-    companyName: (isOrganizer ? user.company?.companyName : user.memberOfCompany?.companyName) || null,
-    companyStatus: isOrganizer ? user.company?.status || 'NONE' : null,
+    companyName: (orgCompany || ownCompany || user.memberOfCompany)?.companyName || null,
+    // Organizers without a company see NONE (registration screen); members see their organization's status
+    companyStatus: orgCompany?.status || (isOrganizer ? ownCompany?.status || 'NONE' : null),
     companyRejectionReason: isOrganizer ? user.company?.rejectionReason || null : null,
   };
 };
@@ -531,40 +552,25 @@ export const resetPassword = async (req, res) => {
   }
 };
 
-// Returns the invite if its link is still usable; expired PENDING invites are marked EXPIRED
-const findUsableInvite = async (rawToken) => {
-  const invite = await prisma.staffInvite.findUnique({
-    where: { tokenHash: sha256(rawToken) },
-    include: {
-      event: { select: { id: true, name: true, date: true, venue: true, city: true } },
-      company: { select: { id: true, companyName: true } },
-    },
-  });
-  if (!invite || invite.status !== 'PENDING') return null;
-  if (invite.expiresAt < new Date()) {
-    await prisma.staffInvite.update({ where: { id: invite.id }, data: { status: 'EXPIRED' } });
-    return null;
-  }
-  return invite;
-};
-
 /**
- * GET /api/auth/invite/:token
+ * GET /api/auth/invite/:token: what the invitation offers (organization, role, events) and whether an account
+ * already uses the invited email (then the invitee signs in to accept).
  */
 export const getInvite = async (req, res) => {
   try {
-    const invite = await findUsableInvite(req.params.token);
-    if (!invite) {
+    const preview = await previewInvitation(req.params.token);
+    if (!preview) {
       return res.status(410).json({ success: false, code: 'INVITE_INVALID', message: MESSAGES.INVITE_INVALID });
     }
+    const first = preview.events[0];
     return res.status(200).json({
       success: true,
       data: {
-        email: invite.email,
-        eventName: invite.event.name,
-        eventDate: invite.event.date,
-        venue: `${invite.event.venue}, ${invite.event.city}`,
-        companyName: invite.company.companyName,
+        ...preview,
+        // Fields of the original gate staff invite page
+        eventName: first?.name || null,
+        eventDate: first?.date || null,
+        venue: first ? `${first.venue}, ${first.city}` : null,
       },
     });
   } catch (error) {
@@ -573,55 +579,44 @@ export const getInvite = async (req, res) => {
 };
 
 /**
- * POST /api/auth/accept-invite — creates the gate staff account and starts a session
+ * POST /api/auth/accept-invite. Signed in (Bearer): joins with that account, whose verified email must be the
+ * invited one. Not signed in: { token, name, password } creates the account. Single use either way.
  */
 export const acceptInvite = async (req, res) => {
   try {
-    const { token, name, password } = acceptInviteSchema.parse(req.body);
-    const invite = await findUsableInvite(token);
-    if (!invite) {
-      return res.status(410).json({ success: false, code: 'INVITE_INVALID', message: MESSAGES.INVITE_INVALID });
+    let passwordHash = null;
+    let name = null;
+    if (!req.user) {
+      const body = acceptInviteSchema.parse(req.body);
+      name = body.name;
+      passwordHash = await bcrypt.hash(body.password, 10);
+    } else {
+      z.object({ token: z.string().min(1, 'Invite token is required') }).parse(req.body);
     }
+    const { user, member } = await acceptInvitation(req, { token: req.body.token, name, passwordHash });
 
-    if (await prisma.user.findUnique({ where: { email: invite.email } })) {
-      return res.status(409).json({ success: false, message: MESSAGES.INVITE_EMAIL_TAKEN });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const staff = await prisma.$transaction(async (tx) => {
-      // Single use: only one request can move the invite out of PENDING
-      const { count } = await tx.staffInvite.updateMany({
-        where: { id: invite.id, status: 'PENDING' },
-        data: { status: 'ACCEPTED', acceptedAt: new Date() },
-      });
-      if (count === 0) return null;
-
-      const created = await tx.user.create({
-        data: {
-          name,
-          email: invite.email,
-          passwordHash,
-          role: 'GATE_STAFF',
-          status: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-          companyId: invite.companyId,
-        },
-      });
-      await tx.staffEventAssignment.create({
-        data: { staffId: created.id, eventId: invite.eventId, assignedById: invite.invitedById },
-      });
-      return created;
+    trackLogin(req, user.id, 'ORG_INVITE_ACCEPTED', user.email);
+    const session = await startSession(res, user.id);
+    return res.status(req.user ? 200 : 201).json({
+      success: true,
+      message: member.role === 'GATE_STAFF' && !req.user ? 'Your gate staff account is ready.' : 'You have joined the organization.',
+      data: session,
     });
-
-    if (!staff) {
-      return res.status(410).json({ success: false, code: 'INVITE_INVALID', message: MESSAGES.INVITE_INVALID });
-    }
-
-    trackLogin(req, staff.id, 'STAFF_INVITE_ACCEPTED', staff.email);
-    const session = await startSession(res, staff.id);
-    return res.status(201).json({ success: true, message: 'Your gate staff account is ready.', data: session });
   } catch (error) {
+    if (error instanceof AccessError) return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    if (error?.code === 'P2002') return res.status(409).json({ success: false, message: 'This account already belongs to an organization.' });
     return handleError(res, error, 'Accept invite');
+  }
+};
+
+/** POST /api/auth/invite/:token/reject: declines the invitation (its link stops working). */
+export const rejectInvite = async (req, res) => {
+  try {
+    await rejectInvitation(req, req.params.token);
+    return res.status(200).json({ success: true, message: 'Invitation declined.' });
+  } catch (error) {
+    if (error instanceof AccessError) return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    return handleError(res, error, 'Decline invite');
   }
 };
 

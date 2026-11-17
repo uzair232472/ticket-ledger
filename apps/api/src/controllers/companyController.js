@@ -36,6 +36,15 @@ export const registerCompany = async (req, res) => {
     const existingCompany = await prisma.company.findUnique({
       where: { userId },
     });
+    // One organization per user: a member of another organization can't register a company of their own
+    const otherMembership = await prisma.organizationMember.findFirst({
+      where: { userId, status: { not: 'REMOVED' }, ...(existingCompany ? { companyId: { not: existingCompany.id } } : {}) },
+      select: { id: true },
+    });
+    if (otherMembership) {
+      return res.status(409).json({ success: false, message: 'You are already a member of an organization. Leave it before registering your own company.' });
+    }
+
     // Checked before anything is uploaded, so a refused request stores no files
     if (existingCompany?.status === 'APPROVED') {
       return res.status(400).json({
@@ -102,8 +111,26 @@ export const registerCompany = async (req, res) => {
       });
     }
 
-    // Link the organizer account to its company (used for staff and event ownership checks)
-    await prisma.user.update({ where: { id: userId }, data: { companyId: company.id } });
+    // New verification files also go into the organization's document library
+    if (files.length) {
+      await prisma.companyDocument.createMany({
+        data: files.map((file, i) => ({ companyId: company.id, type: 'VERIFICATION', title: file.originalname?.slice(0, 120) || `Verification document ${i + 1}`, url: documentUrls[i], mimeType: file.mimetype, sizeBytes: file.size, uploadedById: userId })),
+      });
+    }
+    // A new organization starts with its head office at the registered city
+    if (!existingCompany) {
+      await prisma.companyBranch.create({ data: { companyId: company.id, name: 'Head office', isHeadOffice: true, city: company.city, phone: company.phone, email: company.email, createdById: userId } }).catch(() => {});
+    }
+
+    // Link the organizer account to its company and make it the organization's owner
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { companyId: company.id } }),
+      prisma.organizationMember.upsert({
+        where: { companyId_userId: { companyId: company.id, userId } },
+        update: {},
+        create: { companyId: company.id, userId, role: 'OWNER', status: 'ACTIVE' },
+      }),
+    ]);
 
     // Create confirmation in-app notification
     await prisma.notification.create({
@@ -162,14 +189,22 @@ export const getMyCompany = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const company = await prisma.company.findUnique({
-      where: { userId },
+    // The organization of the user's open membership (owners and employees), else one they registered
+    const membership = await prisma.organizationMember.findFirst({ where: { userId, status: { not: 'REMOVED' } }, select: { companyId: true, role: true } });
+    let company = await prisma.company.findUnique({
+      where: membership ? { id: membership.companyId } : { userId },
       include: {
         events: {
           select: { id: true, name: true, status: true, date: true },
         },
       },
     });
+
+    // Verification documents and tax numbers are for owners and admins only
+    if (company && membership && !['OWNER', 'ADMIN'].includes(membership.role)) {
+      const { ntnCnic, documentUrl, documentUrls, rejectionReason, ...rest } = company;
+      company = rest;
+    }
 
     return res.status(200).json({
       success: true,
@@ -346,4 +381,4 @@ export const updateCompanyStatus = async (req, res) => {
 };
 
 // Kept for existing imports; the guard now lives in middlewares/auth.js
-export const requireApprovedOrganizer = requireApprovedCompany;
+export const requireApprovedOrganizer = requireApprovedCompany('event.create');

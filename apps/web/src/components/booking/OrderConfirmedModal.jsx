@@ -47,6 +47,8 @@ export default function OrderConfirmedModal({ order, receipt, onClose }) {
     };
   }, [onClose]);
 
+  // Paid tickets work at the gate at once; their NFT may still be on its way (retried in the background)
+  const nftPending = tickets.some((t) => ['PENDING', 'FAILED'].includes(t.states?.nft.status));
   const time = formatEventTime(event?.time);
   const image = event ? getEventVisual(event).imageUrl : null;
   const orderNo = `#${order.id.slice(0, 8).toUpperCase()}`;
@@ -63,7 +65,11 @@ export default function OrderConfirmedModal({ order, receipt, onClose }) {
           <span className="tl-ok-mark-check"><Check className="w-3.5 h-3.5" strokeWidth={3} /></span>
         </div>
         <h2 id="tl-ok-title" className="tl-ok-title">You’re going!</h2>
-        <p id="tl-ok-sub" className="tl-ok-sub">Your booking is confirmed. Your tickets are ready.</p>
+        <p id="tl-ok-sub" className="tl-ok-sub">
+          {nftPending
+            ? 'Payment successful and your booking is confirmed. Your tickets work at the gate now; their NFT is still being issued and will finish automatically.'
+            : 'Your booking is confirmed. Your tickets are ready.'}
+        </p>
 
         <div className="tl-ok-ticket">
           <div className="tl-ok-event">

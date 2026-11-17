@@ -58,11 +58,12 @@ const tokenExpiry = (token) => {
  * Calls an /api/auth endpoint with the refresh cookie. Throws an Error carrying the API's
  * `code`, `needsVerification`, `status` and `data` so screens can react to them.
  */
-const authRequest = async (path, { method = 'POST', body } = {}) => {
+const authRequest = async (path, { method = 'POST', body, bearer } = {}) => {
+  const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) };
   const res = await fetch(`${API_URL}/api/auth${path}`, {
     method,
     credentials: 'include',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = res.status === 204 ? {} : await res.json().catch(() => ({}));
@@ -258,11 +259,15 @@ export function AuthProvider({ children }) {
   const getInvite = async (inviteToken) =>
     authRequest(`/invite/${encodeURIComponent(inviteToken)}`, { method: 'GET' });
 
+  // Signed in: joins with this account (its verified email must be the invited one). Otherwise creates the account.
   const acceptInvite = async (inviteToken, name, password) => {
-    const data = await authRequest('/accept-invite', { body: { token: inviteToken, name, password } });
+    const signedIn = Boolean(user && token);
+    const data = await authRequest('/accept-invite', { body: signedIn ? { token: inviteToken } : { token: inviteToken, name, password }, bearer: signedIn ? token : undefined });
     applySession(data.data);
     return data.data;
   };
+
+  const rejectInvite = async (inviteToken) => authRequest(`/invite/${encodeURIComponent(inviteToken)}/reject`, { bearer: user && token ? token : undefined });
 
   // Re-reads the user (e.g. after a company registration changes companyStatus)
   const refreshUser = async () => {
@@ -302,6 +307,7 @@ export function AuthProvider({ children }) {
         resetPassword,
         getInvite,
         acceptInvite,
+        rejectInvite,
         refreshUser,
         logout,
       }}
