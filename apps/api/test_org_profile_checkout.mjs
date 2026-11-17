@@ -8,6 +8,9 @@ import http from 'node:http';
 import bcrypt from 'bcryptjs';
 import app from './src/app.js';
 import prisma from './src/config/prisma.js';
+import { runAutoRecovery } from './src/services/recoveryService.js';
+import { getLastSentEmail } from './src/services/emailService.js';
+import { runPayouts, computeEvent } from './src/services/payoutService.js';
 
 const PASSWORD = 'Password@123';
 
@@ -78,6 +81,9 @@ test('Organization profile, finance, branches, discounts and checkout retries', 
 
   t.after(async () => {
     const orders = await prisma.order.findMany({ where: { userId: { in: userIds } }, select: { id: true } });
+    await prisma.ticketGift.deleteMany({ where: { senderId: { in: userIds } } });
+    await prisma.checkoutGroup.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.ticketTransferHistory.deleteMany({ where: { OR: [{ fromUserId: { in: userIds } }, { toUserId: { in: userIds } }] } });
     await prisma.discountRedemption.deleteMany({ where: { orderId: { in: orders.map((o) => o.id) } } });
     await prisma.ticket.deleteMany({ where: { orderId: { in: orders.map((o) => o.id) } } });
     await prisma.order.deleteMany({ where: { userId: { in: userIds } } });
@@ -85,6 +91,8 @@ test('Organization profile, finance, branches, discounts and checkout retries', 
     await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.notification.deleteMany({ where: { type: 'ADMIN_FINANCE_REVIEW_REQUEST', title: { contains: run } } });
     await prisma.behaviorEvent.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.recoveryReminder.deleteMany({ where: { companyId: company.id } });
+    await prisma.payout.deleteMany({ where: { companyId: company.id } });
     await prisma.event.deleteMany({ where: { companyId: company.id } });
     await prisma.organizationMember.deleteMany({ where: { companyId: company.id } });
     await prisma.company.delete({ where: { id: company.id } });
@@ -229,7 +237,7 @@ test('Organization profile, finance, branches, discounts and checkout retries', 
     const first = await call('POST', '/bookings/initiate', fanToken, body, { 'Idempotency-Key': `key-${run}-1` });
     assert.equal(first.status, 201, first.body?.message);
     order1 = first.body.data.orderId;
-    assert.deepEqual(first.body.data.priceBreakdown, { subtotal: 4000, discount: 800, discountCode: 'EARLY20', discountLabel: '20% off', serviceFee: 0, total: 3200, currency: 'PKR' });
+    assert.deepEqual(first.body.data.priceBreakdown, { subtotal: 4000, discount: 800, discountCode: 'EARLY20', discountLabel: '20% off', groupDiscount: 0, serviceFee: 0, tax: 0, taxPercent: 0, taxLabel: 'Sales tax', total: 3200, currency: 'PKR' });
     const ref = first.body.data.paymentParams.paymentRef;
 
     // Same key again, no key, and three at once (seats reversed): all the same order and payment
@@ -318,5 +326,189 @@ test('Organization profile, finance, branches, discounts and checkout retries', 
 
     const bogus = await call('POST', '/analytics/abandoned/send-reminder', ownerToken, { targetUserId: fan2.id, eventId: event.id, discountCode: 'RECOVER10' });
     assert.equal(bogus.status, 400, 'a code that does not exist is not promised to customers');
+  });
+
+  await t.test('recovery: automatic reminders after a lapsed checkout, once per customer and event', async () => {
+    assert.equal((await call('PUT', '/org/recovery', staffToken, { recoveryEnabled: true })).status, 403, 'needs attendee.contact');
+    assert.equal((await call('PUT', '/org/recovery', ownerToken, { recoveryEnabled: true, recoveryDiscountPercent: 95 })).status, 400);
+    const on = await call('PUT', '/org/recovery', ownerToken, { recoveryEnabled: true, recoveryDelayHours: 2, recoveryDiscountPercent: 12 });
+    assert.equal(on.status, 200, on.body?.message);
+
+    // fan's checkout lapsed 3 hours ago (the hold-expiry test above failed it)
+    const lapsed = await prisma.order.findFirst({ where: { userId: fan.id, eventId: event.id, status: 'FAILED' }, orderBy: { createdAt: 'desc' } });
+    await prisma.order.update({ where: { id: lapsed.id }, data: { updatedAt: new Date(Date.now() - 3 * 3600000) } });
+    await prisma.recoveryReminder.deleteMany({ where: { eventId: event.id } });
+    await runAutoRecovery();
+    const sent = await prisma.recoveryReminder.findMany({ where: { eventId: event.id, userId: fan.id } });
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].source, 'AUTO');
+    const code = await prisma.discountCode.findUnique({ where: { id: sent[0].discountCodeId } });
+    assert.deepEqual([code.restrictedToUserId, Number(code.value), code.source], [fan.id, 12, 'CART_RECOVERY']);
+    const note = await prisma.notification.findFirst({ where: { userId: fan.id, type: 'ABANDONED_CHECKOUT_REMINDER' }, orderBy: { createdAt: 'desc' } });
+    assert.equal(note.link, `/events/${event.id}?code=${code.code}`);
+
+    await runAutoRecovery();
+    assert.equal(await prisma.recoveryReminder.count({ where: { eventId: event.id, userId: fan.id } }), 1, 'not twice in a week');
+    const stats = await call('GET', '/org/recovery', ownerToken);
+    assert.ok(stats.body.data.last30Days.automatic >= 1);
+    await prisma.recoveryReminder.deleteMany({ where: { companyId: company.id } });
+  });
+
+  let fan3;
+  let fan3Token;
+  await t.test('checkout: group discount, service fee, tax, limit per customer and the invoice', async () => {
+    assert.equal((await call('PUT', '/org/checkout/fees', staffToken, { taxPercent: 16 })).status, 403);
+    const fees = await call('PUT', '/org/checkout/fees', ownerToken, { serviceFeeType: 'PERCENT', serviceFeeValue: 5, taxPercent: 16, taxLabel: 'Punjab sales tax', taxRegistrationNumber: 'PRA-123' });
+    assert.equal(fees.status, 200, fees.body?.message);
+    assert.equal((await call('PUT', `/org/events/${event.id}/checkout-rules`, ownerToken, { groupMinTickets: 3 })).status, 400, 'both group fields');
+    const rules = await call('PUT', `/org/events/${event.id}/checkout-rules`, ownerToken, { groupMinTickets: 3, groupDiscountPercent: 10, maxTicketsPerCustomer: 3 });
+    assert.equal(rules.status, 200, rules.body?.message);
+
+    fan3 = await account('fan3');
+    fan3Token = await login(fan3.email);
+    const mine = [seats[5], seats[6], seats[7]];
+    await hold(fan3.id, mine);
+    const q = await call('POST', '/bookings/quote', fan3Token, { eventId: event.id, seatIds: mine.map((x) => x.id) });
+    assert.equal(q.status, 200, q.body?.message);
+    // 3 × 2000 = 6000 − 10% group = 5400 + 5% fee 270 = 5670 + 16% tax 907.20 = 6577.20
+    assert.deepEqual([q.body.data.groupDiscount, q.body.data.serviceFee, q.body.data.tax, q.body.data.total], [600, 270, 907.2, 6577.2]);
+
+    const init = await call('POST', '/bookings/initiate', fan3Token, { eventId: event.id, seatIds: mine.map((x) => x.id), paymentMethod: 'MOCK' });
+    assert.equal(init.status, 201, init.body?.message);
+    assert.equal(init.body.data.totalAmount, 6577.2);
+    assert.equal(init.body.data.priceBreakdown.taxLabel, 'Punjab sales tax');
+    const ok = await call('POST', '/bookings/confirm', fan3Token, { orderId: init.body.data.orderId, paymentDetails: { paymentTxId: init.body.data.paymentParams.mockTxId } });
+    assert.equal(ok.status, 200, ok.body?.message);
+    const paid = await prisma.order.findUnique({ where: { id: init.body.data.orderId } });
+    assert.match(paid.invoiceNumber, /^INV-\d{4}-\d{6}$/);
+
+    const pdf = await fetch(`${api}/bookings/${paid.id}/invoice`, { headers: { Authorization: `Bearer ${fan3Token}` } });
+    assert.equal(pdf.status, 200);
+    assert.equal(pdf.headers.get('content-type'), 'application/pdf');
+    assert.equal((await pdf.arrayBuffer()).byteLength > 1000, true);
+    assert.equal((await fetch(`${api}/bookings/${paid.id}/invoice`, { headers: { Authorization: `Bearer ${fanToken}` } })).status, 404, "another customer's invoice");
+
+    // Limit 3 per customer: a fourth ticket is refused
+    await hold(fan3.id, [seats[2]]);
+    const more = await call('POST', '/bookings/initiate', fan3Token, { eventId: event.id, seatIds: [seats[2].id], paymentMethod: 'MOCK' });
+    assert.equal(more.status, 409);
+    assert.equal(more.body.code, 'CUSTOMER_LIMIT');
+    await call('PUT', `/org/events/${event.id}/checkout-rules`, ownerToken, { groupMinTickets: null, groupDiscountPercent: null, maxTicketsPerCustomer: null });
+    await call('PUT', '/org/checkout/fees', ownerToken, { serviceFeeType: 'NONE', taxPercent: 0 });
+  });
+
+  await t.test('gifts and group tickets: delivered to accounts, claim links for new people', async () => {
+    const mine = await prisma.ticket.findMany({ where: { userId: fan3.id, eventId: event.id, status: 'ACTIVE' }, orderBy: { createdAt: 'asc' } });
+    assert.equal(mine.length, 3);
+    const gift = await call('POST', '/bookings/gifts', fan3Token, { kind: 'GIFT', ticketIds: [mine[0].id], email: fan.email, message: 'Happy birthday!' });
+    assert.equal(gift.status, 201, gift.body?.message);
+    const moved = await prisma.ticket.findUnique({ where: { id: mine[0].id } });
+    assert.equal(moved.userId, fan.id);
+    assert.equal(moved.qrVersion, mine[0].qrVersion + 1, 'the old QR stops working');
+
+    const friend = `friend.${run}@gmail.com`;
+    const group = await call('POST', '/bookings/gifts', fan3Token, { kind: 'GROUP', recipients: [{ ticketId: mine[1].id, email: friend, name: 'Friend' }] });
+    assert.equal(group.body.data.gifts[0].delivered, false);
+    const link = getLastSentEmail().actionUrl;
+    assert.match(link, /\/gifts\/[\w-]+$/);
+    const token = link.split('/gifts/')[1];
+    const preview = await call('GET', `/gifts/${token}`);
+    assert.equal(preview.body.data.status, 'PENDING');
+    assert.equal((await call('POST', '/bookings/gifts', fan3Token, { ticketIds: [mine[1].id], email: fan2.email })).status, 409, 'already waiting');
+    assert.equal((await call('POST', `/gifts/${token}/claim`, fanToken)).status, 403, 'only the invited email');
+
+    const newcomer = await prisma.user.create({ data: { name: 'Test Friend', email: friend, passwordHash: hash, status: 'ACTIVE', emailVerifiedAt: new Date(), isVerified: true } });
+    userIds.push(newcomer.id);
+    const claimed = await call('POST', `/gifts/${token}/claim`, await login(friend));
+    assert.equal(claimed.status, 200, claimed.body?.message);
+    assert.equal((await prisma.ticket.findUnique({ where: { id: mine[1].id } })).userId, newcomer.id);
+    assert.equal((await call('POST', `/gifts/${token}/claim`, await login(friend))).status, 410);
+  });
+
+  await t.test('booking changes: move to a free seat of the same type when the event allows it', async () => {
+    const t3 = await prisma.ticket.findFirst({ where: { userId: fan3.id, eventId: event.id, status: 'ACTIVE' } });
+    assert.equal((await call('GET', `/bookings/tickets/${t3.id}/seat-options`, fan3Token)).status, 409, 'not allowed by default');
+    await call('PUT', `/org/events/${event.id}/checkout-rules`, ownerToken, { allowSeatChanges: true, seatChangeCutoffHours: 24 });
+    const opts = await call('GET', `/bookings/tickets/${t3.id}/seat-options`, fan3Token);
+    assert.equal(opts.status, 200, opts.body?.message);
+    const free = await prisma.seat.create({ data: { eventId: event.id, tierId: tier.id, section: 'B', row: 'B', seatNumber: '1' } });
+    const ch = await call('POST', `/bookings/tickets/${t3.id}/change-seat`, fan3Token, { seatId: free.id });
+    assert.equal(ch.status, 200, ch.body?.message);
+    const after = await prisma.ticket.findUnique({ where: { id: t3.id } });
+    assert.equal(after.seatId, free.id);
+    assert.equal(after.chainSeatId, t3.chainSeatId || t3.seatId, 'the NFT keeps its seat key');
+    assert.equal((await prisma.seat.findUnique({ where: { id: t3.seatId } })).status, 'AVAILABLE');
+    assert.equal((await call('POST', `/bookings/tickets/${t3.id}/change-seat`, fanToken, { seatId: t3.seatId })).status, 404, "someone else's ticket");
+    await call('PUT', `/org/events/${event.id}/checkout-rules`, ownerToken, { allowSeatChanges: false });
+  });
+
+  await t.test('cart: several events, one payment; a lapsed reservation is left out', async () => {
+    const event2 = await prisma.event.create({ data: { companyId: company.id, name: `Second Event ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 50 * 86400000), time: '19:00', city: 'Lahore', venue: `Hall Two ${run}` } });
+    const tier2 = await prisma.ticketTier.create({ data: { eventId: event2.id, name: 'Standard', price: 1500, totalQuantity: 10, availableQuantity: 10 } });
+    const mk = (eventId, tierId, n) => prisma.seat.create({ data: { eventId, tierId, section: 'C', row: 'C', seatNumber: String(n) } });
+    const [a1, a2] = [await mk(event.id, tier.id, 1), await mk(event.id, tier.id, 2)];
+    const [b1, b2] = [await mk(event2.id, tier2.id, 1), await mk(event2.id, tier2.id, 2)];
+    const fan4 = await account('fan4');
+    const tok = await login(fan4.email);
+    await hold(fan4.id, [a1, b1]);
+    const o1 = await call('POST', '/bookings/initiate', tok, { eventId: event.id, seatIds: [a1.id], paymentMethod: 'MOCK', cart: true });
+    const o2 = await call('POST', '/bookings/initiate', tok, { eventId: event2.id, seatIds: [b1.id], paymentMethod: 'MOCK', cart: true });
+    assert.equal(o1.status, 201, o1.body?.message);
+    assert.equal(o1.body.data.paymentParams, undefined, 'no payment per order');
+    const co = await call('POST', '/bookings/cart/checkout', tok, { orderIds: [o1.body.data.orderId, o2.body.data.orderId], paymentMethod: 'MOCK' });
+    assert.equal(co.status, 201, co.body?.message);
+    assert.equal(co.body.data.totalAmount, 3500);
+    const again = await call('POST', '/bookings/cart/checkout', tok, { orderIds: [o2.body.data.orderId, o1.body.data.orderId], paymentMethod: 'MOCK' });
+    assert.equal(again.body.data.groupId, co.body.data.groupId, 'a retry reuses the checkout');
+    assert.equal((await call('POST', '/bookings/confirm', tok, { orderId: o1.body.data.orderId, paymentDetails: {} })).body.code, 'PAY_THROUGH_CART');
+    const paid = await call('POST', '/bookings/cart/confirm', tok, { groupId: co.body.data.groupId, paymentDetails: { paymentTxId: co.body.data.paymentParams.mockTxId } });
+    assert.equal(paid.status, 200, paid.body?.message);
+    assert.equal(paid.body.data.confirmed.length, 2);
+    assert.ok(paid.body.data.confirmed.every((c) => /^INV-/.test(c.invoiceNumber)));
+    assert.equal((await call('POST', '/bookings/cart/confirm', tok, { groupId: co.body.data.groupId, paymentDetails: {} })).body.message, 'Already paid.');
+
+    // One reservation lapses between checkout and payment
+    await hold(fan4.id, [a2, b2]);
+    const p1 = await call('POST', '/bookings/initiate', tok, { eventId: event.id, seatIds: [a2.id], paymentMethod: 'MOCK', cart: true });
+    const p2 = await call('POST', '/bookings/initiate', tok, { eventId: event2.id, seatIds: [b2.id], paymentMethod: 'MOCK', cart: true });
+    const co2 = await call('POST', '/bookings/cart/checkout', tok, { orderIds: [p1.body.data.orderId, p2.body.data.orderId], paymentMethod: 'MOCK' });
+    await prisma.order.update({ where: { id: p2.body.data.orderId }, data: { status: 'FAILED' } });
+    const part = await call('POST', '/bookings/cart/confirm', tok, { groupId: co2.body.data.groupId, paymentDetails: { paymentTxId: co2.body.data.paymentParams.mockTxId } });
+    assert.equal(part.status, 200, part.body?.message);
+    assert.deepEqual([part.body.data.confirmed.length, part.body.data.lapsed.length], [1, 1]);
+    await prisma.ticket.deleteMany({ where: { eventId: event2.id } });
+    await prisma.order.deleteMany({ where: { eventId: event2.id } });
+    await prisma.checkoutGroup.deleteMany({ where: { userId: fan4.id } });
+  });
+
+  await t.test('payouts: held until verified, scheduled, then paid with a reference', async () => {
+    await prisma.event.update({ where: { id: event.id }, data: { endsAt: new Date(Date.now() - 3600000) } });
+    await prisma.companyFinancialProfile.update({ where: { companyId: company.id }, data: { status: 'PENDING' } });
+    await runPayouts(new Date(), { companyId: company.id });
+    let p = await prisma.payout.findUnique({ where: { eventId: event.id } });
+    assert.equal(p.status, 'ON_HOLD');
+    const sums = await computeEvent(event.id);
+    assert.equal(Number(p.netAmount), sums.netAmount);
+    assert.equal(sums.netAmount, Math.round((sums.grossSales + sums.serviceFees + sums.taxCollected - sums.refunds - sums.platformFee) * 100) / 100);
+
+    await call('POST', `/companies/admin/${company.id}/finance/review`, adminToken, { status: 'VERIFIED' });
+    await runPayouts(new Date(), { companyId: company.id });
+    p = await prisma.payout.findUnique({ where: { eventId: event.id } });
+    assert.equal(p.status, 'SCHEDULED');
+    await prisma.payout.update({ where: { id: p.id }, data: { scheduledFor: new Date(Date.now() - 1000) } });
+    await runPayouts(new Date(), { companyId: company.id });
+    p = await prisma.payout.findUnique({ where: { eventId: event.id } });
+    assert.equal(p.status, 'PROCESSING');
+    assert.match(p.destination, /•••• \d{4}/);
+
+    const mine = await call('GET', '/org/payouts', ownerToken);
+    assert.equal(mine.status, 200, mine.body?.message);
+    assert.ok(mine.body.data.payouts.some((x) => x.id === p.id));
+    assert.equal((await call('GET', '/org/payouts', staffToken)).status, 403);
+    assert.equal((await call('POST', `/companies/admin/payouts/${p.id}/decide`, adminToken, { action: 'PAID' })).status, 400, 'reference needed');
+    const paid = await call('POST', `/companies/admin/payouts/${p.id}/decide`, adminToken, { action: 'PAID', reference: 'IBFT-778899' });
+    assert.equal(paid.status, 200, paid.body?.message);
+    assert.equal(paid.body.data.payout.status, 'PAID');
+    assert.ok(await prisma.notification.findFirst({ where: { userId: owner.id, type: 'ORG_PAYOUT', title: { startsWith: 'Payout sent' } } }));
   });
 });

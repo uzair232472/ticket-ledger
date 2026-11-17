@@ -107,15 +107,18 @@ test('Organizer-managed event details & images', async (t) => {
   const createdIds = [];
   let eventId;
 
+  let formCount = 0;
   const baseForm = () => {
     const f = new FormData();
-    f.append('name', 'Media Test Night');
+    f.append('name', `Media Test Night ${++formCount}`);
     f.append('description', 'An event created by the organizer media test suite.');
     f.append('type', 'MUSIC_CONCERT');
     f.append('date', '2027-03-20');
-    f.append('time', '8:00 PM');
+    f.append('time', '20:00');
+    f.append('endDate', '2027-03-20');
+    f.append('endTime', '23:00');
     f.append('city', 'Lahore');
-    f.append('venue', 'Alhamra Arts Council');
+    f.append('venue', `Alhamra Test Hall ${Date.now()}`);
     f.append('status', 'DRAFT');
     f.append('tiers', JSON.stringify([{ name: 'General', price: 2000, totalQuantity: 50 }]));
     return f;
@@ -202,10 +205,12 @@ test('Organizer-managed event details & images', async (t) => {
           name: 'Media Test JSON',
           description: 'Created through the JSON body as older clients do.',
           type: 'CRICKET_MATCH',
-          date: '2027-04-01T14:00:00Z',
-          time: '2:00 PM',
+          date: '2027-04-01',
+          time: '14:00',
+          endDate: '2027-04-01',
+          endTime: '18:00',
           city: 'Karachi',
-          venue: 'National Stadium',
+          venue: `National Stadium Test ${Date.now()}`,
           status: 'DRAFT',
           bannerUrl: '/event-banners/psl-2026-final.png',
           tiers: [{ name: 'General', price: 1000, totalQuantity: 10 }],
@@ -238,7 +243,6 @@ test('Organizer-managed event details & images', async (t) => {
       const [g1, g2, g3] = before.galleryImages;
       const { res, body } = await put(ownerToken, (f) => {
         f.append('name', 'Media Test Night (Updated)');
-        f.append('venue', 'Lahore Expo Centre');
         f.append('banner', IMG.banner(), 'banner2.png');
         f.append('galleryWideAction', 'remove');
         f.append('galleryImages', IMG.square([9, 9, 9]), 'new.png');
@@ -248,7 +252,7 @@ test('Organizer-managed event details & images', async (t) => {
       assert.strictEqual(res.status, 200, body.message);
       const after = await load();
       assert.strictEqual(after.name, 'Media Test Night (Updated)');
-      assert.strictEqual(after.venue, 'Lahore Expo Centre');
+      assert.strictEqual(after.venue, before.venue, 'an approved event changes its venue through a change request');
       assert.strictEqual(after.description, before.description, 'untouched fields stay');
       assert.notStrictEqual(after.bannerUrl, before.bannerUrl);
       assert.strictEqual(after.cardImageUrl, before.cardImageUrl, 'kept image stays');
@@ -309,6 +313,8 @@ test('Organizer-managed event details & images', async (t) => {
     // Remove everything this suite created (rows and local files)
     await prisma.auditLog.deleteMany({ where: { targetId: { in: createdIds } } });
     await prisma.event.deleteMany({ where: { id: { in: createdIds } } });
+    await prisma.organizationMember.deleteMany({ where: { OR: [{ userId: otherUser.id }, { company: { userId: otherUser.id } }] } });
+    await prisma.user.update({ where: { id: otherUser.id }, data: { companyId: null } }).catch(() => {});
     await prisma.company.deleteMany({ where: { userId: otherUser.id } });
     await prisma.user.delete({ where: { id: otherUser.id } }).catch(() => {});
     if (fs.existsSync(mediaDir)) {

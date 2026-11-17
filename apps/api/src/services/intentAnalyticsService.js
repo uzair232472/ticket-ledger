@@ -29,7 +29,7 @@ async function recoveryDiscount({ event, targetUserId, discountCode, discountPer
   return null;
 }
 
-const offerText = (dc) => {
+export const offerText = (dc) => {
   if (!dc) return '';
   const amount = dc.type === 'PERCENT' ? `${Number(dc.value)}% off` : `PKR ${Number(dc.value).toLocaleString()} off`;
   const until = dc.endsAt ? ` before ${dc.endsAt.toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Karachi' })}` : '';
@@ -771,6 +771,7 @@ export const sendAbandonedCartReminder = async ({
     },
   });
 
+  await prisma.recoveryReminder.create({ data: { companyId: event.companyId, eventId: event.id, userId: targetUserId, discountCodeId: dc?.id || null, source: 'MANUAL', sentById: requesterUser.id } });
   await prisma.auditLog.create({
     data: {
       userId: requesterUser.id,

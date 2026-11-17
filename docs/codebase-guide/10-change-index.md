@@ -40,6 +40,10 @@
 | Discount code rules (limits, max %, reservation) | `services/discountService.js` | `bookingController.initiateBooking` / `quoteBookingDiscount`, `pages/OrganizerDiscounts.jsx`, `Checkout.jsx` code field |
 | Checkout retries / idempotency (one order and one payment per checkout) | `bookingController.initiateBooking` (`sendPayment`, `Idempotency-Key`), `paymentService.initiatePayment` (`paymentRef`) | `Checkout.jsx` `attemptRef`; late-payment refund in `bookingController.refundLatePayment` |
 | Abandoned-checkout recovery codes | `intentAnalyticsService.sendAbandonedCartReminder` (`recoveryDiscount`) | `discountService.createRecoveryCode`, `AbandonedIntentDashboard.jsx` offer picker, `App.jsx` `DiscountCodeCatcher` |
+| Helpdesk rules (categories, statuses, reopen window, auto-escalation times) | `services/supportService.js` (`CATEGORIES`, `FIRST_RESPONSE_HOURS`, `REPLY_HOURS`, `REOPEN_DAYS`) | `server.js` hourly job, `pages/SupportDesk.jsx`, `pages/Support.jsx` |
+| Who is a support agent | `User.isSupportAgent` (admins always), `supportService.setAgent` | Support desk → Agents; `middlewares/auth.js` `USER_SELECT` |
+| Gate rules at scan time (gates, directions, ticket types, re-entry) | `services/checkinService.js` (`evaluate`, `resolveGate`, `admit`) | offline copy in `lib/gateOffline.js evaluateOffline` (must match) |
+| Gate setup, devices, exceptions, reversals, reports | `services/gateService.js` | `controllers/checkinController.js`, `pages/GateManagement.jsx`; permission `gate.supervise` |
 | Company verification | `companyController.js` | `CompanyRegistration.jsx`, `AdminCompanies.jsx`, `requireApprovedCompany` |
 | Staff invite expiry / rules | `config/auth.js INVITE_TTL_MS`, `staffController.js` | `authController.acceptInvite` |
 | Behaviour actions tracked | callers of `behaviorService.trackBehavior`; `BEHAVIOR_ACTIONS` | analytics match action strings in `intentAnalyticsService` |

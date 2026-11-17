@@ -126,7 +126,7 @@ export const releaseHold = async (req, res) => {
 
 // ---------- Organizer: editor, drafts, publishing ----------
 
-async function editorPayload(event) {
+async function editorPayload(event, req) {
   const [tiers, draft, published, prot] = await Promise.all([
     prisma.ticketTier.findMany({ where: { eventId: event.id }, orderBy: { price: 'desc' }, select: { id: true, name: true, price: true, totalQuantity: true, availableQuantity: true } }),
     prisma.venueLayout.findFirst({ where: { eventId: event.id, status: 'DRAFT' }, orderBy: { updatedAt: 'desc' } }),
@@ -149,7 +149,7 @@ async function editorPayload(event) {
 export const getEditor = async (req, res) => {
   try {
     const event = await managedEvent(req);
-    res.json({ success: true, data: await editorPayload(event) });
+    res.json({ success: true, data: await editorPayload(event, req) });
   } catch (error) {
     fail(res, error, 'Failed to load the venue editor');
   }
@@ -209,7 +209,7 @@ export const publish = async (req, res) => {
     res.json({
       success: true,
       message: `Venue plan v${result.layout.version} is live: ${result.created} seat(s) added, ${result.removed} removed, ${result.updated} updated.`,
-      data: { ...result, editor: await editorPayload(event) },
+      data: { ...result, editor: await editorPayload(event, req) },
     });
   } catch (error) {
     fail(res, error, 'Failed to publish the venue plan');

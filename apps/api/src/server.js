@@ -10,6 +10,9 @@ import { notifyAdmins } from './services/notificationService.js';
 import { assertSecrets } from './config/security.js';
 import prisma from './config/prisma.js';
 import { runLifecycleJobs } from './services/eventLifecycleService.js';
+import { escalateOverdue } from './services/supportService.js';
+import { runAutoRecovery } from './services/recoveryService.js';
+import { runPayouts } from './services/payoutService.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -72,6 +75,8 @@ async function startServer() {
     try {
       await retryRefunds();
       await runLifecycleJobs();
+      await escalateOverdue();
+      await runPayouts();
     } catch (e) {
       console.error('[Lifecycle jobs] failed:', e.message);
     }
@@ -83,6 +88,11 @@ async function startServer() {
   const mints = () => nftService.retryDueMints().catch((e) => console.error('[NFT retry job] failed:', e.message));
   setTimeout(mints, 30 * 1000).unref();
   setInterval(mints, 2 * 60 * 1000).unref();
+
+  // Every 15 minutes: automatic abandoned-checkout reminders (organizations that turned them on)
+  const recovery = () => runAutoRecovery().catch((e) => console.error('[Recovery job] failed:', e.message));
+  setTimeout(recovery, 90 * 1000).unref();
+  setInterval(recovery, 15 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log(`🚀 TicketLedger Express API is running on http://localhost:${PORT}`);

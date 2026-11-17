@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Building2, FileText, Landmark, MapPin, RefreshCw, Upload, Archive, RotateCcw, Eye, EyeOff, Save, Plus, Trash2, Star } from 'lucide-react';
+import { Wallet, Building2, FileText, Landmark, MapPin, RefreshCw, Upload, Archive, RotateCcw, Eye, EyeOff, Save, Plus, Trash2, Star } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/ui/DialogProvider';
@@ -44,7 +44,8 @@ export default function OrganizerOrganization() {
   const tabs = [
     { value: 'profile', label: 'Profile', icon: Building2 },
     has('org.documents') && { value: 'documents', label: 'Documents', icon: FileText },
-    has('finance.view') && { value: 'finance', label: 'Payouts & tax', icon: Landmark },
+    has('finance.view') && { value: 'finance', label: 'Payout details', icon: Landmark },
+    has('finance.view') && { value: 'payouts', label: 'Payouts', icon: Wallet },
     { value: 'branches', label: 'Branches', icon: MapPin },
   ].filter(Boolean);
   const tab = tabs.some((t) => t.value === params.get('tab')) ? params.get('tab') : 'profile';
@@ -88,6 +89,7 @@ export default function OrganizerOrganization() {
           {tab === 'profile' && <Profile {...shared} />}
           {tab === 'documents' && <Documents {...shared} />}
           {tab === 'finance' && <Finance {...shared} />}
+          {tab === 'payouts' && <Payouts {...shared} />}
           {tab === 'branches' && <Branches {...shared} />}
         </>
       )}
@@ -560,3 +562,57 @@ function Branches({ scope, has, flash, dialog }) {
   );
 }
 
+
+// ── Payouts ────────────────────────────────────────────────────────────────────────────────────────────
+
+const PAYOUT_STATUS = { SCHEDULED: ['PENDING', 'Scheduled'], ON_HOLD: ['SUSPENDED', 'On hold'], PROCESSING: ['PENDING', 'Being paid'], PAID: ['APPROVED', 'Paid'], FAILED: ['FAILED', 'Failed'], CANCELLED: ['INACTIVE', 'Cancelled'] };
+const pkr = (n) => `PKR ${Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+function Payouts({ scope, flash }) {
+  const [data, setData] = useState(null);
+  useEffect(() => { api.get('/org/payouts', { params: scope }).then((r) => setData(r.data.data)).catch((e) => flash('bad', errText(e))); }, [scope]);
+  if (!data) return <DashState icon={RefreshCw} title="Loading payouts…" />;
+  const pct = Math.round(data.platformFeeRate * 100);
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[['Paid out', data.totals.paid], ['On the way', data.totals.onTheWay], ['On hold', data.totals.onHold]].map(([l, v]) => <DashCard key={l} title={l}><p className="text-2xl font-extrabold">{pkr(v)}</p></DashCard>)}
+      </div>
+      {data.financeStatus !== 'VERIFIED' && <Notice tone="bad">Payouts are held until TicketLedger verifies your payout details (Payout details tab).</Notice>}
+      <DashCard title="Payouts" sub={`One per event after it ends: ticket sales after discounts + service fees + tax collected − refunds − the ${pct}% platform fee.`} icon={Wallet}>
+        {!data.payouts.length ? <DashState icon={Wallet} title="No payouts yet">They appear after your events end.</DashState> : (
+          <div className="tl-dash-table-wrap">
+            <table className="tl-dash-table">
+              <thead><tr><th>Event</th><th>Sales</th><th>Fees & tax</th><th>Refunds</th><th>Platform fee</th><th>Payout</th><th>Status</th></tr></thead>
+              <tbody>
+                {data.payouts.map((p) => (
+                  <tr key={p.id}>
+                    <td><strong>{p.event?.name}</strong><div className="text-xs text-slate-500">{p.status === 'PAID' ? `Paid ${fmtDate(p.paidAt)}` : `Due ${fmtDate(p.scheduledFor)}`}</div></td>
+                    <td>{pkr(p.grossSales)}</td>
+                    <td className="text-xs">{pkr(p.serviceFees)} + {pkr(p.taxCollected)}</td>
+                    <td>−{pkr(p.refunds)}</td>
+                    <td>−{pkr(p.platformFee)}</td>
+                    <td><strong>{pkr(p.netAmount)}</strong>{p.destination && <div className="text-xs text-slate-500">to {p.destination}</div>}</td>
+                    <td><Status value={PAYOUT_STATUS[p.status][0]} label={PAYOUT_STATUS[p.status][1]} />{p.reference && <div className="text-xs">Ref {p.reference}</div>}{(p.holdReason || p.failureReason) && <div className="text-xs text-rose-700">{p.holdReason || p.failureReason}</div>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DashCard>
+      {data.upcoming.length > 0 && (
+        <DashCard title="Coming up" sub="Events that haven't ended yet: what they have earned so far.">
+          <div className="tl-dash-table-wrap">
+            <table className="tl-dash-table">
+              <thead><tr><th>Event</th><th>So far</th><th>Expected payout date</th></tr></thead>
+              <tbody>
+                {data.upcoming.map((u) => <tr key={u.event.id}><td>{u.event.name}</td><td>{pkr(u.estimate.netAmount)}</td><td className="text-xs">{fmtDate(u.expectedOn)}</td></tr>)}
+              </tbody>
+            </table>
+          </div>
+        </DashCard>
+      )}
+    </div>
+  );
+}

@@ -171,6 +171,7 @@ export const buildAuthUser = async (userId) => {
     role: user.role,
     status: user.status,
     walletAddress: user.walletAddress,
+    isSupportAgent: user.isSupportAgent || user.role === 'SUPER_ADMIN',
     city: user.city,
     emailVerifiedAt: user.emailVerifiedAt,
     createdAt: user.createdAt,

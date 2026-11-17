@@ -42,6 +42,15 @@ import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import OrganizerTeam from './pages/OrganizerTeam';
 import OrganizerOrganization from './pages/OrganizerOrganization';
 import OrganizerDiscounts from './pages/OrganizerDiscounts';
+import Support from './pages/Support';
+import SupportTicketPage from './pages/SupportTicketPage';
+import SupportDesk from './pages/SupportDesk';
+import GateManagement from './pages/GateManagement';
+import OrganizerSupport from './pages/OrganizerSupport';
+import OrganizerCheckoutSettings from './pages/OrganizerCheckoutSettings';
+import AdminPayouts from './pages/AdminPayouts';
+import Cart from './pages/Cart';
+import GiftClaim from './pages/GiftClaim';
 import { ORG_PAGE_PERMISSIONS } from './lib/permissions';
 import OrganizerDashboard from './pages/OrganizerDashboard';
 import VerifyOtp from './pages/VerifyOtp';
@@ -93,7 +102,8 @@ function SiteChrome({ children }) {
   // roles, and account pages while signed out (on their way to sign in).
   const customerOnly = /^\/(resale|wallet|my-nfts|my-bookings)\/?$/.test(pathname) && !['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role);
   const accountSignedOut = /^\/(profile|notifications)\/?$/.test(pathname) && !user;
-  const legal = /^\/(terms|privacy|about|contact)\/?$/.test(pathname);
+  // Help & support pages (not the agents' desk) use the site's header and footer too
+  const legal = /^\/(terms|privacy|about|contact)\/?$/.test(pathname) || (/^\/support(\/[^/]+)?\/?$/.test(pathname) && !/^\/support\/desk/.test(pathname)) || /^\/gifts\/[^/]+\/?$/.test(pathname);
   return pathname === '/suspended' || customerOnly || accountSignedOut || legal ? children : null;
 }
 
@@ -191,7 +201,9 @@ export default function App() {
               <Route path="/events/:id/checkout" element={<Checkout />} />
               <Route path="/checkout" element={<Checkout />} />
               {/* The cart page was replaced by checkout */}
-              <Route path="/cart" element={<Navigate to="/checkout" replace />} />
+              {/* Several events' held seats, paid together */}
+              <Route path="/cart" element={<Cart />} />
+              <Route path="/gifts/:token" element={<GiftClaim />} />
               <Route path="/booking-success/:orderId" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/booking-success/:id" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
               <Route path="/bookings/:orderId/confirmation" element={<ProtectedRoute><BookingSuccess /></ProtectedRoute>} />
@@ -213,6 +225,12 @@ export default function App() {
               <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
               <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
+              {/* Help desk: customers' requests, and the agents' desk (the API checks agents) */}
+              <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
+              <Route path="/support/desk" element={<DashShell><ProtectedRoute><SupportDesk /></ProtectedRoute></DashShell>} />
+              <Route path="/support/desk/:reference" element={<DashShell><ProtectedRoute><SupportDesk /></ProtectedRoute></DashShell>} />
+              <Route path="/support/:reference" element={<ProtectedRoute><SupportTicketPage /></ProtectedRoute>} />
+
               {/* Protected Gate Staff Scanner */}
               <Route path="/staff/events" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']} permission={'gate.scan'}><StaffEvents /></ProtectedRoute></DashShell>} />
               <Route path="/scanner" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']} permission={'gate.scan'}><GateScanner /></ProtectedRoute></DashShell>} />
@@ -220,6 +238,10 @@ export default function App() {
               {/* Protected Organizer Studio */}
               <Route path="/organizer/team" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={['staff.view', 'audit.view']} requireApprovedCompany><OrganizerTeam /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/organization" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={ORG_PAGE_PERMISSIONS}><OrganizerOrganization /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/support" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'support.respond'}><OrganizerSupport /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/support/:reference" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'support.respond'}><OrganizerSupport /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/checkout-settings" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={['finance.view', 'event.edit']} requireApprovedCompany><OrganizerCheckoutSettings /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/gates" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'gate.supervise'}><GateManagement /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/discounts" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'discount.manage'} requireApprovedCompany><OrganizerDiscounts /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.view'} requireApprovedCompany><OrganizerDashboard /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/events/new" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.create'} requireApprovedCompany><CreateEventChoice /></ProtectedRoute></DashShell>} />
@@ -235,6 +257,7 @@ export default function App() {
               <Route path="/admin/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute></DashShell>} />
               <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
               <Route path="/admin/event-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminEventApprovals /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/payouts" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminPayouts /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
               <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />

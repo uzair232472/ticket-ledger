@@ -319,3 +319,6 @@ export function drawTicketPdf(doc, ticket, { qrBuffer, photo, manualCode }) {
   doc.font('Helvetica-Bold').fontSize(11).fillColor(C.green).text(fA, fx, fY, { lineBreak: false });
   doc.font('Helvetica').fontSize(10).fillColor(C.muted).text(fB, fx + fAw, fY + 1, { lineBreak: false });
 }
+
+// Shared with the invoice PDF (services/invoiceService.js)
+export { drawMark, C as PDF_COLORS };

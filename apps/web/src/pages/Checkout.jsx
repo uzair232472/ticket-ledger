@@ -192,7 +192,9 @@ function CheckoutContent() {
   const lines = useMemo(() => summaryLines(mine), [mine]);
   const groups = useMemo(() => groupByTier(lines), [lines]);
   const subtotal = lines.reduce((n, l) => n + l.total, 0);
-  const expectedTotal = discount ? discount.total : subtotal;
+  // The server's price for these seats: discount (code or group), service fee, tax, total
+  const [pricing, setPricing] = useState(null);
+  const expectedTotal = pricing?.total ?? (discount ? discount.total : subtotal);
   const total = serverTotal ?? expectedTotal;
   const keys = useMemo(() => mine.map((m) => m.id).sort().join(','), [mine]);
 
@@ -203,9 +205,10 @@ function CheckoutContent() {
     setApplying(true);
     setCodeError('');
     try {
-      const { data } = await api.post('/bookings/discount/quote', { eventId, seatIds: mine.map((m) => m.id), code });
+      const { data } = await api.post('/bookings/quote', { eventId, seatIds: mine.map((m) => m.id), code });
       const d = data.data;
-      setDiscount({ code: d.code, discount: d.discount, total: d.total, label: d.type === 'PERCENT' ? `${d.value}% off` : `${formatPkr(d.value)} off` });
+      setPricing(d);
+      setDiscount({ code: d.code, discount: d.discount, total: d.total, applied: d.codeApplied !== false, label: d.type === 'PERCENT' ? `${d.value}% off` : `${formatPkr(d.value)} off` });
       setCodeInput(d.code);
       saveCode(eventId, d.code);
     } catch (err) {
@@ -215,7 +218,18 @@ function CheckoutContent() {
       setApplying(false);
     }
   }, [eventId, mine]);
+  // Price without a code (group discount, fees and tax still apply)
+  const quote = useCallback(async () => {
+    if (!mine.length) return;
+    try {
+      const { data } = await api.post('/bookings/quote', { eventId, seatIds: mine.map((m) => m.id) });
+      setPricing(data.data);
+    } catch {
+      setPricing(null);
+    }
+  }, [eventId, mine]);
   const removeCode = () => {
+    quote();
     setDiscount(null);
     setCodeInput('');
     setCodeError('');
@@ -227,9 +241,11 @@ function CheckoutContent() {
     if (!autoApplied.current) {
       autoApplied.current = true;
       if (codeInput) applyCode(codeInput, { quiet: true });
+      else quote();
       return;
     }
     if (discount) applyCode(discount.code, { quiet: true });
+    else quote();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keys]);
 
@@ -685,15 +701,17 @@ function CheckoutContent() {
             </div>
             <dl className="tl-co-sum">
               <div><dt>Tickets ({mine.length})</dt><dd>{formatPkr(subtotal)}</dd></div>
-              {discount && <div><dt>Discount ({discount.code} · {discount.label})</dt><dd>−{formatPkr(discount.discount)}</dd></div>}
-              <div><dt>Service fee</dt><dd>{formatPkr(0)}</dd></div>
+              {discount && discount.applied && <div><dt>Discount ({discount.code} · {discount.label})</dt><dd>−{formatPkr(discount.discount)}</dd></div>}
+              {pricing?.groupDiscount > 0 && <div><dt>Group discount ({pricing.group?.percent}% for {pricing.group?.minTickets}+ tickets)</dt><dd>−{formatPkr(pricing.groupDiscount)}</dd></div>}
+              <div><dt>Service fee</dt><dd>{formatPkr(pricing?.serviceFee || 0)}</dd></div>
+              {pricing?.tax > 0 && <div><dt>{pricing.taxLabel} ({pricing.taxPercent}%)</dt><dd>{formatPkr(pricing.tax)}</dd></div>}
               <div><dt>NFT minting &amp; network gas</dt><dd>Included</dd></div>
               {serverTotal != null && serverTotal !== expectedTotal && <div><dt>Price adjustment (server)</dt><dd>{formatPkr(serverTotal - expectedTotal)}</dd></div>}
             </dl>
             <div className="tl-co-code">
               {discount ? (
                 <p className="tl-co-code-applied">
-                  <span><Tag className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> <b>{discount.code}</b> applied · you save {formatPkr(discount.discount)}</span>
+                  <span><Tag className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> <b>{discount.code}</b> {discount.applied ? <>applied · you save {formatPkr(discount.discount)}</> : <>not used: your group discount saves more</>}</span>
                   <button type="button" className="tl-bk-link" onClick={removeCode} disabled={busy}>Remove</button>
                 </p>
               ) : (

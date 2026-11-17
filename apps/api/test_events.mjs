@@ -24,6 +24,17 @@ test('MODULE 5 - Event Management, Ticket Tiers & Multi-Criteria Discovery Tests
 
   let pslEventId = '';
 
+  // A published Karachi event of its own (seeded events may have passed), removed at the end with the event test 8 creates
+  const run = Date.now();
+  const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+  const approvedCompany = await prisma.company.findFirst({ where: { user: { email: 'organizer@ticketledger.pk' } }, select: { id: true } });
+  const karachi = await prisma.event.create({ data: { companyId: approvedCompany.id, name: `Karachi Test Night ${run}`, description: 'Karachi city filter fixture', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(`${day(45)}T14:00:00Z`), time: '7:00 PM', city: 'Karachi', venue: `Test Arena ${run}` } });
+  const cleanup = [karachi.id];
+  t.after(async () => {
+    await prisma.event.deleteMany({ where: { id: { in: cleanup } } });
+    await prisma.$disconnect();
+  });
+
   await t.test('1. Public discovery endpoint returns seeded Pakistani events', async () => {
     const res = await fetch(`${baseUrl}/events`);
     const body = await res.json();
@@ -117,10 +128,12 @@ test('MODULE 5 - Event Management, Ticket Tiers & Multi-Criteria Discovery Tests
         name: 'Pakistan vs India Kabaddi World Cup Clash',
         description: 'Traditional circle style kabaddi championship exhibition clash at Iqbal Stadium Faisalabad.',
         type: 'KABADDI',
-        date: '2026-11-28T16:00:00Z',
-        time: '4:00 PM PST',
+        date: day(40),
+        time: '16:00',
+        endDate: day(40),
+        endTime: '20:00',
         city: 'Faisalabad',
-        venue: 'Iqbal Stadium, Faisalabad',
+        venue: `Iqbal Stadium Test Court ${run}`,
         status: 'PUBLISHED',
         tiers: [
           { name: 'Standard Stand', price: 800, totalQuantity: 1500 },
@@ -134,6 +147,7 @@ test('MODULE 5 - Event Management, Ticket Tiers & Multi-Criteria Discovery Tests
     assert.strictEqual(body.data.event.type, 'KABADDI');
     assert.strictEqual(body.data.event.tiers.length, 2);
     createdEventId = body.data.event.id;
+    cleanup.push(createdEventId);
   });
 
   await t.test('9. Reject event creation without ticket tiers', async () => {

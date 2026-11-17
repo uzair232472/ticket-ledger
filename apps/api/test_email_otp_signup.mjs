@@ -17,7 +17,7 @@ test('Email OTP Signup & Verification Flow', async (t) => {
   const baseUrl = `http://127.0.0.1:${server.address().port}/api/auth`;
 
   const uniqueId = Date.now();
-  const testEmail = `otp_tester_${uniqueId}@example.pk`;
+  const testEmail = `otp.tester.${uniqueId}@gmail.com`;
   let activeToken = '';
 
   await t.test('1. Signup creates a PENDING_VERIFICATION account and a hashed OTP', async () => {
@@ -89,7 +89,7 @@ test('Email OTP Signup & Verification Flow', async (t) => {
   });
 
   await t.test('6. Legacy endpoints (/register, /otp/send, /otp/verify) still work', async () => {
-    const email = `legacy_${uniqueId}@example.pk`;
+    const email = `legacy.${uniqueId}@gmail.com`;
     const reg = await fetch(`${baseUrl}/register`, json({ name: 'Legacy Client', email, password: 'Password@123', phone: `0300${String(Date.now()).slice(-7)}` }));
     assert.strictEqual(reg.status, 201);
     const verify = await fetch(`${baseUrl}/otp/verify`, json({ email, otpCode: getLastSentEmail().otpCode }));

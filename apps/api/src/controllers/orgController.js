@@ -3,6 +3,9 @@ import { AccessError, ROLES, ROLE_LABELS, effectivePermissions } from '../servic
 import * as org from '../services/orgService.js';
 import * as profile from '../services/orgProfileService.js';
 import * as discounts from '../services/discountService.js';
+import * as recovery from '../services/recoveryService.js';
+import * as checkout from '../services/checkoutSettingsService.js';
+import * as payouts from '../services/payoutService.js';
 
 const role = z.enum(ROLES);
 const perms = z.array(z.string().max(40)).max(40);
@@ -223,5 +226,45 @@ export const deleteDiscount = handle('Could not delete the code.', async (req, r
   const out = await discounts.deleteCode(req, req.org, req.params.id);
   res.json({ success: true, message: out.deleted ? 'Code deleted.' : 'This code has been used, so it was turned off instead of deleted.', data: out });
 });
+
+// ── Automatic abandoned-checkout reminders ─────────────────────────────────────────────────────────────
+
+export const getRecovery = handle('Could not load reminder settings.', async (req, res) => res.json({ success: true, data: await recovery.getSettings(req.org) }));
+export const updateRecovery = handle('Could not save reminder settings.', async (req, res) => {
+  const body = z.object({
+    recoveryEnabled: z.boolean().optional(),
+    recoveryDelayHours: z.coerce.number().int().optional(),
+    recoveryDiscountPercent: z.coerce.number().int().optional(),
+    recoveryValidHours: z.coerce.number().int().min(1).max(168).optional(),
+  }).parse(req.body || {});
+  res.json({ success: true, message: 'Reminder settings saved.', data: await recovery.updateSettings(req, req.org, body) });
+});
+
+// ── Checkout settings ──────────────────────────────────────────────────────────────────────────────────
+
+export const getCheckout = handle('Could not load checkout settings.', async (req, res) => res.json({ success: true, data: await checkout.getSettings(req.org) }));
+export const updateCheckoutFees = handle('Could not save fees and tax.', async (req, res) => {
+  const body = z.object({
+    serviceFeeType: z.enum(['NONE', 'PERCENT', 'PER_TICKET']).optional(),
+    serviceFeeValue: z.coerce.number().min(0).optional(),
+    taxPercent: z.coerce.number().min(0).optional(),
+    taxLabel: z.string().trim().min(2).max(40).optional(),
+    taxRegistrationNumber: optText(40),
+  }).parse(req.body || {});
+  res.json({ success: true, message: 'Fees and tax saved. They apply to new checkouts.', data: await checkout.updateFees(req, req.org, body) });
+});
+const optInt = z.union([z.literal(''), z.null(), z.coerce.number().int()]).optional().transform((v) => (v === '' ? null : v));
+export const updateEventCheckoutRules = handle('Could not save the event rules.', async (req, res) => {
+  const body = z.object({
+    maxTicketsPerCustomer: optInt,
+    groupMinTickets: optInt,
+    groupDiscountPercent: optInt,
+    allowSeatChanges: z.boolean().optional(),
+    seatChangeCutoffHours: z.coerce.number().int().optional(),
+  }).parse(req.body || {});
+  res.json({ success: true, message: 'Event checkout rules saved.', data: await checkout.updateEventRules(req, req.org, req.params.eventId, body) });
+});
+
+export const listPayouts = handle('Could not load payouts.', async (req, res) => res.json({ success: true, data: await payouts.orgPayouts(req.org) }));
 
 export { effectivePermissions };

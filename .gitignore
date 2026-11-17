@@ -65,3 +65,4 @@ apps/api/.keys/
 
 # User uploads (company documents, avatars, event media) stay on the server
 apps/api/uploads/
+apps/api/private_uploads/

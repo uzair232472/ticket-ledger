@@ -76,9 +76,34 @@ const VERDICT_COPY = {
  * already used (first entry shown), red = not valid (reason shown). Green clears itself; yellow and red stay
  * until staff choose what to do next.
  */
-function Verdict({ verdict, eventName, gate, online, onNext, onManual }) {
+function Verdict({ verdict, eventName, gate, online, onNext, onManual, onException }) {
   const [supervisor, setSupervisor] = useState(false);
-  const { title, sub, Icon } = VERDICT_COPY[verdict.result];
+  const [reason, setReason] = useState('');
+  const [sent, setSent] = useState(null); // null | 'sending' | 'sent' | error text
+  const base = VERDICT_COPY[verdict.result];
+  const { title, sub, Icon } = verdict.result === 'GREEN' && verdict.direction === 'EXIT'
+    ? { ...base, title: 'Exit recorded', sub: verdict.reason }
+    : verdict.result === 'GREEN' && verdict.reentry ? { ...base, title: 'Re-entry approved', sub: 'Welcome back.' } : base;
+  const askSupervisor = async (e) => {
+    e.preventDefault();
+    if (reason.trim().length < 5) return setSent('Say why the guest should be let in (at least 5 characters).');
+    setSent('sending');
+    setSent((await onException(reason.trim())) || 'sent');
+  };
+  const exceptionBox = onException && verdict.direction !== 'EXIT' && (
+    sent === 'sent'
+      ? <p className="tl-gv-info" role="status"><Info aria-hidden="true" /> Sent to the supervisor. Ask the guest to wait to one side; you'll see the decision here.</p>
+      : supervisor
+        ? (
+          <form className="tl-gv-exception" onSubmit={askSupervisor}>
+            <label htmlFor="gv-reason">Why should they be let in?</label>
+            <input id="gv-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="e.g. ID matches the ticket holder" autoFocus />
+            {sent && sent !== 'sending' && <small>{sent}</small>}
+            <button type="submit" className="tl-gv-outline" disabled={sent === 'sending'}><Users aria-hidden="true" /> {sent === 'sending' ? 'Sending…' : 'Send to supervisor'}</button>
+          </form>
+        )
+        : <button type="button" className="tl-gv-outline" onClick={() => setSupervisor(true)}><Users aria-hidden="true" /> Ask a supervisor to approve</button>
+  );
   const t = verdict.ticket;
   const first = verdict.firstScan;
   const tone = verdict.result.toLowerCase();
@@ -103,8 +128,8 @@ function Verdict({ verdict, eventName, gate, online, onNext, onManual }) {
             <li><Ticket aria-hidden="true" />{t.type || 'Ticket'}</li>
             <li><Armchair aria-hidden="true" />{t.seat || 'General admission'}</li>
             {t.code && <li><Tag aria-hidden="true" />Ticket {t.code}</li>}
-            {verdict.result === 'GREEN' && (
-              <li><Clock aria-hidden="true" />Checked in at {clock(t.checkedInAt || Date.now())}</li>
+            {verdict.result === 'GREEN' && verdict.direction !== 'EXIT' && (
+              <li><Clock aria-hidden="true" />{verdict.reentry ? `Re-entry ${t.entryCount ? `(entry ${t.entryCount})` : ''}` : `Checked in at ${clock(t.checkedInAt || Date.now())}`}</li>
             )}
             {verdict.result === 'YELLOW' && (
               <li className="tl-gv-first">
@@ -122,17 +147,18 @@ function Verdict({ verdict, eventName, gate, online, onNext, onManual }) {
           <p className="tl-gv-ok"><CheckCircle2 aria-hidden="true" /> Ticket valid • Ownership verified</p>
         )}
 
-        {verdict.result === 'YELLOW' && (
+        {verdict.result === 'YELLOW' && (exceptionBox || (
           supervisor
             ? <p className="tl-gv-info" role="status"><Info aria-hidden="true" /> Ask the guest to wait to one side and radio your supervisor. Do not admit them again.</p>
             : <button type="button" className="tl-gv-outline" onClick={() => setSupervisor(true)}><Users aria-hidden="true" /> Call supervisor</button>
-        )}
+        ))}
 
         {verdict.result === 'RED' && (
           <>
             <p className="tl-gv-reason"><AlertTriangle aria-hidden="true" /> {verdict.reason || 'This ticket could not be verified.'}</p>
             <p className="tl-gv-info"><Info aria-hidden="true" /> Ask the attendee to open their ticket in TicketLedger and try again.</p>
             <button type="button" className="tl-gv-outline" onClick={onNext}><ScanLine aria-hidden="true" /> Scan again</button>
+            {exceptionBox}
             <button type="button" className="tl-gv-link" onClick={onManual}>Manual lookup</button>
           </>
         )}
@@ -236,7 +262,8 @@ export default function GateScanner() {
   const [checking, setChecking] = useState(false);
   const [manual, setManual] = useState('');
   const [locked, setLocked] = useState(false);
-  const [revoked, setRevoked] = useState(null); // { dropped } once access to this event is removed
+  const [revoked, setRevoked] = useState(null); // { dropped, device? } once access to this event (or this device) is removed
+  const [direction, setDirection] = useState('ENTRY'); // at gates that take both
   const busyRef = useRef(false);
   const resetTimer = useRef(null);
 
@@ -250,16 +277,19 @@ export default function GateScanner() {
       .finally(() => setEventsLoading(false));
   }, []);
   // Access to this event was removed: wipe the device's copy and stop scanning (online or offline)
-  const revoke = useCallback(async () => {
+  const revoke = useCallback(async (device = false) => {
     if (!eventId) return;
     const dropped = await wipeEvent(eventId).catch(() => 0);
     setPack(null);
     setQueueCount(0);
     setScanning(false);
     setVerdict(null);
-    setRevoked({ dropped });
-    setEvents((list) => list.filter((e) => e.id !== eventId));
+    setRevoked({ dropped, device });
+    if (!device) setEvents((list) => list.filter((e) => e.id !== eventId));
   }, [eventId]);
+  // A 403 means: this device was revoked, or this account lost the event (other refusals are shown as a verdict)
+  const isAccessLoss = (err) => err.response?.status === 403 && (!err.response.data?.code || err.response.data.code === 'DEVICE_REVOKED');
+  const loseAccess = useCallback((err) => revoke(err.response?.data?.code === 'DEVICE_REVOKED'), [revoke]);
 
   useEffect(() => {
     setRevoked(null);
@@ -279,15 +309,15 @@ export default function GateScanner() {
   const refreshPack = useCallback(async () => {
     if (!eventId) return;
     try {
-      const res = await api.get(`/checkin/events/${eventId}/pack`);
+      const res = await api.get(`/checkin/events/${eventId}/pack`, { params: { deviceId: device } });
       await savePack(eventId, res.data.data, user?.id);
       setPack({ ...res.data.data, savedAt: Date.now() });
       setPackError('');
       noteOnline();
       setOnline(true);
     } catch (err) {
-      if (err.response?.status === 403) {
-        revoke();
+      if (isAccessLoss(err)) {
+        loseAccess(err);
         return;
       }
       if (!err.response) setOnline(false);
@@ -295,7 +325,7 @@ export default function GateScanner() {
       const cached = await loadPack(eventId, user?.id).catch(() => null);
       if (cached) setPack(cached);
     }
-  }, [eventId, user?.id, revoke]);
+  }, [eventId, user?.id, loseAccess, device]);
 
   const loadStats = useCallback(async () => {
     if (!eventId) return;
@@ -319,7 +349,8 @@ export default function GateScanner() {
         const res = await api.post('/checkin/sync', {
           eventId,
           deviceId: device,
-          scans: batch.map(({ clientId, code, gate: g, scannedAt, localResult, localReason }) => ({ clientId, code, gate: g || undefined, scannedAt, localResult, localReason: localReason?.slice(0, 200) })),
+          pending: items.length - i,
+          scans: batch.map(({ clientId, code, gate: g, gateId: gid, direction: dir, scannedAt, localResult, localReason }) => ({ clientId, code, gate: g || undefined, gateId: gid || undefined, direction: dir || 'ENTRY', scannedAt, localResult, localReason: localReason?.slice(0, 200) })),
         });
         conflicts += res.data.data.conflicts;
         await dequeue(batch.map((b) => b.clientId));
@@ -329,12 +360,28 @@ export default function GateScanner() {
       setSyncNote(`${items.length} offline scan${items.length === 1 ? '' : 's'} uploaded${conflicts ? ` · ${conflicts} flagged for the organizer (admitted twice while offline)` : ''}.`);
       loadStats();
     } catch (err) {
-      if (err.response?.status === 403) revoke();
+      if (isAccessLoss(err)) loseAccess(err);
       else if (!err.response) setOnline(false);
     } finally {
       refreshQueue();
     }
-  }, [eventId, device, loadStats, refreshQueue, revoke]);
+  }, [eventId, device, loadStats, refreshQueue, loseAccess]);
+
+  // Sync status for supervisors: every 30 s the device reports its gate, waiting scans and list age
+  const queueRef = useRef(0);
+  queueRef.current = queueCount;
+  useEffect(() => {
+    if (!eventId || revoked) return undefined;
+    const beat = () => {
+      if (!navigator.onLine) return;
+      api.post('/checkin/heartbeat', { eventId, deviceId: device, gate: gate || undefined, pending: queueRef.current, online: true, packAt: pack?.generatedAt })
+        .catch((err) => isAccessLoss(err) && loseAccess(err));
+    };
+    beat();
+    const id = setInterval(beat, 30000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, device, gate, revoked, pack?.generatedAt]);
 
   useEffect(() => {
     if (!eventId) return undefined;
@@ -380,11 +427,21 @@ export default function GateScanner() {
     });
     socket.on('checkin:stats', (s) => s.eventId === eventId && setStats(s));
     socket.on('staff:access-revoked', (p) => p?.eventId === eventId && revoke());
+    socket.on('gate:device-revoked', (p) => p?.deviceKey === device && revoke(true));
+    socket.on('gate:assignments-changed', (p) => p?.eventId === eventId && refreshPack());
+    socket.on('gate:exception-decided', (p) => setSyncNote(`Supervisor ${p.status === 'APPROVED' ? 'approved' : 'denied'} an exception request${p.note ? `: ${p.note}` : ''}.`));
     return () => {
       socket.emit('leave_event_room', eventId);
       socket.disconnect();
     };
-  }, [eventId, user?.id, revoke]);
+  }, [eventId, user?.id, revoke, device, refreshPack]);
+
+  // ---------- Gates from the event's setup (when configured) ----------
+  const configured = (pack?.gates || []).filter((g) => g.active);
+  const mine = pack?.myGateIds?.length && !pack.supervisor ? configured.filter((g) => pack.myGateIds.includes(g.id)) : configured;
+  const gateRow = configured.find((g) => g.name === gate) || null;
+  const gateOk = !gate ? false : configured.length ? mine.some((g) => g.name === gate) : true;
+  const dir = gateRow?.type === 'EXIT' ? 'EXIT' : gateRow?.type === 'ENTRY' ? 'ENTRY' : direction;
 
   // ---------- Scanning ----------
   const show = useCallback((v) => {
@@ -398,31 +455,34 @@ export default function GateScanner() {
   const decideOffline = useCallback(async (code) => {
     const p = pack || (await loadPack(eventId, user?.id).catch(() => null));
     if (!p) return { result: 'RED', reason: 'No connection and no offline list yet. Reconnect to download it.', offline: true };
-    const v = await evaluateOffline(p, code, gate);
-    await enqueue({ clientId: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, eventId, code, gate, scannedAt: new Date().toISOString(), localResult: v.result, localReason: v.reason });
+    const row = (p.gates || []).find((g) => g.name === gate) || null;
+    const v = await evaluateOffline(p, code, gate, { direction: dir, gateRow: row });
+    await enqueue({ clientId: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, eventId, code, gate, gateId: row?.id, direction: dir, scannedAt: new Date().toISOString(), localResult: v.result, localReason: v.reason });
     refreshQueue();
-    return { ...v, offline: true };
-  }, [pack, eventId, gate, refreshQueue, user?.id]);
+    return { ...v, direction: dir, offline: true };
+  }, [pack, eventId, gate, dir, refreshQueue, user?.id]);
 
   const check = useCallback(async (raw) => {
     const code = String(raw || '').trim();
-    if (!code || busyRef.current || locked || revoked || !gate) return;
+    if (!code || busyRef.current || locked || revoked || !gateOk) return;
     busyRef.current = true;
     setChecking(true);
     let v;
     try {
       if (!navigator.onLine) throw Object.assign(new Error('offline'), { offline: true });
-      const res = await api.post('/checkin/scan', { code, eventId, gate, deviceId: device }, { timeout: 6000 });
+      const res = await api.post('/checkin/scan', { code, eventId, gate, gateId: gateRow?.id, direction: dir, deviceId: device }, { timeout: 6000 });
       v = res.data.data;
       noteOnline();
       setOnline(true);
       // Remember admissions on the device too, so an offline rescan here is yellow
-      if (v.result === 'GREEN' && v.ticket?.id) markUsedLocally(eventId, v.ticket.id, { at: new Date().toISOString(), gate }).catch(() => {});
+      if (v.result === 'GREEN' && v.ticket?.id) {
+        markUsedLocally(eventId, v.ticket.id, { at: v.ticket.checkedInAt || new Date().toISOString(), gate: v.ticket.gate || gate, inside: v.ticket.isInside, entries: v.ticket.entryCount, ...(dir === 'EXIT' ? { exitAt: new Date().toISOString() } : {}) }).catch(() => {});
+      }
     } catch (err) {
-      if (err.response?.status === 403) {
+      if (isAccessLoss(err)) {
         busyRef.current = false;
         setChecking(false);
-        revoke();
+        loseAccess(err);
         return;
       }
       if (err.response) {
@@ -436,11 +496,23 @@ export default function GateScanner() {
       setChecking(false);
     }
     show(v);
-    setRecent((r) => [{ id: `${Date.now()}`, result: v.result, reason: v.reason, gate, offline: Boolean(v.offline), scannedAt: new Date().toISOString(), holder: v.ticket?.holder, type: v.ticket?.type }, ...r].slice(0, 12));
-  }, [eventId, gate, device, locked, revoked, decideOffline, show, revoke]);
+    setRecent((r) => [{ id: `${Date.now()}`, result: v.result, reason: v.reason, gate, direction: v.direction || dir, reentry: v.reentry, offline: Boolean(v.offline), scannedAt: new Date().toISOString(), holder: v.ticket?.holder, type: v.ticket?.type }, ...r].slice(0, 12));
+    lastCodeRef.current = code;
+  }, [eventId, gate, gateRow, gateOk, dir, device, locked, revoked, decideOffline, show, loseAccess]);
+
+  // Ask a supervisor to let in someone the scanner turned away (online only)
+  const lastCodeRef = useRef('');
+  const requestException = async (reasonText) => {
+    try {
+      await api.post('/checkin/exceptions', { eventId, code: lastCodeRef.current || undefined, gate, gateId: gateRow?.id, scanResult: `${verdict?.result}: ${verdict?.reason || ''}`.slice(0, 300), reason: reasonText, deviceId: device });
+      return null;
+    } catch (err) {
+      return err.response?.data?.message || 'No connection: radio your supervisor instead.';
+    }
+  };
 
   const imageError = (message) => {
-    if (!gate || locked || revoked) return;
+    if (!gateOk || locked || revoked) return;
     const v = { result: 'RED', reason: message };
     show(v);
     setRecent((r) => [{ id: `${Date.now()}`, result: 'RED', reason: message, gate, offline: false, scannedAt: new Date().toISOString() }, ...r].slice(0, 12));
@@ -450,7 +522,7 @@ export default function GateScanner() {
     setTimeout(() => document.getElementById(scanning ? 'gs-code-cam' : 'gs-code')?.focus(), 50);
   };
   const verdictEl = verdict && (
-    <Verdict key={verdict.shownAt} verdict={verdict} eventName={event?.name} gate={gate} online={online} onNext={() => setVerdict(null)} onManual={manualLookup} />
+    <Verdict key={verdict.shownAt} verdict={verdict} eventName={event?.name} gate={`${gate}${dir === 'EXIT' ? ' · exit' : ''}`} online={online} onNext={() => setVerdict(null)} onManual={manualLookup} onException={online && !verdict.offline && verdict.result !== 'GREEN' ? requestException : null} />
   );
 
   const submitManual = (e) => {
@@ -488,9 +560,9 @@ export default function GateScanner() {
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
-          disabled={!gate || locked}
+          disabled={!gateOk || locked}
         />
-        <button type="submit" disabled={!manual.trim() || checking || !gate || locked}>{checking ? 'Checking…' : 'Check'}</button>
+        <button type="submit" disabled={!manual.trim() || checking || !gateOk || locked}>{checking ? 'Checking…' : 'Check'}</button>
       </div>
     </form>
   );
@@ -522,6 +594,16 @@ export default function GateScanner() {
       {/* Gate */}
       <section className="tl-gs-card">
         <h2 className="tl-gs-h2">Your gate</h2>
+        {configured.length > 0 ? (
+          <div className="tl-gs-gates" role="radiogroup" aria-label="Gate">
+            {mine.map((g) => (
+              <button key={g.id} type="button" role="radio" aria-checked={gate === g.name} className={gate === g.name ? 'is-on' : ''} onClick={() => chooseGate(g.name)}>
+                {g.name}<small style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{g.type === 'ENTRY' ? 'Entry' : g.type === 'EXIT' ? 'Exit' : 'Entry & exit'}{g.allowedTierIds?.length ? ' · some ticket types' : ''}</small>
+              </button>
+            ))}
+            {!mine.length && <p className="tl-gs-muted">You aren't assigned to an open gate at this event. Ask your supervisor.</p>}
+          </div>
+        ) : (
         <div className="tl-gs-gates" role="radiogroup" aria-label="Gate">
           {GATES.map((g) => (
             <button key={g} type="button" role="radio" aria-checked={gate === g} className={gate === g ? 'is-on' : ''} onClick={() => chooseGate(g)}>{g}</button>
@@ -537,18 +619,26 @@ export default function GateScanner() {
             <input value={customGate} onChange={(e) => setCustomGate(e.target.value)} placeholder="Other gate" maxLength={40} aria-label="Other gate name" />
           </form>
         </div>
-        {!gate && <p className="tl-gs-muted">Choose the gate you’re standing at before scanning.</p>}
+        )}
+        {!gateOk && <p className="tl-gs-muted">Choose the gate you’re standing at before scanning.</p>}
+        {gateOk && (!gateRow || gateRow.type === 'ENTRY_EXIT') && (
+          <div className="tl-gs-gates" role="radiogroup" aria-label="Scanning" style={{ marginTop: 12 }}>
+            {[['ENTRY', 'Scanning entries'], ['EXIT', 'Scanning exits']].map(([v, l]) => (
+              <button key={v} type="button" role="radio" aria-checked={direction === v} className={direction === v ? 'is-on' : ''} onClick={() => setDirection(v)}>{l}</button>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Big scan button + counter */}
       <section className="tl-gs-hero">
-        <button type="button" className="tl-gs-scan" onClick={() => setScanning(true)} disabled={!gate || locked}>
+        <button type="button" className="tl-gs-scan" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
           <Camera className="w-7 h-7" aria-hidden="true" />
-          <span>{gate ? 'Scan tickets' : 'Choose a gate first'}</span>
-          <small>{gate ? `${gate} · camera opens` : 'Then the camera opens'}</small>
+          <span>{gateOk ? (dir === 'EXIT' ? 'Scan exits' : 'Scan tickets') : 'Choose a gate first'}</span>
+          <small>{gateOk ? `${gate}${dir === 'EXIT' ? ' · exits' : ''} · camera opens` : 'Then the camera opens'}</small>
         </button>
         <div className="tl-gs-count" aria-live="polite">
-          <p><strong>{entered}</strong> / {sold} entered</p>
+          <p><strong>{entered}</strong> / {sold} entered{stats?.inside != null && stats.inside !== entered ? ` · ${stats.inside} inside now` : ''}</p>
           <div className="tl-gs-meter"><i style={{ width: `${pct}%` }} /></div>
           <p className="tl-gs-muted">{stats?.gates?.length ? stats.gates.map((g) => `${g.gate}: ${g.entered}`).join(' · ') : 'Live · updates as people enter'}</p>
         </div>
@@ -557,7 +647,7 @@ export default function GateScanner() {
       <section className="tl-gs-card">
         <h2 className="tl-gs-h2">Scan from an image</h2>
         <p className="tl-gs-muted">For demos and testing: drop a screenshot of a ticket QR, or choose the file. It’s checked and marked used exactly like a camera scan.</p>
-        <ImageScan disabled={!gate || locked} busy={checking} onCode={check} onError={imageError} />
+        <ImageScan disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
       </section>
 
       <section className="tl-gs-card">{manualForm(false)}</section>
@@ -576,7 +666,7 @@ export default function GateScanner() {
               <li key={r.id} className={`is-${r.result.toLowerCase()}`}>
                 <i aria-hidden="true" />
                 <span>
-                  <strong>{TITLES[r.result]}{r.holder ? ` · ${r.holder}` : ''}</strong>
+                  <strong>{r.result === 'GREEN' && r.direction === 'EXIT' ? 'Exit' : r.result === 'GREEN' && r.reentry ? 'Re-entry' : TITLES[r.result]}{r.holder ? ` · ${r.holder}` : ''}</strong>
                   <small>{r.result === 'GREEN' ? r.type || 'Ticket' : r.reason}{r.offline ? ' · offline' : ''}{r.conflict ? ' · conflict' : ''}</small>
                 </span>
                 <time>{clock(r.scannedAt)}{r.gate ? ` · ${r.gate}` : ''}</time>
@@ -592,7 +682,7 @@ export default function GateScanner() {
           <div className="tl-gs-camera-top">
             <span>
               <strong>{event?.name}</strong>
-              <small>{gate} · {online ? 'Online' : 'Offline'} · {entered}/{sold} entered</small>
+              <small>{gate}{dir === 'EXIT' ? ' · exits' : ''} · {online ? 'Online' : 'Offline'} · {entered}/{sold} entered</small>
             </span>
             <button type="button" onClick={() => setScanning(false)} aria-label="Close the camera"><X className="w-6 h-6" /></button>
           </div>
@@ -600,7 +690,7 @@ export default function GateScanner() {
           {checking && <p className="tl-gs-checking" role="status"><RefreshCw className="w-5 h-5 tl-dash-spin" aria-hidden="true" /> Checking…</p>}
           <div className="tl-gs-camera-bottom">
             <p>Hold the QR inside the frame. Ask the guest to turn their screen brightness up.</p>
-            <ImageScan compact disabled={!gate || locked} busy={checking} onCode={check} onError={imageError} />
+            <ImageScan compact disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
             {manualForm(true)}
           </div>
           {verdictEl}
@@ -611,9 +701,9 @@ export default function GateScanner() {
       {revoked && (
         <div className="tl-gs-lock" role="alertdialog" aria-modal="true" aria-labelledby="gs-revoked-title">
           <ShieldOff className="w-12 h-12" aria-hidden="true" />
-          <h2 id="gs-revoked-title">Your access to this event was removed</h2>
+          <h2 id="gs-revoked-title">{revoked.device ? 'This scanner device was revoked' : 'Your access to this event was removed'}</h2>
           <p>
-            You can no longer scan tickets for {event?.name || 'this event'}. Its offline ticket list was deleted from this device
+            {revoked.device ? 'A supervisor revoked this device, so it can no longer scan or download ticket lists.' : `You can no longer scan tickets for ${event?.name || 'this event'}.`} Its offline ticket list was deleted from this device
             {revoked.dropped ? `, along with ${revoked.dropped} scan${revoked.dropped === 1 ? '' : 's'} that hadn’t uploaded yet` : ''}. Contact your organizer if this is a mistake.
           </p>
           <button type="button" onClick={() => navigate('/scanner')}><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to my events</button>

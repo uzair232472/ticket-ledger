@@ -74,6 +74,8 @@ function useMenuGroups(onCategories) {
       ? [
           { label: 'Notifications', to: '/notifications', badge: 'notifications' },
           { label: 'Wishlist', to: '/wishlist' },
+          { label: 'Help & Support', to: '/support' },
+          ...(user?.isSupportAgent ? [{ label: 'Support Desk', to: '/support/desk' }] : []),
           { label: 'Profile & Settings', to: '/profile' },
           { label: 'Log Out', action: 'logout' },
         ]

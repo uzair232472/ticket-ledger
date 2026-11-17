@@ -22,6 +22,8 @@ import intentAnalyticsRoutes from './routes/intentAnalyticsRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import staffRoutes from './routes/staffRoutes.js';
 import orgRoutes from './routes/orgRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
+import giftRoutes from './routes/giftRoutes.js';
 import venueRoutes from './routes/venueRoutes.js';
 import wishlistRoutes from './routes/wishlistRoutes.js';
 import prebookRoutes from './routes/prebookRoutes.js';
@@ -60,6 +62,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // Static file serving for uploaded documents & media
+// Support attachments are private: never served from the public folder (see /api/support/attachments/:id)
+app.use('/uploads/support', (req, res) => res.status(404).end());
 app.use('/uploads', express.static('uploads'));
 
 // API Routes
@@ -80,6 +84,8 @@ app.use('/api/behavior', behaviorRoutes);
 app.use('/api/analytics', intentAnalyticsRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/org', orgRoutes);
+app.use('/api/support', supportRoutes);
+app.use('/api/gifts', giftRoutes);
 app.use('/api/venues', venueRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/prebook', prebookRoutes);

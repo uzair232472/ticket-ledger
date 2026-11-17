@@ -26,6 +26,9 @@ const CONSOLES = {
       { to: '/admin/purchase-intent', label: 'Purchase intent' },
       { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
       { to: '/admin/behavior-profile', label: 'Behavior' },
+      { to: '/admin/payouts', label: 'Payouts' },
+      { to: '/support/desk', label: 'Support desk' },
+      { to: '/organizer/gates', label: 'Gates' },
       { to: '/scanner', label: 'Scanner' },
     ],
   },
@@ -42,6 +45,9 @@ const CONSOLES = {
       { to: '/admin/purchase-intent', label: 'Purchase intent', permission: 'attendee.view' },
       { to: '/admin/demand-forecast', label: 'Demand forecast', permission: 'event.pricing' },
       { to: '/admin/abandoned-intents', label: 'Abandoned intents', permission: 'attendee.view' },
+      { to: '/organizer/gates', label: 'Gates', permission: 'gate.supervise' },
+      { to: '/organizer/support', label: 'Support requests', permission: 'support.respond' },
+      { to: '/organizer/checkout-settings', label: 'Checkout settings', permission: ['finance.view', 'event.edit'] },
       { to: '/scanner', label: 'Scanner', permission: 'gate.scan' },
     ],
   },
@@ -65,8 +71,10 @@ function consoleFor(user) {
       return { label: org.name ? `${org.name} studio` : CONSOLES.ORGANIZER.label, links };
     }
     if (org.permissions.includes('gate.scan')) return CONSOLES.GATE_STAFF;
-    return null;
+    return user.isSupportAgent ? { label: 'Support desk', links: [{ to: '/support/desk', label: 'Queue' }] } : null;
   }
+  // Support agents without an organization
+  if (user.isSupportAgent) return { label: 'Support desk', links: [{ to: '/support/desk', label: 'Queue' }] };
   // Organizers before their company exists see the studio (its screens send them to registration)
   return CONSOLES[user.role] || null;
 }
@@ -75,7 +83,7 @@ function consoleFor(user) {
 const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.

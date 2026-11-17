@@ -136,11 +136,20 @@ const verifySignature = async (pack, payload, sig) => {
 
 const timeOf = (d) => new Date(d).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+/** Re-entries still allowed for a ticket that is outside (same rule as the server's checkinService). */
+const reentriesLeft = (event, entries) => {
+  if (!event?.reentryPolicy || event.reentryPolicy === 'NONE') return 0;
+  if (event.reentryPolicy === 'UNLIMITED') return Infinity;
+  return Math.max(0, (event.maxReentries ?? 0) - Math.max(0, (entries || 1) - 1));
+};
+
 /**
- * Decides a scan on the device, from the pack (same order of checks as the server). Admitting marks the
- * ticket used on this device so a second scan here turns yellow.
+ * Decides a scan on the device, from the pack (same order of checks as the server): signature, event, QR
+ * version, cancelled, the gate's ticket types, then entry / exit and the re-entry policy. The device keeps each
+ * ticket's presence (inside / outside, number of entries) so its own later scans are decided correctly.
+ * opts: { direction: 'ENTRY' | 'EXIT', gateRow: the pack's gate (or null) }
  */
-export async function evaluateOffline(pack, raw, gate) {
+export async function evaluateOffline(pack, raw, gate, { direction = 'ENTRY', gateRow = null } = {}) {
   const eventId = pack.event.id;
   const text = String(raw || '').trim();
   let ticket = null;
@@ -167,17 +176,34 @@ export async function evaluateOffline(pack, raw, gate) {
   if (version !== ticket.qrVersion) return { result: 'RED', reason: 'Old QR: this ticket was transferred', ticket: view };
   if (ticket.status === 'CANCELLED') return { result: 'RED', reason: 'Ticket refunded / cancelled', ticket: view };
 
+  const now = new Date().toISOString();
   const local = await usedLocally(eventId, ticket.id);
-  const used = local || (ticket.status === 'USED' ? { at: ticket.checkedInAt, gate: ticket.gate } : null);
-  if (used) {
-    return {
-      result: 'YELLOW',
-      reason: used.at ? `Already scanned at ${timeOf(used.at)}${used.gate ? `, ${used.gate}` : ''}` : 'Already scanned',
-      ticket: view,
-      firstScan: used,
-    };
+  const used = local || (ticket.status === 'USED' ? { at: ticket.checkedInAt, gate: ticket.gate, inside: ticket.isInside !== false, entries: ticket.entryCount || 1, exitAt: ticket.lastExitAt } : null);
+  const inside = used && used.inside !== false;
+
+  if (direction === 'EXIT') {
+    if (!used) return { result: 'RED', reason: "This ticket hasn't entered yet", ticket: view };
+    if (!inside) return { result: 'YELLOW', reason: used.exitAt ? `Already left at ${timeOf(used.exitAt)}` : 'Already outside', ticket: view, firstScan: used };
+    await markUsedLocally(eventId, ticket.id, { ...used, inside: false, exitAt: now });
+    return { result: 'GREEN', reason: reentriesLeft(pack.event, used.entries) ? 'Exit recorded. Re-entry allowed' : 'Exit recorded. No re-entry with this ticket', ticket: view };
   }
 
-  await markUsedLocally(eventId, ticket.id, { at: new Date().toISOString(), gate });
+  if (gateRow?.allowedTierIds?.length && !gateRow.allowedTierIds.includes(ticket.tierId)) {
+    const names = (pack.gates || []).filter((g) => g.active && g.type !== 'EXIT' && (!g.allowedTierIds.length || g.allowedTierIds.includes(ticket.tierId))).map((g) => g.name);
+    return { result: 'RED', code: 'WRONG_GATE', reason: `Wrong gate: ${ticket.type} tickets enter at ${names.join(', ') || 'another gate'}`, ticket: view };
+  }
+
+  if (used) {
+    if (inside || !used.exitAt) {
+      return { result: 'YELLOW', reason: used.at ? `Already scanned at ${timeOf(used.at)}${used.gate ? `, ${used.gate}` : ''}` : 'Already scanned', ticket: view, firstScan: used };
+    }
+    if (reentriesLeft(pack.event, used.entries) > 0) {
+      await markUsedLocally(eventId, ticket.id, { ...used, inside: true, entries: (used.entries || 1) + 1 });
+      return { result: 'GREEN', reason: 'Re-entry allowed', reentry: true, ticket: view };
+    }
+    return { result: 'YELLOW', reason: pack.event.reentryPolicy === 'LIMITED' ? 'Re-entry limit reached' : `Left at ${timeOf(used.exitAt)}: no re-entry for this event`, ticket: view, firstScan: used };
+  }
+
+  await markUsedLocally(eventId, ticket.id, { at: now, gate, inside: true, entries: 1 });
   return { result: 'GREEN', reason: 'Entry allowed', ticket: view };
 }

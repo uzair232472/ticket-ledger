@@ -1,0 +1,13 @@
+/* Booking tools (My bookings): invoice, gifts and group tickets, seat changes */
+.tl-bt-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #cfdad1; border-radius: 999px; background: #fff; font-size: 12px; font-weight: 700; color: #0b1a10; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; }
+.tl-bt-btn:hover, .tl-bt-btn[aria-pressed='true'] { border-color: #15803d; background: #f0fdf4; }
+.tl-bt-btn.is-primary { border-color: transparent; background: #22c55e; color: #052e16; }
+.tl-bt-btn.is-primary:hover { background: #4ade80; }
+.tl-bt-btn:disabled { opacity: 0.55; cursor: default; }
+.tl-bt-link { background: none; border: 0; padding: 0; font-weight: 700; color: #15803d; cursor: pointer; }
+.tl-bt-link:hover { text-decoration: underline; }
+.tl-bt-panel { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid #dbe4dc; border-radius: 16px; background: #f7f8f4; font-size: 13px; }
+.tl-bt-panel input, .tl-bt-panel select { width: 100%; padding: 9px 12px; border: 1px solid #cfdad1; border-radius: 10px; background: #fff; font: inherit; font-size: 14px; }
+.tl-bt-panel input[type='checkbox'] { width: auto; }
+.tl-bt-msg { padding: 9px 12px; border-radius: 10px; background: #f0fdf4; color: #166534; font-size: 13px; }
+.tl-bt-msg.is-bad { background: #fef2f2; color: #991b1b; }
