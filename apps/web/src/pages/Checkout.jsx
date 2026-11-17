@@ -11,6 +11,7 @@ import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
 import { formatClock, groupByTier, lineTitle, summaryLines } from '../components/venue/BookingSummary';
 import { formatPkr } from '../components/venue/venueTheme';
 import { getEventVisual } from '../utils/eventMedia';
+import { useEventExtras } from '../components/event-detail/EventExtras';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 
 const stripePromise = loadStripe(
@@ -162,6 +163,10 @@ function CheckoutContent() {
   const [codeError, setCodeError] = useState('');
   const [applying, setApplying] = useState(false);
   const autoApplied = useRef(false);
+  // The event's terms: accepted with a checkbox when the organizer set some
+  const extras = useEventExtras(eventId);
+  const terms = extras?.policies?.terms || null;
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const formRef = useRef(null);
   const problemRef = useRef(null);
 
@@ -341,6 +346,10 @@ function CheckoutContent() {
       return;
     }
 
+    if (terms && !acceptTerms) {
+      setProblem({ tone: 'error', kind: 'validation', text: 'Please accept the event terms to continue.' });
+      return;
+    }
     inFlight.current = true;
     setProblem(null);
     let stage = 'initiate';
@@ -375,6 +384,7 @@ function CheckoutContent() {
           paymentMethod: method,
           customerPhone: normalizePhone(form.phone) || undefined,
           discountCode: code || undefined,
+          acceptTerms: terms ? acceptTerms : undefined,
           telemetry,
         }, { headers: { 'Idempotency-Key': attemptRef.current.key } });
         const d = data.data;
@@ -766,6 +776,12 @@ function CheckoutContent() {
               </div>
             )}
 
+            {terms && (
+              <label className="tl-co-terms">
+                <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} disabled={busy} />
+                <span>I accept the <details><summary>event terms</summary><span style={{ whiteSpace: 'pre-wrap', display: 'block', marginTop: 6 }}>{terms}</span></details>{extras?.policies?.ageRestriction ? ` (${extras.policies.ageRestriction}+ only)` : ''}</span>
+              </label>
+            )}
             <div className="tl-co-confirm">
               <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired} aria-busy={busy}>
                 {busy ? (

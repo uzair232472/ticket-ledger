@@ -14,6 +14,8 @@ const USER_SELECT = {
   companyId: true,
   emailVerifiedAt: true,
   isSupportAgent: true,
+  adminRole: true,
+  adminPermissions: true,
 };
 
 const readBearer = (req) => {

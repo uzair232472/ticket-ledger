@@ -2,6 +2,8 @@ import prisma from '../config/prisma.js';
 import { AccessError } from './orgAccess.js';
 import { notifyAdmins } from './notificationService.js';
 import { masked } from './financeCrypto.js';
+import { getSetting } from './systemConfig.js';
+import { recordAdminAction } from './adminActions.js';
 
 /*
  * Organizer payouts. After an event ends, TicketLedger owes its organization the money collected for it:
@@ -49,7 +51,7 @@ export async function computeEvent(eventId) {
     tax += Number(o.taxAmount || 0);
   }
   const refunded = Number(refunds._sum.amount || 0);
-  const platformFee = money(ticketSales * PLATFORM_FEE_RATE);
+  const platformFee = money((ticketSales * Number(await getSetting('platformFeePercent'))) / 100);
   return {
     orders: orders.length,
     grossSales: money(ticketSales),
@@ -155,7 +157,7 @@ export async function orgPayouts(ctx) {
   for (const e of upcomingEvents) upcoming.push({ event: { id: e.id, name: e.name, date: e.date }, estimate: await computeEvent(e.id), expectedOn: dueDate(eventEnd(e), fin?.payoutSchedule) });
   const payouts = await withNames(rows);
   const total = (st) => money(payouts.filter((p) => st.includes(p.status)).reduce((n, p) => n + p.netAmount, 0));
-  return { payouts, upcoming, totals: { paid: total(['PAID']), onTheWay: total(['SCHEDULED', 'PROCESSING']), onHold: total(['ON_HOLD']) }, financeStatus: fin?.status || 'UNVERIFIED', platformFeeRate: PLATFORM_FEE_RATE };
+  return { payouts, upcoming, totals: { paid: total(['PAID']), onTheWay: total(['SCHEDULED', 'PROCESSING']), onHold: total(['ON_HOLD']) }, financeStatus: fin?.status || 'UNVERIFIED', platformFeeRate: Number(await getSetting('platformFeePercent')) / 100 };
 }
 
 // ── Admin ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -201,6 +203,8 @@ export async function decide(admin, payoutId, { action, reference, reason }) {
   const updated = await prisma.$transaction(async (tx) => {
     const u = await tx.payout.update({ where: { id: p.id }, data });
     await audit(tx, admin.id, p, `PAYOUT_${action}`, { reference: reference || null, reason: reason || null });
+    if (action === 'HOLD') await recordAdminAction(tx, { admin, action: 'PAYOUT_HOLD', targetType: 'Payout', targetId: p.id, summary: `Held the payout for ${event?.name}: ${reason}`, before: { status: p.status, holdReason: p.holdReason }, after: { status: 'ON_HOLD' } });
+    else await recordAdminAction(tx, { admin, action: `PAYOUT_${action}`, targetType: 'Payout', targetId: p.id, summary: `Payout for ${event?.name}: ${action.toLowerCase()}${reference ? ` (ref ${reference})` : ''}`, before: { status: p.status }, after: { status: data.status }, reversible: false });
     return u;
   });
   if (note) await tellOwners(p.companyId, note);

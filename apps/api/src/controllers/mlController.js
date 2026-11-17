@@ -1,4 +1,6 @@
 import prisma from '../config/prisma.js';
+import { assertConfirmed, recordAdminAction } from '../services/adminActions.js';
+import { noteAccountAction } from '../services/investigationService.js';
 import { revokeAllRefreshTokens } from '../services/tokenService.js';
 import mlService from '../services/mlService.js';
 
@@ -316,12 +318,23 @@ export const freezeUserAccount = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    if (user.role === 'SUPER_ADMIN') return res.status(403).json({ success: false, message: "Admin accounts can't be frozen here." });
+    // Destructive: the admin types the account's email (undoable from Admin actions)
+    try {
+      assertConfirmed(req.body?.confirm, user.email, `freezing ${user.email}`);
+    } catch (e) {
+      return res.status(428).json({ success: false, code: e.code, confirmPhrase: e.phrase, message: e.message });
+    }
 
     const updated = await prisma.user.update({
       where: { id: userId },
       data: { status: 'SUSPENDED' },
     });
     await revokeAllRefreshTokens(userId);
+    if (user.status !== 'SUSPENDED') {
+      await recordAdminAction(prisma, { admin: req.user, action: 'USER_STATUS', targetType: 'User', targetId: userId, summary: `${user.email}: ${user.status.toLowerCase()} → suspended (fraud: ${reason})`, before: { status: user.status }, after: { status: 'SUSPENDED' } });
+      await noteAccountAction(prisma, { userId, adminId: req.user.id, body: `Account frozen from the fraud watchlist: ${reason}`, data: { before: user.status, after: 'SUSPENDED' } });
+    }
 
     await prisma.auditLog.create({
       data: {

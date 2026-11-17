@@ -1,4 +1,5 @@
 import { acceptInvitation, previewInvitation, rejectInvitation } from '../services/orgService.js';
+import { adminPermissionsOf, hasAdmin } from '../services/adminAccess.js';
 import { AccessError, EVENT_SCOPED_ROLES, ROLE_LABELS, effectivePermissions, findMembership } from '../services/orgAccess.js';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
@@ -171,7 +172,9 @@ export const buildAuthUser = async (userId) => {
     role: user.role,
     status: user.status,
     walletAddress: user.walletAddress,
-    isSupportAgent: user.isSupportAgent || user.role === 'SUPER_ADMIN',
+    isSupportAgent: user.isSupportAgent || hasAdmin(user, 'admin.support'),
+    adminRole: user.role === 'SUPER_ADMIN' ? user.adminRole || 'OWNER' : null,
+    adminPermissions: [...adminPermissionsOf(user)],
     city: user.city,
     emailVerifiedAt: user.emailVerifiedAt,
     createdAt: user.createdAt,

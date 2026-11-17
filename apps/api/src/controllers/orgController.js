@@ -6,6 +6,7 @@ import * as discounts from '../services/discountService.js';
 import * as recovery from '../services/recoveryService.js';
 import * as checkout from '../services/checkoutSettingsService.js';
 import * as payouts from '../services/payoutService.js';
+import * as tools from '../services/eventToolsService.js';
 
 const role = z.enum(ROLES);
 const perms = z.array(z.string().max(40)).max(40);
@@ -268,3 +269,77 @@ export const updateEventCheckoutRules = handle('Could not save the event rules.'
 export const listPayouts = handle('Could not load payouts.', async (req, res) => res.json({ success: true, data: await payouts.orgPayouts(req.org) }));
 
 export { effectivePermissions };
+
+// ── Event tools: duplicate, dates & sessions, settings, sale phases, announcements, staff, history, report ─
+
+const slot = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose the date'), time: z.string().min(3), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), endTime: z.string().min(3), label: z.string().trim().max(60).optional() });
+const dateOrNull = z.union([z.literal(''), z.null(), z.string().datetime()]).optional().transform((v) => (v === '' || v === null ? null : v === undefined ? undefined : new Date(v)));
+const toolsFail = (fn, fallback) => handle(fallback, async (req, res) => {
+  try {
+    return await fn(req, res);
+  } catch (e) {
+    if (e?.name === 'ScheduleError' || (e?.status && !(e instanceof z.ZodError))) return res.status(e.status || 400).json({ success: false, code: e.code, field: e.field, message: e.message });
+    throw e;
+  }
+});
+
+export const eventTools = toolsFail(async (req, res) => {
+  const e = await tools.orgEvent(req.org, req.params.eventId, { tiers: { include: { phases: { orderBy: { sortOrder: 'asc' } } }, orderBy: { price: 'desc' } } });
+  const [dates, announcements, left] = await Promise.all([tools.seriesDates(e), tools.listAnnouncements(e.id), tools.capacityLeft(e)]);
+  res.json({ success: true, data: { event: e, dates, announcements, capacity: { limit: e.capacityLimit, left: Number.isFinite(left) ? left : null } } });
+}, 'Could not load the event tools.');
+export const duplicateEvent = toolsFail(async (req, res) => {
+  const body = slot.omit({ label: true }).extend({ name: z.string().trim().min(3).max(150).optional() }).parse(req.body || {});
+  const e = await tools.duplicateEvent(req, req.org, req.params.eventId, body);
+  res.status(201).json({ success: true, message: 'Copy created as a draft. Check it, then send it for approval.', data: { event: e } });
+}, 'Could not duplicate the event.');
+export const addEventDates = toolsFail(async (req, res) => {
+  const body = z.object({
+    slots: z.array(slot).max(52).optional(),
+    recurrence: z.object({ frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']), count: z.coerce.number().int().min(1).max(52), interval: z.coerce.number().int().min(1).max(12).default(1) }).optional(),
+    seriesName: z.string().trim().max(150).optional(),
+    label: z.string().trim().max(60).optional(),
+  }).refine((b) => b.slots?.length || b.recurrence, 'Add dates or a repeat rule').parse(req.body || {});
+  const source = await tools.orgEvent(req.org, req.params.eventId);
+  const slots = body.slots?.length ? body.slots : tools.recurringSlots(source, body.recurrence);
+  const out = await tools.addDates(req, req.org, req.params.eventId, { slots, seriesName: body.seriesName, label: body.label });
+  res.status(201).json({ success: true, message: `${out.created.length} date${out.created.length === 1 ? '' : 's'} added as drafts${out.skipped.length ? `; ${out.skipped.length} skipped (venue booked or in the past)` : ''}.`, data: out });
+}, 'Could not add the dates.');
+export const updateEventSettings = toolsFail(async (req, res) => {
+  const body = z.object({
+    publishAt: dateOrNull,
+    salesOpenAt: dateOrNull,
+    salesCloseAt: dateOrNull,
+    capacityLimit: z.union([z.literal(''), z.null(), z.coerce.number().int().min(1).max(1000000)]).optional().transform((v) => (v === '' ? null : v)),
+    terms: z.string().trim().max(10000).optional().nullable().transform((v) => (v === '' ? null : v)),
+    refundPolicy: z.string().trim().max(5000).optional().nullable().transform((v) => (v === '' ? null : v)),
+    ageRestriction: z.union([z.literal(''), z.null(), z.coerce.number().int().min(1).max(99)]).optional().transform((v) => (v === '' ? null : v)),
+    sessionLabel: z.string().trim().max(60).optional().nullable().transform((v) => (v === '' ? null : v)),
+  }).parse(req.body || {});
+  res.json({ success: true, message: 'Event settings saved.', data: { event: await tools.updateSettings(req, req.org, req.params.eventId, body) } });
+}, 'Could not save the event settings.');
+export const setSalePhases = toolsFail(async (req, res) => {
+  const { phases } = z.object({ phases: z.array(z.object({ name: z.string().trim().min(2).max(40), price: z.coerce.number().min(0).max(10000000), startsAt: dateOrNull, endsAt: dateOrNull, quantity: z.union([z.literal(''), z.null(), z.coerce.number().int().min(1)]).optional().transform((v) => (v === '' ? null : v)) })).max(6) }).parse(req.body || {});
+  res.json({ success: true, message: phases.length ? 'Sale phases saved.' : 'Sale phases removed.', data: { tiers: await tools.setPhases(req, req.org, req.params.eventId, req.params.tierId, phases) } });
+}, 'Could not save the sale phases.');
+export const announce = toolsFail(async (req, res) => {
+  const body = z.object({ title: z.string().trim().min(3).max(120), body: z.string().trim().min(5).max(3000), isPublic: z.boolean().default(true), notifyHolders: z.boolean().default(true) }).parse(req.body || {});
+  const a = await tools.announce(req, req.org, req.params.eventId, body);
+  res.status(201).json({ success: true, message: body.notifyHolders ? `Announcement sent to ${a.recipientCount} ticket holder${a.recipientCount === 1 ? '' : 's'}.` : 'Announcement posted.', data: { announcement: a } });
+}, 'Could not send the announcement.');
+export const deleteAnnouncement = toolsFail(async (req, res) => res.json({ success: true, message: 'Announcement removed.', data: await tools.deleteAnnouncement(req, req.org, req.params.eventId, req.params.id) }), 'Could not remove the announcement.');
+export const eventStaff = toolsFail(async (req, res) => res.json({ success: true, data: { staff: await tools.eventStaff(req.org, req.params.eventId) } }), 'Could not load the event staff.');
+export const setEventStaff = toolsFail(async (req, res) => {
+  const { assign } = z.object({ assign: z.boolean() }).parse(req.body || {});
+  res.json({ success: true, message: assign ? 'Added to the event.' : 'Removed from the event.', data: { staff: await tools.setEventStaff(req, req.org, req.params.eventId, req.params.memberId, assign) } });
+}, 'Could not change the event staff.');
+export const eventHistory = toolsFail(async (req, res) => res.json({ success: true, data: { history: await tools.history(req.org, req.params.eventId) } }), 'Could not load the history.');
+export const eventReport = toolsFail(async (req, res) => {
+  const r = await tools.performance(req.org, req.params.eventId);
+  if (req.query.format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="event-report-${req.params.eventId.slice(0, 8)}.csv"`);
+    return res.send(tools.performanceCsv(r));
+  }
+  res.json({ success: true, data: r });
+}, 'Could not build the report.');

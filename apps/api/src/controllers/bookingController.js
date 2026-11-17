@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { applyPhases, assertOnSale, capacityLeft } from '../services/eventToolsService.js';
 import prisma from '../config/prisma.js';
 import { checkSeatLock, releaseSeatLock } from '../config/redis.js';
 import { getIO } from '../config/socket.js';
@@ -144,6 +145,8 @@ const initiateBookingSchema = z.object({
   discountCode: z.string().trim().max(40).optional(),
   // true: create the order only; it is paid together with other events' orders (POST /bookings/cart/checkout)
   cart: z.boolean().optional(),
+  // The event's terms (required when it has terms)
+  acceptTerms: z.boolean().optional(),
   telemetry: z.object({
     checkoutDurationSeconds: z.number().optional(),
     clicksPerMinute: z.number().optional(),
@@ -194,6 +197,16 @@ export const initiateBooking = async (req, res) => {
         message: 'This event is not currently accepting bookings.',
       });
     }
+    try {
+      assertOnSale(event);
+    } catch (e) {
+      return res.status(409).json({ success: false, code: e.code, message: e.message });
+    }
+    if (event.terms && !validated.acceptTerms) {
+      return res.status(400).json({ success: false, code: 'TERMS_REQUIRED', field: 'acceptTerms', message: 'Please accept the event terms to continue.' });
+    }
+    // The current sale phase's prices (early bird → regular…) before seats are priced
+    await applyPhases(eventId);
 
     const idemKey = idempotencyKeyFrom(req);
     const wantedSeats = seatKey(seatIds);
@@ -375,6 +388,11 @@ export const initiateBooking = async (req, res) => {
       }
     }
 
+    // The event's overall capacity (tickets sold or in checkouts, without the orders this checkout replaces)
+    if (event.capacityLimit && (await capacityLeft(event, myOrders.map((o) => o.id))) < seats.length) {
+      return res.status(409).json({ success: false, code: 'CAPACITY_REACHED', message: 'Sorry, this event has reached its capacity.' });
+    }
+
     // Ticket prices, then discount, service fee and tax (the code is checked again, locked, inside the transaction)
     const subtotal = money(seats.reduce((sum, seat) => sum + Number(seat.tier.price), 0));
     const company = await prisma.company.findUnique({ where: { id: event.companyId }, select: COMPANY_FEES });
@@ -413,6 +431,7 @@ export const initiateBooking = async (req, res) => {
             userId,
             eventId,
             ...priceData(price),
+            ...(event.terms ? { termsAcceptedAt: new Date(), termsVersion: event.termsVersion } : {}),
             status: 'PENDING',
             paymentMethod,
             idempotencyKey: idemKey,

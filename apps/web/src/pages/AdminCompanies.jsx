@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { confirmedFetch } from '../lib/typedConfirm';
 import { useAuth } from '../context/AuthContext';
 import {
   Building2,
@@ -75,7 +76,7 @@ export default function AdminCompanies() {
     setMessage({ text: '', type: '' });
 
     try {
-      const res = await fetch(`${API_URL}/api/companies/admin/${companyId}/status`, {
+      const res = await confirmedFetch(`${API_URL}/api/companies/admin/${companyId}/status`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -103,7 +104,7 @@ export default function AdminCompanies() {
     setMessage({ text: '', type: '' });
 
     try {
-      const res = await fetch(`${API_URL}/api/companies/admin/${companyId}/status`, {
+      const res = await confirmedFetch(`${API_URL}/api/companies/admin/${companyId}/status`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,

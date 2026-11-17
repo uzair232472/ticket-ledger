@@ -261,7 +261,7 @@ export const reviewEvent = async (req, res) => {
         ...(stage === 'LAUNCH' ? { launchStatus: CHANGES_REQUESTED } : { reviewRequest: CHANGES_REQUESTED }),
       };
     } else if (stage === 'LAUNCH') {
-      data = { ...reviewed, launchStatus: 'APPROVED', isHidden: false };
+      data = { ...reviewed, launchStatus: 'APPROVED', isHidden: Boolean(event.publishAt && event.publishAt > now) };
     } else {
       data = {
         ...reviewed,
@@ -273,6 +273,8 @@ export const reviewEvent = async (req, res) => {
         suggestedEndsAt: null,
         // An approved prebooked date is a reservation: hidden until its final approval with tickets and seating
         ...(approve && event.prebookDraftId ? { isHidden: true, launchStatus: 'NONE' } : {}),
+        // A scheduled publication: approved now, shown at publishAt (eventToolsService.runScheduledPublishing)
+        ...(approve && !event.prebookDraftId && event.publishAt && event.publishAt > now ? { isHidden: true } : {}),
       };
     }
     // Only move it if it is still in the state that was reviewed (two admins at once: the second one gets a 409)

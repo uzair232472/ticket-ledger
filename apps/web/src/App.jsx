@@ -51,6 +51,11 @@ import OrganizerCheckoutSettings from './pages/OrganizerCheckoutSettings';
 import AdminPayouts from './pages/AdminPayouts';
 import Cart from './pages/Cart';
 import GiftClaim from './pages/GiftClaim';
+import AdminFinance from './pages/AdminFinance';
+import AdminPlatform from './pages/AdminPlatform';
+import AdminInvestigations from './pages/AdminInvestigations';
+import EventTools from './pages/EventTools';
+import SiteBanner from './components/SiteBanner';
 import { ORG_PAGE_PERMISSIONS } from './lib/permissions';
 import OrganizerDashboard from './pages/OrganizerDashboard';
 import VerifyOtp from './pages/VerifyOtp';
@@ -181,6 +186,7 @@ export default function App() {
         <DiscountCodeCatcher />
         <RouteLoader />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
+          <SiteBanner />
           {/* Pages without their own chrome get the site header (logo, cart, notifications, profile, menu) */}
           <SiteChrome><div className="tl-home tl-chrome"><HomeHeader tone="light" /></div></SiteChrome>
           <main className="flex-1 w-full">
@@ -240,6 +246,7 @@ export default function App() {
               <Route path="/organizer/organization" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={ORG_PAGE_PERMISSIONS}><OrganizerOrganization /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/support" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'support.respond'}><OrganizerSupport /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/support/:reference" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'support.respond'}><OrganizerSupport /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/manage" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.view'} requireApprovedCompany><EventTools /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/checkout-settings" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={['finance.view', 'event.edit']} requireApprovedCompany><OrganizerCheckoutSettings /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/gates" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'gate.supervise'}><GateManagement /></ProtectedRoute></DashShell>} />
               <Route path="/organizer/discounts" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'discount.manage'} requireApprovedCompany><OrganizerDiscounts /></ProtectedRoute></DashShell>} />
@@ -257,6 +264,10 @@ export default function App() {
               <Route path="/admin/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute></DashShell>} />
               <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
               <Route path="/admin/event-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminEventApprovals /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/finance" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFinance /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/platform" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminPlatform /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/investigations" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminInvestigations /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/investigations/:id" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminInvestigations /></ProtectedRoute></DashShell>} />
               <Route path="/admin/payouts" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminPayouts /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
               <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />

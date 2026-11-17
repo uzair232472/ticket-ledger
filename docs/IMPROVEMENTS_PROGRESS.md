@@ -1,7 +1,7 @@
 # Improvements progress
 
-Status of the planned improvements: **A. Organization management**, **B. Booking and checkout**, **D. Customer support** and **G. Gate management**.
-Last updated: 17 November 2026.
+Status of the planned improvements: **A. Organization management**, **B. Booking and checkout**, **D. Customer support**, **E. Event management**, **G. Gate management** and **H. Admin dashboard**.
+Last updated: 18 November 2026 (sections E and H added).
 
 Legend: ✅ done · 🟡 partly done · ⬜ not started
 
@@ -44,6 +44,8 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 | `org.documents` (see / upload / archive documents) | Owner, Admin, Finance Manager |
 | `discount.manage` (discount codes) | Owner, Admin, Event Manager (own events only) |
 | `org.settings` (profile and branches) | Owner, Admin |
+| `support.respond` (answer support requests about the organization's events) | Owner, Admin, Event Manager (own events) |
+| `gate.supervise` (gates, gate staff, devices, exceptions, reversals, reports) | Owner, Admin, Event Manager |
 
 ---
 
@@ -82,6 +84,35 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 - Codes that don't exist are refused (the old hard-coded `RECOVER10` was never a real code).
 - The reminder link (`/events/:id?code=…`) fills the code in at checkout automatically.
 
+- **Automatic reminders** (Abandoned intents → Automatic reminders): wait N hours after a checkout lapses unpaid, then one reminder with an optional personal code; at most one per customer and event a week (manual sends count too), never after they bought, never for events no longer on sale. The panel shows the last 30 days: reminders sent, customers who bought afterwards, codes used.
+
+### Fees, tax and checkout rules (studio → Checkout settings)
+- **Organization:** service fee (none, percent of tickets up to 30%, or PKR per ticket), tax percent (up to 30%), the tax's name on receipts and an optional tax registration number. A worked example shows what a PKR 2,000 ticket costs.
+- **Each event:** maximum tickets per customer (counted across all their orders, including tickets they gave away), automatic group discount (N+ tickets → X% off; codes and group discounts don't stack, the bigger applies), seat changes on/off with a cut-off in hours before the start.
+- Price order: tickets − discount + service fee (on discounted tickets) + tax (on tickets after discount plus fee). Every line is stored on the order; paid orders never change when settings change.
+
+### Invoices
+- Each paid booking gets a number from one sequence (INV-2026-000123) and a PDF invoice: seller (organizer, NTN, tax registration), customer, event, lines per ticket type, discount, group discount, service fee, tax, total paid, refunds, payment reference. Download from My bookings; only the buyer (or a Super Admin) can.
+
+### Gifts and group tickets (My bookings)
+- **Send as a gift:** chosen tickets go to one email, with an optional message. **Give tickets to my group:** each ticket to its own member.
+- An account with that email gets the ticket at once; anyone else gets an email with a one-time claim link (`/gifts/…`) and claims it after signing in or up with that email. Until then the sender keeps the ticket and can cancel.
+- The old QR and manual code stop working when a ticket moves; the move is in the ticket's transfer history.
+
+### Seat changes (booking modification)
+- When the event allows it and before its cut-off: move a paid ticket to another free seat of the same ticket type, free, up to 3 times per ticket. The old seat goes back on sale and the ticket gets a new QR.
+- The ticket's NFT stays valid: it keeps its original chain seat key, and the next buyer of the freed seat gets a fresh key automatically, so the two never clash on-chain.
+
+### Cart: several events, one payment (`/cart`)
+- Seats held for several events appear together (the hold bar links there when more than one event is held). Each event becomes an order priced with its own fees and discounts; one payment (test, JazzCash or EasyPaisa) confirms them all.
+- Retrying reuses the same checkout and payment. If a reservation expires before the payment arrives, that event is left out and a real card payment for it is refunded at once.
+- Card payments and discount codes go through each event's own checkout.
+
+### Payouts
+- One payout per ended event: ticket sales after discounts + service fees + tax collected − refunds − 5% platform fee.
+- Scheduled by the organization's payout schedule (3 days after the event · the Monday after · the 1st of next month); on hold while payout details aren't verified; recalculated when due (so late refunds count); then the finance team transfers the money and marks it paid with the reference (Admin → Payouts). Failed, held and released payouts are recorded; owners and finance managers are told at each step.
+- Organizers see paid, on-the-way and on-hold totals, each payout's breakdown, and what upcoming events have earned so far (Organization → Payouts).
+
 ---
 
 ## D. Customer support (helpdesk)
@@ -101,8 +132,31 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 - **Support agents:** admins add or remove them on the desk's *Agents* tab (by account email). Admins are always agents. Removing an agent unassigns their open requests.
 - Agents see the linked booking / event next to the conversation. Customers only see an agent's first name.
 - Resolved requests close automatically after 14 days.
+- **Organizers** with `support.respond` see requests about their events (studio → Support requests) and reply; their replies show as "<organization> (event organizer)". They don't see internal notes and can't change status, assignment or escalation.
+- **Attachments are private:** stored outside the public folder (or as authenticated Cloudinary files) and opened only through a link signed for that viewer, valid for one hour.
 - **Who is told (in-app + email):** the customer when the request is received, on every agent reply, and when it is resolved or closed (always emailed, even with email notifications turned off). Every agent and admin on a new request; the assigned agent on a customer reply (every agent if nobody is assigned); the assignee when a request is assigned to them; every admin on an escalation.
 - Customers see status changes in the history, but not who it is assigned to, the priority, or why it was escalated (those lines are staff only).
+
+---
+
+## E. Event management
+
+| Improvement | Status | What exists |
+|---|---|---|
+| Event duplication / cloning | ✅ | Event tools → Copies & dates → Duplicate: a new **draft** with new records for details, images, ticket types, sale phases, the **venue plan** (ticket types remapped), gates and checkout rules. No sales, seats or approvals are copied; the copy is sent for approval like any new event |
+| Recurring events | ✅ | Repeat daily / weekly / monthly (every N, up to 52 more), same time of day and length; dates the venue is already booked for are skipped and listed |
+| Multiple sessions for one event | ✅ | All dates are grouped in a series; each can have a session name ("Evening show"); the event page shows a date picker |
+| Multiple ticket sale phases | ✅ | Per ticket type, up to 6 phases (early bird → regular → late) by start/end time or by tickets sold; the current phase's price becomes the ticket's price everywhere (checked every 5 minutes and before each checkout) |
+| Scheduled publication | ✅ | "Publish at": approved events stay hidden until then, then go public automatically (owners notified) |
+| Scheduled sales opening and closing | ✅ | Sales open / close times: seat holds and checkout are refused outside the window; the event page says when sales open or that they closed |
+| Event capacity management | ✅ | A ticket cap for the event (below the seats on the plan); checkout refuses beyond it; "X of Y still available" |
+| Event-specific terms and policies | ✅ | Terms (versioned), refund policy, minimum age; shown on the event page; customers accept the terms at checkout (and in the cart); the order stores the version they accepted |
+| Event announcements | ✅ | Posted to ticket holders (in-app + email) and optionally on the event page |
+| Event staff assignments | ✅ | Event tools → Staff: add or remove event managers, staff and gate staff for this event (organization-wide roles cover every event) |
+| Event change history | ✅ | Every edit with before → after values, settings, sale phases, staff, announcements, reviews (Event tools → History) |
+| Event performance exports | ✅ | Tickets sold per type, revenue, discounts, fees, tax, refunds, check-ins and no-shows, sales by day; CSV download |
+
+The **Tools** link on each event in the organizer dashboard opens `/organizer/events/:id/manage`.
 
 ---
 
@@ -127,6 +181,25 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 
 ---
 
+## H. Admin dashboard
+
+| Improvement | Status | What exists |
+|---|---|---|
+| Dedicated finance management section | ✅ | Admin → **Finance**: collected, ticket sales, discounts, fees, tax, refunds, platform fee, payouts by status, things needing attention, daily sales, payment methods, top organizations, CSV downloads; plus Admin → Payouts |
+| Support ticket management | ✅ | Admin → Support desk (helpdesk, section D) |
+| Organization employee management | ✅ | Admin → Organization teams: any organization's members, invitations, roles and activity (access is recorded in its activity log) |
+| Admin permission management | ✅ | Admin → Platform → **Admins**: roles Owner, Finance, Support, Moderator, Analyst, plus single extra permissions; adding an admin needs your password and their typed email; there is always at least one Owner; admins created before roles exist are Owners |
+| System configuration | ✅ | Admin → Platform → **Settings**: platform fee %, support escalation times, abandoned-checkout reminder spacing, whether new organizers can register, a site-wide banner |
+| Platform-wide notification management | ✅ | Admin → Platform → **Messages**: to everyone, customers, organizers, organization owners, gate staff, support agents or admins, optionally one city, now or scheduled, in-app with optional email; recipient count before sending; history and cancelling scheduled ones |
+| Data export | ✅ | Admin → Platform → **Exports**: users, organizations, events, orders, refunds, payouts, support requests, audit log as CSV with a date range; every export is recorded |
+| Suspicious account investigation history | ✅ | Admin → **Investigations**: a case per account with notes, evidence, the actions taken on the account (added automatically), risk, status and outcome |
+| Admin action confirmation for destructive operations | ✅ | The admin types a phrase to confirm: suspending / banning / deactivating an account (its email), freezing from the fraud watchlist, suspending a company (its name), sensitive settings ("CHANGE"), a message to everyone, adding or removing an admin |
+| Reversible administrative actions | ✅ | Admin → Platform → **Admin actions**: account status, company status, payout-detail checks, payout holds and settings can be undone for 30 days if nothing changed them since; the undo is logged too |
+
+Admin permissions are checked by the API on every admin route; the console only shows what each admin's role allows.
+
+---
+
 ## Checks still to do
 
 - [ ] Commit the work (still uncommitted).
@@ -137,6 +210,8 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 - [ ] Production / other machines: apply all migrations (`npm run prisma:deploy` in `apps/api`); today's add org profile/finance/discounts, helpdesk & gates, private attachments, organizer support, abandoned-checkout automation, and checkout fees/gifts/cart/payouts.
 - [ ] Checkout: set fees/tax and event rules (Checkout settings), buy with a group discount, download the invoice, send a ticket as a gift, change a seat, pay two events in the cart.
 - [ ] Payouts: verify an organization's payout details, let an event end, mark its payout paid in Admin → Payouts.
+- [ ] Admin: add a Finance admin and sign in as them (only finance links); change a setting and undo it; suspend an account (type its email) and undo it; open an investigation; send a message to one city; download an export.
+- [ ] Events: duplicate an event (check its seating plan), add weekly dates, set a sales window and terms, add early-bird and regular phases, post an announcement, open History and Report.
 
 ## Gaps fixed (17 November 2026)
 
@@ -147,31 +222,37 @@ Legend: ✅ done · 🟡 partly done · ⬜ not started
 - **Outdated tests** — every in-process test file passes again. Along the way: the **venue editor and venue publishing were broken** for everyone (`req is not defined` in `venueController.editorPayload`); fixed.
 - **Checkout** — all remaining items of section B (see the table above).
 
+## Fixed along the way (18 November 2026)
+
+- The fraud watchlist's "freeze" could suspend another admin and skipped every safeguard; it now needs the fraud permission and the typed email, refuses admins, and is undoable.
+- Event edits now record before → after values (for the change history).
+
 ## Known gaps / next steps
+
 
 1. **Payouts are recorded, not sent** — TicketLedger has no bank API: the finance team makes the transfer and records its reference.
 2. **Seat changes keep the price** — moving to a seat of a different (dearer) ticket type with payment of the difference is not built.
 3. **The cart takes wallet and test payments** — card payments and discount codes go through each event's own checkout.
 4. **Refunds return ticket prices** — the service fee and tax are not refunded automatically.
 5. **One order is still at most 10 tickets** — a group larger than 10 books twice.
+6. **Sale phase prices change the ticket type's price** — orders already placed keep theirs; seats held before a change are priced at checkout with the new price.
+7. **Recurring dates are separate events** — each is approved on its own (they go to the approvals queue together).
+8. **Older admin pages** (dashboard, companies, watchlist) keep their look; new admin pages use the studio cards.
 
 ## Tests
 
-`apps/api/test_org_profile_checkout.mjs` (10 checks) covers the profile, documents, payout details, branches, discount codes, checkout retries and recovery codes:
+Every in-process test file passes: 18 files, 232 checks (last full run: 18 November 2026). The main ones for this work:
+
+- `apps/api/test_org_profile_checkout.mjs` (16 checks): profile, documents, payout details, branches, discount codes, checkout retries, recovery codes, automatic reminders, fees/tax/group discount/limits/invoices, gifts and group tickets, seat changes, the cart, payouts.
+- `apps/api/test_helpdesk_gates.mjs` (14 checks): helpdesk (incl. private attachments and organizer replies) and gate management.
+- `apps/api/test_admin_events.mjs` (12 checks): admin roles, settings with confirmation and undo, account actions and investigations, platform messages, exports, admins; event duplicate, dates, sales window, terms, capacity, sale phases, scheduled publication, announcements, staff, history, report.
 
 ```
 cd apps/api
-$env:NODE_ENV="test"; node --test test_org_profile_checkout.mjs
+$env:NODE_ENV="test"; node --test test_org_profile_checkout.mjs test_helpdesk_gates.mjs test_admin_events.mjs
 ```
 
-`apps/api/test_helpdesk_gates.mjs` (13 checks) covers the helpdesk and gate management:
-
-```
-cd apps/api
-$env:NODE_ENV="test"; node --test test_helpdesk_gates.mjs
-```
-
-Also passing: `test_org_membership`, `test_staff_invites`, `test_seats`, `test_mint_recovery`, `test_mint_failure_modes`, `test_mint_resolution`.
+Also passing: `test_auth`, `test_company`, `test_events`, `test_venue_layouts`, `test_email_otp_signup`, `test_pending_signup`, `test_event_media`, `test_user_profile`, `test_health`, `test_org_membership`, `test_staff_invites`, `test_seats`, `test_mint_recovery`, `test_mint_failure_modes`, `test_mint_resolution`. (Older scripts like `test_booking.mjs` call a running server on port 5000 instead of starting the app; they weren't part of this.)
 
 ## Where the code is
 
@@ -183,4 +264,14 @@ Also passing: `test_org_membership`, `test_staff_invites`, `test_seats`, `test_m
 | Recovery reminders | `services/intentAnalyticsService.js` | `pages/AbandonedIntentDashboard.jsx` |
 | Helpdesk | `services/supportService.js`, `controllers/supportController.js`, `routes/supportRoutes.js` (`/api/support`), hourly job in `server.js` | `pages/Support.jsx`, `pages/SupportTicketPage.jsx`, `pages/SupportDesk.jsx`, `components/support/` |
 | Gate management | `services/gateService.js`, `services/checkinService.js`, `controllers/checkinController.js`, `routes/checkinRoutes.js` (`/api/checkin/manage/…`) | `pages/GateManagement.jsx`, `pages/GateScanner.jsx`, `lib/gateOffline.js` |
-| Database | `prisma/schema.prisma`, migrations `20261117000000_org_profile_finance_branches_discounts`, `20261117120000_helpdesk_gate_management` | — |
+| Organizer support, private attachments | `services/supportService.js` (viewers, `attachmentLink`, `openAttachment`), `utils/storage.js` (`uploadPrivateFile`) | `pages/OrganizerSupport.jsx`, `components/support/SupportThread.jsx` |
+| Automatic reminders | `services/recoveryService.js` (15-minute job in `server.js`), `/org/recovery` | `pages/AbandonedIntentDashboard.jsx` (`AutoRecovery`) |
+| Fees, tax, checkout rules | `services/pricingService.js`, `services/checkoutSettingsService.js`, `POST /bookings/quote` | `pages/OrganizerCheckoutSettings.jsx`, `pages/Checkout.jsx` |
+| Invoices | `services/invoiceService.js`, `GET /bookings/:id/invoice` | `components/account/BookingTools.jsx` |
+| Gifts, group tickets, seat changes | `services/giftService.js`, `services/seatChangeService.js`, `controllers/ticketExtrasController.js`, `routes/giftRoutes.js` | `components/account/BookingTools.jsx`, `pages/MyBookings.jsx`, `pages/GiftClaim.jsx` |
+| Cart | `bookingController.js` (`checkoutCart`, `confirmCart`, `finalizePaidOrder`) | `pages/Cart.jsx`, `components/HoldBar.jsx` |
+| Payouts | `services/payoutService.js` (hourly job), `/org/payouts`, `/companies/admin/payouts` | `pages/AdminPayouts.jsx`, `pages/OrganizerOrganization.jsx` (Payouts tab) |
+| Admin permissions, settings, undo, confirmations | `services/adminAccess.js`, `services/systemConfig.js`, `services/adminActions.js`, `controllers/adminConsoleController.js`, `routes/adminRoutes.js` | `pages/AdminPlatform.jsx`, `lib/typedConfirm.js`, `components/SiteBanner.jsx` |
+| Admin finance, messages, exports, investigations | `services/financeOverviewService.js`, `services/broadcastService.js`, `services/exportService.js`, `services/investigationService.js` | `pages/AdminFinance.jsx`, `pages/AdminPlatform.jsx`, `pages/AdminInvestigations.jsx` |
+| Event tools | `services/eventToolsService.js` (5-minute job in `server.js`), `/org/events/:id/…`, `GET /events/:id/extras` | `pages/EventTools.jsx`, `components/event-detail/EventExtras.jsx`, `pages/Checkout.jsx` (terms) |
+| Database | `prisma/schema.prisma`, migrations from `20261117000000_…` to `20261118010000_ticket_phase_activation` | — |

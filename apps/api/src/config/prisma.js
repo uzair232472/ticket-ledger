@@ -87,6 +87,7 @@ function emailNotifications(rows) {
       for (const n of list) {
         const u = byId.get(n.userId);
         if (u?.role === 'SUPER_ADMIN') adminInbox().forEach((to) => send(to, n));
+        if (/_INAPP$/.test(n.type || '')) continue; // in-app only (e.g. a platform message without email)
         if (!u?.email || (u.emailNotifications === false && !ESSENTIAL.test(n.type || ''))) continue;
         send(u.email, n);
       }

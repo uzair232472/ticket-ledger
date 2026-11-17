@@ -4,6 +4,7 @@ import { uploadFile } from '../utils/storage.js';
 import { AccessError } from './orgAccess.js';
 import { orgAudit } from './orgService.js';
 import { notifyAdmins } from './notificationService.js';
+import { recordAdminAction } from './adminActions.js';
 import { decryptSecret, encryptSecret, last4, masked } from './financeCrypto.js';
 
 /*
@@ -314,6 +315,7 @@ export async function reviewFinance(req, companyId, { status, note }) {
   const ctx = { companyId, role: 'SUPER_ADMIN' };
   const saved = await prisma.$transaction(async (tx) => {
     const u = await tx.companyFinancialProfile.update({ where: { companyId }, data: { status, reviewNote: note || null, reviewedById: req.user.id, reviewedAt: new Date() } });
+    await recordAdminAction(tx, { admin: req.user, action: 'FINANCE_REVIEW', targetType: 'Company', targetId: companyId, summary: `${f.company.companyName} payout details ${status.toLowerCase()}`, before: { status: f.status }, after: { status } });
     await orgAudit(tx, { req, ctx, action: `ORG_FINANCE_${status}`, targetType: 'CompanyFinancialProfile', targetId: f.id, before: { status: f.status }, after: { status }, details: { note: note || null } });
     await notifyOwners(tx, companyId, {
       type: 'ORG_FINANCE_REVIEWED',

@@ -13,6 +13,8 @@ import { runLifecycleJobs } from './services/eventLifecycleService.js';
 import { escalateOverdue } from './services/supportService.js';
 import { runAutoRecovery } from './services/recoveryService.js';
 import { runPayouts } from './services/payoutService.js';
+import { runScheduledBroadcasts } from './services/broadcastService.js';
+import { applyPhases, runScheduledPublishing } from './services/eventToolsService.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -90,9 +92,17 @@ async function startServer() {
   setInterval(mints, 2 * 60 * 1000).unref();
 
   // Every 15 minutes: automatic abandoned-checkout reminders (organizations that turned them on)
-  const recovery = () => runAutoRecovery().catch((e) => console.error('[Recovery job] failed:', e.message));
+  const recovery = () => Promise.all([
+    runAutoRecovery().catch((e) => console.error('[Recovery job] failed:', e.message)),
+    runScheduledBroadcasts().catch((e) => console.error('[Broadcast job] failed:', e.message)),
+  ]);
   setTimeout(recovery, 90 * 1000).unref();
   setInterval(recovery, 15 * 60 * 1000).unref();
+
+  // Every 5 minutes: ticket sale phases (early bird → regular…) and events whose scheduled publication has come
+  const eventJobs = () => Promise.all([applyPhases().catch((e) => console.error('[Sale phases] failed:', e.message)), runScheduledPublishing().catch((e) => console.error('[Scheduled publishing] failed:', e.message))]);
+  setTimeout(eventJobs, 45 * 1000).unref();
+  setInterval(eventJobs, 5 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log(`🚀 TicketLedger Express API is running on http://localhost:${PORT}`);

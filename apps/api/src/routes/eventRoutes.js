@@ -1,4 +1,5 @@
 import express from 'express';
+import { getEventExtras } from '../controllers/eventExtrasController.js';
 import multer from 'multer';
 import { 
   createEvent, 
@@ -181,5 +182,8 @@ router.post(
   ...orgGuard('event.pricing'),
   publishEventWithPricing
 );
+
+// Public extras of an event page: announcements, other dates of its series, sales window, policies
+router.get('/:id/extras', getEventExtras);
 
 export default router;
