@@ -34,6 +34,7 @@ export default function Cart() {
   const [phase, setPhase] = useState('idle'); // idle | paying | done
   const [problem, setProblem] = useState('');
   const [result, setResult] = useState(null);
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const keys = useRef({});
 
   const load = useCallback(async () => {
@@ -67,13 +68,14 @@ export default function Cart() {
     e.preventDefault();
     if (wallet && !/^03\d{9}$/.test(phone.replace(/\D/g, ''))) return setProblem('Enter your mobile wallet number like 03001234567.');
     if (wallet && !/^\d{6}$/.test(otp)) return setProblem('Enter the 6-digit code.');
+    if (!acceptTerms) return setProblem("Please accept the events' terms to continue.");
     setPhase('paying');
     setProblem('');
     try {
       const orderIds = [];
       for (const h of live) {
         keys.current[h.eventId] = keys.current[h.eventId] || newKey();
-        const r = await api.post('/bookings/initiate', { eventId: h.eventId, seatIds: h.seats.map((s) => s.id), paymentMethod: method, cart: true }, { headers: { 'Idempotency-Key': keys.current[h.eventId] } });
+        const r = await api.post('/bookings/initiate', { eventId: h.eventId, seatIds: h.seats.map((s) => s.id), paymentMethod: method, cart: true, acceptTerms: true }, { headers: { 'Idempotency-Key': keys.current[h.eventId] } });
         orderIds.push(r.data.data.orderId);
       }
       const co = await api.post('/bookings/cart/checkout', { orderIds, paymentMethod: method, customerPhone: phone || undefined });
@@ -182,6 +184,7 @@ export default function Cart() {
               </dl>
               <p className="tl-co-total"><span>Total</span><strong>{formatPkr(total)}</strong></p>
               {problem && <div className="tl-bk-notice is-error" role="alert">{problem}</div>}
+              <label className="tl-co-terms"><input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} /> <span>I accept each event's terms (shown on its event page)</span></label>
               <div className="tl-co-confirm">
                 <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={phase !== 'idle'}>
                   {phase === 'paying' ? <><span>Paying…</span><span className="tl-bk-spin" aria-hidden="true" /></> : <><span>Pay for {live.length} event{live.length === 1 ? '' : 's'}</span><span><Lock className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> {formatPkr(total)}</span></>}

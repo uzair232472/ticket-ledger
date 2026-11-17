@@ -1208,7 +1208,14 @@ export const updateEvent = async (req, res) => {
           action: 'EVENT_UPDATED',
           targetType: 'Event',
           targetId: id,
-          details: { fields: Object.keys(data), galleryCount: galleryPlan ? galleryPlan.length : event.galleryImages.length },
+          // Before / after of each changed field: the event's change history (Event tools → History)
+          details: {
+            fields: Object.keys(data),
+            galleryCount: galleryPlan ? galleryPlan.length : event.galleryImages.length,
+            eventName: event.name,
+            before: Object.fromEntries(Object.keys(data).filter((k) => String(event[k] ?? '') !== String(data[k] ?? '')).map((k) => [k, event[k] ?? null])),
+            after: Object.fromEntries(Object.keys(data).filter((k) => String(event[k] ?? '') !== String(data[k] ?? '')).map((k) => [k, data[k] ?? null])),
+          },
         },
       });
 

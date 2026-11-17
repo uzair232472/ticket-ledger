@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAdmin } from '../services/adminAccess.js';
 import { authenticateJWT, requireRole } from '../middlewares/auth.js';
 import {
   checkFraud,
@@ -40,7 +41,7 @@ router.get('/predictions', authenticateJWT, requireRole('SUPER_ADMIN'), getPredi
 
 // Super Admin Watchlist & Account Freeze Controls
 router.get('/fraud-watchlist', authenticateJWT, requireRole('SUPER_ADMIN'), getFraudWatchlist);
-router.post('/freeze-user/:userId', authenticateJWT, requireRole('SUPER_ADMIN'), freezeUserAccount);
-router.post('/unfreeze-user/:userId', authenticateJWT, requireRole('SUPER_ADMIN'), unfreezeUserAccount);
+router.post('/freeze-user/:userId', authenticateJWT, requireAdmin('admin.fraud'), freezeUserAccount);
+router.post('/unfreeze-user/:userId', authenticateJWT, requireAdmin('admin.fraud'), unfreezeUserAccount);
 
 export default router;

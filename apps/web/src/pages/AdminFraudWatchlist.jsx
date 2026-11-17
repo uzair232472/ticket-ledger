@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { confirmedFetch } from '../lib/typedConfirm';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, ApStat, UnderlineTabs, RecordCard, Badge, ScoreBar } from '../components/dash/Studio';
@@ -66,7 +67,7 @@ export default function AdminFraudWatchlist() {
     const isFrozen = user.status === 'SUSPENDED';
     const endpoint = isFrozen ? `${API_BASE}/ml/unfreeze-user/${user.id}` : `${API_BASE}/ml/freeze-user/${user.id}`;
     try {
-      const res = await fetch(endpoint, {
+      const res = await confirmedFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ reason: 'Flagged on Super Admin AI Bot & Fraud Defense Watchlist' }),

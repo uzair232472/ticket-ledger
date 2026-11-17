@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Settings2 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -145,6 +146,7 @@ function EventCard({ event, index, totals, selected, onStats, onDelete, finance 
             </Link>
           )}
           <Link to={`/organizer/events/${event.id}/edit`}><Pencil className="w-4 h-4" aria-hidden="true" /> Edit</Link>
+          <Link to={`/organizer/events/${event.id}/manage`} title="Settings, sale phases, duplicate, more dates, announcements, staff, history, report"><Settings2 className="w-4 h-4" aria-hidden="true" /> Tools</Link>
           <Link to={`/organizer/events/${event.id}/venue`}><Armchair className="w-4 h-4" aria-hidden="true" /> Seating</Link>
           {!['CANCELLED', 'COMPLETED'].includes(event.status) && (
             <Link to={`/organizer/events/${event.id}/submit#promote`} title="Ask for top of listings or the home page hero banner">
@@ -368,6 +370,7 @@ export default function OrganizerDashboard() {
             {selectedEvent && (
               <span>
                 <Link to={`/organizer/events/${selectedEvent.id}/edit`}>Edit</Link>
+                <Link to={`/organizer/events/${selectedEvent.id}/manage`}>Tools</Link>
                 <Link to={`/organizer/events/${selectedEvent.id}/venue`}>Seating</Link>
                 <button type="button" onClick={() => changeEvent('ALL')} style={{ marginLeft: 12 }}>Back to all events</button>
               </span>

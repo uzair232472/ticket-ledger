@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { EventExtrasTop, EventPolicies, SalesWindowNote, useEventExtras } from '../components/event-detail/EventExtras';
 import { Link, useLocation, useNavigate, useNavigationType, useParams } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -93,6 +94,7 @@ function Row({ label, id, children }) {
 }
 
 function EventDetailsPage({ id }) {
+  const extras = useEventExtras(id);
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
@@ -464,6 +466,7 @@ function EventDetailsPage({ id }) {
               </section>
 
               <div className="tl-dt-body">
+                <EventExtrasTop extras={extras} />
                 {description && (
                   <Row label="About the event">
                     <p className="tl-dt-desc">{description}</p>
@@ -471,6 +474,7 @@ function EventDetailsPage({ id }) {
                 )}
 
                 <Row label="Tickets" id="tickets">
+                  <SalesWindowNote extras={extras} />
                   {event.tiers?.length > 0 ? (
                     <ul className="tl-dt-tiers">
                       {event.tiers.map((tier) => {
@@ -553,6 +557,8 @@ function EventDetailsPage({ id }) {
                     {organizer && <div><dt>Organizer</dt><dd>{organizer}</dd></div>}
                   </dl>
                 </Row>
+
+                <EventPolicies extras={extras} />
 
                 {['onsale', 'soldout'].includes(sale.key) && (
                   <Row label="Good to know">

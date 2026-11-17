@@ -3,6 +3,8 @@ import prisma from '../config/prisma.js';
 import { requireApprovedCompany } from '../middlewares/auth.js';
 import { uploadFile } from '../utils/storage.js';
 import { notifyAdmins } from '../services/notificationService.js';
+import { assertConfirmed, recordAdminAction } from '../services/adminActions.js';
+import { getSetting } from '../services/systemConfig.js';
 
 const MAX_COMPANY_DOCUMENTS = 4;
 
@@ -43,6 +45,11 @@ export const registerCompany = async (req, res) => {
     });
     if (otherMembership) {
       return res.status(409).json({ success: false, message: 'You are already a member of an organization. Leave it before registering your own company.' });
+    }
+
+    // Admins can close new organizer registrations (system settings); resubmissions still go through
+    if (!existingCompany && !(await getSetting('organizerRegistrationOpen'))) {
+      return res.status(403).json({ success: false, code: 'REGISTRATION_CLOSED', message: 'New organizer registrations are closed for now. Please try again later or contact TicketLedger.' });
     }
 
     // Checked before anything is uploaded, so a refused request stores no files
@@ -284,6 +291,7 @@ export const updateCompanyStatus = async (req, res) => {
     const { id } = req.params;
     const validated = statusUpdateSchema.parse(req.body);
     const adminUser = req.user;
+    const confirm = req.body?.confirm;
 
     const company = await prisma.company.findUnique({
       where: { id },
@@ -292,6 +300,15 @@ export const updateCompanyStatus = async (req, res) => {
 
     if (!company) {
       return res.status(404).json({ success: false, message: 'Company not found' });
+    }
+
+    // Suspending a company takes it offline: the admin types its name (undoable from Admin actions)
+    if (validated.status === 'SUSPENDED' && company.status !== 'SUSPENDED') {
+      try {
+        assertConfirmed(confirm, company.companyName, `suspending ${company.companyName}`);
+      } catch (e) {
+        return res.status(428).json({ success: false, code: e.code, confirmPhrase: e.phrase, message: e.message });
+      }
     }
 
     if (validated.status === 'REJECTED' && !validated.rejectionReason) {
@@ -310,6 +327,10 @@ export const updateCompanyStatus = async (req, res) => {
         reviewedAt: new Date(),
       },
     });
+
+    if (company.status !== validated.status) {
+      await recordAdminAction(prisma, { admin: adminUser, action: 'COMPANY_STATUS', targetType: 'Company', targetId: company.id, summary: `${company.companyName}: ${company.status.toLowerCase()} → ${validated.status.toLowerCase()}`, before: { status: company.status, rejectionReason: company.rejectionReason }, after: { status: validated.status } });
+    }
 
     // Notify the organizer
     let notifTitle = '';

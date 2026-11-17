@@ -218,7 +218,13 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({ status: 'BANNED', reason: 'Test' }),
     });
-    assert.strictEqual(ban.status, 200);
+    assert.strictEqual(ban.status, 428, 'a ban needs the typed confirmation');
+    const confirmed = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/users/${user.id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ status: 'BANNED', reason: 'Test', confirm: user.email }),
+    });
+    assert.strictEqual(confirmed.status, 200);
 
     const me = await fetch(`${baseUrl}/me`, { headers: { Authorization: `Bearer ${customerToken}` } });
     assert.strictEqual(me.status, 403);

@@ -281,6 +281,9 @@ enum ResaleStatus {
 model User {
   // Helpdesk: may work support tickets (Super Admins always can)
   isSupportAgent         Boolean         @default(false)
+  // Super Admins: admin role (null = Owner, full access) and extra admin permissions (services/adminAccess.js)
+  adminRole              AdminRole?
+  adminPermissions       String[]        @default([])
   supportTickets         SupportTicket[] @relation("SupportTicketsOpened")
   supportTicketsAssigned SupportTicket[] @relation("SupportTicketsAssigned")
   id                     String          @id @default(uuid())
@@ -554,6 +557,19 @@ model Event {
   groupDiscountPercent  Int?
   allowSeatChanges      Boolean              @default(false)
   seatChangeCutoffHours Int                  @default(24)
+  // Series (recurring dates / sessions of one event), cloning, scheduling, capacity and policies
+  seriesId              String?
+  series                EventSeries?         @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  sessionLabel          String?
+  clonedFromId          String?
+  publishAt             DateTime? // approved events stay hidden until then
+  salesOpenAt           DateTime?
+  salesCloseAt          DateTime?
+  capacityLimit         Int? // tickets that can be sold in total
+  terms                 String? // event terms customers accept at checkout
+  refundPolicy          String?
+  ageRestriction        Int?
+  termsVersion          Int                  @default(1)
   // The branch / operating location running this event (optional)
   branchId              String?
   branch                CompanyBranch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -562,6 +578,7 @@ model Event {
 
   discountCodes    DiscountCode[]
   gates            EventGate[]
+  announcements    EventAnnouncement[]
   gateExceptions   GateException[]
   galleryImages    EventGalleryImage[]
   venueLayouts     VenueLayout[]
@@ -599,15 +616,18 @@ model EventGalleryImage {
 }
 
 model TicketTier {
-  id                String   @id @default(uuid())
+  id                String        @id @default(uuid())
   eventId           String
-  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event             Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
   name              String
-  price             Decimal  @db.Decimal(10, 2)
+  price             Decimal       @db.Decimal(10, 2)
   totalQuantity     Int
   availableQuantity Int
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  // The active sale phase (early bird, regular…); its price is copied to `price` when it starts
+  currentPhaseId    String?
+  phases            TicketPhase[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   seats Seat[]
 
@@ -679,6 +699,9 @@ model Order {
   taxPercent          Decimal        @default(0) @db.Decimal(5, 2)
   // INV-2026-000123, given when the order is paid
   invoiceNumber       String?        @unique
+  // Event terms the customer accepted at checkout (Event.termsVersion at that moment)
+  termsAcceptedAt     DateTime?
+  termsVersion        Int?
   // A multi-event checkout this order is part of (one payment for all of them)
   checkoutGroupId     String?
   checkoutGroup       CheckoutGroup? @relation(fields: [checkoutGroupId], references: [id], onDelete: SetNull)
@@ -1565,4 +1588,163 @@ model Payout {
   @@unique([eventId])
   @@index([companyId, status])
   @@index([status, scheduledFor])
+}
+
+// ── Admin console: roles, settings, broadcasts, investigations, reversible actions ─────────────────────
+
+enum AdminRole {
+  OWNER // everything, including managing admins and system settings
+  FINANCE // payouts, refunds, finance reviews and exports
+  SUPPORT // support desk, users, organizations' teams
+  MODERATOR // organizer and event approvals, promotions, fraud, investigations
+  ANALYST // read-only dashboards and exports
+}
+
+// Platform settings changed without a deploy (services/systemConfig.js)
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+enum BroadcastAudience {
+  ALL
+  CUSTOMERS
+  ORGANIZERS
+  ORG_OWNERS
+  GATE_STAFF
+  SUPPORT_AGENTS
+  ADMINS
+}
+
+enum BroadcastStatus {
+  SCHEDULED
+  SENT
+  CANCELLED
+}
+
+model Broadcast {
+  id             String            @id @default(uuid())
+  title          String
+  message        String
+  link           String?
+  audience       BroadcastAudience
+  city           String?
+  sendEmail      Boolean           @default(true)
+  status         BroadcastStatus   @default(SENT)
+  scheduledFor   DateTime?
+  sentAt         DateTime?
+  recipientCount Int               @default(0)
+  sentById       String
+  cancelledById  String?
+  createdAt      DateTime          @default(now())
+
+  @@index([status, scheduledFor])
+}
+
+enum InvestigationStatus {
+  OPEN
+  MONITORING
+  CLOSED
+}
+
+// A case about a suspicious account: notes, evidence and actions in time order
+model Investigation {
+  id         String              @id @default(uuid())
+  userId     String
+  title      String
+  riskLevel  String              @default("MEDIUM")
+  status     InvestigationStatus @default(OPEN)
+  outcome    String?
+  openedById String
+  closedById String?
+  closedAt   DateTime?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  notes InvestigationNote[]
+
+  @@index([userId])
+  @@index([status, updatedAt])
+}
+
+model InvestigationNote {
+  id              String        @id @default(uuid())
+  investigationId String
+  investigation   Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  authorId        String?
+  kind            String        @default("NOTE") // NOTE | EVIDENCE | ACTION | STATUS
+  body            String
+  data            Json?
+  createdAt       DateTime      @default(now())
+
+  @@index([investigationId, createdAt])
+}
+
+// Admin decisions with their before / after state, so the reversible ones can be undone
+model AdminAction {
+  id           String    @id @default(uuid())
+  adminId      String
+  action       String
+  targetType   String
+  targetId     String
+  summary      String
+  before       Json?
+  after        Json?
+  reversible   Boolean   @default(true)
+  reversedAt   DateTime?
+  reversedById String?
+  createdAt    DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+}
+
+// ── Events: series, sale phases, announcements ──────────────────────────────────────────────────────────
+
+// Dates or sessions of one event (recurring events, several shows): each is its own Event
+model EventSeries {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  events Event[]
+
+  @@index([companyId])
+}
+
+// A sale phase of a ticket type (early bird, regular, late): when it starts (its date, or the previous phase
+// selling its quantity) the tier's price becomes its price (services/salePhaseService.js)
+model TicketPhase {
+  id          String     @id @default(uuid())
+  tierId      String
+  tier        TicketTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  name        String
+  price       Decimal    @db.Decimal(10, 2)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  quantity    Int?
+  activatedAt DateTime? // when it became the tier's current phase (its sales are counted from here)
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@index([tierId, sortOrder])
+}
+
+model EventAnnouncement {
+  id             String   @id @default(uuid())
+  eventId        String
+  event          Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title          String
+  body           String
+  authorId       String
+  isPublic       Boolean  @default(true)
+  notifyHolders  Boolean  @default(true)
+  recipientCount Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@index([eventId, createdAt])
 }

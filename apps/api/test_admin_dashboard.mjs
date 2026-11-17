@@ -122,6 +122,7 @@ test('MODULE 19 - Super Admin & Organizer Analytics Dashboard Integration Test S
       },
       body: JSON.stringify({
         status: 'SUSPENDED',
+        confirm: customerUser.email,
         reason: 'Temporary freeze due to automated script velocity detection',
       }),
     });
@@ -173,6 +174,7 @@ test('MODULE 19 - Super Admin & Organizer Analytics Dashboard Integration Test S
       },
       body: JSON.stringify({
         status: 'BANNED',
+        confirm: customerUser.email,
         reason: 'Confirmed bot farm ticket scalp operation',
       }),
     });

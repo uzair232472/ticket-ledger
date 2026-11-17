@@ -11,6 +11,7 @@ import { authenticateJWT, requireRole, loadOrgContext } from '../middlewares/aut
 import { pendingFinanceReviews, reviewFinance } from '../services/orgProfileService.js';
 import { adminPayouts, decide as decidePayout } from '../services/payoutService.js';
 import { AccessError } from '../services/orgAccess.js';
+import { requireAdmin } from '../services/adminAccess.js';
 
 const router = express.Router();
 
@@ -63,19 +64,19 @@ router.get('/guard-check', loadOrgContext, requireApprovedOrganizer, (req, res) 
 });
 
 // Super Admin governance routes
-router.get('/admin/all', requireRole('SUPER_ADMIN'), getAllCompanies);
-router.patch('/admin/:id/status', requireRole('SUPER_ADMIN'), updateCompanyStatus);
+router.get('/admin/all', requireAdmin('admin.view'), getAllCompanies);
+router.patch('/admin/:id/status', requireAdmin('admin.approvals'), updateCompanyStatus);
 
 // Payout details waiting for a check, and the decision (verify / reject with a note)
 const adminFail = (res, e, fallback) => (e instanceof AccessError ? res.status(e.status).json({ success: false, message: e.message }) : (console.error(fallback, e), res.status(500).json({ success: false, message: fallback })));
-router.get('/admin/finance/pending', requireRole('SUPER_ADMIN'), async (req, res) => {
+router.get('/admin/finance/pending', requireAdmin('admin.finance'), async (req, res) => {
   try {
     res.json({ success: true, data: { reviews: await pendingFinanceReviews() } });
   } catch (e) {
     adminFail(res, e, 'Could not load payout reviews.');
   }
 });
-router.post('/admin/:id/finance/review', requireRole('SUPER_ADMIN'), async (req, res) => {
+router.post('/admin/:id/finance/review', requireAdmin('admin.finance'), async (req, res) => {
   try {
     const status = String(req.body?.status || '');
     const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
@@ -87,7 +88,7 @@ router.post('/admin/:id/finance/review', requireRole('SUPER_ADMIN'), async (req,
 });
 
 // Payouts to organizations: the queue, and marking a transfer paid / failed / held
-router.get('/admin/payouts', requireRole('SUPER_ADMIN'), async (req, res) => {
+router.get('/admin/payouts', requireAdmin('admin.finance'), async (req, res) => {
   try {
     const status = ['SCHEDULED', 'ON_HOLD', 'PROCESSING', 'PAID', 'FAILED', 'CANCELLED'].includes(req.query.status) ? req.query.status : undefined;
     res.json({ success: true, data: { payouts: await adminPayouts({ status }) } });
@@ -95,7 +96,7 @@ router.get('/admin/payouts', requireRole('SUPER_ADMIN'), async (req, res) => {
     adminFail(res, e, 'Could not load payouts.');
   }
 });
-router.post('/admin/payouts/:id/decide', requireRole('SUPER_ADMIN'), async (req, res) => {
+router.post('/admin/payouts/:id/decide', requireAdmin('admin.finance'), async (req, res) => {
   try {
     const action = String(req.body?.action || '');
     const reference = typeof req.body?.reference === 'string' ? req.body.reference.trim().slice(0, 120) : '';

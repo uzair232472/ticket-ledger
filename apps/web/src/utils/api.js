@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getAccessToken, installAxiosInterceptor } from '../lib/session';
+import { installTypedConfirm } from '../lib/typedConfirm';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -35,6 +36,8 @@ api.interceptors.request.use(
 
 // Retries once with a refreshed token when the access token has expired
 installAxiosInterceptor(api);
+// Destructive admin actions: ask the admin to type the confirmation phrase, then retry
+installTypedConfirm(api);
 
 // Client-side telemetry helper
 export const trackClientBehavior = async (action, eventId = null, metadata = {}) => {

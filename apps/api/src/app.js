@@ -24,6 +24,7 @@ import staffRoutes from './routes/staffRoutes.js';
 import orgRoutes from './routes/orgRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import giftRoutes from './routes/giftRoutes.js';
+import { publicConfig as publicSiteConfig } from './controllers/adminConsoleController.js';
 import venueRoutes from './routes/venueRoutes.js';
 import wishlistRoutes from './routes/wishlistRoutes.js';
 import prebookRoutes from './routes/prebookRoutes.js';
@@ -86,6 +87,8 @@ app.use('/api/staff', staffRoutes);
 app.use('/api/org', orgRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/gifts', giftRoutes);
+// Site-wide settings every visitor needs (banner, organizer registration open)
+app.get('/api/site-config', publicSiteConfig);
 app.use('/api/venues', venueRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/prebook', prebookRoutes);

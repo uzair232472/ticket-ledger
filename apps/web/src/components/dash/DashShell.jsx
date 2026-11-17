@@ -18,16 +18,20 @@ const CONSOLES = {
   SUPER_ADMIN: {
     label: 'Admin console',
     links: [
-      { to: '/admin/dashboard', label: 'Overview' },
-      { to: '/admin/companies', label: 'Approvals', badge: 'companies' },
-      { to: '/admin/event-approvals', label: 'Event approvals', badge: 'eventApprovals' },
-      { to: '/admin/fraud-watchlist', label: 'Fraud watchlist' },
+      { to: '/admin/dashboard', label: 'Overview', adminPermission: 'admin.view' },
+      { to: '/admin/companies', label: 'Approvals', badge: 'companies', adminPermission: 'admin.approvals' },
+      { to: '/admin/event-approvals', label: 'Event approvals', badge: 'eventApprovals', adminPermission: 'admin.approvals' },
+      { to: '/admin/finance', label: 'Finance', adminPermission: 'admin.finance' },
+      { to: '/admin/fraud-watchlist', label: 'Fraud watchlist', adminPermission: 'admin.fraud' },
+      { to: '/admin/investigations', label: 'Investigations', adminPermission: 'admin.fraud' },
+      { to: '/organizer/team', label: 'Organization teams', adminPermission: 'admin.orgs' },
+      { to: '/admin/platform', label: 'Platform', adminPermission: 'admin.view' },
       { to: '/admin/demand-forecast', label: 'Demand forecast' },
       { to: '/admin/purchase-intent', label: 'Purchase intent' },
       { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
       { to: '/admin/behavior-profile', label: 'Behavior' },
-      { to: '/admin/payouts', label: 'Payouts' },
-      { to: '/support/desk', label: 'Support desk' },
+      { to: '/admin/payouts', label: 'Payouts', adminPermission: 'admin.finance' },
+      { to: '/support/desk', label: 'Support desk', adminPermission: 'admin.support' },
       { to: '/organizer/gates', label: 'Gates' },
       { to: '/scanner', label: 'Scanner' },
     ],
@@ -63,7 +67,11 @@ const CONSOLES = {
 /** The console for this person: by organization permissions for members, by account role otherwise. */
 function consoleFor(user) {
   if (!user) return null;
-  if (user.role === 'SUPER_ADMIN') return CONSOLES.SUPER_ADMIN;
+  // Admins see the console links their admin role allows
+  if (user.role === 'SUPER_ADMIN') {
+    const mine = new Set(user.adminPermissions || []);
+    return { ...CONSOLES.SUPER_ADMIN, links: CONSOLES.SUPER_ADMIN.links.filter((l) => !l.adminPermission || mine.has(l.adminPermission) || !user.adminPermissions) };
+  }
   const org = activeOrg(user);
   if (org) {
     if (org.permissions.includes('event.view') || org.permissions.includes('staff.view')) {
@@ -83,7 +91,7 @@ function consoleFor(user) {
 const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
@@ -126,7 +134,7 @@ export default function DashShell({ children }) {
   const console_ = consoleFor(user);
   const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
   const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
-  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit)))\/?$/.test(pathname);
+  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit|manage)))\/?$/.test(pathname);
 
   useEffect(() => {
     if (navigationType !== 'POP') window.scrollTo({ top: 0, behavior: 'instant' });

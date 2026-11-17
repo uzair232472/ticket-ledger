@@ -93,4 +93,17 @@ router.post('/discounts', can('discount.manage'), c.createDiscount);
 router.patch('/discounts/:id', can('discount.manage'), c.updateDiscount);
 router.delete('/discounts/:id', can('discount.manage'), c.deleteDiscount);
 
+// Event tools
+router.get('/events/:eventId/tools', can('event.view'), c.eventTools);
+router.post('/events/:eventId/duplicate', can('event.create'), c.duplicateEvent);
+router.post('/events/:eventId/dates', can('event.create'), c.addEventDates);
+router.put('/events/:eventId/settings', can('event.edit'), c.updateEventSettings);
+router.put('/events/:eventId/tiers/:tierId/phases', can('event.pricing'), c.setSalePhases);
+router.post('/events/:eventId/announcements', can('attendee.contact'), c.announce);
+router.delete('/events/:eventId/announcements/:id', can('attendee.contact'), c.deleteAnnouncement);
+router.get('/events/:eventId/staff', can('event.view'), c.eventStaff);
+router.put('/events/:eventId/staff/:memberId', can('staff.manage'), c.setEventStaff);
+router.get('/events/:eventId/history', can('event.view'), c.eventHistory);
+router.get('/events/:eventId/report', can('booking.view'), c.eventReport);
+
 export default router;

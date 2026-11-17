@@ -44,6 +44,23 @@
 | Who is a support agent | `User.isSupportAgent` (admins always), `supportService.setAgent` | Support desk → Agents; `middlewares/auth.js` `USER_SELECT` |
 | Gate rules at scan time (gates, directions, ticket types, re-entry) | `services/checkinService.js` (`evaluate`, `resolveGate`, `admit`) | offline copy in `lib/gateOffline.js evaluateOffline` (must match) |
 | Gate setup, devices, exceptions, reversals, reports | `services/gateService.js` | `controllers/checkinController.js`, `pages/GateManagement.jsx`; permission `gate.supervise` |
+| Checkout price lines (discount, group discount, service fee, tax) | `services/pricingService.js priceOrder` | `bookingController.initiateBooking` / `quoteBookingDiscount`, `Checkout.jsx`, `invoiceService.drawInvoice` |
+| Fee / tax / event checkout rules and their limits | `services/checkoutSettingsService.js` | `OrganizerCheckoutSettings.jsx` |
+| Invoice look and numbering | `services/invoiceService.js` (`nextInvoiceNumber`, `drawInvoice`) | sequence `invoice_number_seq` |
+| Gift / group ticket rules | `services/giftService.js` | `BookingTools.jsx`, `GiftClaim.jsx` |
+| Seat-change policy (max changes, cut-off) | `services/seatChangeService.js` | `bookingController.chainSeatFor` (NFT seat keys) |
+| Multi-event cart | `bookingController.checkoutCart` / `confirmCart` / `finalizePaidOrder` | `pages/Cart.jsx`, `HoldBar.jsx` |
+| Payout amounts, schedule, platform fee | `services/payoutService.js` (`computeEvent`, `dueDate`, `PLATFORM_FEE_RATE`) | `AdminPayouts.jsx`, Organization → Payouts |
+| Automatic abandoned-checkout reminders | `services/recoveryService.js` (`RECOVERY_WINDOW_HOURS`, `COOLDOWN_DAYS`) | `server.js` 15-minute job |
+| Who can read / answer a support request | `supportService.viewerOf` / `responderContext` | permission `support.respond` |
+| Support attachment storage and link lifetime | `utils/storage.js uploadPrivateFile`, `supportService.attachmentLink` (`LINK_TTL_MS`) | `app.js` blocks `/uploads/support` |
+| Admin roles and what each may do | `services/adminAccess.js` (`ADMIN_ROLES`, `ADMIN_PERMISSIONS`) | `routes/adminRoutes.js` guards, `DashShell.CONSOLES.SUPER_ADMIN` (`adminPermission`) |
+| System settings (add one) | `services/systemConfig.js SETTINGS` + where the code reads `getSetting(key)` | `AdminPlatform.jsx` Settings tab |
+| Which admin actions can be undone | `services/adminActions.js REVERSERS` + `recordAdminAction` callers | `adminConsoleController.UNDO_PERMISSION` |
+| Typed confirmation phrases | callers of `assertConfirmed` (adminService, companyController, mlController, adminConsoleController) | `lib/typedConfirm.js` |
+| Event duplication (what is copied) | `eventToolsService.copyEvent` | `remapTiers` (venue plan ticket types) |
+| Sale phase rules | `eventToolsService.applyPhases` | 5-minute job in `server.js`, `bookingController.initiateBooking` |
+| Sales window / capacity / terms at checkout | `eventToolsService.assertOnSale`, `capacityLeft`; `bookingController.initiateBooking` | `venueController.createHold`, `seatController.lockSeat`, `Checkout.jsx`, `Cart.jsx` |
 | Company verification | `companyController.js` | `CompanyRegistration.jsx`, `AdminCompanies.jsx`, `requireApprovedCompany` |
 | Staff invite expiry / rules | `config/auth.js INVITE_TTL_MS`, `staffController.js` | `authController.acceptInvite` |
 | Behaviour actions tracked | callers of `behaviorService.trackBehavior`; `BEHAVIOR_ACTIONS` | analytics match action strings in `intentAnalyticsService` |

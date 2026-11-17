@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertOnSale } from '../services/eventToolsService.js';
 import prisma from '../config/prisma.js';
 import { acquireSeatLock, releaseSeatLock, checkSeatLock } from '../config/redis.js';
 import { getIO } from '../config/socket.js';
@@ -138,6 +139,11 @@ export const lockSeat = async (req, res) => {
 
     if (!seat) {
       return res.status(404).json({ success: false, message: 'Seat not found' });
+    }
+    try {
+      assertOnSale(seat.event);
+    } catch (e) {
+      return res.status(409).json({ success: false, code: e.code, message: e.message });
     }
 
     if (seat.status === 'SOLD') {

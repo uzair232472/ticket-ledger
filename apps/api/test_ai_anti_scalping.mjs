@@ -226,7 +226,7 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      body: JSON.stringify({ reason: 'Repeated high-frequency scalper bot attempts' }),
+      body: JSON.stringify({ reason: 'Repeated high-frequency scalper bot attempts', confirm: customerUser.email }),
     });
     const freezeData = await freezeRes.json();
     assert.equal(freezeRes.status, 200);

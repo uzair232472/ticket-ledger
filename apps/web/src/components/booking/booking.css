@@ -576,3 +576,8 @@ fieldset.tl-bk-panel { min-width: 0; margin-inline: 0; }
 .tl-co-ticket-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
 .tl-co-discard { display: inline-flex; align-items: center; gap: 6px; padding: 6px 0; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: #dc2626; cursor: pointer; }
 .tl-co-discard:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }
+
+/* Event terms checkbox (checkout and cart) */
+.tl-co-terms { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 13px; }
+.tl-co-terms input { margin-top: 3px; }
+.tl-co-terms summary { display: inline; cursor: pointer; text-decoration: underline; }

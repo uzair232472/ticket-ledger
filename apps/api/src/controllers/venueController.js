@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertOnSale } from '../services/eventToolsService.js';
 import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE, underAdminReview } from '../utils/eventAccess.js';
@@ -77,6 +78,15 @@ export const createHold = async (req, res) => {
   try {
     const body = holdSchema.parse(req.body);
     const { eventId } = req.params;
+    // Outside the event's sales window nobody can hold seats
+    const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { salesOpenAt: true, salesCloseAt: true } });
+    if (ev) {
+      try {
+        assertOnSale(ev);
+      } catch (e) {
+        return res.status(409).json({ success: false, code: e.code, message: e.message });
+      }
+    }
     let holds;
     if ('key' in body) holds = await holdSeat(eventId, body.key, req.user.id);
     else if ('tableKey' in body) holds = await holdTable(eventId, body.tableKey, req.user.id);

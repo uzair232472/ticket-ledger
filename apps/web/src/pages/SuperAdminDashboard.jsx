@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { confirmedFetch } from '../lib/typedConfirm';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -270,7 +271,7 @@ export default function SuperAdminDashboard() {
     if (!statusModal.user || !statusModal.targetStatus) return;
     setUpdatingStatus(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/users/${statusModal.user.id}/status`, {
+      const res = await confirmedFetch(`${API_URL}/api/admin/users/${statusModal.user.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeader },
         body: JSON.stringify({

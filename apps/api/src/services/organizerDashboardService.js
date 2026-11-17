@@ -1,4 +1,5 @@
 import { eventWhereFor, memberContext } from './orgAccess.js';
+import { getSetting } from './systemConfig.js';
 import prisma from '../config/prisma.js';
 
 /**
@@ -121,7 +122,7 @@ const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null
   const refundsPending = refundRows.filter((r) => r.status !== 'SUCCEEDED').length;
   const grossSalesPkr = totalRevenuePkr;
   totalRevenuePkr -= refundedPkr;
-  const platformFeePkr = Math.round(totalRevenuePkr * 0.05);
+  const platformFeePkr = Math.round((totalRevenuePkr * Number(await getSetting('platformFeePercent'))) / 100);
   const netRevenuePkr = totalRevenuePkr - platformFeePkr;
 
   // Payouts are held until PAYOUT_HOLD_DAYS after each event ends, so refunds can always be paid

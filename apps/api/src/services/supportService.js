@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { uploadPrivateFile, privateFileAccess } from '../utils/storage.js';
 import { notifyAdmins } from './notificationService.js';
+import { hasAdmin } from './adminAccess.js';
+import { getSetting } from './systemConfig.js';
 import { EVENT_SCOPED_ROLES, effectivePermissions, memberContext } from './orgAccess.js';
 
 /*
@@ -38,7 +40,7 @@ export const STATUS_LABELS = {
 };
 export const PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
 const OPEN_STATES = ['OPEN', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'ESCALATED'];
-export const FIRST_RESPONSE_HOURS = 24;
+export const FIRST_RESPONSE_HOURS = 24; // defaults; the admins' system settings win (escalateOverdue)
 export const REPLY_HOURS = 48;
 // A resolved ticket can be reopened by a customer reply within this many days; after that it closes
 export const REOPEN_DAYS = 14;
@@ -51,7 +53,7 @@ export class SupportError extends Error {
   }
 }
 
-export const isAgent = (user) => user?.role === 'SUPER_ADMIN' || Boolean(user?.isSupportAgent);
+export const isAgent = (user) => Boolean(user?.isSupportAgent) || hasAdmin(user, 'admin.support');
 
 // ── Helpers ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -474,7 +476,7 @@ export async function updateTicket(user, reference, { assigneeId, status, priori
  * least HIGH, the admins are told. `deescalate` (admins) puts it back in progress.
  */
 export async function escalate(user, reference, { reason, assigneeId } = {}, { auto = false } = {}) {
-  if (!auto && user?.role !== 'SUPER_ADMIN') throw new SupportError(403, 'Only an admin can escalate tickets.');
+  if (!auto && !hasAdmin(user, 'admin.support')) throw new SupportError(403, 'Only an admin can escalate tickets.');
   const t = auto ? await prisma.supportTicket.findUnique({ where: { reference } }) : await loadTicket(user, reference);
   if (!t || !OPEN_STATES.includes(t.status)) throw new SupportError(409, 'Only unresolved tickets can be escalated.');
   if (!reason) throw new SupportError(400, 'Say why the ticket is escalated.');
@@ -496,7 +498,7 @@ export async function escalate(user, reference, { reason, assigneeId } = {}, { a
 }
 
 export async function deescalate(user, reference, { note } = {}) {
-  if (user?.role !== 'SUPER_ADMIN') throw new SupportError(403, 'Only an admin can take a ticket out of escalation.');
+  if (!hasAdmin(user, 'admin.support')) throw new SupportError(403, 'Only an admin can take a ticket out of escalation.');
   const t = await loadTicket(user, reference);
   if (t.status !== 'ESCALATED') throw new SupportError(409, 'This ticket is not escalated.');
   await prisma.$transaction(async (tx) => {
@@ -509,8 +511,10 @@ export async function deescalate(user, reference, { note } = {}) {
 
 /** Hourly: escalate tickets nobody answered in time, and close tickets resolved more than REOPEN_DAYS ago. */
 export async function escalateOverdue(now = new Date()) {
-  const firstDue = new Date(now.getTime() - FIRST_RESPONSE_HOURS * 3600000);
-  const replyDue = new Date(now.getTime() - REPLY_HOURS * 3600000);
+  const firstHours = Number(await getSetting('supportFirstResponseHours')) || FIRST_RESPONSE_HOURS;
+  const replyHours = Number(await getSetting('supportReplyHours')) || REPLY_HOURS;
+  const firstDue = new Date(now.getTime() - firstHours * 3600000);
+  const replyDue = new Date(now.getTime() - replyHours * 3600000);
   const candidates = await prisma.supportTicket.findMany({
     where: {
       status: { in: ['OPEN', 'IN_PROGRESS'] },
@@ -526,7 +530,7 @@ export async function escalateOverdue(now = new Date()) {
   for (const c of candidates) {
     // Only when the customer's message is still unanswered
     if (c.firstResponseAt && !(c.lastCustomerReplyAt > c.lastAgentReplyAt)) continue;
-    const reason = c.firstResponseAt ? `Customer waiting more than ${REPLY_HOURS} hours for a reply` : `No answer within ${FIRST_RESPONSE_HOURS} hours`;
+    const reason = c.firstResponseAt ? `Customer waiting more than ${replyHours} hours for a reply` : `No answer within ${firstHours} hours`;
     await escalate(null, c.reference, { reason }, { auto: true }).then(() => escalated++).catch(() => {});
   }
   const closeBefore = new Date(now.getTime() - REOPEN_DAYS * 86400000);
@@ -539,7 +543,7 @@ export async function escalateOverdue(now = new Date()) {
 
 /** Admin: make an account a support agent (or stop). */
 export async function setAgent(admin, { email, userId, agent }) {
-  if (admin?.role !== 'SUPER_ADMIN') throw new SupportError(403, 'Only an admin can manage support agents.');
+  if (!hasAdmin(admin, 'admin.support')) throw new SupportError(403, 'Only an admin can manage support agents.');
   const u = await prisma.user.findFirst({ where: userId ? { id: userId } : { email: String(email || '').trim().toLowerCase() }, select: { id: true, name: true, email: true, role: true, status: true } });
   if (!u) throw new SupportError(404, 'No account with this email.');
   if (u.role === 'SUPER_ADMIN') throw new SupportError(409, 'Admins are always support agents.');

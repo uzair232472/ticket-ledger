@@ -34,7 +34,7 @@ export const getUsersList = async (req, res) => {
 export const updateUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, reason } = req.body;
+    const { status, reason, confirm } = req.body;
     if (!status) {
       return res.status(400).json({ success: false, message: 'Status is required (ACTIVE, SUSPENDED, BANNED, DEACTIVATED)' });
     }
@@ -43,10 +43,12 @@ export const updateUserStatus = async (req, res) => {
       userId: id,
       status,
       reason,
+      confirm,
       adminUser: req.user,
     });
     return res.status(200).json(result);
   } catch (error) {
+    if (error.code === 'CONFIRMATION_REQUIRED') return res.status(428).json({ success: false, code: error.code, confirmPhrase: error.phrase, message: error.message });
     console.error('Error in updateUserStatus:', error);
     const status = error.status || 500;
     return res.status(status).json({ success: false, message: error.message });
