@@ -1,14 +1,11 @@
 // Authentication settings shared by the auth controller, middleware and token service.
 // Env is read lazily because ES module imports run before dotenv.config().
 
-const DEV_JWT_SECRET = 'ticketledger_jwt_super_secret_key_2026_fyp';
-
+// Signs sessions and hashes one-time codes. No fallback: a secret written in the source is public, so a missing
+// JWT_SECRET stops the server at start (config/security.js) instead of signing tokens anyone could forge.
 export const getJwtSecret = () => {
-  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET must be set in production.');
-  }
-  return DEV_JWT_SECRET;
+  if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET is not set.');
+  return process.env.JWT_SECRET;
 };
 
 export const ACCESS_TOKEN_TTL = '15m';

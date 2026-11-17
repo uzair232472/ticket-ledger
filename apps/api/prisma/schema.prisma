@@ -35,6 +35,51 @@ enum InviteStatus {
   ACCEPTED
   CANCELLED
   EXPIRED
+  REJECTED // the invitee declined
+  REVOKED // the organization withdrew it
+}
+
+// Roles inside one organization (separate from the global User.role). See services/orgAccess.js.
+enum OrgRole {
+  OWNER
+  ADMIN
+  EVENT_MANAGER
+  FINANCE_MANAGER
+  STAFF // general staff (dashboard, assigned events only)
+  GATE_STAFF // ticket scanning at assigned events
+}
+
+enum MemberStatus {
+  ACTIVE
+  DEACTIVATED // no organization access; the TicketLedger account itself stays active
+  REMOVED // left the organization; kept for history
+}
+
+// One person's membership of one organization. A user has at most one membership that is not REMOVED
+// (partial unique index in the migration). Never deleted: removal sets status REMOVED.
+model OrganizationMember {
+  id                 String       @id @default(uuid())
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  userId             String
+  user               User         @relation("OrgMemberships", fields: [userId], references: [id], onDelete: Restrict)
+  role               OrgRole
+  status             MemberStatus @default(ACTIVE)
+  // Per-member changes to the role's default permissions
+  grantedPermissions String[]     @default([])
+  revokedPermissions String[]     @default([])
+  invitedById        String?
+  inviteId           String?
+  joinedAt           DateTime     @default(now())
+  statusChangedAt    DateTime?
+  statusChangedById  String?
+  statusReason       String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([companyId, userId])
+  @@index([companyId, status])
+  @@index([userId, status])
 }
 
 enum CompanyStatus {
@@ -165,6 +210,55 @@ enum TicketStatus {
   CANCELLED
 }
 
+// A ticket's NFT: waiting to be minted (or to be retried), being minted now, minted, or given up on after
+// repeated failures (an admin retries it from Event approvals → Ticket issuance)
+enum MintStatus {
+  PENDING
+  MINTING
+  MINTED
+  FAILED
+  WAIVED // an admin accepted (with a note) that this ticket gets no NFT; the ticket stays valid
+}
+
+// An admin's decision on a ticket whose NFT failed permanently (Event approvals → Ticket issuance)
+enum MintResolutionAction {
+  RETRY // fresh attempts with the same seat key
+  REISSUE // invalidate the token holding the seat key (if any), then mint under a new seat key
+  WAIVE // no NFT for this ticket; it stays valid for entry
+}
+
+enum MintResolutionStatus {
+  IN_PROGRESS // steps are running, or stopped part-way (resumable: every step checks the chain first)
+  COMPLETED
+  FAILED // stopped with an error; can be continued
+}
+
+model MintResolution {
+  id       String               @id @default(uuid())
+  ticketId String
+  ticket   Ticket               @relation(fields: [ticketId], references: [id])
+  action   MintResolutionAction
+  status   MintResolutionStatus @default(IN_PROGRESS)
+  note     String // required admin note: why this action was taken
+  adminId  String
+  admin    User                 @relation("MintResolutionAdmin", fields: [adminId], references: [id])
+
+  // REISSUE steps, each recorded before and after its transaction so a crash part-way can be resumed safely
+  oldTokenId       Int?
+  invalidateTxHash String?
+  invalidatedAt    DateTime?
+  newChainSeatId   String?
+  newTokenId       Int?
+
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@index([ticketId])
+  @@index([status])
+}
+
 enum GateScanResult {
   VALID_FIRST_SCAN
   ALREADY_SCANNED
@@ -231,6 +325,8 @@ model User {
   transfersReceived  TicketTransferHistory[] @relation("TransfersReceived")
   waitlistEntries    Waitlist[]
   refundsReceived    Refund[]                @relation("RefundsReceived")
+  mintResolutions    MintResolution[]        @relation("MintResolutionAdmin")
+  memberships        OrganizationMember[]    @relation("OrgMemberships")
 
   @@index([role])
   @@index([status])
@@ -263,20 +359,29 @@ model RefreshToken {
   @@index([userId])
 }
 
+// Organization invitations (all roles). Gate staff invites made from one event keep eventId set.
 model StaffInvite {
-  id          String       @id @default(uuid())
-  email       String
-  companyId   String
-  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  eventId     String
-  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  invitedById String
-  invitedBy   User         @relation("InvitesSent", fields: [invitedById], references: [id])
-  tokenHash   String       @unique
-  status      InviteStatus @default(PENDING)
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  createdAt   DateTime     @default(now())
+  id                 String       @id @default(uuid())
+  email              String
+  companyId          String
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  eventId            String?
+  event              Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  role               OrgRole      @default(GATE_STAFF)
+  // Events the member is assigned on acceptance (Event Managers, Staff, Gate Staff)
+  eventIds           String[]     @default([])
+  grantedPermissions String[]     @default([])
+  revokedPermissions String[]     @default([])
+  invitedById        String
+  invitedBy          User         @relation("InvitesSent", fields: [invitedById], references: [id])
+  tokenHash          String       @unique
+  status             InviteStatus @default(PENDING)
+  expiresAt          DateTime
+  acceptedAt         DateTime?
+  acceptedUserId     String?
+  respondedAt        DateTime?
+  revokedById        String?
+  createdAt          DateTime     @default(now())
 
   @@index([email])
   @@index([companyId])
@@ -298,8 +403,9 @@ model StaffEventAssignment {
 
 model Company {
   id              String        @id @default(uuid())
+  // The account that registered the company (receives organizer notices). Access comes from memberships.
   userId          String        @unique
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   companyName     String
   ownerName       String
   phone           String
@@ -312,13 +418,26 @@ model Company {
   rejectionReason String?
   reviewedBy      String?
   reviewedAt      DateTime?
+  // Public profile, editable by owners and admins at any time (the verified identity above is not)
+  description     String?
+  website         String?
+  logoUrl         String?
+  address         String?
+  supportEmail    String?
+  supportPhone    String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  events        Event[]
-  prebookDrafts PrebookDraft[]
-  members       User[]         @relation("CompanyMembers")
-  staffInvites  StaffInvite[]
+  documents        CompanyDocument[]
+  financialProfile CompanyFinancialProfile?
+  branches         CompanyBranch[]
+  discountCodes    DiscountCode[]
+  events           Event[]
+  prebookDrafts    PrebookDraft[]
+  members          User[]                   @relation("CompanyMembers")
+  staffInvites     StaffInvite[]
+  memberships      OrganizationMember[]
+  auditLogs        AuditLog[]
 
   @@index([status])
 }
@@ -410,9 +529,13 @@ model Event {
   rescheduledAt        DateTime?
   refundWindowEndsAt   DateTime? // after a reschedule: holders can ask for a refund until then
   refundReminderSentAt DateTime?
+  // The branch / operating location running this event (optional)
+  branchId             String?
+  branch               CompanyBranch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
 
+  discountCodes    DiscountCode[]
   galleryImages    EventGalleryImage[]
   venueLayouts     VenueLayout[]
   tiers            TicketTier[]
@@ -433,6 +556,7 @@ model Event {
   @@index([type])
   @@index([status])
   @@index([companyId, createdAt])
+  @@index([branchId])
 }
 
 // Ordered photos for the event page's scrolling gallery strip
@@ -513,23 +637,36 @@ model VenueLayout {
 }
 
 model Order {
-  id            String        @id @default(uuid())
-  userId        String
-  user          User          @relation(fields: [userId], references: [id])
-  eventId       String
-  event         Event         @relation(fields: [eventId], references: [id])
-  totalAmount   Decimal       @db.Decimal(10, 2)
-  status        OrderStatus   @default(PENDING)
-  paymentMethod PaymentMethod @default(MOCK)
-  paymentTxId   String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id             String        @id @default(uuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  eventId        String
+  event          Event         @relation(fields: [eventId], references: [id])
+  totalAmount    Decimal       @db.Decimal(10, 2)
+  // Ticket prices before the discount (null on orders placed before discounts existed: = totalAmount)
+  subtotalAmount Decimal?      @db.Decimal(10, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(10, 2)
+  discountCodeId String?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
+  status         OrderStatus   @default(PENDING)
+  paymentMethod  PaymentMethod @default(MOCK)
+  paymentTxId    String?
+  // The gateway's handle for this order's payment, created once at checkout (Stripe PaymentIntent id,
+  // JazzCash / EasyPaisa reference) and reused when the customer retries, so one order never gets two payments
+  paymentRef     String?
+  // Client-sent Idempotency-Key of the checkout request that created this order (a repeat returns this order)
+  idempotencyKey String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
-  tickets Ticket[]
-  refunds Refund[]
+  tickets    Ticket[]
+  refunds    Refund[]
+  redemption DiscountRedemption?
 
+  @@unique([userId, idempotencyKey])
   @@index([userId])
   @@index([status])
+  @@index([paymentTxId])
 }
 
 // One refund per ticket. `userId` is who gets the money: the order's buyer, or the resale buyer when the
@@ -617,6 +754,29 @@ model Ticket {
   contractAddress String?
   ownerWallet     String?
 
+  // NFT issuance (services/nftService.js). A paid ticket is valid at the gate whatever this says; the NFT is
+  // the on-chain record. A failed mint is retried with backoff and admins are alerted if it keeps failing.
+  mintStatus          MintStatus @default(PENDING)
+  mintAttempts        Int        @default(0)
+  mintError           String?
+  mintNextAttemptAt   DateTime?
+  mintedAt            DateTime?
+  // Why a mint failed permanently (SEAT_CONFLICT, RETRIES_EXHAUSTED, …) and, for a seat conflict, the token
+  // already holding the seat on-chain
+  mintErrorCode       String?
+  mintConflictTokenId Int?
+  // true: a development-mode fake token (never on a chain). false: minted on-chain by this system.
+  // null: minted before this was recorded (provenance unknown until verified).
+  mintSimulated       Boolean?
+  // The seatId string sent to the contract (its seat key is `${eventId}-${chainSeatId}`). Null = the seat's id.
+  // A reissue after a refund or conflict uses `${seatId}~r<n>`, since the contract allows one token per key.
+  chainSeatId         String?
+  // Set only when ownership and fingerprint were read back from the chain and matched ("NFT verified")
+  nftVerifiedAt       DateTime?
+  nftVerifiedOwner    String?
+  nftVerifiedChainId  Int?
+  nftVerifiedContract String?
+
   // Dynamic secure QR metadata
   qrNonce       String    @default(uuid())
   qrIssuedAt    DateTime  @default(now())
@@ -639,10 +799,12 @@ model Ticket {
   resaleListings  ResaleListing[]
   transferHistory TicketTransferHistory[]
   refund          Refund?
+  mintResolutions MintResolution[]
 
   @@index([userId])
   @@index([eventId])
   @@index([status])
+  @@index([mintStatus, mintNextAttemptAt])
 }
 
 model ResaleListing {
@@ -741,10 +903,16 @@ model AuditLog {
   targetId   String?
   details    Json?
   ipAddress  String?
+  // Organization the action belongs to (organization activity history) and the actor's role in it then
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  actorRole  String?
+  userAgent  String?
   createdAt  DateTime @default(now())
 
   @@index([action])
   @@index([userId])
+  @@index([companyId, createdAt])
 }
 
 enum TransferType {
@@ -834,4 +1002,184 @@ model EventReviewMessage {
   createdAt          DateTime  @default(now())
 
   @@index([eventId, createdAt])
+}
+
+// ── Organization documents, payout details and branches ─────────────────────────────────────────────────
+
+enum CompanyDocumentType {
+  VERIFICATION // sent with the company registration
+  NTN_CERTIFICATE
+  FBR_REGISTRATION
+  CNIC
+  BUSINESS_LICENSE
+  BANK_LETTER
+  CONTRACT
+  INSURANCE
+  VENUE_PERMIT
+  OTHER
+}
+
+// The organization's document library. Archiving hides a document but keeps it (and its history).
+model CompanyDocument {
+  id           String              @id @default(uuid())
+  companyId    String
+  company      Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type         CompanyDocumentType @default(OTHER)
+  title        String
+  url          String
+  mimeType     String?
+  sizeBytes    Int?
+  expiresAt    DateTime?
+  notes        String?
+  uploadedById String?
+  archivedAt   DateTime?
+  archivedById String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([companyId, archivedAt])
+}
+
+enum PayoutMethod {
+  BANK_TRANSFER
+  JAZZCASH
+  EASYPAISA
+}
+
+enum PayoutSchedule {
+  AFTER_EVENT
+  WEEKLY
+  MONTHLY
+}
+
+// UNVERIFIED: never submitted · PENDING: changed, waiting for TicketLedger to check · VERIFIED · REJECTED
+enum FinanceVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+// Where an organization's payouts go and its tax details. Account and wallet numbers are encrypted at rest
+// (services/financeCrypto.js); the API only ever returns their last 4 digits unless an owner reveals them.
+model CompanyFinancialProfile {
+  id              String                    @id @default(uuid())
+  companyId       String                    @unique
+  company         Company                   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payoutMethod    PayoutMethod              @default(BANK_TRANSFER)
+  payoutSchedule  PayoutSchedule            @default(AFTER_EVENT)
+  accountTitle    String?
+  bankName        String?
+  bankBranchCode  String?
+  ibanEncrypted   String?
+  ibanLast4       String?
+  walletEncrypted String?
+  walletLast4     String?
+  taxNtn          String?
+  salesTaxNumber  String?
+  taxFiler        Boolean                   @default(false) // on FBR's Active Taxpayer List
+  billingEmail    String?
+  billingAddress  String?
+  status          FinanceVerificationStatus @default(UNVERIFIED)
+  reviewNote      String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  updatedById     String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@index([status])
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// An office or operating location of an organization. Events can be assigned to one.
+model CompanyBranch {
+  id            String       @id @default(uuid())
+  companyId     String
+  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name          String
+  isHeadOffice  Boolean      @default(false)
+  address       String?
+  city          String
+  phone         String?
+  email         String?
+  managerUserId String?
+  status        BranchStatus @default(ACTIVE)
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  events Event[]
+
+  @@unique([companyId, name])
+  @@index([companyId, status])
+}
+
+// ── Discount codes ──────────────────────────────────────────────────────────────────────────────────────
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum DiscountSource {
+  MANUAL // created by the organization
+  CART_RECOVERY // a personal code made for one customer's abandoned-checkout reminder
+}
+
+// RESERVED while the order is unpaid (counts against the limits only while that order is PENDING), REDEEMED once paid
+enum RedemptionStatus {
+  RESERVED
+  REDEEMED
+}
+
+// A checkout discount code of one organization, for all its events or one event (services/discountService.js)
+model DiscountCode {
+  id                 String         @id @default(uuid())
+  companyId          String
+  company            Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  eventId            String?
+  event              Event?         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  code               String // upper case
+  description        String?
+  type               DiscountType
+  value              Decimal        @db.Decimal(10, 2) // percent (1–90) or PKR off the order
+  maxRedemptions     Int? // across all customers; null = unlimited
+  perUserLimit       Int            @default(1)
+  minTickets         Int            @default(1)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  active             Boolean        @default(true)
+  source             DiscountSource @default(MANUAL)
+  restrictedToUserId String? // only this customer may use it (recovery codes)
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  redemptions DiscountRedemption[]
+  orders      Order[]
+
+  @@unique([companyId, code])
+  @@index([eventId])
+  @@index([companyId, source])
+}
+
+model DiscountRedemption {
+  id             String           @id @default(uuid())
+  discountCodeId String
+  discountCode   DiscountCode     @relation(fields: [discountCodeId], references: [id], onDelete: Cascade)
+  orderId        String           @unique
+  order          Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId         String
+  amount         Decimal          @db.Decimal(10, 2)
+  status         RedemptionStatus @default(RESERVED)
+  redeemedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([discountCodeId, status])
+  @@index([userId])
 }

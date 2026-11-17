@@ -77,7 +77,11 @@ export default function AbandonedIntentDashboard() {
   const [sendingUserId, setSendingUserId] = useState(null);
   const [batchSending, setBatchSending] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState(null);
-  const [discountCode, setDiscountCode] = useState('RECOVER10');
+  // The offer each reminder carries: a personal single-use code (made per person), an existing code, or none
+  const [offer, setOffer] = useState({ kind: 'personal', percent: 10, code: '' });
+  const offerBody = () => (offer.kind === 'personal' ? { discountPercent: Number(offer.percent) || 10 } : offer.kind === 'code' ? { discountCode: offer.code.trim() } : {});
+  const offerLabel = () => (offer.kind === 'personal' ? `a personal ${Number(offer.percent) || 10}% code (single use, valid 48 hours)` : offer.kind === 'code' ? `the code “${offer.code.trim()}”` : 'no discount');
+  const offerProblem = () => (offer.kind === 'code' && !offer.code.trim() ? 'Enter the discount code to send, or choose another offer.' : offer.kind === 'personal' && !(Number(offer.percent) >= 1 && Number(offer.percent) <= 90) ? 'The personal discount must be 1–90%.' : null);
 
   // 1. Events for the filter
   useEffect(() => {
@@ -135,6 +139,10 @@ export default function AbandonedIntentDashboard() {
       setError('Guests have no account or email, so they cannot get a reminder.');
       return;
     }
+    if (offerProblem()) {
+      setError(offerProblem());
+      return;
+    }
     setSendingUserId(prospect.user.id);
     setActionSuccessMsg(null);
     setError(null);
@@ -142,12 +150,12 @@ export default function AbandonedIntentDashboard() {
       const res = await fetch(`${API_URL}/api/analytics/abandoned/send-reminder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ targetUserId: prospect.user.id, eventId: prospect.event.id, discountCode }),
+        body: JSON.stringify({ targetUserId: prospect.user.id, eventId: prospect.event.id, ...offerBody() }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
         setSentReminders((prev) => ({ ...prev, [`${prospect.user.id}_${prospect.event.id}`]: true }));
-        setActionSuccessMsg(`Recovery reminder sent to ${prospect.user.name}.`);
+        setActionSuccessMsg(`Recovery reminder sent to ${prospect.user.name}${json.discountCode ? ` with code ${json.discountCode.code}` : ''}.`);
       } else {
         setError(json.message || 'Failed to send recovery reminder');
       }
@@ -166,7 +174,11 @@ export default function AbandonedIntentDashboard() {
       setError('No registered users in this list to send reminders to.');
       return;
     }
-    if (!(await dialog.confirm({ title: 'Send recovery reminders?', message: `Reminders with the coupon “${discountCode}” go to ${registeredUsers.length} ${registeredUsers.length === 1 ? 'person' : 'people'}.`, confirmLabel: 'Send reminders', tone: 'info' }))) return;
+    if (offerProblem()) {
+      setError(offerProblem());
+      return;
+    }
+    if (!(await dialog.confirm({ title: 'Send recovery reminders?', message: `Reminders with ${offerLabel()} go to ${registeredUsers.length} ${registeredUsers.length === 1 ? 'person' : 'people'}.`, confirmLabel: 'Send reminders', tone: 'info' }))) return;
 
     setBatchSending(true);
     setActionSuccessMsg(null);
@@ -175,7 +187,7 @@ export default function AbandonedIntentDashboard() {
       const res = await fetch(`${API_URL}/api/analytics/abandoned/batch-reminders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ eventId: selectedEventId || undefined, discountCode }),
+        body: JSON.stringify({ eventId: selectedEventId || undefined, ...offerBody() }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -244,13 +256,27 @@ export default function AbandonedIntentDashboard() {
       <div className="tl-ab-actions">
         <div className="tl-ab-actions-intro">
           <span className="tl-recovery-icon" style={{ background: '#d8f0dc', color: 'var(--st-green)' }}><Send className="w-5 h-5" /></span>
-          <span><strong>Recovery actions</strong><span>Send everyone listed below a reminder with a coupon.</span></span>
+          <span><strong>Recovery actions</strong><span>Send everyone listed below a reminder. A personal code works once, for that person only.</span></span>
         </div>
         <div className="tl-ab-actions-right">
           <label className="tl-coupon">
-            <Tag className="w-4 h-4" aria-hidden="true" /> Coupon
-            <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} aria-label="Coupon code" />
+            <Tag className="w-4 h-4" aria-hidden="true" /> Offer
+            <select value={offer.kind} onChange={(e) => setOffer({ ...offer, kind: e.target.value })} aria-label="Offer in the reminder">
+              <option value="personal">Personal code</option>
+              <option value="code">Existing code</option>
+              <option value="none">No discount</option>
+            </select>
           </label>
+          {offer.kind === 'personal' && (
+            <label className="tl-coupon">
+              <input type="number" min={1} max={90} value={offer.percent} onChange={(e) => setOffer({ ...offer, percent: e.target.value })} aria-label="Personal discount percent" style={{ width: 56 }} /> % off
+            </label>
+          )}
+          {offer.kind === 'code' && (
+            <label className="tl-coupon">
+              <input type="text" placeholder="CODE" value={offer.code} onChange={(e) => setOffer({ ...offer, code: e.target.value.toUpperCase() })} aria-label="Discount code" />
+            </label>
+          )}
           <button type="button" className="tl-st-btn tl-st-btn--green" onClick={handleBatchSendReminders} disabled={batchSending || !summary.registeredDropouts}>
             {batchSending ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />} Send reminders
           </button>
@@ -378,7 +404,7 @@ export default function AbandonedIntentDashboard() {
                             type="button"
                             onClick={() => handleSendReminder(item)}
                             disabled={isSending}
-                            title={`Send an in-app and email reminder with coupon ${discountCode}`}
+                            title={`Send an in-app and email reminder with ${offerLabel()}`}
                             className="tl-st-btn tl-st-btn--xs tl-st-btn--green"
                           >
                             {isSending ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />} Send reminder

@@ -104,10 +104,13 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
     assert.strictEqual(res.body.message, 'You can only invite staff for your own events.');
   });
 
-  await t.test('3. Inviting an email that has a customer account is rejected', async () => {
+  await t.test('3. An existing customer account can be invited (accepts by signing in); admins cannot', async () => {
     const res = await call('POST', '/staff/invites', orgAToken, { email: 'customer@ticketledger.pk', eventId: inviteEvent.id });
-    assert.strictEqual(res.status, 409);
-    assert.strictEqual(res.body.message, 'This email is already registered with another account type.');
+    assert.strictEqual(res.status, 201, res.body?.message);
+    assert.strictEqual(res.body.data.existingAccount, true);
+    await call('DELETE', `/staff/invites/${res.body.data.invite.id}`, orgAToken);
+    const admin = await call('POST', '/staff/invites', orgAToken, { email: 'admin@ticketledger.pk', eventId: inviteEvent.id });
+    assert.strictEqual(admin.status, 409);
   });
 
   await t.test('4. Customers and gate staff cannot use staff management', async () => {
@@ -211,19 +214,25 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
     assert.strictEqual((await call('GET', `/auth/invite/${oldToken}`)).status, 410);
   });
 
-  await t.test('15. Deactivated staff cannot log in and their sessions are revoked', async () => {
+  await t.test('15. Deactivated staff lose organization access at once but keep their TicketLedger account', async () => {
     assert.strictEqual((await call('PATCH', `/staff/${staffId}/deactivate`, orgBToken)).status, 403);
     const res = await call('PATCH', `/staff/${staffId}/deactivate`, orgAToken);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.data.staff.status, 'DEACTIVATED');
 
+    // The same access token: organization routes refuse it on the next request
+    assert.strictEqual((await call('GET', '/staff/my-events', staffToken)).status, 403);
+    assert.strictEqual((await call('GET', '/checkin/events', staffToken)).status, 403);
+    // The account itself still works
+    assert.strictEqual((await call('GET', '/auth/me', staffToken)).status, 200);
     const relogin = await call('POST', '/auth/login', null, { email: staffEmail, password: 'Password@123' });
-    assert.strictEqual(relogin.status, 403);
-    assert.strictEqual(relogin.body.message, 'Your account has been suspended. Contact support.');
+    assert.strictEqual(relogin.status, 200);
+    const user = await prisma.user.findUnique({ where: { id: staffId } });
+    assert.strictEqual(user.status, 'ACTIVE');
 
-    assert.strictEqual((await call('GET', '/auth/me', staffToken)).status, 403);
-    const refresh = await fetch(`${api}/auth/refresh`, { method: 'POST', headers: { Cookie: staffCookie } });
-    assert.strictEqual(refresh.status, 401);
+    // Reactivation restores scanning
+    assert.strictEqual((await call('PATCH', `/staff/${staffId}/reactivate`, orgAToken)).status, 200);
+    assert.strictEqual((await call('GET', '/staff/my-events', staffToken)).status, 200);
   });
 
   await t.test('16. Organizer with a PENDING company cannot create events', async () => {
@@ -235,7 +244,8 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
 
   // Clean up
   await prisma.staffInvite.deleteMany({ where: { OR: [{ companyId: companyB.id }, { email: { contains: `_${run}@example.com` } }] } });
-  await prisma.auditLog.deleteMany({ where: { targetId: staffId } });
+  await prisma.auditLog.deleteMany({ where: { OR: [{ targetId: staffId }, { companyId: companyB.id }] } });
+  await prisma.organizationMember.deleteMany({ where: { OR: [{ companyId: companyB.id }, { user: { email: staffEmail } }] } });
   await prisma.behaviorEvent.deleteMany({ where: { user: { email: { in: [staffEmail, orgBEmail] } } } });
   await prisma.user.deleteMany({ where: { email: staffEmail } });
   await prisma.event.delete({ where: { id: eventB.id } });

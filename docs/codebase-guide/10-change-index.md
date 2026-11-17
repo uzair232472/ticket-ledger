@@ -35,6 +35,11 @@
 | Image size/ratio rules | `apps/api/src/config/eventMedia.js` | `apps/web/src/utils/eventImageSpecs.js` (keep in sync) |
 | Event approval workflow | `eventReviewController.js` | `EventSubmit.jsx`, `AdminEventApprovals.jsx`, `EventStatus` enum |
 | Event visibility to the public | `eventController.getEvents/getEventById` (status lists) | `wishlistController.PUBLIC_STATUSES` |
+| Organization profile, documents, branches | `services/orgProfileService.js`, `routes/orgRoutes.js` | `pages/OrganizerOrganization.jsx`; permissions `org.settings`, `org.documents` in `services/orgAccess.js` |
+| Payout & tax details (encrypted account numbers, admin review) | `services/orgProfileService.js` (`updateFinance`, `reviewFinance`), `services/financeCrypto.js` | `FINANCE_ENCRYPTION_KEY`, `components/PayoutReviews.jsx`, `OrganizerOrganization.jsx` Finance tab |
+| Discount code rules (limits, max %, reservation) | `services/discountService.js` | `bookingController.initiateBooking` / `quoteBookingDiscount`, `pages/OrganizerDiscounts.jsx`, `Checkout.jsx` code field |
+| Checkout retries / idempotency (one order and one payment per checkout) | `bookingController.initiateBooking` (`sendPayment`, `Idempotency-Key`), `paymentService.initiatePayment` (`paymentRef`) | `Checkout.jsx` `attemptRef`; late-payment refund in `bookingController.refundLatePayment` |
+| Abandoned-checkout recovery codes | `intentAnalyticsService.sendAbandonedCartReminder` (`recoveryDiscount`) | `discountService.createRecoveryCode`, `AbandonedIntentDashboard.jsx` offer picker, `App.jsx` `DiscountCodeCatcher` |
 | Company verification | `companyController.js` | `CompanyRegistration.jsx`, `AdminCompanies.jsx`, `requireApprovedCompany` |
 | Staff invite expiry / rules | `config/auth.js INVITE_TTL_MS`, `staffController.js` | `authController.acceptInvite` |
 | Behaviour actions tracked | callers of `behaviorService.trackBehavior`; `BEHAVIOR_ACTIONS` | analytics match action strings in `intentAnalyticsService` |

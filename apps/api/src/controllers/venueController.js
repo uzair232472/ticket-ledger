@@ -30,7 +30,7 @@ const fail = (res, error, fallback) => {
 async function managedEvent(req, { write = false } = {}) {
   const event = await prisma.event.findUnique({ where: { id: req.params.eventId } });
   if (!event) throw new VenueError(404, 'Event not found');
-  if (!(await canManageEvent(req.user, event, { requireApproved: write }))) {
+  if (!(await canManageEvent(req.user, event, { requireApproved: write, permission: write ? 'event.edit' : 'event.view', req }))) {
     throw new VenueError(403, 'You are not authorized to manage this event’s venue.');
   }
   // Seating and tiers are part of what the admin is reviewing

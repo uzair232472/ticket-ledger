@@ -10,25 +10,24 @@ import {
   revokeEventAccess,
   getMyGateEvents,
 } from '../controllers/staffController.js';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, loadOrgContext, requirePermission } from '../middlewares/auth.js';
 
 const router = express.Router();
 
-router.use(authenticateJWT);
+router.use(authenticateJWT, loadOrgContext);
 
-// Gate staff: events they are assigned to (organizers and admins see their scoped events)
-router.get('/my-events', requireRole('GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN'), getMyGateEvents);
+// Events the caller scans at (gate staff: their assignments; owners and admins: their organization's events)
+router.get('/my-events', requirePermission('gate.scan'), getMyGateEvents);
 
-// Staff management: organizers for their own company, Super Admin for everyone.
-// Each handler enforces company ownership itself; the role check alone is not enough.
-const manager = requireRole('ORGANIZER', 'SUPER_ADMIN');
-router.get('/', manager, listStaff);
-router.get('/events', manager, listInvitableEvents);
-router.post('/invites', manager, createInvite);
-router.post('/invites/:id/resend', manager, resendInvite);
-router.delete('/invites/:id', manager, cancelInvite);
-router.patch('/:id/deactivate', manager, deactivateStaff);
-router.patch('/:id/reactivate', manager, reactivateStaff);
-router.delete('/:id/events/:eventId', manager, revokeEventAccess);
+// Gate staff management: members holding staff.* permissions for their own organization, Super Admin for all.
+// Each handler also checks the staff member and event belong to the caller's organization.
+router.get('/', requirePermission('staff.view'), listStaff);
+router.get('/events', requirePermission('staff.invite'), listInvitableEvents);
+router.post('/invites', requirePermission('staff.invite'), createInvite);
+router.post('/invites/:id/resend', requirePermission('staff.invite'), resendInvite);
+router.delete('/invites/:id', requirePermission('staff.invite'), cancelInvite);
+router.patch('/:id/deactivate', requirePermission('staff.manage'), deactivateStaff);
+router.patch('/:id/reactivate', requirePermission('staff.manage'), reactivateStaff);
+router.delete('/:id/events/:eventId', requirePermission('staff.manage'), revokeEventAccess);
 
 export default router;

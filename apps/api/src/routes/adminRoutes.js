@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, requireRole, orgGuard } from '../middlewares/auth.js';
 import {
   getSuperAdminMetrics,
   getUsersList,
@@ -14,13 +14,14 @@ import {
 } from '../controllers/adminController.js';
 import { listEventsForReview, reviewEvent, getPendingCounts } from '../controllers/eventReviewController.js';
 import { listPromotions, reviewPromotion } from '../controllers/promotionController.js';
+import { listMints, retryMints, resolveMint, continueMintResolution, verifyMint } from '../controllers/mintAdminController.js';
 import { listScheduleChanges, reviewScheduleChange, listRefunds, retryRefundsHandler } from '../controllers/lifecycleController.js';
 
 const router = Router();
 
 // Guard middlewares
 const superAdminGuard = [authenticateJWT, requireRole(['SUPER_ADMIN'])];
-const organizerOrAdminGuard = [authenticateJWT, requireRole(['ORGANIZER', 'SUPER_ADMIN'])];
+const organizerOrAdminGuard = orgGuard('event.view');
 
 // Super Admin Command Center Endpoints
 router.get('/metrics', superAdminGuard, getSuperAdminMetrics);
@@ -37,6 +38,11 @@ router.get('/schedule-changes', superAdminGuard, listScheduleChanges);
 router.post('/schedule-changes/:id', superAdminGuard, reviewScheduleChange);
 router.get('/refunds', superAdminGuard, listRefunds);
 router.post('/refunds/retry', superAdminGuard, retryRefundsHandler);
+router.get('/mints', superAdminGuard, listMints);
+router.post('/mints/retry', superAdminGuard, retryMints);
+router.post('/mints/:ticketId/resolve', superAdminGuard, resolveMint);
+router.post('/mints/:ticketId/verify', superAdminGuard, verifyMint);
+router.post('/mint-resolutions/:id/continue', superAdminGuard, continueMintResolution);
 router.get('/transactions', superAdminGuard, getAllTransactionsAdmin);
 router.get('/blockchain-logs', superAdminGuard, getBlockchainLogs);
 router.get('/fraud-alerts', superAdminGuard, getFraudAlerts);

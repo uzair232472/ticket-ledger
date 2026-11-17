@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { getScopedEventIds } from '../services/accessService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
 /**
@@ -60,17 +61,20 @@ export const getMyBehaviorProfile = async (req, res) => {
 export const getUserBehaviorProfileById = async (req, res) => {
   try {
     const { userId } = req.params;
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const customer = await prisma.order.findFirst({
-        where: { userId, event: { company: { userId: req.user.id } } },
-        select: { id: true },
-      });
-      if (!customer) {
-        return res.status(403).json({ success: false, message: 'You can only view attendees of your own events.' });
-      }
+    // Super Admins see the platform-wide profile. Organization members (attendee.view) see only behaviour on
+    // their organization's events they cover, and only for people who bought tickets to one of them.
+    if (req.user.role === 'SUPER_ADMIN') {
+      const profile = await behaviorService.getUserBehavioralProfile(userId);
+      return res.status(200).json({ success: true, data: profile });
     }
-    const profile = await behaviorService.getUserBehavioralProfile(userId);
-
+    const eventIds = await getScopedEventIds(req.user, 'attendee.view');
+    const customer = eventIds.length
+      ? await prisma.order.findFirst({ where: { userId, eventId: { in: eventIds }, status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED', 'REFUNDED'] } }, select: { id: true } })
+      : null;
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'No attendee with this id on your events.' });
+    }
+    const profile = await behaviorService.getUserBehavioralProfile(userId, null, { eventIds });
     return res.status(200).json({
       success: true,
       data: profile,

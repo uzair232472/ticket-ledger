@@ -4,6 +4,7 @@ import { ArrowRight, ArrowUpRight, TrendingDown, TrendingUp } from 'lucide-react
 import { useAuth } from '../../context/AuthContext';
 import { getEventVisual } from '../../utils/eventMedia';
 import api from '../../utils/api';
+import { activeOrg, can, ORG_PAGE_PERMISSIONS } from '../../lib/permissions';
 import markUrl from '../../assets/ticketledger-mark.svg';
 import HomeHeader from '../home/HomeHeader';
 import SiteFooter from '../home/SiteFooter';
@@ -28,16 +29,20 @@ const CONSOLES = {
       { to: '/scanner', label: 'Scanner' },
     ],
   },
+  // Organization members (owners and employees of any account type): links filtered by permission
   ORGANIZER: {
     label: 'Organizer studio',
     links: [
-      { to: '/organizer/dashboard', label: 'Overview' },
-      { to: '/organizer/events/new', label: 'Create event' },
-      { to: '/organizer/prebook', label: 'Prebookings' },
-      { to: '/admin/purchase-intent', label: 'Purchase intent' },
-      { to: '/admin/demand-forecast', label: 'Demand forecast' },
-      { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
-      { to: '/scanner', label: 'Scanner' },
+      { to: '/organizer/dashboard', label: 'Overview', permission: 'event.view' },
+      { to: '/organizer/events/new', label: 'Create event', permission: 'event.create' },
+      { to: '/organizer/prebook', label: 'Prebookings', permission: 'event.create' },
+      { to: '/organizer/team', label: 'Team', permission: ['staff.view', 'audit.view'] },
+      { to: '/organizer/organization', label: 'Organization', permission: ORG_PAGE_PERMISSIONS },
+      { to: '/organizer/discounts', label: 'Discount codes', permission: 'discount.manage' },
+      { to: '/admin/purchase-intent', label: 'Purchase intent', permission: 'attendee.view' },
+      { to: '/admin/demand-forecast', label: 'Demand forecast', permission: 'event.pricing' },
+      { to: '/admin/abandoned-intents', label: 'Abandoned intents', permission: 'attendee.view' },
+      { to: '/scanner', label: 'Scanner', permission: 'gate.scan' },
     ],
   },
   GATE_STAFF: {
@@ -49,11 +54,28 @@ const CONSOLES = {
   },
 };
 
+/** The console for this person: by organization permissions for members, by account role otherwise. */
+function consoleFor(user) {
+  if (!user) return null;
+  if (user.role === 'SUPER_ADMIN') return CONSOLES.SUPER_ADMIN;
+  const org = activeOrg(user);
+  if (org) {
+    if (org.permissions.includes('event.view') || org.permissions.includes('staff.view')) {
+      const links = CONSOLES.ORGANIZER.links.filter((l) => can(user, l.permission));
+      return { label: org.name ? `${org.name} studio` : CONSOLES.ORGANIZER.label, links };
+    }
+    if (org.permissions.includes('gate.scan')) return CONSOLES.GATE_STAFF;
+    return null;
+  }
+  // Organizers before their company exists see the studio (its screens send them to registration)
+  return CONSOLES[user.role] || null;
+}
+
 // Paths that open the same screen as a console link (aliases in App.jsx)
 const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/scanner', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
@@ -93,7 +115,7 @@ export default function DashShell({ children }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const pageRef = useRef(null);
-  const console_ = CONSOLES[user?.role];
+  const console_ = consoleFor(user);
   const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
   const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
   const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit)))\/?$/.test(pathname);
@@ -354,8 +376,8 @@ export function TicketCard({ event, index = 0, badges = [], kicker, title, banne
 }
 
 const STATUS_TONES = {
-  good: ['ACTIVE', 'APPROVED', 'SUCCESSFUL', 'VALID_FIRST_SCAN', 'PUBLISHED', 'ACCEPTED', 'LOW'],
-  warn: ['SUSPENDED', 'PENDING', 'PENDING_VERIFICATION', 'ALREADY_SCANNED', 'SUSPICIOUS', 'DRAFT', 'MEDIUM', 'EXPIRED'],
+  good: ['ACTIVE', 'APPROVED', 'VERIFIED', 'SUCCESSFUL', 'VALID_FIRST_SCAN', 'PUBLISHED', 'ACCEPTED', 'LOW'],
+  warn: ['SUSPENDED', 'PENDING', 'UNVERIFIED', 'SCHEDULED', 'USED_UP', 'PENDING_VERIFICATION', 'ALREADY_SCANNED', 'SUSPICIOUS', 'DRAFT', 'MEDIUM', 'EXPIRED'],
   bad: ['BANNED', 'DEACTIVATED', 'REJECTED', 'FAILED', 'INVALID_SCAN', 'CRITICAL', 'HIGH', 'CANCELLED', 'ERROR'],
 };
 export const statusTone = (s) => Object.keys(STATUS_TONES).find((k) => STATUS_TONES[k].includes(s)) || 'neutral';

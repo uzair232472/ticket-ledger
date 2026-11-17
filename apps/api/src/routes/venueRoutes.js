@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { authenticateJWT, optionalAuth, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, optionalAuth, orgGuard } from '../middlewares/auth.js';
 import {
   createHold,
   createTier,
@@ -18,7 +18,8 @@ import {
 import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
 
 const router = express.Router();
-const organizer = [authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN')];
+const organizer = orgGuard('event.view');
+const editor = orgGuard('event.edit');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: EVENT_IMAGE_SPECS.venuePlan.maxBytes, files: 1 } });
 const planUpload = (req, res, next) =>
@@ -41,11 +42,11 @@ router.post('/event/:eventId/holds/release', authenticateJWT, releaseHold);
 
 // Organizers (owner with an approved company, or Super Admin; checked per event)
 router.get('/event/:eventId/editor', ...organizer, getEditor);
-router.put('/event/:eventId/draft', ...organizer, saveDraft);
-router.delete('/event/:eventId/draft', ...organizer, discardDraft);
-router.post('/event/:eventId/publish', ...organizer, publish);
-router.post('/event/:eventId/plan-image', ...organizer, planUpload, uploadPlanImage);
-router.post('/event/:eventId/tiers', ...organizer, createTier);
+router.put('/event/:eventId/draft', ...editor, saveDraft);
+router.delete('/event/:eventId/draft', ...editor, discardDraft);
+router.post('/event/:eventId/publish', ...editor, publish);
+router.post('/event/:eventId/plan-image', ...editor, planUpload, uploadPlanImage);
+router.post('/event/:eventId/tiers', ...editor, createTier);
 router.get('/event/:eventId/reusable', ...organizer, listReusable);
 
 export default router;

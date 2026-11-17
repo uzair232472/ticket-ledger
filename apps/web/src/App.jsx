@@ -39,6 +39,10 @@ import BehaviorProfile from './pages/BehaviorProfile';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import OrganizerTeam from './pages/OrganizerTeam';
+import OrganizerOrganization from './pages/OrganizerOrganization';
+import OrganizerDiscounts from './pages/OrganizerDiscounts';
+import { ORG_PAGE_PERMISSIONS } from './lib/permissions';
 import OrganizerDashboard from './pages/OrganizerDashboard';
 import VerifyOtp from './pages/VerifyOtp';
 import ForgotPassword from './pages/ForgotPassword';
@@ -109,6 +113,25 @@ function ScrollToTop() {
   return null;
 }
 
+/**
+ * Discount links from recovery reminders (/events/:id?code=…): the code is kept for that event's checkout,
+ * however the customer gets there (event page → seats → checkout).
+ */
+function DiscountCodeCatcher() {
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    const m = pathname.match(/^\/events\/([^/]+)/);
+    const code = new URLSearchParams(search).get('code');
+    if (!m || !code) return;
+    try {
+      sessionStorage.setItem(`tl_discount_${m[1]}`, code.trim().toUpperCase().slice(0, 40));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [pathname, search]);
+  return null;
+}
+
 /** The pixel loader plays on every page change (keyed by path, so filters and query changes don't trigger it). */
 function RouteLoader() {
   const { pathname } = useLocation();
@@ -145,6 +168,7 @@ export default function App() {
         <AwayTitle />
         <SplashScreen />
         <ScrollToTop />
+        <DiscountCodeCatcher />
         <RouteLoader />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
           {/* Pages without their own chrome get the site header (logo, cart, notifications, profile, menu) */}
@@ -190,32 +214,35 @@ export default function App() {
               <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
 
               {/* Protected Gate Staff Scanner */}
-              <Route path="/staff/events" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><StaffEvents /></ProtectedRoute></DashShell>} />
-              <Route path="/scanner" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']}><GateScanner /></ProtectedRoute></DashShell>} />
+              <Route path="/staff/events" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']} permission={'gate.scan'}><StaffEvents /></ProtectedRoute></DashShell>} />
+              <Route path="/scanner" element={<DashShell><ProtectedRoute allowedRoles={['GATE_STAFF', 'ORGANIZER', 'SUPER_ADMIN']} permission={'gate.scan'}><GateScanner /></ProtectedRoute></DashShell>} />
 
               {/* Protected Organizer Studio */}
-              <Route path="/organizer/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><OrganizerDashboard /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/events/new" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEventChoice /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/prebook" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER']} requireApprovedCompany><Prebookings /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/prebook/:id" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER']} requireApprovedCompany><PrebookForm /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/create-event" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="create" /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/events/:id/venue" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><VenueEditor /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/events/:id/edit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><CreateEvent key="edit" /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/events/:id/changes" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><EventChanges /></ProtectedRoute></DashShell>} />
-              <Route path="/organizer/events/:id/submit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} requireApprovedCompany><EventSubmit /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/team" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={['staff.view', 'audit.view']} requireApprovedCompany><OrganizerTeam /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/organization" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={ORG_PAGE_PERMISSIONS}><OrganizerOrganization /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/discounts" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'discount.manage'} requireApprovedCompany><OrganizerDiscounts /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.view'} requireApprovedCompany><OrganizerDashboard /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/new" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.create'} requireApprovedCompany><CreateEventChoice /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/prebook" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER']} permission={'event.create'} requireApprovedCompany><Prebookings /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/prebook/:id" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER']} permission={'event.create'} requireApprovedCompany><PrebookForm /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/create-event" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.create'} requireApprovedCompany><CreateEvent key="create" /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/venue" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.view'} requireApprovedCompany><VenueEditor /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/edit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.view'} requireApprovedCompany><CreateEvent key="edit" /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/changes" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.lifecycle'} requireApprovedCompany><EventChanges /></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/events/:id/submit" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.view'} requireApprovedCompany><EventSubmit /></ProtectedRoute></DashShell>} />
 
               {/* Protected Super Admin Governance */}
               <Route path="/admin/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute></DashShell>} />
               <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
               <Route path="/admin/event-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminEventApprovals /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
-              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
-              <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
+              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
+              <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviorProfile />)}</ProtectedRoute>} />
-              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
-              <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
-              <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
-              <Route path="/admin/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']}><AbandonedIntentDashboard /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
+              <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
+              <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
+              <Route path="/admin/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}><AbandonedIntentDashboard /></ProtectedRoute></DashShell>} />
 
               {/* Safe catch-all fallback */}
               <Route path="*" element={<NotFound />} />

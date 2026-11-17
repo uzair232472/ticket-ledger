@@ -4,8 +4,15 @@ async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log("🚀 Deploying TicketLedgerNFT contract with account:", deployer.address);
 
+  // The owner can be a separate wallet (e.g. a multisig): CONTRACT_OWNER_ADDRESS. Never the API's minter wallet.
+  const owner = process.env.CONTRACT_OWNER_ADDRESS ? hre.ethers.getAddress(process.env.CONTRACT_OWNER_ADDRESS) : deployer.address;
+  if (process.env.NFT_MINTER_ADDRESS && owner.toLowerCase() === process.env.NFT_MINTER_ADDRESS.toLowerCase()) {
+    throw new Error("CONTRACT_OWNER_ADDRESS must not be the API minter wallet.");
+  }
+  console.log("👤 Contract owner:", owner);
+
   const TicketLedgerNFT = await hre.ethers.getContractFactory("TicketLedgerNFT");
-  const ticketNFT = await TicketLedgerNFT.deploy(deployer.address);
+  const ticketNFT = await TicketLedgerNFT.deploy(owner);
   await ticketNFT.waitForDeployment();
 
   const contractAddress = await ticketNFT.getAddress();

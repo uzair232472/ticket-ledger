@@ -49,7 +49,7 @@ async function loadManagedEvent(req, res) {
     res.status(404).json({ success: false, message: 'Event not found' });
     return null;
   }
-  if (!(await canManageEvent(req.user, event))) {
+  if (!(await canManageEvent(req.user, event, { permission: 'event.promote', req }))) {
     res.status(403).json({ success: false, message: 'You can’t manage this event.' });
     return null;
   }

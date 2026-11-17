@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StaffManager from '../components/StaffManager';
+import { can } from '../lib/permissions';
 import { DashHead, DashCard, Kpi, Chip, Tile, Notice, DashState } from '../components/dash/DashShell';
 import { ColumnChart, LineChart, Legend, Ring, Meter, SERIES, NEUTRAL, compactPkr, formatPkr } from '../components/dash/charts';
 import { getEventVisual } from '../utils/eventMedia';
@@ -88,14 +89,14 @@ function totalsByEvent(tiers) {
     const e = map.get(t.eventName) || { sold: 0, capacity: 0, revenue: 0 };
     e.sold += t.soldQuantity;
     e.capacity += t.totalQuantity;
-    e.revenue += t.tierRevenuePkr;
+    e.revenue += t.tierRevenuePkr || 0;
     map.set(t.eventName, e);
   });
   return map;
 }
 
 /** Event card: photo with status, title, date and venue, revenue / tickets box, quick links. */
-function EventCard({ event, index, totals, selected, onStats, onDelete }) {
+function EventCard({ event, index, totals, selected, onStats, onDelete, finance = true }) {
   const image = getEventVisual(event, index).image;
   const [badge, badgeClass] = eventBadge(event);
   const promoPending = event.priorityStatus === 'REQUESTED' || event.heroStatus === 'REQUESTED';
@@ -125,7 +126,7 @@ function EventCard({ event, index, totals, selected, onStats, onDelete }) {
         <div className="tl-st-ev-stats">
           <div>
             <small>Revenue</small>
-            <strong>{totals ? formatPkr(totals.revenue) : '—'}</strong>
+            <strong>{totals && finance ? formatPkr(totals.revenue) : '—'}</strong>
           </div>
           <div className="tl-st-ev-sold">
             <Receipt className="w-4 h-4" aria-hidden="true" />
@@ -254,6 +255,8 @@ export default function OrganizerDashboard() {
     };
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Members without finance.view get no money figures from the API; their sections are hidden
+  const finance = dashboardData?.access?.finance !== false;
   const metrics = dashboardData?.metrics || {};
   const liveGate = dashboardData?.liveGatePacing || {};
   const attendance = dashboardData?.attendancePrediction || {};
@@ -361,7 +364,7 @@ export default function OrganizerDashboard() {
           <>
             <span>{events.length} {events.length === 1 ? 'event' : 'events'}</span>
             <span>{(metrics.totalTicketsSold || 0).toLocaleString()} tickets sold</span>
-            <span>{formatPkr(metrics.totalRevenuePkr)} gross</span>
+            {finance && <span>{formatPkr(metrics.totalRevenuePkr)} gross</span>}
             {selectedEvent && (
               <span>
                 <Link to={`/organizer/events/${selectedEvent.id}/edit`}>Edit</Link>
@@ -375,7 +378,7 @@ export default function OrganizerDashboard() {
 
       {error && <Notice tone="bad" icon={AlertTriangle}>{error}</Notice>}
       {/* Payouts wait until a few days after each event, so refunds for cancellations can always be paid */}
-      {!loading && (metrics.payoutHeldPkr > 0 || metrics.payoutReleasablePkr > 0) && (
+      {!loading && finance && (metrics.payoutHeldPkr > 0 || metrics.payoutReleasablePkr > 0) && (
         <Notice tone="good" icon={Info}>
           Payout available: PKR {(metrics.payoutReleasablePkr || 0).toLocaleString()} · Held until {metrics.payoutHoldDays || 3} days after each event ends: PKR {(metrics.payoutHeldPkr || 0).toLocaleString()}
           {metrics.refundsPending > 0 ? ` · ${metrics.refundsPending} refund${metrics.refundsPending === 1 ? '' : 's'} still processing` : ''}
@@ -387,7 +390,7 @@ export default function OrganizerDashboard() {
           {/* Headline numbers, charts and insights */}
           <div className="tl-dash-grid">
             <div className="tl-dash-kpis">
-              <Kpi
+              {finance && <Kpi
                 label="GROSS REVENUE"
                 unit="PKR"
                 value={metrics.totalRevenuePkr || 0}
@@ -396,7 +399,7 @@ export default function OrganizerDashboard() {
                   <Chip key="f" icon={Receipt}>Fee {(metrics.platformFeePkr || 0).toLocaleString()}</Chip>,
                   ...(metrics.refundedPkr > 0 ? [<Chip key="r" icon={Receipt}>Refunded {metrics.refundedPkr.toLocaleString()}</Chip>] : []),
                 ]}
-              />
+              />}
               <Kpi
                 label="TICKETS SOLD"
                 value={metrics.totalTicketsSold || 0}
@@ -431,10 +434,12 @@ export default function OrganizerDashboard() {
             </DashCard>
 
             <div className="tl-dash-under">
-              <DashCard title="Revenue" sub={`${salesGraph.length} sales ${salesGraph.length === 1 ? 'day' : 'days'} · by ticket type volume`}>
-                <ColumnChart data={revenueBars} format={(v) => compactPkr(v).replace('PKR ', '')} tipFormat={formatPkr} height={170} label="Revenue per sales day" />
-                {tierMix.length > 0 && <Legend items={tierMix} format={compactPkr} />}
-              </DashCard>
+              {finance && (
+                <DashCard title="Revenue" sub={`${salesGraph.length} sales ${salesGraph.length === 1 ? 'day' : 'days'} · by ticket type volume`}>
+                  <ColumnChart data={revenueBars} format={(v) => compactPkr(v).replace('PKR ', '')} tipFormat={formatPkr} height={170} label="Revenue per sales day" />
+                  {tierMix.length > 0 && <Legend items={tierMix} format={compactPkr} />}
+                </DashCard>
+              )}
               <DashCard title="Sales" sub="Tickets and orders per day">
                 <LineChart labels={salesLines.labels} series={salesLines.series} height={200} area endDot label="Tickets and orders per sales day" />
               </DashCard>
@@ -472,6 +477,7 @@ export default function OrganizerDashboard() {
             <div className="tl-st-events">
               {shownEvents.map((ev, i) => (
                 <EventCard
+                  finance={finance}
                   key={ev.id}
                   event={ev}
                   index={i}
@@ -556,9 +562,9 @@ export default function OrganizerDashboard() {
                       <tr>
                         <th>Ticket tier</th>
                         {!selectedEvent && <th>Event</th>}
-                        <th className="is-num">Price</th>
+                        {finance && <th className="is-num">Price</th>}
                         <th>Sold / total</th>
-                        <th className="is-num">Revenue</th>
+                        {finance && <th className="is-num">Revenue</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -566,14 +572,14 @@ export default function OrganizerDashboard() {
                         <tr key={t.tierId}>
                           <td className="tl-cell-main">{t.tierName}</td>
                           {!selectedEvent && <td><div className="tl-cell-sub" title={t.eventName}>{t.eventName}</div></td>}
-                          <td className="is-num">{formatPkr(t.price)}</td>
+                          {finance && <td className="is-num">{formatPkr(t.price)}</td>}
                           <td>
                             <span className="tl-st-sold">
                               {t.soldQuantity.toLocaleString()} / {t.totalQuantity.toLocaleString()}
                               <Meter value={t.percentageSold} />
                             </span>
                           </td>
-                          <td className="is-num">{formatPkr(t.tierRevenuePkr)}</td>
+                          {finance && <td className="is-num">{formatPkr(t.tierRevenuePkr)}</td>}
                         </tr>
                       ))}
                     </tbody>
@@ -588,7 +594,7 @@ export default function OrganizerDashboard() {
                 </div>
               )}
             </DashCard>
-            <StaffManager />
+            {can(user, 'staff.view') && <StaffManager />}
           </div>
         </>
       )}

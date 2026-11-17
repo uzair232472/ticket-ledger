@@ -20,6 +20,7 @@ import {
 import { Notice, notifyPendingChanged } from '../components/dash/DashShell';
 import { StudioHead, ApStat, UnderlineTabs, RecordCard, Badge } from '../components/dash/Studio';
 import { useDialog } from '../components/ui/DialogProvider';
+import PayoutReviews from '../components/PayoutReviews';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -198,6 +199,9 @@ export default function AdminCompanies() {
       {message.text && (
         <Notice tone={message.type === 'success' ? 'good' : 'bad'} icon={message.type === 'success' ? CheckCircle2 : AlertCircle}>{message.text}</Notice>
       )}
+
+      {/* New or changed payout accounts waiting for a check */}
+      <PayoutReviews />
 
       <section className="tl-ap-section" aria-labelledby="tl-ap-companies">
         <h2 id="tl-ap-companies">Companies</h2>

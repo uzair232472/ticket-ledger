@@ -10,11 +10,12 @@ import {
   resetPassword,
   getInvite,
   acceptInvite,
+  rejectInvite,
   getMe,
   getPendingSignup,
   updatePendingSignup,
 } from '../controllers/authController.js';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, requireRole, optionalAuth } from '../middlewares/auth.js';
 import { authRateLimiter, codeCheckRateLimiter } from '../middlewares/rateLimit.js';
 
 const router = express.Router();
@@ -29,7 +30,8 @@ router.post('/resend-otp', authRateLimiter, resendOtp);
 router.post('/forgot-password', authRateLimiter, forgotPassword);
 router.post('/reset-password', codeCheckRateLimiter, resetPassword);
 router.get('/invite/:token', codeCheckRateLimiter, getInvite);
-router.post('/accept-invite', codeCheckRateLimiter, acceptInvite);
+router.post('/accept-invite', codeCheckRateLimiter, optionalAuth, acceptInvite);
+router.post('/invite/:token/reject', codeCheckRateLimiter, optionalAuth, rejectInvite);
 
 // Session routes (authenticated by the httpOnly refresh cookie)
 router.post('/refresh', refresh);

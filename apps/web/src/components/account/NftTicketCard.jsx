@@ -44,8 +44,16 @@ export default function NftTicketCard({ ticket: t, onList, onCancelListing, onRe
     <article className="tl-nft" data-reveal aria-label={`NFT ticket for ${event.name}`}>
       <div className="tl-nft-media">
         <img src={getEventVisual(event).imageUrl} alt="" loading="lazy" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
-        <span className="tl-nft-badge"><ShieldCheck className="w-5 h-5" aria-hidden="true" /> Verified ticket</span>
-        {blockchain?.tokenId != null && <span className="tl-nft-token">TLT #{blockchain.tokenId}</span>}
+        {/* Entry and NFT are separate facts: a valid ticket's NFT may be pending, and only a chain read is "verified" */}
+        <span className="tl-nft-badge"><ShieldCheck className="w-5 h-5" aria-hidden="true" /> {t.states?.entry.label || 'Ticket'}</span>
+        {blockchain && (
+          <span
+            className={`tl-nft-token${blockchain.mintStatus === 'VERIFIED' ? '' : ' tl-nft-token--pending'}`}
+            title={blockchain.mintStatus === 'VERIFIED' ? 'Ownership was read back from the blockchain.' : 'Your ticket works at the gate whatever its NFT status.'}
+          >
+            {blockchain.mintStatus === 'VERIFIED' ? `TLT #${blockchain.tokenId} · verified` : blockchain.mintLabel}
+          </span>
+        )}
       </div>
 
       <div className="tl-nft-body">

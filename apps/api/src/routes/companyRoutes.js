@@ -7,7 +7,9 @@ import {
   updateCompanyStatus,
   requireApprovedOrganizer 
 } from '../controllers/companyController.js';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, requireRole, loadOrgContext } from '../middlewares/auth.js';
+import { pendingFinanceReviews, reviewFinance } from '../services/orgProfileService.js';
+import { AccessError } from '../services/orgAccess.js';
 
 const router = express.Router();
 
@@ -47,10 +49,11 @@ router.post(
   registerCompany
 );
 
-router.get('/my-company', requireRole('ORGANIZER', 'SUPER_ADMIN'), getMyCompany);
+// Owners see their company in full; other members see it without verification documents
+router.get('/my-company', getMyCompany);
 
 // Route to verify requireApprovedOrganizer guard works
-router.get('/guard-check', requireApprovedOrganizer, (req, res) => {
+router.get('/guard-check', loadOrgContext, requireApprovedOrganizer, (req, res) => {
   res.json({
     success: true,
     message: 'Authorized! Company is fully APPROVED to create events.',
@@ -61,5 +64,25 @@ router.get('/guard-check', requireApprovedOrganizer, (req, res) => {
 // Super Admin governance routes
 router.get('/admin/all', requireRole('SUPER_ADMIN'), getAllCompanies);
 router.patch('/admin/:id/status', requireRole('SUPER_ADMIN'), updateCompanyStatus);
+
+// Payout details waiting for a check, and the decision (verify / reject with a note)
+const adminFail = (res, e, fallback) => (e instanceof AccessError ? res.status(e.status).json({ success: false, message: e.message }) : (console.error(fallback, e), res.status(500).json({ success: false, message: fallback })));
+router.get('/admin/finance/pending', requireRole('SUPER_ADMIN'), async (req, res) => {
+  try {
+    res.json({ success: true, data: { reviews: await pendingFinanceReviews() } });
+  } catch (e) {
+    adminFail(res, e, 'Could not load payout reviews.');
+  }
+});
+router.post('/admin/:id/finance/review', requireRole('SUPER_ADMIN'), async (req, res) => {
+  try {
+    const status = String(req.body?.status || '');
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+    const finance = await reviewFinance(req, req.params.id, { status, note });
+    res.json({ success: true, message: status === 'VERIFIED' ? 'Payout details verified.' : 'Payout details rejected. The owners were told why.', data: { finance } });
+  } catch (e) {
+    adminFail(res, e, 'Could not save the review.');
+  }
+});
 
 export default router;

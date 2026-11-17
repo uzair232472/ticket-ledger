@@ -112,7 +112,7 @@ export const getAbandonedDashboard = async (req, res) => {
  */
 export const sendAbandonedReminder = async (req, res) => {
   try {
-    const { targetUserId, eventId, customMessage, discountCode } = req.body;
+    const { targetUserId, eventId, customMessage, discountCode, discountPercent, validHours } = req.body;
     if (!targetUserId || !eventId) {
       return res.status(400).json({
         success: false,
@@ -125,6 +125,8 @@ export const sendAbandonedReminder = async (req, res) => {
       eventId,
       customMessage,
       discountCode,
+      discountPercent,
+      validHours: Math.min(168, Math.max(1, Number(validHours) || 48)),
       requesterUser: req.user,
     });
     return res.status(200).json(result);
@@ -143,10 +145,12 @@ export const sendAbandonedReminder = async (req, res) => {
  */
 export const sendBatchAbandonedReminders = async (req, res) => {
   try {
-    const { eventId, discountCode } = req.body;
+    const { eventId, discountCode, discountPercent, validHours } = req.body;
     const result = await intentAnalyticsService.sendBatchAbandonedCartReminders({
       eventId,
       discountCode,
+      discountPercent,
+      validHours: Math.min(168, Math.max(1, Number(validHours) || 48)),
       requesterUser: req.user,
     });
     return res.status(200).json(result);

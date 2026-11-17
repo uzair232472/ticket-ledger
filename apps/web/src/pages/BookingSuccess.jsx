@@ -10,6 +10,10 @@ import { formatEventDate, formatEventTime } from '../utils/eventTime';
 const POLL_MS = 3000;
 const POLL_LIMIT_MS = 3 * 60 * 1000;
 
+// Paid, valid ticket whose NFT issuance is not finished. Payment, entry and NFT are separate facts from the API
+// (ticket.states); a pending NFT never makes the ticket invalid.
+const isNftPending = (t) => t.states?.entry.valid && ['PENDING', 'FAILED'].includes(t.states?.nft.status);
+
 const seatFacts = (seat) => {
   if (!seat) return [['Seat', '—']];
   if (seat.kind === 'GA_SLOT') return [['Section', seat.section], ['Entry', 'General'], ['No.', seat.seatNumber]];
@@ -110,6 +114,7 @@ export default function BookingSuccess() {
   }
 
   const { event, tickets = [] } = order;
+  const nftPending = tickets.filter(isNftPending).length;
   const time = formatEventTime(event?.time);
   const eventMeta = event && (
     <p className="tl-bk-meta">
@@ -172,6 +177,11 @@ export default function BookingSuccess() {
         <h2 id="ok-title" className="tl-co-status-title">{event?.name}</h2>
         {eventMeta}
         <p>Payment confirmed and {tickets.length} ticket{tickets.length === 1 ? '' : 's'} issued to your account. Show the rotating QR code from your ticket wallet at the gate.</p>
+        {nftPending > 0 && (
+          <p className="tl-co-note" role="status">
+            NFT issuance pending for {nftPending} ticket{nftPending === 1 ? '' : 's'}. Nothing is lost: your payment and tickets are confirmed and the QR pass works at the gate. We retry automatically and you’ll get a notification when it’s done.
+          </p>
+        )}
         <div className="tl-co-actions">
           <Link to="/wallet" className="tl-bk-btn"><QrCode className="w-4 h-4" aria-hidden="true" /> Open ticket wallet</Link>
           <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost">My orders <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
@@ -191,7 +201,7 @@ export default function BookingSuccess() {
               </dl>
               <p className="tl-co-ticket-foot">
                 <span>Ticket {i + 1} of {tickets.length}</span>
-                <span>{t.tokenId != null ? `NFT #${t.tokenId}` : t.status}</span>
+                <span>{t.states ? `${t.states.entry.label} · ${t.states.nft.label}${t.states.nft.status === 'VERIFIED' && t.tokenId != null ? ` #${t.tokenId}` : ''}` : t.status}</span>
               </p>
             </li>
           ))}

@@ -26,13 +26,15 @@ const fail = (res, error, fallback) => {
   return res.status(500).json({ success: false, message: fallback });
 };
 
-async function managedEvent(req, res) {
+async function managedEvent(req, res, permissions = ['event.lifecycle']) {
   const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
   if (!event) {
     res.status(404).json({ success: false, message: 'Event not found' });
     return null;
   }
-  if (!(await canManageEvent(req.user, event))) {
+  let allowed = true;
+  for (const permission of permissions) allowed = allowed && (await canManageEvent(req.user, event, { permission, req }));
+  if (!allowed) {
     res.status(403).json({ success: false, message: 'You can’t manage this event.' });
     return null;
   }
@@ -60,7 +62,7 @@ const reasonSchema = z.object({ reason: z.string().trim().min(10, 'Give a reason
 /** POST /events/:id/cancel { reason, confirmName } */
 export const cancelEventHandler = async (req, res) => {
   try {
-    const event = await managedEvent(req, res);
+    const event = await managedEvent(req, res, ['event.lifecycle', 'finance.refunds']);
     if (!event) return undefined;
     const { reason } = reasonSchema.parse(req.body);
     if (String(req.body.confirmName || '').trim().toLowerCase() !== event.name.trim().toLowerCase()) {

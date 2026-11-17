@@ -16,6 +16,8 @@ const ACTIONS = [
   [/^RESALE/, 'Open fan resale', '/resale'],
   [/^STAFF/, 'Open my gate events', '/staff/events'],
   [/^ADMIN_(SCHEDULE|REFUND)/, 'Open event approvals', '/admin/event-approvals'],
+  [/^ADMIN_MINT/, 'Open ticket issuance', '/admin/event-approvals?tab=issuance'],
+  [/^TICKET_ISSU/, 'Open your tickets', '/wallet'],
   [/^(EVENT_CANCELLED|EVENT_POSTPONED|EVENT_RESCHEDULED|REFUND_WINDOW)/, 'See your options', '/my-bookings'],
   [/^REFUND/, 'See your refunds', '/my-bookings'],
   [/^SCHEDULE_CHANGE/, 'Open organizer dashboard', '/organizer/dashboard'],
@@ -91,9 +93,45 @@ function emailNotifications(rows) {
   });
 }
 
+/**
+ * Audit rows belong to an organization when what they are about does: an event, a ticket, a company, a member
+ * or invitation, or details.companyId. The actor's organization role at that moment is recorded with it. This
+ * makes every action written to the audit log (by any feature) part of the organization's activity history.
+ */
+async function withOrganization(data) {
+  if (!data || data.companyId !== undefined) return data;
+  let companyId = null;
+  try {
+    const { targetType: type, targetId: id } = data;
+    if (id && type === 'Event') companyId = (await base.event.findUnique({ where: { id }, select: { companyId: true } }))?.companyId;
+    else if (id && type === 'Ticket') companyId = (await base.ticket.findUnique({ where: { id }, select: { event: { select: { companyId: true } } } }))?.event.companyId;
+    else if (id && type === 'Company') companyId = (await base.company.findUnique({ where: { id }, select: { id: true } }))?.id;
+    else if (id && type === 'OrganizationMember') companyId = (await base.organizationMember.findUnique({ where: { id }, select: { companyId: true } }))?.companyId;
+    else if (id && type === 'StaffInvite') companyId = (await base.staffInvite.findUnique({ where: { id }, select: { companyId: true } }))?.companyId;
+    if (!companyId && typeof data.details?.companyId === 'string') companyId = (await base.company.findUnique({ where: { id: data.details.companyId }, select: { id: true } }))?.id;
+    if (companyId && data.userId && data.actorRole === undefined) {
+      const m = await base.organizationMember.findFirst({ where: { companyId, userId: data.userId }, select: { role: true } });
+      const u = m ? null : await base.user.findUnique({ where: { id: data.userId }, select: { role: true } });
+      data = { ...data, actorRole: m?.role || (u?.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : null) };
+    }
+  } catch {
+    // Never block the action being logged
+  }
+  return companyId ? { ...data, companyId } : data;
+}
+
 const prisma = base
   ? base.$extends({
       query: {
+        auditLog: {
+          async create({ args, query }) {
+            return query({ ...args, data: await withOrganization(args.data) });
+          },
+          async createMany({ args, query }) {
+            const rows = Array.isArray(args.data) ? args.data : [args.data];
+            return query({ ...args, data: await Promise.all(rows.map(withOrganization)) });
+          },
+        },
         notification: {
           async create({ args, query }) {
             const row = await query(args);

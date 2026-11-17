@@ -5,7 +5,13 @@ import { drawTicketPdf, loadEventPhoto } from './ticketPdf.js';
 import prisma from '../config/prisma.js';
 import { passFor } from './qrPassService.js';
 
-const QR_SECRET = process.env.QR_HMAC_SECRET || process.env.JWT_SECRET || 'ticketledger_qr_master_secret_key_2026_fyp';
+// Legacy HMAC payloads (the gate uses the Ed25519 passes in qrPassService.js). No hardcoded fallback; read per call
+// because ES module imports run before dotenv.config().
+const qrSecret = () => {
+  const secret = process.env.QR_HMAC_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('QR_HMAC_SECRET or JWT_SECRET must be set.');
+  return secret;
+};
 
 /**
  * 1. Generate Cryptographically Signed QR Payload
@@ -22,7 +28,7 @@ export const createSignedQRPayload = (ticket) => {
   // Compute HMAC signature across immutable core fields
   const message = `${ticketId}:${eventId}:${tokenId}:${nonce}:${issuedAt}:${qrVersion}`;
   const signature = crypto
-    .createHmac('sha256', QR_SECRET)
+    .createHmac('sha256', qrSecret())
     .update(message)
     .digest('hex');
 
@@ -80,7 +86,7 @@ export const createDynamicQRPayload = (ticket, timestamp = Date.now()) => {
 
   const message = `${ticketId}:${eventId}:${tokenId}:${nonce}:${timeStep}:${qrVersion}`;
   const signature = crypto
-    .createHmac('sha256', QR_SECRET)
+    .createHmac('sha256', qrSecret())
     .update(message)
     .digest('hex');
 
@@ -123,7 +129,7 @@ export const verifyOfflineHMAC = (payload, currentTimestamp = Date.now()) => {
       }
 
       const expectedMsg = `${ticketId}:${eventId}:${tokenId}:${nonce}:${timeStep}:${qrVersion}`;
-      const expectedSig = crypto.createHmac('sha256', QR_SECRET).update(expectedMsg).digest('hex');
+      const expectedSig = crypto.createHmac('sha256', qrSecret()).update(expectedMsg).digest('hex');
 
       if (signature !== expectedSig) {
         return { valid: false, reason: 'INVALID_SIGNATURE', message: 'Cryptographic signature mismatch! Counterfeit ticket.' };
@@ -131,7 +137,7 @@ export const verifyOfflineHMAC = (payload, currentTimestamp = Date.now()) => {
     } else {
       // v1 payload fallback
       const expectedMsg = `${ticketId}:${eventId}:${tokenId}:${nonce}:${issuedAt}:${qrVersion || '1.0'}`;
-      const expectedSig = crypto.createHmac('sha256', QR_SECRET).update(expectedMsg).digest('hex');
+      const expectedSig = crypto.createHmac('sha256', qrSecret()).update(expectedMsg).digest('hex');
 
       if (signature !== expectedSig) {
         return { valid: false, reason: 'INVALID_SIGNATURE', message: 'Cryptographic signature mismatch! Counterfeit ticket.' };

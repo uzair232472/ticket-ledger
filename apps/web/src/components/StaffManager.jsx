@@ -54,7 +54,8 @@ export default function StaffManager({ layout } = {}) {
     try {
       const companyQuery = isAdmin && companyFilter ? `?companyId=${companyFilter}` : '';
       const [eventsData, staffData] = await Promise.all([
-        request(`/events${companyQuery}`),
+        // Inviting needs staff.invite; members who may only view the list still see it
+        request(`/events${companyQuery}`).catch(() => ({ data: { events: [], companies: [] } })),
         request(`/${companyQuery}`),
       ]);
       setEvents(eventsData.data.events);

@@ -146,6 +146,7 @@ export const getOrganizerDashboard = async (req, res) => {
     const data = await organizerDashboardService.getOrganizerDashboardMetrics({
       organizerUser: req.user,
       eventId,
+      orgContext: req.org || null,
     });
     return res.status(200).json({ success: true, data });
   } catch (error) {

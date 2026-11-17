@@ -3,8 +3,8 @@ import prisma from '../config/prisma.js';
 import { getScopedEventIds } from '../services/accessService.js';
 import { scan, syncOffline, eventPack, eventStats } from '../services/checkinService.js';
 
-const canScan = async (user, eventId) => {
-  const scope = await getScopedEventIds(user);
+const canScan = async (user, eventId, permission = 'gate.scan') => {
+  const scope = await getScopedEventIds(user, permission);
   return scope === null || scope.includes(eventId);
 };
 
@@ -93,7 +93,7 @@ export const syncScans = async (req, res) => {
 /** GET /api/checkin/events/:id/stats: entered vs. sold, per gate (own events / assigned / Super Admin). */
 export const stats = async (req, res) => {
   try {
-    if (!(await canScan(req.user, req.params.id))) return res.status(403).json({ success: false, message: 'You can only view your own events.' });
+    if (!(await canScan(req.user, req.params.id, 'gate.stats'))) return res.status(403).json({ success: false, message: 'You can only view your own events.' });
     res.json({ success: true, data: await eventStats(req.params.id) });
   } catch (err) {
     fail(res, err, 'Could not load entry stats');
@@ -103,7 +103,7 @@ export const stats = async (req, res) => {
 /** GET /api/checkin/events/:id/recent: the latest scans at an event (scanner history). */
 export const recent = async (req, res) => {
   try {
-    if (!(await canScan(req.user, req.params.id))) return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
+    if (!(await canScan(req.user, req.params.id, 'gate.stats'))) return res.status(403).json({ success: false, message: 'You are not assigned to this event.' });
     const rows = await prisma.checkIn.findMany({
       where: { eventId: req.params.id },
       orderBy: { scannedAt: 'desc' },

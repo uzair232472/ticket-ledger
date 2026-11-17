@@ -109,13 +109,18 @@ export const attachSessionToUser = async ({ sessionId, userId }) => {
 /**
  * Aggregate behavioral profile, timeline, and ML scores for a user
  */
-export const getUserBehavioralProfile = async (userId, sessionId = null) => {
+/**
+ * `scope.eventIds`: when given (an organization's view), only behaviour on those events is read and
+ * platform-wide data (account status, wallet, logins, other organizers' events, fraud model) is left out.
+ */
+export const getUserBehavioralProfile = async (userId, sessionId = null, scope = null) => {
+  const scopedIds = Array.isArray(scope?.eventIds) ? scope.eventIds : null;
   if (!userId) {
     throw new Error('User ID is required to fetch behavioral profile');
   }
 
   // If a session ID is provided, automatically attach any unattached events for this session
-  if (sessionId) {
+  if (sessionId && !scopedIds) {
     try {
       await prisma.behaviorEvent.updateMany({
         where: { sessionId, userId: null },
@@ -140,18 +145,26 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
     },
   });
 
+  if (user && scopedIds) {
+    delete user.role;
+    delete user.status;
+    delete user.walletAddress;
+  }
+
   if (!user) {
     throw new Error('User not found');
   }
 
   // 2. Fetch all user behavior events
   const events = await prisma.behaviorEvent.findMany({
-    where: {
-      OR: [
-        { userId },
-        ...(sessionId ? [{ sessionId }] : []),
-      ],
-    },
+    where: scopedIds
+      ? { userId, eventId: { in: scopedIds } }
+      : {
+          OR: [
+            { userId },
+            ...(sessionId ? [{ sessionId }] : []),
+          ],
+        },
     orderBy: { createdAt: 'desc' },
     include: {
       event: {
@@ -240,14 +253,14 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
 
   // 4. Intent (rules, per event) and fraud scores
   // Purchase intent, per event and overall (rule-based; documented in computeIntentByEvent below)
-  const intentByEvent = await computeIntentByEvent(userId);
+  const intentByEvent = await computeIntentByEvent(userId, scopedIds);
   const overall = overallIntent(intentByEvent, counts);
   const intentScore = overall.score;
   const intentClass = overall.tier;
   let fraudScore = 12; // Default normal customer
   let fraudStatus = 'LOW';
 
-  try {
+  if (!scopedIds) try {
     const fraudRes = await mlService.predictFraud({
       checkoutDurationSeconds: 45.0,
       clicksPerMinute: 24.0,
@@ -265,7 +278,7 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
     fraudStatus = 'LOW';
   }
 
-  return {
+  const profile = {
     user,
     stats: counts,
     totalEventsTracked: events.length,
@@ -306,6 +319,13 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
       createdAt: ev.createdAt,
     })),
   };
+  if (scopedIds) {
+    // Organization view: the platform fraud model sees behaviour outside this organization
+    delete profile.scores.fraudRisk;
+    delete profile.summary.riskLevel;
+    profile.scope = { kind: 'organization', eventCount: scopedIds.length };
+  }
+  return profile;
 };
 
 
@@ -327,15 +347,16 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *   over 14 days old. Not-yet-bought events are capped at 95; an event with a paid order scores 100 (PURCHASED).
  * Counts come from all of the user's behaviour rows (not only the latest 100), grouped by event and action.
  */
-export async function computeIntentByEvent(userId) {
+export async function computeIntentByEvent(userId, eventIds = null) {
+  const inScope = eventIds ? { eventId: { in: eventIds } } : {};
   const [grouped, paidOrders] = await Promise.all([
     prisma.behaviorEvent.groupBy({
       by: ['eventId', 'action'],
-      where: { userId, eventId: { not: null } },
+      where: { userId, eventId: { not: null }, ...inScope },
       _count: { _all: true },
       _max: { createdAt: true },
     }),
-    prisma.order.findMany({ where: { userId, status: 'SUCCESSFUL' }, select: { eventId: true } }),
+    prisma.order.findMany({ where: { userId, status: 'SUCCESSFUL', ...inScope }, select: { eventId: true } }),
   ]);
   const paid = new Set(paidOrders.map((o) => o.eventId));
   const perEvent = new Map();

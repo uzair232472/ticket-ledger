@@ -71,7 +71,7 @@ export const getSubmissionStatus = async (req, res) => {
       include: { tiers: { orderBy: { price: 'asc' } }, company: { select: { companyName: true } }, reviewMessages: MESSAGES },
     });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
-    if (!(await canManageEvent(req.user, event))) return res.status(403).json({ success: false, message: 'You can’t manage this event.' });
+    if (!(await canManageEvent(req.user, event, { permission: 'event.view', req }))) return res.status(403).json({ success: false, message: 'You can’t manage this event.' });
 
     const [plan, seatCount] = await Promise.all([
       prisma.venueLayout.findFirst({ where: { eventId: event.id, status: 'PUBLISHED' }, orderBy: { version: 'desc' }, select: { version: true, publishedAt: true, data: true } }),
@@ -106,7 +106,7 @@ export const submitEventForReview = async (req, res) => {
   try {
     const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
-    if (!(await canManageEvent(req.user, event, { requireApproved: true }))) {
+    if (!(await canManageEvent(req.user, event, { requireApproved: true, permission: 'event.submit', req }))) {
       return res.status(403).json({ success: false, message: 'Only the organizer of this event can submit it.' });
     }
 
@@ -342,8 +342,8 @@ export const replyToReview = async (req, res) => {
     const { message, acceptSuggestion } = replySchema.parse(req.body);
     const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
-    // Only the event's own organizer answers; admins speak through their review decisions
-    if (req.user.role !== 'ORGANIZER' || !(await canManageEvent(req.user, event, { requireApproved: true }))) {
+    // Only the event's own organization answers; admins speak through their review decisions
+    if (req.user.role === 'SUPER_ADMIN' || !(await canManageEvent(req.user, event, { requireApproved: true, permission: 'event.submit', req }))) {
       return res.status(403).json({ success: false, message: 'Only the organizer of this event can reply.' });
     }
     const stage = reviewStage(event);
@@ -395,7 +395,7 @@ export const withdrawFromReview = async (req, res) => {
   try {
     const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
-    if (req.user.role !== 'ORGANIZER' || !(await canManageEvent(req.user, event, { requireApproved: true }))) {
+    if (req.user.role === 'SUPER_ADMIN' || !(await canManageEvent(req.user, event, { requireApproved: true, permission: 'event.submit', req }))) {
       return res.status(403).json({ success: false, message: 'Only the organizer of this event can withdraw it.' });
     }
     const stage = reviewStage(event);

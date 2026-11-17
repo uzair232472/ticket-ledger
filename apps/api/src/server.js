@@ -5,6 +5,10 @@ import { connectRedis } from './config/redis.js';
 import { corsOrigin } from './config/cors.js';
 import { setIO } from './config/socket.js';
 import { retryRefunds } from './services/refundService.js';
+import nftService, { MINTABLE } from './services/nftService.js';
+import { notifyAdmins } from './services/notificationService.js';
+import { assertSecrets } from './config/security.js';
+import prisma from './config/prisma.js';
 import { runLifecycleJobs } from './services/eventLifecycleService.js';
 
 const PORT = process.env.PORT || 5000;
@@ -46,7 +50,22 @@ io.on('connection', (socket) => {
 
 // Start Server
 async function startServer() {
+  // Unsafe secrets stop the server here, not on the first login or ticket
+  assertSecrets();
   await connectRedis();
+  // Minting mode (live / simulation / disabled) and the read-only chain checks (config/chain.js)
+  const minting = await nftService.configure();
+  if (minting.mode === 'disabled') {
+    const waiting = await prisma.ticket.count({ where: { ...MINTABLE, mintStatus: 'PENDING' } }).catch(() => 0);
+    if (waiting) {
+      await notifyAdmins({
+        type: 'ADMIN_MINT_DISABLED',
+        title: `NFT minting is disabled (${waiting} paid ticket${waiting === 1 ? '' : 's'} waiting)`,
+        message: `The tickets are paid and valid at the gate, but no NFTs will be issued until this is fixed: ${minting.problems.join(' ')}`,
+        link: '/admin/event-approvals?tab=issuance',
+      }).catch(() => {});
+    }
+  }
 
   // Hourly: retry failed refunds, cancel events postponed too long, remind holders before refund windows close
   const hourly = async () => {
@@ -59,6 +78,11 @@ async function startServer() {
   };
   setTimeout(hourly, 60 * 1000).unref();
   setInterval(hourly, 60 * 60 * 1000).unref();
+
+  // Every 2 minutes: mint paid tickets whose NFT failed or is still waiting (backoff per ticket, admins alerted)
+  const mints = () => nftService.retryDueMints().catch((e) => console.error('[NFT retry job] failed:', e.message));
+  setTimeout(mints, 30 * 1000).unref();
+  setInterval(mints, 2 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log(`🚀 TicketLedger Express API is running on http://localhost:${PORT}`);

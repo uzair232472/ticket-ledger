@@ -676,6 +676,11 @@
   font: 600 12px/1 'JetBrains Mono', monospace;
 }
 
+.tl-nft-token--pending {
+  border-color: rgba(251, 191, 36, 0.7);
+  color: #fde68a;
+}
+
 .tl-nft-body {
   min-width: 0;
   padding: clamp(18px, 2.4vw, 28px);

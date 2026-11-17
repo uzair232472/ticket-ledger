@@ -3,6 +3,8 @@ import prisma from '../config/prisma.js';
 import { MediaValidationError, uploadEventImages } from '../services/eventMediaService.js';
 import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
 import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE } from '../utils/eventAccess.js';
+import { getMemberCompanyId } from '../services/accessService.js';
+import { eventWhereFor, requestContext } from '../services/orgAccess.js';
 import { applySeatAvailability } from '../services/venueService.js';
 import { isPromotionActive, promotionStartedAt } from '../services/promotionWindow.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
@@ -114,8 +116,7 @@ async function findDuplicateEvents({ companyId, name, startsAt, venue, excludeEv
     .sort((a, b) => Number(b.sameDay) - Number(a.sameDay));
 }
 
-const companyIdFor = async (user) =>
-  user.role === 'SUPER_ADMIN' ? null : (await prisma.company.findUnique({ where: { userId: user.id }, select: { id: true } }))?.id || null;
+const companyIdFor = async (user) => (user.role === 'SUPER_ADMIN' ? null : getMemberCompanyId(user, 'event.view'));
 
 /**
  * Organizer creates an event with ticket tiers
@@ -216,6 +217,10 @@ export const createEvent = async (req, res) => {
           },
         },
       });
+      // Event-scoped members (Event Managers) work on the events they create
+      if (req.org?.eventScoped) {
+        await tx.staffEventAssignment.create({ data: { staffId: req.user.id, eventId: event.id, assignedById: req.user.id } });
+      }
 
       // Create ticket tiers
       await Promise.all(
@@ -515,12 +520,12 @@ export const getEventById = async (req, res) => {
     // Hidden dates: the organizer, admins and people who already hold tickets can still open them
     const holdsTicket = async () =>
       Boolean(req.user) && (await prisma.ticket.count({ where: { eventId: event.id, userId: req.user.id } })) > 0;
-    if (event.isHidden && ['PUBLISHED', 'PAUSED', 'COMPLETED'].includes(event.status) && !(await canManageEvent(req.user, event)) && !(await holdsTicket())) {
+    if (event.isHidden && ['PUBLISHED', 'PAUSED', 'COMPLETED'].includes(event.status) && !(await canManageEvent(req.user, event, { permission: 'event.view' })) && !(await holdsTicket())) {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
     const isPublic = ['PUBLISHED', 'PAUSED', 'COMPLETED', 'CANCELLED'].includes(event.status);
     if (!isPublic) {
-      if (!(await canManageEvent(req.user, event))) {
+      if (!(await canManageEvent(req.user, event, { permission: 'event.view' }))) {
         return res.status(404).json({ success: false, message: 'Event not found' });
       }
       return res.status(200).json({ success: true, data: { event, preview: true } });
@@ -567,13 +572,14 @@ export const getOrganizerEvents = async (req, res) => {
     const userId = req.user.id;
 
     // Organizers see only their company's events; Super Admins see every event
+    // Members see their organization's events (event-scoped roles: only their assigned events)
     let where = {};
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const company = await prisma.company.findUnique({ where: { userId } });
-      if (!company) {
+    if (req.user.role !== 'SUPER_ADMIN' || req.org) {
+      const ctx = req.org ?? (await requestContext(req));
+      if (!ctx) {
         return res.status(200).json({ success: true, data: { events: [] } });
       }
-      where = { companyId: company.id };
+      where = eventWhereFor(ctx, 'event.view');
     }
 
     const events = await prisma.event.findMany({
@@ -633,15 +639,12 @@ export const updateEventStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
 
-    // Role check: Only the owning organizer or Super Admin can modify status
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const company = await prisma.company.findUnique({ where: { userId: req.user.id } });
-      if (!company || company.id !== event.companyId) {
-        return res.status(403).json({
-          success: false,
-          message: 'You are not authorized to modify this event.',
-        });
-      }
+    // Members holding event.lifecycle for this event, or a Super Admin
+    if (!(await canManageEvent(req.user, event, { permission: 'event.lifecycle', req }))) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to modify this event.',
+      });
     }
 
     // Cancelling refunds every ticket holder: it has its own endpoint (POST /events/:id/cancel)
@@ -720,14 +723,11 @@ export const getPreLaunchDemandForecast = async (req, res) => {
     }
 
     // Permission check
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const company = await prisma.company.findUnique({ where: { userId: req.user.id } });
-      if (!company || company.id !== event.companyId) {
-        return res.status(403).json({
-          success: false,
-          message: 'You are not authorized to view pre-launch analytics for this event.',
-        });
-      }
+    if (!(await canManageEvent(req.user, event, { permission: 'event.pricing', req }))) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to view pre-launch analytics for this event.',
+      });
     }
 
     // 1. Calculate Capacity & Pricing
@@ -864,11 +864,8 @@ export const updateEventPricing = async (req, res) => {
     }
 
     // Permission check
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const company = await prisma.company.findUnique({ where: { userId: req.user.id } });
-      if (!company || company.id !== event.companyId) {
-        return res.status(403).json({ success: false, message: 'Unauthorized to modify pricing' });
-      }
+    if (!(await canManageEvent(req.user, event, { permission: 'event.pricing', req }))) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to modify pricing' });
     }
     if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
 
@@ -920,11 +917,8 @@ export const publishEventWithPricing = async (req, res) => {
     }
 
     // Permission check
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const company = await prisma.company.findUnique({ where: { userId: req.user.id } });
-      if (!company || company.id !== event.companyId) {
-        return res.status(403).json({ success: false, message: 'Unauthorized to publish event' });
-      }
+    if (!(await canManageEvent(req.user, event, { permission: 'event.pricing', req }))) {
+      return res.status(403).json({ success: false, message: 'Unauthorized to publish event' });
     }
     if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
 
@@ -994,7 +988,7 @@ export const getEventForEdit = async (req, res) => {
     if (!event) {
       return res.status(404).json({ success: false, message: 'Event not found' });
     }
-    if (!(await canManageEvent(req.user, event))) {
+    if (!(await canManageEvent(req.user, event, { permission: 'event.view', req }))) {
       return res.status(403).json({ success: false, message: 'You are not authorized to edit this event.' });
     }
     // The form edits the end as PKT date + time. Older events have no stored end: prefill the end the
@@ -1262,7 +1256,7 @@ export const deleteEvent = async (req, res) => {
   try {
     const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found' });
-    if (!(await canManageEvent(req.user, event))) {
+    if (!(await canManageEvent(req.user, event, { permission: 'event.delete', req }))) {
       return res.status(403).json({ success: false, message: 'You can only delete your own events.' });
     }
 
