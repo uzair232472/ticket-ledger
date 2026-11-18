@@ -14,8 +14,8 @@
  * the server acknowledged its scan. While a scan is unprocessed its legacy mirror stays, so an older scanner build
  * (rollback) still uploads it.
  */
-import * as M from './gateScanModel';
-import { deviceId as getDeviceId, legacyAll, legacyDelete, legacyPut } from './gateOffline';
+import * as M from './gateScanModel.js';
+import { deviceId as getDeviceId, legacyAll, legacyDelete, legacyPut } from './gateOffline.js';
 
 const DB_NAME = 'tl-gate-scans';
 const DB_VERSION = 1;
@@ -169,9 +169,10 @@ export function initScanStore() {
 
 /**
  * Saves a scan before its verdict is shown. Returns the record. Throws if the device could not store it (the
- * scanner must then not admit on that verdict).
+ * scanner must then not admit on that verdict). `sign(text)` (the device signing key, gateDeviceAuth.js) signs the
+ * record's canonical text; if signing fails the record stays unsigned (the server accepts it and reports it).
  */
-export async function recordScan(input) {
+export async function recordScan(input, { sign } = {}) {
   await initScanStore();
   const deviceId = getDeviceId();
   const record = await inTx(['scans', 'meta'], 'readwrite', async ({ scans, meta }) => {
@@ -185,8 +186,23 @@ export async function recordScan(input) {
     scans.add(r);
     return r;
   });
-  if (record.syncState === 'PENDING') await mirror([record]);
-  return record;
+  let saved = record;
+  if (sign && !record.sig && record.syncState === 'PENDING') {
+    // Signed after the sequence number is fixed; WebCrypto can't run inside an IndexedDB transaction
+    const sig = await sign(M.canonicalScan(record)).catch(() => null);
+    if (sig) {
+      // Only adds the signature: a record another tab already claimed for upload is not reset
+      saved = await inTx('scans', 'readwrite', async ({ scans }) => {
+        const now = await asPromise(scans.get(record.scanId));
+        if (!now || now.sig) return now || record;
+        const next = { ...now, sig };
+        scans.put(next);
+        return next;
+      });
+    }
+  }
+  if (saved.syncState === 'PENDING') await mirror([saved]);
+  return saved;
 }
 
 // ---------- Reading ----------

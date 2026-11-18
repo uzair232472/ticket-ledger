@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { orgGuard, requireAuth } from '../middlewares/auth.js';
 import * as c from '../controllers/checkinController.js';
-import { deviceEnrollRateLimiter, gateSyncRateLimiter } from '../middlewares/rateLimit.js';
+import { deviceEnrollRateLimiter, gateDeviceRateLimiter, gatePackRateLimiter, gateSyncRateLimiter } from '../middlewares/rateLimit.js';
 
 // Gate check-in. Event access (assigned gate staff, owning organizer, Super Admin) is checked per request.
 const router = Router();
@@ -10,16 +10,16 @@ const viewers = orgGuard('gate.stats');
 const supervisors = orgGuard('gate.supervise');
 
 router.get('/events', scanners, c.myEvents);
-router.get('/events/:id/pack', scanners, c.pack);
+router.get('/events/:id/pack', scanners, gatePackRateLimiter, c.pack);
 router.get('/events/:id/stats', viewers, c.stats);
 router.get('/events/:id/recent', viewers, c.recent);
 router.post('/devices/enroll', scanners, deviceEnrollRateLimiter, c.enroll);
-router.post('/scan', scanners, c.scanTicket);
+router.post('/scan', scanners, gateDeviceRateLimiter, c.scanTicket);
 router.post('/sync', scanners, gateSyncRateLimiter, c.syncScans);
 // Revoked devices / staff without access: scans kept as evidence (signed in only: access may be gone)
 router.post('/evidence', requireAuth, gateSyncRateLimiter, c.evidence);
-router.post('/heartbeat', scanners, c.heartbeat);
-router.get('/ping', scanners, c.ping);
+router.post('/heartbeat', scanners, gateDeviceRateLimiter, c.heartbeat);
+router.get('/ping', scanners, gateDeviceRateLimiter, c.ping);
 router.post('/devices/manifest', scanners, gateSyncRateLimiter, c.manifest);
 router.post('/exceptions', scanners, c.requestException);
 

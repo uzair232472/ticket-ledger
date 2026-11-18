@@ -6,6 +6,7 @@ import { corsOrigin } from './config/cors.js';
 import { setIO } from './config/socket.js';
 import { installSocketAuth } from './services/socketAccess.js';
 import { deviceAuthStatus } from './config/gateDeviceAuth.js';
+import { pruneSyncBatches } from './services/gateDiagnosticsService.js';
 import { retryRefunds } from './services/refundService.js';
 import nftService, { MINTABLE } from './services/nftService.js';
 import { notifyAdmins } from './services/notificationService.js';
@@ -69,6 +70,8 @@ async function startServer() {
       await runLifecycleJobs();
       await escalateOverdue();
       await runPayouts();
+      // Gate upload log older than 90 days (scan records themselves are never removed)
+      await pruneSyncBatches();
     } catch (e) {
       console.error('[Lifecycle jobs] failed:', e.message);
     }

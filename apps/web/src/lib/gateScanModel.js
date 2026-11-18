@@ -117,12 +117,26 @@ export async function checksum(items) {
 
 /** Why this record can't be uploaded as it is (same limits as POST /api/checkin/sync), or null. */
 export function uploadProblem(r) {
+  if (!r?.code) return 'The scan no longer has its ticket code';
   if (!r?.scanId || String(r.scanId).length > 80) return 'The scan has no valid id';
   if (!r.eventId) return 'The scan has no event';
   if (r.code.length < 4 || r.code.length > 400) return 'The scanned code is too short or too long to check';
   if (String(r.deviceScannedAt).length > 40) return 'The scan time is not readable';
   return null;
 }
+
+export const SCAN_SIGNATURE_VERSION = 'TL-SCAN-1';
+/**
+ * The text the device signs when a scan is recorded (tamper evidence). MUST match the API's
+ * src/services/scanSignature.js canonicalScan for the same scan as uploaded (test_gate_security.mjs checks it).
+ */
+export const canonicalScan = (r) => [SCAN_SIGNATURE_VERSION, r.scanId, r.seq ?? '', r.eventId, r.code, r.direction || 'ENTRY', r.gateId || '', r.gate || '', r.deviceScannedAt, r.localResult || ''].join('|');
+
+/**
+ * Once the server holds a scan, the device no longer needs its ticket code (a pass or manual code works like a key):
+ * it is removed from the record, leaving its last 4 characters for support.
+ */
+export const redact = (r) => (r.code ? { ...r, code: null, codeHint: String(r.code).slice(-4), redactedAt: new Date().toISOString() } : r);
 
 /** The scan as POST /api/checkin/sync takes it. clientId carries the scan id (the server echoes it back). */
 export const toUploadItem = (r) => ({
@@ -138,6 +152,7 @@ export const toUploadItem = (r) => ({
   seq: r.seq,
   ticketId: r.ticketId || undefined,
   deviceScannedAt: r.deviceScannedAt,
+  sig: r.sig || undefined,
 });
 
 /**
@@ -154,7 +169,7 @@ export function applyAcks(batch, results, now = new Date()) {
     const server = { status: a.status || 'ACCEPTED', result: a.result ?? null, reason: a.reason ?? null, conflict: Boolean(a.conflict) };
     if (a.status === 'RETRY') return { ...r, syncState: 'PENDING', lastError: a.reason || 'The server could not process this scan yet; it will be sent again.' };
     if (a.status === 'REJECTED') return { ...r, syncState: 'FAILED', lastError: a.reason || 'The server could not read this scan', server };
-    return { ...r, syncState: a.conflict ? 'CONFLICT' : 'SYNCED', syncedAt: now.toISOString(), lastError: null, server };
+    return redact({ ...r, syncState: a.conflict ? 'CONFLICT' : 'SYNCED', syncedAt: now.toISOString(), lastError: null, server });
   });
 }
 
@@ -162,7 +177,7 @@ export function applyAcks(batch, results, now = new Date()) {
 export function applyEvidenceAcks(batch, results, now = new Date()) {
   const ack = new Set((results || []).filter((x) => x?.clientId && x.status === 'QUARANTINED').map((x) => x.clientId));
   return batch.map((r) => (ack.has(r.scanId)
-    ? { ...r, syncState: 'QUARANTINED', syncedAt: now.toISOString(), lastError: null, server: { status: 'QUARANTINED', result: null, reason: 'Kept for supervisor review; did not admit anyone', conflict: false } }
+    ? redact({ ...r, syncState: 'QUARANTINED', syncedAt: now.toISOString(), lastError: null, server: { status: 'QUARANTINED', result: null, reason: 'Kept for supervisor review; did not admit anyone', conflict: false } })
     : { ...r, syncState: 'PENDING', lastError: 'The server did not confirm this scan; it will be handed in again.' }));
 }
 

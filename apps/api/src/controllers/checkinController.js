@@ -8,6 +8,7 @@ import { deviceAuthStatus } from '../config/gateDeviceAuth.js';
 import { quarantine, submitEvidence } from '../services/scanQuarantineService.js';
 import * as conflictsSvc from '../services/scanConflictService.js';
 import * as diag from '../services/gateDiagnosticsService.js';
+import { checkScanSignature } from '../services/scanSignature.js';
 
 const canScan = async (user, eventId, permission = 'gate.scan') => {
   const scope = await getScopedEventIds(user, permission);
@@ -43,6 +44,8 @@ export const myEvents = handle('Could not load your events', async (req, res) =>
 const enrollSchema = z.object({
   eventId: z.string().min(3).max(60),
   deviceId: z.string().trim().min(4).max(80),
+  // Public half of the scanner's non-extractable signing key (scanSignature.js); never a private part
+  signingKey: z.object({ kty: z.literal('EC'), crv: z.literal('P-256'), x: z.string().max(64), y: z.string().max(64) }).strict().optional(),
 });
 
 /**
@@ -52,7 +55,7 @@ const enrollSchema = z.object({
 export const enroll = handle('Could not enroll this device', async (req, res) => {
   const body = enrollSchema.parse(req.body || {});
   if (!(await canScan(req.user, body.eventId))) return notAssigned(res);
-  const out = await enrollDevice(req, body.eventId, body.deviceId);
+  const out = await enrollDevice(req, body.eventId, body.deviceId, { signingKey: body.signingKey });
   res.set('Cache-Control', 'no-store');
   res.status(201).json({ success: true, data: { ...out, auth: deviceAuthStatus() } });
 });
@@ -102,6 +105,7 @@ const syncScanSchema = z.object({
   seq: z.number().int().min(1).optional(),
   ticketId: z.string().max(64).optional(),
   deviceScannedAt: z.string().max(40).optional(),
+  sig: z.string().max(200).optional(), // the device's signature of the record (scanSignature.js)
 });
 const syncSchema = z.object({
   eventId: z.string().min(3).max(60),
@@ -123,21 +127,41 @@ export const syncScans = handle('Could not sync offline scans', async (req, res)
   try {
   const valid = [];
   const rejected = [];
+  const tampered = [];
+  let unsigned = 0;
   for (const raw of body.scans) {
     const parsed = syncScanSchema.safeParse(raw);
-    if (parsed.success) valid.push(parsed.data);
-    else rejected.push({ raw, detail: parsed.error.errors.map((e) => `${e.path.join('.') || 'scan'}: ${e.message}`).join('; ') });
+    if (!parsed.success) {
+      rejected.push({ raw, detail: parsed.error.errors.map((e) => `${e.path.join('.') || 'scan'}: ${e.message}`).join('; ') });
+      continue;
+    }
+    // A device with a signing key: the record must still match what the device signed when the scan was made
+    const sig = device.signingKey ? checkScanSignature(device.signingKey, body.eventId, raw) : 'unsigned';
+    if (sig === 'invalid') {
+      tampered.push({ raw, detail: 'Signature does not match the device key: the record was changed after it was made' });
+      continue;
+    }
+    if (sig === 'unsigned' && device.signingKey) unsigned += 1;
+    valid.push({ ...parsed.data, deviceSigned: sig === 'valid' });
   }
-  if (rejected.length) await quarantine({ companyId: device.companyId, eventId: body.eventId, deviceKey: device.deviceKey, deviceId: device.id, submittedById: req.user.id, reason: 'INVALID', scans: rejected });
-  const processed = valid.length ? await syncOffline({ scans: valid, eventId: body.eventId, staffId: req.user.id, deviceId: body.deviceId, deviceRecordId: device.id }) : [];
+  const base = { companyId: device.companyId, eventId: body.eventId, deviceKey: device.deviceKey, deviceId: device.id, submittedById: req.user.id };
+  if (rejected.length) await quarantine({ ...base, reason: 'INVALID', scans: rejected });
+  if (tampered.length) await quarantine({ ...base, reason: 'TAMPERED', scans: tampered });
+  const supervisor = await gates.isSupervisor(req, body.eventId);
+  const processed = valid.length ? await syncOffline({ scans: valid, eventId: body.eventId, staffId: req.user.id, deviceId: body.deviceId, deviceRecordId: device.id, supervisor }) : [];
+  const rejectedResult = (reason) => ({ raw, detail }) => ({ clientId: typeof raw?.clientId === 'string' ? raw.clientId : null, seq: Number.isInteger(raw?.seq) ? raw.seq : null, status: 'REJECTED', result: null, reason: reason(detail), conflict: false });
   const results = [
     ...processed,
-    ...rejected.map(({ raw, detail }) => ({ clientId: typeof raw?.clientId === 'string' ? raw.clientId : null, seq: Number.isInteger(raw?.seq) ? raw.seq : null, status: 'REJECTED', result: null, reason: `This scan could not be read and was kept for review (${detail})`, conflict: false })),
+    ...rejected.map(rejectedResult((detail) => `This scan could not be read and was kept for review (${detail})`)),
+    ...tampered.map(rejectedResult(() => 'This scan record was changed after it was made on the device (signature mismatch). It was kept for review and did not admit anyone.')),
   ];
   const acked = results.filter((r) => ['ACCEPTED', 'ALREADY_PROCESSED'].includes(r.status) && Number.isInteger(r.seq)).map((r) => r.seq);
   const lastAckedSeq = acked.length ? Math.max(...acked) : null;
   if (lastAckedSeq) await prisma.gateDevice.updateMany({ where: { id: device.id, OR: [{ lastSeqAcked: null }, { lastSeqAcked: { lt: lastAckedSeq } }] }, data: { lastSeqAcked: lastAckedSeq } });
-  await diag.recordBatch({ device, eventId: body.eventId, userId: req.user.id, kind: 'SYNC', received: body.scans.length, results, durationMs: Date.now() - started, quarantined: rejected.length, lastAckedSeq });
+  await diag.recordBatch({ device, eventId: body.eventId, userId: req.user.id, kind: 'SYNC', received: body.scans.length, results, durationMs: Date.now() - started, quarantined: rejected.length + tampered.length, lastAckedSeq });
+  // New scans numbered at or below what this device had already had acknowledged: reinstalled storage or edits
+  const regressions = device.lastSeqAcked ? results.filter((r) => r.status === 'ACCEPTED' && Number.isInteger(r.seq) && r.seq <= device.lastSeqAcked).length : 0;
+  await diag.flagSuspicious(req, device, body.eventId, { tampered: tampered.length, unsigned, rejected: rejected.length, regressions });
   const count = (status) => results.filter((r) => r.status === status).length;
   res.json({ success: true, data: { results, conflicts: results.filter((r) => r.conflict).length, accepted: count('ACCEPTED'), alreadyProcessed: count('ALREADY_PROCESSED'), rejected: count('REJECTED'), retry: count('RETRY'), lastAckedSeq } });
   } catch (err) {

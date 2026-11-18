@@ -946,6 +946,7 @@ model CheckIn {
   localResult     CheckInResult?
   localReason     String?
   conflictId      String? // the ScanConflict this scan is part of
+  deviceSigned    Boolean        @default(false) // the record carried a valid signature of its device
 
   // One record per scan per device: an upload repeated (retry, lost response, two requests at once) is the same scan
   @@unique([deviceRecordId, clientScanId])
@@ -1465,6 +1466,9 @@ model GateDevice {
   lastSyncErrorAt   DateTime?
   pendingManifest   Json? // the device's unprocessed scans, sent when a supervisor asked to see them
   manifestAt        DateTime?
+  // Public key (JWK, ECDSA P-256) of the key pair the scanner keeps non-extractable; it signs every scan record
+  signingKey        Json?
+  signingKeyAt      DateTime?
   packAt         DateTime? // when the device last downloaded the offline list
   online         Boolean      @default(true)
   userAgent      String?
@@ -1798,6 +1802,7 @@ enum QuarantineReason {
   DEVICE_REVOKED // sent by a device a supervisor revoked
   ACCESS_REMOVED // the account no longer scans for the event
   INVALID // the scan could not be read (malformed record)
+  TAMPERED // the record's signature does not match its device's key (changed after it was recorded)
 }
 
 enum QuarantineStatus {
