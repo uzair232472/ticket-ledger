@@ -16,6 +16,7 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
   let resaleListingId = null;
   let originalPrice = 0;
   let oldTicketNonce = null;
+  let oldTicketPass = null; // the signed pass Customer A held before the resale
 
   // 1. Authenticate Customer A
   await t.test('1. Authenticate Customer A (Original Ticket Holder)', async () => {
@@ -110,6 +111,8 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
     activeEventId = testTicketA.event.id;
     originalPrice = Number(testTicketA.price);
     oldTicketNonce = testTicketA.qr.nonce;
+    const { signPass } = await import('./src/services/qrPassService.js');
+    oldTicketPass = signPass(await prisma.ticket.findUnique({ where: { id: testTicketA.id } }));
 
     assert.ok(testTicketA.id);
     assert.ok(activeEventId);
@@ -255,33 +258,19 @@ test('MODULE 11 - Ticket Transfer, Controlled Resale & Anti-Scalping Tests', asy
     assert.ok(data.data.receivedCount >= 1);
   });
 
-  // 12. Invalidate old QR code: Gate turnstile scanner rejects old invalidated QR payload
-  await t.test('12. Gate turnstile rejects invalidated old QR code from previous owner', async () => {
-    // Generate forged or outdated dynamic payload using the old invalidated nonce
-    const serviceModule = await import('./src/services/qrTicketService.js');
-    const { createDynamicQRPayload } = serviceModule;
-
-    const outdatedTicket = {
-      ...testTicketA,
-      qrNonce: oldTicketNonce, // OUTDATED NONCE!
-    };
-    const outdatedPayload = createDynamicQRPayload(outdatedTicket);
+  // 12. Invalidate old QR code: the gate check (checkinService.evaluate, used by POST /api/checkin/scan and the
+  // offline sync) refuses the previous owner's pass. The old POST /api/gate/scan turnstile route is retired.
+  await t.test('12. Gate check rejects the invalidated old QR code from the previous owner', async () => {
+    const { evaluate } = await import('./src/services/checkinService.js');
+    const verdict = await evaluate(oldTicketPass, activeEventId);
+    assert.equal(verdict.result, 'RED');
+    assert.match(verdict.reason, /Old QR/);
 
     const res = await fetch(`${BASE_URL}/gate/scan`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${staffToken}`,
-      },
-      body: JSON.stringify({
-        payload: outdatedPayload,
-        gateNumber: 'GATE_NORTH_3',
-      }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${staffToken}` },
+      body: JSON.stringify({ payload: oldTicketPass, gateNumber: 'GATE_NORTH_3' }),
     });
-    const data = await res.json();
-    assert.equal(res.status, 400);
-    assert.equal(data.success, false);
-    assert.equal(data.reason, 'INVALIDATED_OLD_QR');
-    assert.match(data.message, /transferred or resold|revoked/i);
+    assert.equal(res.status, 410, 'retired turnstile route admits nothing');
   });
 });

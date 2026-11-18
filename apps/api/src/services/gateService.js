@@ -2,6 +2,9 @@ import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
 import { canAccessEvent } from './orgAccess.js';
 import { GateError, broadcast, evaluate, eventStats, resolveGate } from './checkinService.js';
+import { supervisorRoom } from './socketAccess.js';
+import { deviceHealth, openConflictsByDevice } from './gateDiagnosticsService.js';
+import { deviceAuthStatus } from '../config/gateDeviceAuth.js';
 
 /*
  * Gate management for supervisors (permission gate.supervise): gates and their types, ticket-type limits and
@@ -158,38 +161,7 @@ export async function setStaffGates(req, event, staffId, gateIds) {
 
 const STALE_MS = 2 * 60 * 1000;
 
-/**
- * Every scanner request goes through here: a new device is registered to the event's organization (recorded
- * with who first used it), a known one updates its sync status, and a revoked one is refused.
- */
-export async function touchDevice(req, eventId, deviceKey, { gate, pendingScans, packAt, online, synced } = {}) {
-  if (!deviceKey) return null;
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { companyId: true } });
-  if (!event) return null;
-  const now = new Date();
-  const status = {
-    lastSeenAt: now,
-    lastUserId: req.user.id,
-    lastEventId: eventId,
-    ...(gate ? { lastGate: gate } : {}),
-    ...(pendingScans !== undefined ? { pendingScans } : {}),
-    ...(packAt ? { packAt } : {}),
-    ...(online !== undefined ? { online } : { online: true }),
-    ...(synced ? { lastSyncAt: now } : {}),
-    userAgent: req.headers?.['user-agent']?.slice(0, 200) || null,
-  };
-  const existing = await prisma.gateDevice.findUnique({ where: { companyId_deviceKey: { companyId: event.companyId, deviceKey } } });
-  if (existing?.status === 'REVOKED') throw new GateError(403, 'This scanner device was revoked by a supervisor. Ask them to restore it, or use another device.', 'DEVICE_REVOKED');
-  if (existing) return prisma.gateDevice.update({ where: { id: existing.id }, data: status });
-  try {
-    const d = await prisma.gateDevice.create({ data: { companyId: event.companyId, deviceKey, name: `${(req.user.name || 'Staff').split(/\s+/)[0]}'s device ${deviceKey.slice(-4).toUpperCase()}`, registeredById: req.user.id, ...status } });
-    await prisma.auditLog.create({ data: { userId: req.user.id, companyId: event.companyId, action: 'GATE_DEVICE_REGISTERED', targetType: 'GateDevice', targetId: d.id, details: { name: d.name, eventId } } });
-    return d;
-  } catch (e) {
-    if (e.code === 'P2002') return prisma.gateDevice.update({ where: { companyId_deviceKey: { companyId: event.companyId, deviceKey } }, data: status });
-    throw e;
-  }
-}
+// Device identity, enrollment and per-request authentication live in deviceAuthService.js
 
 export async function listDevices(event) {
   const devices = await prisma.gateDevice.findMany({ where: { companyId: event.companyId }, orderBy: [{ status: 'asc' }, { lastSeenAt: 'desc' }] });
@@ -197,6 +169,8 @@ export async function listDevices(event) {
   const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : [];
   const name = Object.fromEntries(users.map((u) => [u.id, u.name]));
   const now = Date.now();
+  const conflicts = await openConflictsByDevice(event.id);
+  const authMode = deviceAuthStatus().mode;
   return devices.map((d) => {
     const seen = d.lastSeenAt ? now - d.lastSeenAt.getTime() : Infinity;
     // in sync · waiting to upload · not seen recently · offline · revoked
@@ -222,26 +196,58 @@ export async function listDevices(event) {
       revokedAt: d.revokedAt,
       revokedBy: d.revokedById ? name[d.revokedById] || null : null,
       revokeReason: d.revokeReason,
+      // Enrollment (device token): enrolled devices authenticate with their token; legacy ones only with their id
+      enrolled: Boolean(d.tokenHash),
+      tokenIssuedAt: d.tokenIssuedAt,
+      enrolledBy: d.enrolledById ? name[d.enrolledById] || null : null,
+      legacyRequests: d.legacyRequests,
+      lastLegacyAt: d.lastLegacyAt,
+      authFailures: d.authFailures,
+      lastAuthFailureAt: d.lastAuthFailureAt,
+      // Diagnostics (scanner heartbeat + server upload log)
+      ...deviceHealth(d, { now, openConflicts: conflicts[d.id] || 0, authMode, atEvent: d.lastEventId === event.id }),
+      openConflicts: conflicts[d.id] || 0,
+      failedScans: d.failedScans,
+      stuckScans: d.stuckScans,
+      oldestPendingAt: d.oldestPendingAt,
+      lastScanAt: d.lastScanAt,
+      appVersion: d.appVersion,
+      storagePersisted: d.storagePersisted,
+      clockSkewMs: d.clockSkewMs,
+      lastSyncError: d.lastSyncError,
+      lastSyncErrorAt: d.lastSyncErrorAt,
+      lastSeqAcked: d.lastSeqAcked,
     };
   });
 }
 
-export async function updateDevice(req, event, deviceId, { name, status, reason }) {
+/** The raw device row is never sent to the browser (it holds the token hash). */
+const deviceView = (d) => d && { id: d.id, name: d.name, status: d.status, enrolled: Boolean(d.tokenHash), revokedAt: d.revokedAt, revokeReason: d.revokeReason, tokenIssuedAt: d.tokenIssuedAt };
+
+/**
+ * Rename, revoke / restore, or reset the enrollment of a device. Revoking and resetting both delete the device's
+ * token hash, so its credential stops working at once; a restored or reset device enrolls again on its next request.
+ */
+export async function updateDevice(req, event, deviceId, { name, status, reason, resetEnrollment }) {
   const d = await prisma.gateDevice.findFirst({ where: { id: deviceId, companyId: event.companyId } });
   if (!d) throw new GateError(404, 'Device not found.');
   if (status === 'REVOKED' && !reason) throw new GateError(400, 'Say why the device is revoked (lost, stolen, staff left…).');
+  if (resetEnrollment && !reason) throw new GateError(400, 'Say why the enrollment is reset (e.g. browser data was cleared).');
   const data = {};
   if (name) data.name = name;
-  if (status && status !== d.status) Object.assign(data, status === 'REVOKED' ? { status, revokedAt: new Date(), revokedById: req.user.id, revokeReason: reason } : { status, revokedAt: null, revokedById: null, revokeReason: null });
-  if (!Object.keys(data).length) return d;
+  if (status && status !== d.status) Object.assign(data, status === 'REVOKED' ? { status, revokedAt: new Date(), revokedById: req.user.id, revokeReason: reason, tokenHash: null } : { status, revokedAt: null, revokedById: null, revokeReason: null });
+  if (resetEnrollment && d.tokenHash) data.tokenHash = null;
+  if (!Object.keys(data).length) return deviceView(d);
+  const action = data.status === 'REVOKED' ? 'GATE_DEVICE_REVOKED' : data.status === 'ACTIVE' ? 'GATE_DEVICE_RESTORED' : 'tokenHash' in data ? 'GATE_DEVICE_ENROLLMENT_RESET' : 'GATE_DEVICE_RENAMED';
   const u = await prisma.$transaction(async (tx) => {
     const row = await tx.gateDevice.update({ where: { id: deviceId }, data });
-    await audit(tx, { req, companyId: event.companyId, action: data.status === 'REVOKED' ? 'GATE_DEVICE_REVOKED' : data.status === 'ACTIVE' ? 'GATE_DEVICE_RESTORED' : 'GATE_DEVICE_RENAMED', targetType: 'GateDevice', targetId: deviceId, details: { name: row.name, reason: reason || null, pendingScans: d.pendingScans } });
+    await audit(tx, { req, companyId: event.companyId, action, targetType: 'GateDevice', targetId: deviceId, details: { name: row.name, reason: reason || null, pendingScans: d.pendingScans, wasEnrolled: Boolean(d.tokenHash), credentialInvalidated: 'tokenHash' in data && Boolean(d.tokenHash) } });
     return row;
   });
   // The device stops at its next request; this tells it at once if it is connected
-  if (data.status === 'REVOKED' && d.lastUserId) getIO()?.to(`user_${d.lastUserId}`).emit('gate:device-revoked', { deviceKey: d.deviceKey });
-  return u;
+  if (d.lastUserId && action === 'GATE_DEVICE_REVOKED') getIO()?.to(`user_${d.lastUserId}`).emit('gate:device-revoked', { deviceKey: d.deviceKey });
+  if (d.lastUserId && action === 'GATE_DEVICE_ENROLLMENT_RESET') getIO()?.to(`user_${d.lastUserId}`).emit('gate:device-reset', { deviceKey: d.deviceKey });
+  return deviceView(u);
 }
 
 // ── Exceptions ─────────────────────────────────────────────────────────────────────────────────────────
@@ -254,7 +260,8 @@ export async function requestException(req, { eventId, code, gateId, gate, scanR
   });
   const event = await prisma.event.findUnique({ where: { id: eventId }, select: { companyId: true, name: true } });
   await prisma.auditLog.create({ data: { userId: req.user.id, companyId: event.companyId, action: 'GATE_EXCEPTION_REQUESTED', targetType: 'GateException', targetId: ex.id, details: { eventId, gate, scanResult, reason, ticketId: ticket?.id || null } } });
-  getIO()?.to(`event_${eventId}`).emit('gate:exception', { id: ex.id, eventId, gate, reason });
+  // Supervisors only (socketAccess.js puts gate.supervise members in this room)
+  getIO()?.to(supervisorRoom(eventId)).emit('gate:exception', { id: ex.id, eventId, gate, reason });
   return ex;
 }
 
@@ -282,23 +289,33 @@ export async function decideException(req, event, exceptionId, { approve, note }
   if (!ex) throw new GateError(404, 'Exception request not found.');
   if (ex.status !== 'PENDING') throw new GateError(409, `This request was already ${ex.status.toLowerCase()}.`);
   if (!note) throw new GateError(400, 'Add a note explaining the decision (it is kept in the audit log).');
-  let checkInId = null;
+  let t = null;
   if (approve) {
     if (!ex.ticketId) throw new GateError(409, 'No ticket was found for this request, so it cannot be admitted. Deny it, or sell the guest a ticket.');
-    const t = await prisma.ticket.findUnique({ where: { id: ex.ticketId }, include: { order: { select: { status: true } } } });
+    t = await prisma.ticket.findUnique({ where: { id: ex.ticketId }, include: { order: { select: { status: true } } } });
     if (!t || t.eventId !== event.id || t.order?.status !== 'SUCCESSFUL' || ['CANCELLED', 'TRANSFERRED', 'RESOLD'].includes(t.status)) throw new GateError(409, 'This ticket is not valid for this event (unpaid, cancelled or moved), so it cannot be admitted by exception.');
-    const now = new Date();
-    const first = t.status === 'ACTIVE';
-    await prisma.ticket.update({ where: { id: t.id }, data: first ? { status: 'SCANNED', checkedInAt: now, checkedInById: ex.requestedById, gate: ex.gate, isInside: true, entryCount: 1 } : { isInside: true, entryCount: { increment: 1 } } });
-    const row = await prisma.checkIn.create({
-      data: { ticketId: t.id, eventId: event.id, staffId: ex.requestedById, deviceId: ex.deviceId, gate: ex.gate, gateId: ex.gateId, direction: 'ENTRY', reentry: !first, result: 'GREEN', reason: `Admitted by exception (${req.user.name}): ${note}`, exceptionId: ex.id },
-    });
-    checkInId = row.id;
   }
+  // The decision, the admission and its log in one transaction. Both updates are conditional: a second supervisor
+  // deciding at the same moment, or a scan changing the ticket meanwhile, makes this one stop with nothing written.
   const updated = await prisma.$transaction(async (tx) => {
-    const u = await tx.gateException.update({ where: { id: ex.id }, data: { status: approve ? 'APPROVED' : 'DENIED', decidedById: req.user.id, decisionNote: note, decidedAt: new Date(), checkInId } });
+    let checkInId = null;
+    if (approve) {
+      const now = new Date();
+      const first = t.status === 'ACTIVE';
+      const { count } = await tx.ticket.updateMany({
+        where: first ? { id: t.id, status: 'ACTIVE' } : { id: t.id, status: t.status, entryCount: t.entryCount },
+        data: first ? { status: 'SCANNED', checkedInAt: now, checkedInById: ex.requestedById, gate: ex.gate, isInside: true, entryCount: 1 } : { isInside: true, entryCount: { increment: 1 } },
+      });
+      if (!count) throw new GateError(409, 'The ticket changed while you were deciding (it was just scanned). Look at it again before approving.', 'TICKET_CHANGED');
+      const row = await tx.checkIn.create({
+        data: { ticketId: t.id, eventId: event.id, staffId: ex.requestedById, deviceId: ex.deviceId, gate: ex.gate, gateId: ex.gateId, direction: 'ENTRY', reentry: !first, result: 'GREEN', reason: `Admitted by exception (${req.user.name}): ${note}`, exceptionId: ex.id },
+      });
+      checkInId = row.id;
+    }
+    const decided = await tx.gateException.updateMany({ where: { id: ex.id, status: 'PENDING' }, data: { status: approve ? 'APPROVED' : 'DENIED', decidedById: req.user.id, decisionNote: note, decidedAt: new Date(), checkInId } });
+    if (!decided.count) throw new GateError(409, 'Another supervisor decided this request at the same moment.', 'ALREADY_DECIDED');
     await audit(tx, { req, companyId: event.companyId, action: approve ? 'GATE_EXCEPTION_APPROVED' : 'GATE_EXCEPTION_DENIED', targetType: 'GateException', targetId: ex.id, details: { eventId: event.id, ticketId: ex.ticketId, gate: ex.gate, scanResult: ex.scanResult, reason: ex.reason, note, checkInId } });
-    return u;
+    return tx.gateException.findUnique({ where: { id: ex.id } });
   });
   getIO()?.to(`user_${ex.requestedById}`).emit('gate:exception-decided', { id: ex.id, status: updated.status, note });
   if (approve) await broadcast(event.id, null);
@@ -327,7 +344,11 @@ export async function reverseCheckIn(req, event, checkInId, reason) {
       data: firstEntry ? { status: 'ACTIVE', checkedInAt: null, checkedInById: null, gate: null, isInside: false, entryCount: 0, lastExitAt: null } : { isInside: false, entryCount: { decrement: 1 } },
     });
     await tx.checkIn.update({ where: { id: c.id }, data: { reversedAt: new Date(), reversedById: req.user.id, reversalReason: reason } });
-    if (firstEntry) await tx.gateScan.deleteMany({ where: { ticketId: t.id, result: 'VALID_FIRST_SCAN' } });
+    // The GateScan mirror is kept and marked reversed (it leaves the turnout counts, not the history). Rows from
+    // before check-in ids were linked are matched as the old code did: the ticket's first-entry rows.
+    const mark = { reversedAt: new Date(), reversedById: req.user.id, reversalReason: reason };
+    const linked = await tx.gateScan.updateMany({ where: { checkInId: c.id, reversedAt: null }, data: mark });
+    if (!linked.count && firstEntry) await tx.gateScan.updateMany({ where: { ticketId: t.id, checkInId: null, result: 'VALID_FIRST_SCAN', reversedAt: null }, data: mark });
     await audit(tx, { req, companyId: event.companyId, action: 'GATE_CHECKIN_REVERSED', targetType: 'CheckIn', targetId: c.id, details: { eventId: event.id, ticketId: t.id, gate: c.gate, scannedAt: c.scannedAt, reason, firstEntry } });
   });
   getIO()?.to(`user_${t.userId}`).emit('ticket:checkin-reversed', { ticketId: t.id });

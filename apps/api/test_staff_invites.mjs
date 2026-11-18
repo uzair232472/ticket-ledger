@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import app from './src/app.js';
 import prisma from './src/config/prisma.js';
 import { getLastSentEmail } from './src/services/emailService.js';
-import { createDynamicQRPayload } from './src/services/qrTicketService.js';
+import { signPass } from './src/services/qrPassService.js';
 
 test('Gate staff invites, ownership checks and staff access', async (t) => {
   const server = http.createServer(app);
@@ -155,12 +155,15 @@ test('Gate staff invites, ownership checks and staff access', async (t) => {
 
   await t.test('9. Gate staff cannot scan tickets for events they are not assigned to', async (st) => {
     if (!ticket) return st.skip('No seeded ticket to scan');
-    const res = await call('POST', '/gate/scan', staffToken, { payload: createDynamicQRPayload(ticket) });
-    assert.strictEqual(res.status, 400);
+    // Supported check-in flow (the old POST /api/gate/scan is retired)
+    const res = await call('POST', '/checkin/scan', staffToken, { eventId: ticket.eventId, code: signPass(ticket), gate: 'Main', deviceId: 'staff-invite-test-device' });
+    assert.strictEqual(res.status, 403);
     assert.match(res.body.message, /not assigned/);
+    assert.strictEqual((await prisma.ticket.findUnique({ where: { id: ticket.id } })).status, ticket.status, 'nothing admitted');
 
-    const stats = await call('GET', `/gate/stats/${ticket.eventId}`, staffToken);
+    const stats = await call('GET', `/checkin/events/${ticket.eventId}/stats`, staffToken);
     assert.strictEqual(stats.status, 403);
+    assert.strictEqual((await call('GET', `/gate/stats/${ticket.eventId}`, staffToken)).status, 403);
   });
 
   await t.test('10. Inviting existing staff of the same company assigns them without a new account', async () => {

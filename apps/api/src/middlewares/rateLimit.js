@@ -42,3 +42,25 @@ export const contactRateLimiter = rateLimit({
   skip: isTestRun,
   handler: tooManyRequests,
 });
+
+// Scanner device enrollment (issues device credentials): 10 per minute per signed-in user (IP when not signed in)
+export const deviceEnrollRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 10 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
+
+// Offline scan uploads and evidence hand-ins: 120 requests per minute per signed-in user (each carries up to 500 scans)
+export const gateSyncRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 120 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});

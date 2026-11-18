@@ -209,7 +209,8 @@ const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null
     },
   });
 
-  const validScans = gateScans.filter((s) => s.result === 'VALID_FIRST_SCAN').length;
+  // Reversed admissions stay in the log but are not attendance
+  const validScans = gateScans.filter((s) => s.result === 'VALID_FIRST_SCAN' && !s.reversedAt).length;
   const duplicateScans = gateScans.filter((s) => s.result === 'ALREADY_SCANNED').length;
   const invalidScans = gateScans.filter((s) => s.result === 'INVALID_SCAN').length;
   const turnoutPercentage = totalTicketsSold > 0 ? Math.round((validScans / totalTicketsSold) * 100) : 0;

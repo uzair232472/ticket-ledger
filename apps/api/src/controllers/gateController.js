@@ -2,65 +2,22 @@ import prisma from '../config/prisma.js';
 import {
   createDynamicQRPayload,
   generateQRDataUrl,
-  processGateScan,
-  verifyOfflineHMAC,
   ROTATION_WINDOW_SECONDS,
 } from '../services/qrTicketService.js';
-import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { getScopedEventIds } from '../services/accessService.js';
 import { requestContext } from '../services/orgAccess.js';
 
 /**
- * 1. Process Gate Turnstile Scan (Dynamic QR Verification & Double-Entry Block)
+ * 1. POST /api/gate/scan: retired. It admitted tickets without device authentication, gate permissions or the
+ * re-entry policy. Scanners use POST /api/checkin/scan (online) and POST /api/checkin/sync (offline queue).
  */
 export const scanTicket = async (req, res) => {
-  try {
-    const { payload, gateNumber, offlineMode } = req.body;
-    const staffId = req.user.id;
-
-    if (!payload) {
-      return res.status(400).json({
-        success: false,
-        result: 'INVALID_SCAN',
-        message: 'Missing ticket QR payload',
-      });
-    }
-
-    const result = await processGateScan({
-      payload,
-      staffId,
-      allowedEventIds: await getScopedEventIds(req.user),
-      gateNumber: gateNumber || 'Gate 1 - Turnstile A',
-      offlineMode: Boolean(offlineMode),
-    });
-
-    if (result.valid && result.result === 'VALID_FIRST_SCAN') {
-      behaviorService.trackBehavior({
-        req,
-        userId: result.ticket?.attendee?.id || result.ticket?.userId || null,
-        action: BEHAVIOR_ACTIONS.GATE_CHECKED_IN,
-        eventId: result.ticket?.event?.id || null,
-        metadata: {
-          ticketId: result.ticket?.id,
-          gateNumber: gateNumber || 'Gate 1',
-          staffId,
-        },
-      });
-    }
-
-    const statusCode = result.valid ? 200 : 400;
-    return res.status(statusCode).json({
-      success: result.valid,
-      ...result,
-    });
-  } catch (error) {
-    console.error('Error during gate scan:', error);
-    return res.status(500).json({
-      success: false,
-      result: 'SERVER_ERROR',
-      message: error.message,
-    });
-  }
+  console.warn(`[gate] retired POST /api/gate/scan called by user ${req.user?.id} from ${req.ip}`);
+  return res.status(410).json({
+    success: false,
+    code: 'GATE_SCAN_RETIRED',
+    message: 'This scanning endpoint was retired. Use POST /api/checkin/scan from the TicketLedger gate scanner.',
+  });
 };
 
 /**
@@ -193,7 +150,8 @@ export const getEventGateStats = async (req, res) => {
       where: { ticket: { eventId } },
     });
 
-    const validFirstScans = allScans.filter((s) => s.result === 'VALID_FIRST_SCAN').length;
+    // Reversed admissions stay in the log but are not attendance
+    const validFirstScans = allScans.filter((s) => s.result === 'VALID_FIRST_SCAN' && !s.reversedAt).length;
     const alreadyScannedAttempts = allScans.filter((s) => s.result === 'ALREADY_SCANNED').length;
     const invalidScans = allScans.filter((s) => s.result === 'INVALID_SCAN').length;
 

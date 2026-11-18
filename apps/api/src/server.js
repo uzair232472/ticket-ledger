@@ -4,6 +4,8 @@ import app from './app.js';
 import { connectRedis } from './config/redis.js';
 import { corsOrigin } from './config/cors.js';
 import { setIO } from './config/socket.js';
+import { installSocketAuth } from './services/socketAccess.js';
+import { deviceAuthStatus } from './config/gateDeviceAuth.js';
 import { retryRefunds } from './services/refundService.js';
 import nftService, { MINTABLE } from './services/nftService.js';
 import { notifyAdmins } from './services/notificationService.js';
@@ -30,24 +32,10 @@ export const io = new Server(server, {
 });
 setIO(io);
 
+// Authenticated rooms (user, event, supervisors); anonymous sockets only get public broadcasts
+installSocketAuth(io);
 io.on('connection', (socket) => {
-  console.log(`⚡ Socket client connected: ${socket.id}`);
-
-  // Allow client to join personal notification room
-  socket.on('join_user_room', (userId) => {
-    if (userId) {
-      socket.join(`user_${userId}`);
-    }
-  });
-
-  // Live gate entry counters for one event (scanners, organizer dashboard)
-  socket.on('join_event_room', (eventId) => {
-    if (typeof eventId === 'string' && eventId.length < 64) socket.join(`event_${eventId}`);
-  });
-  socket.on('leave_event_room', (eventId) => {
-    if (typeof eventId === 'string') socket.leave(`event_${eventId}`);
-  });
-
+  console.log(`⚡ Socket client connected: ${socket.id}${socket.data.userId ? ' (signed in)' : ''}`);
   socket.on('disconnect', () => {
     console.log(`🔌 Socket client disconnected: ${socket.id}`);
   });
@@ -57,6 +45,8 @@ io.on('connection', (socket) => {
 async function startServer() {
   // Unsafe secrets stop the server here, not on the first login or ticket
   assertSecrets();
+  const gateAuth = deviceAuthStatus();
+  console.log(`🔐 Gate device auth: ${gateAuth.mode} (configured: ${gateAuth.configured}; enforced for every device from ${gateAuth.deadline})`);
   await connectRedis();
   // Minting mode (live / simulation / disabled) and the read-only chain checks (config/chain.js)
   const minting = await nftService.configure();

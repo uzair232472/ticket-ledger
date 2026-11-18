@@ -1,6 +1,7 @@
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
 import { verifyPass, normaliseManualCode, looksLikeManualCode, ensureManualCodes, getPublicKey } from './qrPassService.js';
+import { announceConflicts, classifyConflict, conflictReason, recordConflict } from './scanConflictService.js';
 
 /**
  * Gate check-in.
@@ -16,13 +17,19 @@ import { verifyPass, normaliseManualCode, looksLikeManualCode, ensureManualCodes
  *
  * Every scan, admitted or not, is logged in CheckIn (fraud evidence and audit trail). Admission is a single
  * conditional UPDATE, so two gates scanning the same ticket at the same moment can't both let it in.
+ *
+ * Idempotency: a scan sent with its device scan id (clientScanId) is processed at most once per device. The
+ * admission, its CheckIn and its GateScan row are written in one transaction, and CheckIn is unique on
+ * (deviceRecordId, clientScanId): a repeated upload (retry, lost response, two requests at once) rolls back and
+ * gets the first result back. The same scan id from another device is a different scan.
  */
 
 export class GateError extends Error {
-  constructor(status, message, code) {
+  constructor(status, message, code, extra) {
     super(message);
     this.status = status;
     this.code = code;
+    this.extra = extra; // extra fields for the response body
   }
 }
 
@@ -69,44 +76,44 @@ export function reentriesLeft(event, entryCount) {
  * { result: 'GREEN'|'YELLOW'|'RED', reason, ticket?, firstScan?, reentry? }.
  * opts: { direction = 'ENTRY', gate: EventGate row (or null), gateNames: names of gates admitting this ticket }
  */
-export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null, gates = [] } = {}) {
+export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null, gates = [] } = {}, db = prisma) {
   const text = String(raw || '').trim();
   let ticket = null;
   let qrVersion = null;
 
   if (looksLikeManualCode(text)) {
-    ticket = await prisma.ticket.findUnique({ where: { manualCode: normaliseManualCode(text) }, include: ticketInclude });
-    if (!ticket) return { result: 'RED', reason: 'No ticket has this code' };
+    ticket = await db.ticket.findUnique({ where: { manualCode: normaliseManualCode(text) }, include: ticketInclude });
+    if (!ticket) return { result: 'RED', code: 'NOT_FOUND', reason: 'No ticket has this code' };
     qrVersion = ticket.qrVersion; // codes are replaced on transfer, so a matching code is the current one
   } else {
     // 1. Signature
     const pass = verifyPass(text);
-    if (!pass.ok) return { result: 'RED', reason: pass.reason };
+    if (!pass.ok) return { result: 'RED', code: 'BAD_PASS', reason: pass.reason };
     // 2. Exists
-    ticket = await prisma.ticket.findUnique({ where: { id: pass.ticketId }, include: ticketInclude });
-    if (!ticket || ticket.eventId !== pass.eventId) return { result: 'RED', reason: 'Invalid ticket (not found)' };
+    ticket = await db.ticket.findUnique({ where: { id: pass.ticketId }, include: ticketInclude });
+    if (!ticket || ticket.eventId !== pass.eventId) return { result: 'RED', code: 'NOT_FOUND', reason: 'Invalid ticket (not found)' };
     qrVersion = pass.qrVersion;
   }
 
   // 3. Right event
   if (eventId && ticket.eventId !== eventId) {
-    return { result: 'RED', reason: `Ticket is for a different event (${ticket.event?.name || 'another event'})`, ticket };
+    return { result: 'RED', code: 'WRONG_EVENT', reason: `Ticket is for a different event (${ticket.event?.name || 'another event'})`, ticket };
   }
   // 5. Current QR (the old owner's QR after a transfer / resale)
-  if (qrVersion !== ticket.qrVersion) return { result: 'RED', reason: 'Old QR: this ticket was transferred', ticket };
+  if (qrVersion !== ticket.qrVersion) return { result: 'RED', code: 'OLD_QR', reason: 'Old QR: this ticket was transferred', ticket };
   // Placeholder tickets of an unfinished checkout are never valid
-  if (ticket.order?.status !== 'SUCCESSFUL') return { result: 'RED', reason: 'Ticket was never paid for', ticket };
-  if (ticket.event?.status === 'CANCELLED') return { result: 'RED', reason: 'Event was cancelled', ticket };
+  if (ticket.order?.status !== 'SUCCESSFUL') return { result: 'RED', code: 'UNPAID', reason: 'Ticket was never paid for', ticket };
+  if (ticket.event?.status === 'CANCELLED') return { result: 'RED', code: 'EVENT_CANCELLED', reason: 'Event was cancelled', ticket };
   // 6. Refunded / cancelled / moved
-  if (ticket.status === 'CANCELLED') return { result: 'RED', reason: 'Ticket refunded / cancelled', ticket };
-  if (ticket.status === 'TRANSFERRED' || ticket.status === 'RESOLD') return { result: 'RED', reason: 'Old QR: this ticket was transferred', ticket };
+  if (ticket.status === 'CANCELLED') return { result: 'RED', code: 'CANCELLED', reason: 'Ticket refunded / cancelled', ticket };
+  if (ticket.status === 'TRANSFERRED' || ticket.status === 'RESOLD') return { result: 'RED', code: 'TRANSFERRED', reason: 'Old QR: this ticket was transferred', ticket };
 
   const first = ticket.checkedInAt && { at: ticket.checkedInAt, gate: ticket.gate, by: ticket.checkedInBy?.name };
 
   // Leaving the venue
   if (direction === 'EXIT') {
-    if (ticket.status !== 'SCANNED') return { result: 'RED', reason: "This ticket hasn't entered yet", ticket };
-    if (!ticket.isInside) return { result: 'YELLOW', reason: ticket.lastExitAt ? `Already left at ${timeOf(ticket.lastExitAt)}` : 'Already outside', ticket, firstScan: first };
+    if (ticket.status !== 'SCANNED') return { result: 'RED', code: 'NOT_ENTERED', reason: "This ticket hasn't entered yet", ticket };
+    if (!ticket.isInside) return { result: 'YELLOW', code: 'ALREADY_OUTSIDE', reason: ticket.lastExitAt ? `Already left at ${timeOf(ticket.lastExitAt)}` : 'Already outside', ticket, firstScan: first };
     const left = reentriesLeft(ticket.event, ticket.entryCount);
     return { result: 'GREEN', reason: left ? 'Exit recorded. Re-entry allowed' : 'Exit recorded. No re-entry with this ticket', ticket, qrVersion };
   }
@@ -122,6 +129,7 @@ export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null,
     if (ticket.isInside || !ticket.lastExitAt) {
       return {
         result: 'YELLOW',
+        code: 'ALREADY_USED',
         reason: ticket.checkedInAt ? `Already scanned at ${timeOf(ticket.checkedInAt)}${ticket.gate ? `, ${ticket.gate}` : ''}` : 'Already scanned',
         ticket,
         firstScan: first,
@@ -131,6 +139,7 @@ export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null,
     if (reentriesLeft(ticket.event, ticket.entryCount) > 0) return { result: 'GREEN', reason: 'Re-entry allowed', ticket, qrVersion, reentry: true };
     return {
       result: 'YELLOW',
+      code: ticket.event?.reentryPolicy === 'LIMITED' ? 'REENTRY_LIMIT' : 'NO_REENTRY',
       reason: ticket.event?.reentryPolicy === 'LIMITED' ? `Re-entry limit reached (left at ${timeOf(ticket.lastExitAt)})` : `Left at ${timeOf(ticket.lastExitAt)}: no re-entry for this event`,
       ticket,
       firstScan: first,
@@ -142,9 +151,9 @@ export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null,
 
 const LEGACY_RESULT = { GREEN: 'VALID_FIRST_SCAN', YELLOW: 'ALREADY_SCANNED', RED: 'INVALID_SCAN' };
 
-async function logScan({ verdict, eventId, staffId, deviceId, gate, gateId, direction = 'ENTRY', offline, scannedAt, conflict = false, exceptionId = null }) {
+async function logScan({ verdict, eventId, staffId, deviceId, gate, gateId, direction = 'ENTRY', offline, scannedAt, conflict = false, exceptionId = null, evidence = {} }, db = prisma) {
   const ticketId = verdict.ticket?.id || null;
-  const row = await prisma.checkIn.create({
+  const row = await db.checkIn.create({
     data: {
       ticketId,
       eventId,
@@ -161,12 +170,18 @@ async function logScan({ verdict, eventId, staffId, deviceId, gate, gateId, dire
       exceptionId,
       scannedAt,
       syncedAt: offline ? new Date() : null,
+      clientScanId: evidence.clientScanId || null,
+      deviceRecordId: evidence.deviceRecordId || null,
+      deviceSeq: Number.isInteger(evidence.deviceSeq) ? evidence.deviceSeq : null,
+      deviceScannedAt: evidence.deviceScannedAt ? String(evidence.deviceScannedAt).slice(0, 40) : null,
+      localResult: evidence.localResult || null,
+      localReason: evidence.localReason ? String(evidence.localReason).slice(0, 300) : null,
     },
   });
   // The older GateScan log still feeds the dashboards' turnout figures (entries only)
   if (ticketId && direction === 'ENTRY') {
-    await prisma.gateScan.create({
-      data: { ticketId, staffId, result: LEGACY_RESULT[verdict.result], gateNumber: gate || null, scanTime: scannedAt, notes: verdict.reason },
+    await db.gateScan.create({
+      data: { ticketId, staffId, result: LEGACY_RESULT[verdict.result], gateNumber: gate || null, scanTime: scannedAt, notes: verdict.reason, checkInId: row.id },
     });
   }
   return row;
@@ -176,7 +191,7 @@ async function logScan({ verdict, eventId, staffId, deviceId, gate, gateId, dire
  * Applies a GREEN verdict to the ticket with one conditional UPDATE (first entry, re-entry or exit). Returns the
  * verdict as it now stands: if another scan changed the ticket first, it is evaluated again.
  */
-async function admit(verdict, { code, eventId, staffId, gate, gateId, direction, at, opts }) {
+async function admit(verdict, { code, eventId, staffId, gate, gateId, direction, at, opts }, db = prisma) {
   const t = verdict.ticket;
   let where;
   let data;
@@ -190,14 +205,35 @@ async function admit(verdict, { code, eventId, staffId, gate, gateId, direction,
     where = { id: t.id, status: 'ACTIVE', qrVersion: verdict.qrVersion };
     data = { status: 'SCANNED', checkedInAt: at, checkedInById: staffId, gate: gate || null, isInside: true, entryCount: 1 };
   }
-  const { count } = await prisma.ticket.updateMany({ where, data });
+  const { count } = await db.ticket.updateMany({ where, data });
   if (count) {
     const after = direction === 'EXIT' ? { isInside: false, lastExitAt: at } : verdict.reentry ? { isInside: true, entryCount: t.entryCount + 1 } : { status: 'SCANNED', checkedInAt: at, gate: gate || null, isInside: true, entryCount: 1 };
     return { ...verdict, ticket: { ...t, ...after }, admitted: true };
   }
-  const again = await evaluate(code, eventId, opts);
-  if (again.result === 'GREEN') return { result: 'RED', reason: 'Ticket changed while scanning; scan again', ticket: again.ticket };
+  const again = await evaluate(code, eventId, opts, db);
+  if (again.result === 'GREEN') return { result: 'RED', code: 'CHANGED_WHILE_SCANNING', reason: 'Ticket changed while scanning; scan again', ticket: again.ticket };
   return again;
+}
+
+/** The first processing of this device's scan, if any (idempotency key: device + scan id). */
+const priorCheckIn = (deviceRecordId, clientScanId) => (deviceRecordId && clientScanId ? prisma.checkIn.findUnique({ where: { deviceRecordId_clientScanId: { deviceRecordId, clientScanId } } }) : null);
+const isDuplicateScan = (e) => e?.code === 'P2002' && [e.meta?.target].flat().some((t) => String(t).includes('clientScanId'));
+
+/**
+ * Runs fn(tx) in a transaction keyed by the scan id. Returns { prior } when this device's scan was already
+ * processed (before or concurrently: the losing transaction rolls back, ticket change included), else fn's value.
+ */
+async function onceForScan(deviceRecordId, clientScanId, fn) {
+  const prior = await priorCheckIn(deviceRecordId, clientScanId);
+  if (prior) return { prior };
+  try {
+    return await prisma.$transaction(fn);
+  } catch (e) {
+    if (!isDuplicateScan(e)) throw e;
+    const winner = await priorCheckIn(deviceRecordId, clientScanId);
+    if (!winner) throw e;
+    return { prior: winner };
+  }
 }
 
 /** Entered vs. sold for an event, per gate, with presence, throughput and gate load. */
@@ -245,6 +281,7 @@ export async function eventStats(eventId) {
     scans,
     conflicts: await prisma.checkIn.count({ where: { eventId, conflict: true } }),
     pendingExceptions: await prisma.gateException.count({ where: { eventId, status: 'PENDING' } }),
+    openConflicts: await prisma.scanConflict.count({ where: { eventId, status: 'OPEN' } }),
   };
 }
 
@@ -293,60 +330,115 @@ export async function resolveGate({ eventId, gateId, gate, direction = 'ENTRY', 
   return { gate: row.name, gateId: row.id, row, gates };
 }
 
-/** One online scan: checks, admits atomically, logs, broadcasts. */
-export async function scan({ code, eventId, staffId, gate, gateId, direction = 'ENTRY', deviceId, supervisor = false, scannedAt = new Date() }) {
-  const g = await resolveGate({ eventId, gateId, gate, direction, staffId, supervisor });
-  const opts = { direction, gate: g.row, gates: g.gates };
-  let verdict = await evaluate(code, eventId, opts);
-  if (verdict.result === 'GREEN') verdict = await admit(verdict, { code, eventId, staffId, gate: g.gate, gateId: g.gateId, direction, at: new Date(), opts });
-
-  const row = await logScan({ verdict, eventId, staffId, deviceId, gate: g.gate, gateId: g.gateId, direction, offline: false, scannedAt });
-  if (verdict.result === 'GREEN') await broadcast(eventId, verdict.ticket);
-  return response(verdict, { checkInId: row.id, direction, gate: g.gate, gateId: g.gateId });
+/** The answer to a scan that was already processed: its first result, as recorded. */
+async function replay(row, extra = {}) {
+  const ticket = row.ticketId ? await prisma.ticket.findUnique({ where: { id: row.ticketId }, include: ticketInclude }) : null;
+  return {
+    result: row.result,
+    reason: row.reason,
+    code: null,
+    reentry: row.reentry,
+    ticket: ticketView(ticket),
+    firstScan: null,
+    checkInId: row.id,
+    direction: row.direction,
+    gate: row.gate,
+    gateId: row.gateId,
+    conflict: row.conflict,
+    replayed: true,
+    ...extra,
+  };
 }
 
 /**
- * Queued offline scans. The earliest admission wins: if two devices let the same ticket in while offline,
- * the later one is flagged as a conflict for the organizer. Exits and re-entries are replayed in time order.
+ * One online scan: checks, admits atomically, logs, broadcasts. With clientScanId and the device, a repeated
+ * request (e.g. the response was lost) returns the first result instead of scanning again.
  */
-export async function syncOffline({ scans, eventId, staffId, deviceId, supervisor = false }) {
-  const ordered = [...scans].sort((a, b) => new Date(a.scannedAt) - new Date(b.scannedAt));
+export async function scan({ code, eventId, staffId, gate, gateId, direction = 'ENTRY', deviceId, deviceRecordId = null, clientScanId = null, supervisor = false, scannedAt = new Date() }) {
+  const g = await resolveGate({ eventId, gateId, gate, direction, staffId, supervisor });
+  const opts = { direction, gate: g.row, gates: g.gates };
+  const out = await onceForScan(deviceRecordId, clientScanId, async (tx) => {
+    let verdict = await evaluate(code, eventId, opts, tx);
+    if (verdict.result === 'GREEN') verdict = await admit(verdict, { code, eventId, staffId, gate: g.gate, gateId: g.gateId, direction, at: new Date(), opts }, tx);
+    const row = await logScan({ verdict, eventId, staffId, deviceId, gate: g.gate, gateId: g.gateId, direction, offline: false, scannedAt, evidence: { clientScanId, deviceRecordId } }, tx);
+    return { verdict, row };
+  });
+  if (out.prior) return replay(out.prior);
+  if (out.verdict.result === 'GREEN') await broadcast(eventId, out.verdict.ticket);
+  return response(out.verdict, { checkInId: out.row.id, direction, gate: g.gate, gateId: g.gateId });
+}
+
+/** Device time as evidence; for ordering and the record a time in the future (wrong clock) becomes receipt time. */
+const scanTime = (raw, receivedAt) => {
+  const t = new Date(raw);
+  if (Number.isNaN(t.getTime())) return receivedAt;
+  return t > receivedAt ? receivedAt : t;
+};
+
+/**
+ * Queued offline scans, each processed on its own (partial success: one bad or failing scan never blocks the
+ * others) and acknowledged by its scan id with a status:
+ *   ACCEPTED           processed now (result, conflict flag)
+ *   ALREADY_PROCESSED  this device's scan was processed before: the first result, nothing written
+ *   RETRY              the server failed on this scan; send it again later
+ * Scans are taken in the device's sequence order (device clock only as a fallback for older scanners). The server
+ * ticket state decides: an offline admission of a ticket already used is logged and flagged as a conflict, and
+ * never rewrites the recorded check-in (device clocks are evidence, not truth).
+ */
+export async function syncOffline({ scans, eventId, staffId, deviceId, deviceRecordId = null, supervisor = false }) {
+  const receivedAt = new Date();
+  const ordered = [...scans].sort((a, b) => {
+    if (Number.isInteger(a.seq) && Number.isInteger(b.seq)) return a.seq - b.seq;
+    return scanTime(a.scannedAt, receivedAt) - scanTime(b.scannedAt, receivedAt);
+  });
   const results = [];
   const admitted = [];
+  const newConflicts = [];
   const allGates = await prisma.eventGate.findMany({ where: { eventId } });
   for (const s of ordered) {
-    const scannedAt = Number.isNaN(new Date(s.scannedAt).getTime()) ? new Date() : new Date(s.scannedAt);
-    const direction = s.direction === 'EXIT' ? 'EXIT' : 'ENTRY';
-    // The gate as configured now; a gate removed since the scan is kept by name only
-    const row = allGates.find((g) => g.id === s.gateId) || allGates.find((g) => g.name === s.gate) || null;
-    const gate = row?.name || s.gate || null;
-    const opts = { direction, gate: row, gates: allGates };
-    let verdict = await evaluate(s.code, eventId, opts);
-    let conflict = false;
-
-    // Only an admission at the gate can change a ticket: a scan the device turned away is logged as such
-    if (verdict.result === 'GREEN' && s.localResult && s.localResult !== 'GREEN') {
-      verdict = { ...verdict, result: s.localResult, reason: `Turned away while offline: ${s.localReason || 'not valid on this device'}` };
-    }
-
-    if (verdict.result === 'GREEN') {
-      verdict = await admit(verdict, { code: s.code, eventId, staffId, gate, gateId: row?.id, direction, at: scannedAt, opts });
-      if (verdict.admitted) admitted.push(verdict.ticket);
-    }
-
-    if (direction === 'ENTRY' && verdict.result === 'YELLOW' && s.localResult === 'GREEN') {
-      // This device admitted the ticket offline, but it was already used: a duplicate admission
-      conflict = true;
-      const t = verdict.ticket;
-      if (t.checkedInAt && scannedAt < new Date(t.checkedInAt)) {
-        // This offline admission happened first: it becomes the recorded check-in
-        await prisma.ticket.update({ where: { id: t.id }, data: { checkedInAt: scannedAt, checkedInById: staffId, gate } });
+    const clientScanId = s.clientId || null;
+    const base = { clientId: clientScanId, seq: Number.isInteger(s.seq) ? s.seq : null };
+    try {
+      const scannedAt = scanTime(s.scannedAt, receivedAt);
+      const direction = s.direction === 'EXIT' ? 'EXIT' : 'ENTRY';
+      // The gate as configured now; a gate removed since the scan is kept by name only
+      const row = allGates.find((g) => g.id === s.gateId) || allGates.find((g) => g.name === s.gate) || null;
+      const gate = row?.name || s.gate || null;
+      const opts = { direction, gate: row, gates: allGates };
+      const out = await onceForScan(deviceRecordId, clientScanId, async (tx) => {
+        let verdict = await evaluate(s.code, eventId, opts, tx);
+        let conflict = false;
+        // Only an admission at the gate can change a ticket: a scan the device turned away is logged as such
+        if (verdict.result === 'GREEN' && s.localResult && s.localResult !== 'GREEN') {
+          verdict = { ...verdict, result: s.localResult, reason: `Turned away while offline: ${s.localReason || 'not valid on this device'}` };
+        }
+        if (verdict.result === 'GREEN') verdict = await admit(verdict, { code: s.code, eventId, staffId, gate, gateId: row?.id, direction, at: scannedAt, opts }, tx);
+        // The device let the guest in (or out) but the server's ticket state disagrees: a conflict for supervisors.
+        // The ticket is not changed (scanConflictService: business rules).
+        const type = classifyConflict({ direction, localResult: s.localResult, verdict });
+        if (type) {
+          conflict = true;
+          verdict = { ...verdict, reason: conflictReason(type, verdict) };
+        }
+        const checkIn = await logScan({
+          verdict, eventId, staffId, deviceId, gate, gateId: row?.id, direction, offline: true, scannedAt, conflict,
+          evidence: { clientScanId, deviceRecordId, deviceSeq: s.seq, deviceScannedAt: s.deviceScannedAt || s.scannedAt, localResult: s.localResult, localReason: s.localReason },
+        }, tx);
+        const found = type ? await recordConflict(tx, { type, checkIn, verdict, direction, localResult: s.localResult, localReason: s.localReason, eventId, staffId }) : null;
+        return { verdict, conflict, checkIn, conflictType: type, conflictId: found?.conflict.id || null, newConflict: found?.created ? found.conflict : null };
+      });
+      if (out.prior) {
+        results.push({ ...(await replay(out.prior)), ...base, status: 'ALREADY_PROCESSED' });
+        continue;
       }
-      verdict = { ...verdict, reason: `Duplicate admission while offline (${verdict.reason.toLowerCase()})` };
+      if (out.verdict.admitted) admitted.push(out.verdict.ticket);
+      if (out.newConflict) newConflicts.push(out.newConflict);
+      results.push(response(out.verdict, { ...base, status: 'ACCEPTED', conflict: out.conflict, conflictType: out.conflictType, conflictId: out.conflictId, direction, checkInId: out.checkIn.id }));
+    } catch (err) {
+      if (err instanceof GateError) throw err;
+      console.error(`[gate] offline scan ${clientScanId || '(no id)'} failed`, err);
+      results.push({ ...base, status: 'RETRY', result: null, reason: 'The server could not process this scan; it will be sent again.', conflict: false });
     }
-
-    await logScan({ verdict, eventId, staffId, deviceId: s.deviceId || deviceId, gate, gateId: row?.id, direction, offline: true, scannedAt, conflict });
-    results.push(response(verdict, { clientId: s.clientId || null, conflict, direction }));
   }
   if (admitted.length) {
     for (const t of admitted.slice(0, -1)) {
@@ -355,12 +447,14 @@ export async function syncOffline({ scans, eventId, staffId, deviceId, superviso
     }
     await broadcast(eventId, admitted[admitted.length - 1]);
   }
+  announceConflicts(eventId, newConflicts);
+  if (newConflicts.length && !admitted.length) await broadcast(eventId, null);
   return results;
 }
 
 /** Offline pack: public key, gates, re-entry policy and every paid ticket of the event with what the scanner needs. */
 export async function eventPack(eventId, { staffId = null } = {}) {
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, name: true, date: true, time: true, venue: true, city: true, reentryPolicy: true, maxReentries: true } });
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, companyId: true, name: true, date: true, time: true, venue: true, city: true, reentryPolicy: true, maxReentries: true } });
   const tickets = await prisma.ticket.findMany({
     where: { eventId, order: { status: 'SUCCESSFUL' } },
     select: {

@@ -1,4 +1,4 @@
-import { io } from 'socket.io-client';
+import { connectSocket } from '../lib/socket';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -81,7 +81,7 @@ export default function DigitalWallet() {
   // Live check-in: the pass greys out the moment it's scanned at the gate ("Used at 7:42 PM, Gate B")
   useEffect(() => {
     if (!user?.id) return undefined;
-    const socket = io(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000', { transports: ['websocket', 'polling'] });
+    const socket = connectSocket();
     socket.on('connect', () => socket.emit('join_user_room', user.id));
     socket.on('ticket:checked-in', ({ ticketId, checkedInAt, gate }) => {
       setTickets((list) => list.map((t) => (t.id === ticketId ? { ...t, status: 'SCANNED', checkedInAt, gate } : t)));
