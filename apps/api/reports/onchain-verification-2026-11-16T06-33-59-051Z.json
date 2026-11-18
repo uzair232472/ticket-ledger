@@ -1,0 +1,811 @@
+{
+  "generatedAt": "2026-11-16T06:33:59.053Z",
+  "readOnly": true,
+  "networks": [
+    {
+      "name": "amoy",
+      "chainId": 80002,
+      "rpc": "polygon-amoy-bor-rpc.publicnode.com",
+      "reachable": true,
+      "error": null,
+      "code": {
+        "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21": false,
+        "0x5FbDB2315678afecb367f032d93F642f64180aa3": false
+      }
+    },
+    {
+      "name": "polygon",
+      "chainId": 137,
+      "rpc": "polygon-bor-rpc.publicnode.com",
+      "reachable": true,
+      "error": null,
+      "code": {
+        "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21": false,
+        "0x5FbDB2315678afecb367f032d93F642f64180aa3": false
+      }
+    },
+    {
+      "name": "hardhat-local",
+      "chainId": 31337,
+      "rpc": "127.0.0.1:8545",
+      "reachable": false,
+      "error": "ECONNREFUSED",
+      "code": {}
+    }
+  ],
+  "summary": {
+    "NOT FOUND on amoy, polygon (not checkable: hardhat-local)": 22
+  },
+  "tickets": [
+    {
+      "ticketId": "8b10b26a-11c0-4617-aa41-627af78186d1",
+      "event": "Atif Aslam Live in Concert Lahore",
+      "seat": "Gold Front Row A6",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 726341,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x7f5a097fc08f85d43cc12cd6f871e0957b406fc239c54fc801bdafd483f75f45",
+      "dbOwner": "0x1111111111111111111111111111111111111111",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "ad753273-d4e3-41c2-b961-58d0d793ac28",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "First Class Enclosure A8",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 263020,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0xf89a8c553d16557d95c39354dc74d9f04052d6573cab0d9f6cc651f3c1095ee9",
+      "dbOwner": "0x71C84183F33d3419186661a47B7777174452aa82",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "bd3d9a3c-1a78-4bf1-9b51-2a4173d07918",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "First Class Enclosure A9",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 232930,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x0be6dea366499e9a0672612b639812903263b189e8a4db527341596f720c74d7",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "b879df6b-1fae-4829-8e3d-2062c044b671",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "First Class Enclosure B7",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 829547,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x93a65a3e3606499aed99073e93955dea245426e0265f1258a436eaef6dd5e4cc",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "aeed1913-9de5-4ac2-94cc-f735d9d3774a",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "First Class Enclosure A6",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 454717,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x17ebc444f4c58a1bfd32b94ef666efc13994e0e9076cac72c370c56195da235c",
+      "dbOwner": "0x1111111111111111111111111111111111111111",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "6ef2f449-3bc6-4045-ba47-299b05da47ed",
+      "event": "Atif Aslam Live in Concert Lahore",
+      "seat": "Platinum Fan Pit VIP B6",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 477010,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x5405efabc455447c53ec275838b8bdfdae13f080ccc93d3fc9c6dca43eff7193",
+      "dbOwner": "0x1111111111111111111111111111111111111111",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "4ea2db55-8a93-4efc-a04b-874bf9fee8da",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "Media Box B1",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 222393,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x23a19f465182ed31a3bbd06ca9018d9b47b36b5c47103f5a67aa962c788a6fe1",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "5147c88d-c338-4d50-aa7e-f059787b0292",
+      "event": "Youth Club Bethak – Finding Your Purpose",
+      "seat": "Right Block R10",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 7962,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0xfb7d44ff6d131ea739e7d251846eb163d99664ddf0311478cfe55f1564ed8de6",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "3cae89ae-12a2-4a3d-b3de-e3bdd3bf8ce9",
+      "event": "Venue QA Cricket Final",
+      "seat": "Upper North E29",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 821629,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x5c8b2c856211f14b5454e94a35227427e988111d2f5738d90778f992ac36dcf4",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "605b872a-6636-47cf-b568-47f9e51b1fbf",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "General Enclosure B7",
+      "payment": "Payment successful",
+      "entry": "Ticket used at the gate",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 540772,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x0d3b0b582621c8161263833ba094a972e60a8f582db257c3e862078b5e80b90b",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "af073114-b52f-4180-b35d-7714156067fc",
+      "event": "Atif Aslam Live in Concert Lahore",
+      "seat": "Platinum Fan Pit VIP A9",
+      "payment": "Payment successful",
+      "entry": "Ticket used at the gate",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 915425,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x400cc554b3ae9a4582e43ae9b1eac81db90564d409b027b73b83b96ca96b356c",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "1b642365-cc64-44a0-b815-c70e9da6a126",
+      "event": "Youth Club Bethak – Finding Your Purpose",
+      "seat": "Right Block G24",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 708467,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0xb1ac5c4b208c3a68e67f37a2a006905c0dd3c74add26c357c8ebbd63182c6b08",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "c614ed77-b499-401f-88ca-41fe63cfbfa3",
+      "event": "Venue QA Cricket Final",
+      "seat": "Upper East C21",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 456469,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x6eae649492639a9cd01d521371a44fd9a5df64b8ebb457de20f17697f472303b",
+      "dbOwner": "0x2222222222222222222222222222222222222222",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "1e633dba-b044-4931-8267-d914385aecce",
+      "event": "Atif Aslam Live in Concert Lahore",
+      "seat": "Gold Front Row B8",
+      "payment": "Payment successful",
+      "entry": "Ticket used at the gate",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 732617,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x2581b2c241f33328270d67ec298ad3204c0bd25dafbbfc7b7ab8be1c7b1c5b4c",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "bf8c4435-a4a9-418b-b0f1-35a9d0fcc932",
+      "event": "Karachi Sufi & Qawwali Music Festival 2026",
+      "seat": "Standard Festival Pass A2",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 477217,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x851ef553e650566ed52fe94b4df2e1a30083ccd8d9ce31bc493d7d9fc94a5c25",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "02c5cd24-77d7-4756-8502-1e6c27bff3d5",
+      "event": "Atif Aslam Live in Concert Lahore",
+      "seat": "Silver Pass B4",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 456236,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x185821696350af4e6ece5ed44bf7277ce010380af21b32d464b490058d9dbe1a",
+      "dbOwner": "0x71C8366420A094715FE4245b0a3A7e3848EaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "e9097a34-83fc-4459-b412-caac5b8c9294",
+      "event": "Atif Aslam Live in Concert Lahore",
+      "seat": "Platinum Fan Pit VIP A4",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 926768,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x2f0a534621ee3ea30156c561b50cedcb9098a2c48d9f8bb178fb2560089f8bec",
+      "dbOwner": "0x1111111111111111111111111111111111111111",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "f630ded9-1179-49e2-aec6-84c213aeb43e",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "General Enclosure B9",
+      "payment": "Payment successful",
+      "entry": "Ticket used at the gate",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 491913,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0xd834c4a7eb6644326985b9700686d8baecf42e31f768ff124406355b500defd4",
+      "dbOwner": "0x71c8366420A094715fE4245B0a3a7e3848eaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "7a9a5c18-3c59-4161-9cb4-5761fd0ec8ec",
+      "event": "Karachi Sufi & Qawwali Music Festival 2026",
+      "seat": "Standard Festival Pass B7",
+      "payment": "Payment successful",
+      "entry": "Ticket used at the gate",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 909901,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x468ae8bd91be6d11d1ca2cd9d70f5610f40adcab4513dd8357fb4fc337e5c9b7",
+      "dbOwner": "0x71c8366420A094715fE4245B0a3a7e3848eaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "c817d0ed-c7b0-4d92-ab13-04a08227f9bf",
+      "event": "Lahore Qalandars vs Karachi Kings - PSL 2026 Final",
+      "seat": "First Class Enclosure B1",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 502122,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x9a8F463F83C1c513dBd743aEb2F30113D1a30F21",
+      "contractChecksumValid": false,
+      "txHash": "0x47f390485dedc28350651a29b28a4182ca5e858b2a7e75501790cafe8fb6fc05",
+      "dbOwner": "0x95025b1Fa21A7728733feabeFE4aC6a1fda96D54",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "6bbdeaec-f79b-4f90-ac03-7184baaa5bac",
+      "event": "Youth Club Bethak – Finding Your Purpose",
+      "seat": "Centre Block O20",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 1,
+      "tokenIdPattern": "contract-style (<1000)",
+      "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "contractChecksumValid": true,
+      "txHash": "0xbeecc348a8e3b3e79b39de0c07b54ea26b0de56b98bb3cee6b7a0e3ce3fd7ab5",
+      "dbOwner": "0x95025b1Fa21A7728733feabeFE4aC6a1fda96D54",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    },
+    {
+      "ticketId": "861b8a42-1b78-4b57-aee2-867096aba885",
+      "event": "FYP",
+      "seat": "Front Rows D22",
+      "payment": "Payment successful",
+      "entry": "Ticket valid",
+      "nftRecordedState": "NFT recorded, not verified",
+      "mintStatus": "MINTED",
+      "mintSimulated": null,
+      "tokenId": 272156,
+      "tokenIdPattern": "simulation-style (≥1000)",
+      "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "contractChecksumValid": true,
+      "txHash": "0x1ff8f794d8fd09c64fee918aa8a38cbc08faca26df84419611fb98978afea7e7",
+      "dbOwner": "0x71c8366420A094715fE4245B0a3a7e3848eaF220",
+      "perNetwork": {
+        "amoy": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": false,
+          "verified": false
+        },
+        "polygon": {
+          "checked": true,
+          "contractHasCode": false,
+          "txFound": "error: server response 403 Forbidden",
+          "verified": false
+        },
+        "hardhat-local": {
+          "checked": false,
+          "reason": "unreachable (ECONNREFUSED)"
+        }
+      },
+      "verdict": "NOT FOUND on amoy, polygon (not checkable: hardhat-local)"
+    }
+  ]
+}

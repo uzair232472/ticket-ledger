@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
+import { reauthorizeUserRooms } from '../services/socketAccess.js';
 import { sendStaffInviteEmail } from '../services/emailService.js';
 import { sha256 } from '../services/tokenService.js';
 import { getScopedEventIds } from '../services/accessService.js';
@@ -376,6 +377,7 @@ export const revokeEventAccess = async (req, res) => {
       },
     });
     getIO()?.to(`user_${staffId}`).emit('staff:access-revoked', { eventId });
+    await reauthorizeUserRooms(staffId);
 
     return res.status(200).json({ success: true, message: `${staff.name} can no longer scan tickets for ${event.name}.` });
   } catch (error) {

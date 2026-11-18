@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Settings2 } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { connectSocket } from '../lib/socket';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import StaffManager from '../components/StaffManager';
@@ -241,7 +241,7 @@ export default function OrganizerDashboard() {
   liveRef.current.eventId = selectedEventId;
   useEffect(() => {
     if (!user?.id) return undefined;
-    const socket = io(import.meta.env.VITE_SOCKET_URL || API_URL, { transports: ['websocket', 'polling'] });
+    const socket = connectSocket();
     socket.on('connect', () => socket.emit('join_user_room', user.id));
     socket.on('checkin:stats', (stats) => {
       const scope = liveRef.current.eventId;

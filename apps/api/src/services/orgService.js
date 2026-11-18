@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
+import { reauthorizeUserRooms } from './socketAccess.js';
 import { INVITE_TTL_MS } from '../config/auth.js';
 import { sha256 } from './tokenService.js';
 import { sendOrgInviteEmail } from './emailService.js';
@@ -99,6 +100,8 @@ const notifyAccessChange = (userId, companyId, eventIds = []) => {
   io.to(`user_${userId}`).emit('org:access-changed', { companyId });
   // Scanners wipe their offline lists for events they no longer cover
   for (const eventId of eventIds) io.to(`user_${userId}`).emit('staff:access-revoked', { eventId });
+  // Live gate rooms follow the new access at once (attendance counters, supervisor exception requests)
+  reauthorizeUserRooms(userId);
 };
 
 const companyEventAssignments = (db, userId, companyId) =>

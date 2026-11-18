@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { io } from 'socket.io-client';
-import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X } from 'lucide-react';
+import { connectSocket } from '../lib/socket';
+import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X, GitCompareArrows, Archive, Wifi, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
-import { API_URL } from '../lib/session';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
 
 /*
@@ -11,6 +10,19 @@ import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../com
  * types, capacity), re-entry policy, which staff work which gates, scanner devices and their sync status,
  * exception requests from the gates, check-ins (with reversal) and per-gate attendance reports.
  */
+
+/** Downloads a CSV from the API (the browser keeps the auth header out of the URL). */
+async function downloadCsv(path, params, filename) {
+  const r = await api.get(path, { params: { ...params, format: 'csv' }, responseType: 'blob' });
+  const url = URL.createObjectURL(r.data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const HEALTH = { HEALTHY: ['ACTIVE', 'Healthy'], ATTENTION: ['PENDING', 'Needs attention'], CRITICAL: ['FAILED', 'Critical'], REVOKED: ['REJECTED', 'Revoked'] };
+const CONNECTION = { ONLINE: 'Online', OFFLINE: 'Offline (reported)', NOT_SEEN: 'Not seen recently', REVOKED: 'Revoked' };
 
 const errText = (e) => e?.response?.data?.message || e?.message || 'Something went wrong';
 const when = (v) => (v ? new Date(v).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
@@ -53,10 +65,12 @@ export default function GateManagement() {
   // Live counters while the page is open
   useEffect(() => {
     if (!eventId) return undefined;
-    const socket = io(import.meta.env.VITE_SOCKET_URL || API_URL, { transports: ['websocket', 'polling'] });
+    const socket = connectSocket();
     socket.on('connect', () => socket.emit('join_event_room', eventId));
     socket.on('checkin:stats', (s) => s.eventId === eventId && setData((d) => (d ? { ...d, live: s } : d)));
     socket.on('gate:exception', () => setData((d) => (d ? { ...d, live: { ...d.live, pendingExceptions: (d.live?.pendingExceptions || 0) + 1 } } : d)));
+    // Supervisors only: new offline conflicts (the counter also arrives with checkin:stats)
+    socket.on('gate:conflict', (p) => p?.eventId === eventId && setData((d) => (d ? { ...d, live: { ...d.live, openConflicts: (d.live?.openConflicts || 0) + (p.count || 1) } } : d)));
     return () => {
       socket.emit('leave_event_room', eventId);
       socket.disconnect();
@@ -81,6 +95,8 @@ export default function GateManagement() {
     { value: 'staff', label: 'Gate staff', icon: Users },
     { value: 'devices', label: 'Devices', icon: Smartphone },
     { value: 'exceptions', label: 'Exceptions', icon: ShieldAlert, count: data?.live?.pendingExceptions || undefined },
+    { value: 'conflicts', label: 'Conflicts', icon: GitCompareArrows, count: data?.live?.openConflicts || undefined },
+    { value: 'evidence', label: 'Evidence', icon: Archive },
     { value: 'checkins', label: 'Check-ins', icon: ListChecks },
     { value: 'report', label: 'Reports', icon: FileBarChart },
   ];
@@ -103,11 +119,13 @@ export default function GateManagement() {
       {eventId && !data && <DashState icon={RefreshCw} title="Loading…" />}
       {data && (
         <>
-          {tab === 'live' && <Live data={data} />}
+          {tab === 'live' && <Live data={data} eventId={eventId} onTab={setTab} />}
           {tab === 'gates' && <Gates data={data} eventId={eventId} run={run} />}
           {tab === 'staff' && <Staff data={data} eventId={eventId} run={run} />}
           {tab === 'devices' && <Devices eventId={eventId} flash={flash} />}
           {tab === 'exceptions' && <Exceptions eventId={eventId} flash={flash} onChange={load} />}
+          {tab === 'conflicts' && <Conflicts eventId={eventId} flash={flash} onChange={load} />}
+          {tab === 'evidence' && <Evidence eventId={eventId} flash={flash} />}
           {tab === 'checkins' && <CheckIns data={data} eventId={eventId} flash={flash} onChange={load} />}
           {tab === 'report' && <Report eventId={eventId} />}
         </>
@@ -118,10 +136,60 @@ export default function GateManagement() {
 
 // ── Live ───────────────────────────────────────────────────────────────────────────────────────────────
 
-function Live({ data }) {
+/**
+ * Gate operations dashboard: scanner devices (online, offline, needing attention), scans waiting or failing to
+ * upload, conflicts and evidence to review, attendance and gate capacity. Refreshes every 30 seconds and with live
+ * attendance updates.
+ */
+function Operations({ eventId, live, onTab }) {
+  const [ops, setOps] = useState(null);
+  const load = useCallback(() => api.get(`/checkin/manage/events/${eventId}/operations`).then((r) => setOps(r.data.data)).catch(() => {}), [eventId]);
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, [load, live?.entered, live?.openConflicts]);
+  if (!ops) return <DashState icon={RefreshCw} title="Loading gate operations…" />;
+  const d = ops.devices;
+  const tiles = [
+    ['Scanner devices', d.registered, `${d.atThisEvent} at this event${d.notEnrolled ? ` · ${d.notEnrolled} not enrolled` : ''}`, 'devices'],
+    ['Online', d.online, `${d.offline} offline · ${d.notSeen} not seen`, 'devices'],
+    ['Need attention', d.needingAttention, d.critical ? `${d.critical} critical` : 'none critical', 'devices', d.needingAttention > 0],
+    ['Waiting to upload', ops.scans.pending, ops.scans.stuck ? `${ops.scans.stuck} stuck` : 'on the devices', 'devices', ops.scans.stuck > 0],
+    ['Failed uploads', ops.scans.failed, `${ops.scans.failedUploadsLastHour} upload problem${ops.scans.failedUploadsLastHour === 1 ? '' : 's'} in the last hour`, 'devices', ops.scans.failed > 0],
+    ['Open conflicts', ops.conflicts.open, 'offline scans to decide', 'conflicts', ops.conflicts.open > 0],
+    ['Evidence to review', ops.scans.quarantinedAwaitingReview, 'scans kept, not admitted', 'evidence', ops.scans.quarantinedAwaitingReview > 0],
+    ['Attendance', `${ops.attendance.inside} inside`, `${ops.attendance.entered} of ${ops.attendance.sold} entered`, null],
+    ['Gate capacity', ops.capacity.perHour ? `${ops.capacity.loadPct}%` : '—', ops.capacity.perHour ? `${ops.capacity.currentRatePerHour} / ${ops.capacity.perHour} per hour${ops.capacity.overloadedGates.length ? ` · busy: ${ops.capacity.overloadedGates.join(', ')}` : ''}` : 'No gate capacity set', 'gates', ops.capacity.overloadedGates.length > 0],
+  ];
+  return (
+    <DashCard title="Gate operations" sub={`Updated ${clock(ops.generatedAt)} · device credentials: ${ops.auth.mode}`} icon={Activity} aside={<button type="button" className="tl-st-icon-btn" onClick={load} aria-label="Refresh"><RefreshCw className="w-4 h-4" /></button>}>
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {tiles.map(([label, value, sub, tab, warn]) => (
+          <button key={label} type="button" disabled={!tab} onClick={() => tab && onTab(tab)} className={`text-left rounded-lg border p-3 ${warn ? 'border-amber-400 bg-amber-50' : 'border-slate-200'}`}>
+            <span className="block text-xs text-slate-500">{label}</span>
+            <strong className="block text-2xl">{value}</strong>
+            <span className="block text-xs text-slate-500">{sub}</span>
+          </button>
+        ))}
+      </div>
+      {ops.attention.length > 0 && (
+        <div className="mt-4">
+          <p className="text-sm font-semibold flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> Devices needing attention</p>
+          <ul className="text-xs mt-1 space-y-1">
+            {ops.attention.map((a) => <li key={a.id}><Status value={HEALTH[a.health][0]} label={HEALTH[a.health][1]} /> <strong>{a.name}</strong>: {a.reasons.map((r) => r.message).join(' · ')}</li>)}
+          </ul>
+        </div>
+      )}
+    </DashCard>
+  );
+}
+
+function Live({ data, eventId, onTab }) {
   const s = data.live;
   return (
     <div className="space-y-6">
+      <Operations eventId={eventId} live={s} onTab={onTab} />
       <div className="grid gap-4 sm:grid-cols-4">
         {[['Entered', `${s.entered} / ${s.sold}`], ['Inside now', s.inside], ['Turned away', s.scans?.RED || 0], ['Waiting for a supervisor', s.pendingExceptions || 0]].map(([l, v]) => (
           <DashCard key={l} title={l}><p className="text-3xl font-extrabold">{v}</p></DashCard>
@@ -154,7 +222,7 @@ function Live({ data }) {
             </table>
           </div>
         )}
-        {s.conflicts > 0 && <p className="text-xs mt-3 text-rose-700">{s.conflicts} ticket(s) were admitted twice while devices were offline. See Check-ins.</p>}
+        {s.openConflicts > 0 && <p className="text-xs mt-3 text-rose-700">{s.openConflicts} offline scan conflict{s.openConflicts === 1 ? '' : 's'} waiting for a supervisor decision. See Conflicts.</p>}
       </DashCard>
     </div>
   );
@@ -294,10 +362,19 @@ function Staff({ data, eventId, run }) {
 
 // ── Devices ────────────────────────────────────────────────────────────────────────────────────────────
 
+const AUTH_MODE = {
+  enforce: 'Every scanner must be enrolled (device credential required).',
+  warn: 'Migration: enrolled scanners must use their credential; scanners that never enrolled still work until',
+  off: 'Device credentials are switched off (emergency rollback) until',
+};
+
 function Devices({ eventId, flash }) {
   const [devices, setDevices] = useState(null);
+  const [auth, setAuth] = useState(null);
   const [reasons, setReasons] = useState({});
-  const load = useCallback(() => api.get(`/checkin/manage/events/${eventId}/devices`).then((r) => setDevices(r.data.data.devices)).catch((e) => flash('bad', errText(e))), [eventId]);
+  const [open, setOpen] = useState(null);
+  const load = useCallback(() => api.get(`/checkin/manage/events/${eventId}/devices`).then((r) => { setDevices(r.data.data.devices); setAuth(r.data.data.auth || null); }).catch((e) => flash('bad', errText(e))), [eventId]);
+  const legacy = (devices || []).filter((d) => d.status === 'ACTIVE' && !d.enrolled && d.legacyRequests > 0);
   useEffect(() => {
     load();
     const id = setInterval(load, 30000);
@@ -314,10 +391,16 @@ function Devices({ eventId, flash }) {
   };
   return (
     <DashCard title="Scanner devices" sub="Phones and tablets register the first time they scan. A revoked device can't scan, upload or download ticket lists. Updates every 30 seconds." icon={Smartphone} aside={<button type="button" className="tl-st-icon-btn" onClick={load} aria-label="Refresh"><RefreshCw className="w-4 h-4" /></button>}>
+      {auth && (
+        <p className="text-xs text-slate-500 mb-3">
+          {AUTH_MODE[auth.mode]}{auth.mode !== 'enforce' ? ` ${when(auth.deadline)}.` : ''}
+          {legacy.length > 0 && auth.mode !== 'enforce' && ` ${legacy.length} device${legacy.length === 1 ? ' has' : 's have'} not enrolled yet: open the scanner on ${legacy.length === 1 ? 'it' : 'them'} while online.`}
+        </p>
+      )}
       {!devices ? <DashState icon={RefreshCw} title="Loading…" /> : !devices.length ? <DashState icon={Smartphone} title="No devices yet" /> : (
         <div className="tl-dash-table-wrap">
           <table className="tl-dash-table">
-            <thead><tr><th>Device</th><th>Sync</th><th>Waiting scans</th><th>Last seen</th><th>Ticket list</th><th>Used by</th><th /></tr></thead>
+            <thead><tr><th>Device</th><th>Health</th><th>Sync</th><th>Credential</th><th>Waiting scans</th><th>Last seen</th><th>Ticket list</th><th>Used by</th><th /></tr></thead>
             <tbody>
               {devices.map((d) => (
                 <tr key={d.id}>
@@ -325,7 +408,18 @@ function Devices({ eventId, flash }) {
                     <input className="tl-dash-input" defaultValue={d.name} aria-label="Device name" onBlur={(e) => e.target.value.trim() && e.target.value !== d.name && update(d, { name: e.target.value.trim() })} />
                     <div className="text-xs text-slate-500">Registered {when(d.createdAt)} by {d.registeredBy || '—'}</div>
                   </td>
+                  <td className="text-xs">
+                    <Status value={HEALTH[d.health][0]} label={HEALTH[d.health][1]} />
+                    <div className="text-slate-500">{CONNECTION[d.connection]}</div>
+                    {d.reasons?.slice(0, 2).map((r) => <div key={r.code} className={r.severity === 'critical' ? 'text-red-600' : 'text-amber-700'}>{r.message}</div>)}
+                    <button type="button" className="tl-st-btn tl-st-btn--sm mt-1" onClick={() => setOpen(open === d.id ? null : d.id)} aria-expanded={open === d.id}>{open === d.id ? 'Hide details' : 'Details & actions'}</button>
+                  </td>
                   <td><Status value={SYNC[d.sync][0]} label={SYNC[d.sync][1]} />{d.atThisEvent && d.lastGate && <div className="text-xs">{d.lastGate}</div>}</td>
+                  <td className="text-xs">
+                    {d.enrolled ? <Status value="ACTIVE" label="Enrolled" /> : d.status === 'REVOKED' ? '—' : <Status value="PENDING" label="Not enrolled" />}
+                    {d.enrolled && <div className="text-slate-500">Since {when(d.tokenIssuedAt)}</div>}
+                    {d.authFailures > 0 && <div className="text-red-600">{d.authFailures} rejected credential{d.authFailures === 1 ? '' : 's'} · last {when(d.lastAuthFailureAt)}</div>}
+                  </td>
                   <td>{d.pendingScans}</td>
                   <td className="text-xs">{when(d.lastSeenAt)}<div className="text-slate-500">Last upload {when(d.lastSyncAt)}</div></td>
                   <td className="text-xs">{when(d.packAt)}</td>
@@ -337,6 +431,7 @@ function Devices({ eventId, flash }) {
                       <div className="flex gap-2">
                         <input className="tl-dash-input" placeholder="Reason" value={reasons[d.id] || ''} onChange={(e) => setReasons({ ...reasons, [d.id]: e.target.value })} aria-label="Revoke reason" />
                         <button type="button" className="tl-st-btn tl-st-btn--sm" onClick={() => update(d, { status: 'REVOKED', reason: reasons[d.id] })}>Revoke</button>
+                        {d.enrolled && <button type="button" className="tl-st-btn tl-st-btn--sm" title="Deletes the device credential; the device enrolls again on its next connection" onClick={() => update(d, { resetEnrollment: true, reason: reasons[d.id] })}>Reset enrollment</button>}
                       </div>
                     )}
                   </td>
@@ -345,6 +440,272 @@ function Devices({ eventId, flash }) {
             </tbody>
           </table>
         </div>
+      )}
+      {open && <DeviceDetails eventId={eventId} deviceId={open} flash={flash} onChange={load} />}
+    </DashCard>
+  );
+}
+
+const ACTIONS = [['PING', 'Test connection'], ['SYNC', 'Upload now'], ['RETRY_FAILED', 'Retry failed uploads'], ['SEND_PENDING', 'Show pending scans']];
+
+/** One device: health, details, actions sent to the scanner, upload history, recent errors, pending scans. */
+function DeviceDetails({ eventId, deviceId, flash, onChange }) {
+  const [info, setInfo] = useState(null);
+  const base = `/checkin/manage/events/${eventId}/devices/${deviceId}`;
+  const load = useCallback(() => api.get(base).then((r) => setInfo(r.data.data)).catch((e) => flash('bad', errText(e))), [base]);
+  useEffect(() => {
+    setInfo(null);
+    load();
+    const id = setInterval(load, 10000);
+    return () => clearInterval(id);
+  }, [load]);
+  const act = async (action) => {
+    try {
+      const r = await api.post(`${base}/actions`, { action });
+      flash(r.data.data.delivered ? 'good' : 'bad', r.data.message);
+      setTimeout(() => { load(); onChange(); }, 2500);
+    } catch (e) {
+      flash('bad', errText(e));
+    }
+  };
+  if (!info) return <DashState icon={RefreshCw} title="Loading the device…" />;
+  const d = info.device;
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 p-4 space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <strong>{d.name}</strong>
+        <Status value={HEALTH[info.health][0]} label={HEALTH[info.health][1]} />
+        <span className="text-xs text-slate-500">{CONNECTION[info.connection]} · sync {info.syncHealth.toLowerCase()} · id …{d.deviceKeyEnd}</span>
+      </div>
+      {d.status !== 'REVOKED' && (
+        <div className="flex flex-wrap gap-2">
+          {ACTIONS.map(([a, label]) => <button key={a} type="button" className="tl-st-btn tl-st-btn--sm" onClick={() => act(a)}><Wifi className="w-3.5 h-3.5 inline" /> {label}</button>)}
+        </div>
+      )}
+      {info.reasons.length > 0 && <ul className="text-xs">{info.reasons.map((r) => <li key={r.code} className={r.severity === 'critical' ? 'text-red-600' : 'text-amber-700'}>{r.message}</li>)}</ul>}
+      <dl className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
+        {[
+          ['Status', `${d.status}${d.enrolled ? ' · enrolled' : ' · not enrolled'}`], ['Last heartbeat', when(d.lastSeenAt)], ['Last upload', when(d.lastSyncAt)],
+          ['Last scan', when(d.lastScanAt)], ['Waiting to upload', d.pendingScans], ['Failed', d.failedScans], ['Stuck', d.stuckScans], ['Oldest waiting', when(d.oldestPendingAt)],
+          ['Open conflicts', info.openConflicts], ['Evidence handed in', info.quarantined], ['Last acknowledged #', d.lastSeqAcked ?? '—'], ['App version', d.appVersion || '—'],
+          ['Storage kept by browser', d.storagePersisted == null ? '—' : d.storagePersisted ? 'yes' : 'no'], ['Clock difference', d.clockSkewMs == null ? '—' : `${Math.round(d.clockSkewMs / 1000)} s`],
+          ['Ticket list', when(d.packAt)], ['Used by', d.lastUser || '—'], ['Registered', `${when(d.createdAt)} · ${d.registeredBy || '—'}`],
+          ['Scans recorded', `${info.activity.GREEN} admitted · ${info.activity.YELLOW} already used · ${info.activity.RED} turned away`],
+        ].map(([k, v]) => <div key={k}><dt className="inline text-slate-500">{k}: </dt><dd className="inline">{v}</dd></div>)}
+      </dl>
+      {d.lastSyncError && <p className="text-xs text-red-600">Last upload problem ({when(d.lastSyncErrorAt)}): {d.lastSyncError}</p>}
+      <div>
+        <p className="text-xs font-semibold">Pending scans on the device {info.pendingScans ? `(reported ${when(info.pendingScans.reportedAt)})` : ''}</p>
+        {!info.pendingScans ? <p className="text-xs text-slate-500">Not reported yet: use “Show pending scans”.</p> : !info.pendingScans.scans.length ? <p className="text-xs text-slate-500">None.</p> : (
+          <div className="tl-dash-table-wrap"><table className="tl-dash-table"><thead><tr><th>#</th><th>State</th><th>Scan</th><th>Device clock</th><th>Attempts</th><th>Last error</th></tr></thead><tbody>
+            {info.pendingScans.scans.map((p) => <tr key={p.scanId}><td>{p.seq}</td><td className="text-xs">{p.state}</td><td className="text-xs">{p.direction} · {p.localResult}{p.gate ? ` · ${p.gate}` : ''}</td><td className="text-xs">{when(p.deviceScannedAt)}</td><td>{p.attempts}</td><td className="text-xs">{p.lastError || '—'}</td></tr>)}
+          </tbody></table></div>
+        )}
+      </div>
+      <div>
+        <p className="text-xs font-semibold">Upload history (latest 50)</p>
+        {!info.syncHistory.length ? <p className="text-xs text-slate-500">No uploads yet.</p> : (
+          <div className="tl-dash-table-wrap"><table className="tl-dash-table"><thead><tr><th>When</th><th>Kind</th><th>Received</th><th>Accepted</th><th>Repeats</th><th>Rejected</th><th>Retry</th><th>Conflicts</th><th>Time</th><th>Error</th></tr></thead><tbody>
+            {info.syncHistory.map((b) => <tr key={b.id} className={b.error || b.retry || b.rejected ? 'text-red-700' : ''}><td className="text-xs">{when(b.createdAt)}</td><td className="text-xs">{b.kind}</td><td>{b.received}</td><td>{b.accepted}</td><td>{b.alreadyProcessed}</td><td>{b.rejected}</td><td>{b.retry}</td><td>{b.conflicts}</td><td className="text-xs">{b.durationMs} ms</td><td className="text-xs">{b.error || '—'}</td></tr>)}
+          </tbody></table></div>
+        )}
+      </div>
+      <div>
+        <p className="text-xs font-semibold">Device history</p>
+        <ul className="text-xs text-slate-600">{info.actions.map((a, i) => <li key={i}>{when(a.at)} · {a.action.replace('GATE_DEVICE_', '').replace(/_/g, ' ').toLowerCase()}{a.by ? ` · ${a.by}` : ''}{a.details?.action ? ` · ${a.details.action}${a.details.delivered === false ? ' (not connected)' : ''}` : ''}{a.details?.reason ? ` · ${a.details.reason}` : ''}</li>)}</ul>
+      </div>
+    </div>
+  );
+}
+
+// ── Evidence (quarantined scans) ───────────────────────────────────────────────────────────────────────
+
+const Q_REASON = { DEVICE_REVOKED: 'Held by a revoked device', ACCESS_REMOVED: 'Held by staff who lost access', INVALID: 'Could not be read' };
+
+/** Scans the server kept without processing them. Reviewing records a note; it never admits anyone. */
+function Evidence({ eventId, flash }) {
+  const [status, setStatus] = useState('PENDING_REVIEW');
+  const [rows, setRows] = useState(null);
+  const [picked, setPicked] = useState({});
+  const [note, setNote] = useState('');
+  const base = `/checkin/manage/events/${eventId}/quarantine`;
+  const load = useCallback(() => api.get(base, { params: { status: status || undefined } }).then((r) => { setRows(r.data.data.scans); setPicked({}); }).catch((e) => flash('bad', errText(e))), [base, status]);
+  useEffect(() => { load(); }, [load]);
+  const ids = Object.keys(picked).filter((k) => picked[k]);
+  const review = async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api.post(`${base}/review`, { ids, note });
+      flash('good', r.data.message);
+      setNote('');
+      load();
+    } catch (err) {
+      flash('bad', errText(err));
+    }
+  };
+  return (
+    <DashCard title="Evidence: scans kept for review" sub="Scans the server received but did not process: from revoked devices, from staff who lost access, or unreadable. They never admitted anyone. Review them with a note; to admit someone, use an exception." icon={Archive}
+      aside={<select className="tl-dash-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status"><option value="PENDING_REVIEW">To review</option><option value="REVIEWED">Reviewed</option><option value="">All</option></select>}>
+      {!rows ? <DashState icon={RefreshCw} title="Loading…" /> : !rows.length ? <DashState icon={Check} title="Nothing to review" /> : (
+        <>
+          <div className="tl-dash-table-wrap">
+            <table className="tl-dash-table">
+              <thead><tr><th /><th>Received</th><th>Why kept</th><th>Device</th><th>Scan</th><th>Handed in by</th><th>Review</th></tr></thead>
+              <tbody>
+                {rows.map((q) => (
+                  <tr key={q.id}>
+                    <td>{q.status === 'PENDING_REVIEW' && <input type="checkbox" checked={Boolean(picked[q.id])} onChange={(e) => setPicked({ ...picked, [q.id]: e.target.checked })} aria-label="Select" />}</td>
+                    <td className="text-xs">{when(q.createdAt)}</td>
+                    <td className="text-xs">{Q_REASON[q.reason]}{q.detail ? <div className="text-slate-500">{q.detail}</div> : null}</td>
+                    <td className="text-xs">{q.device || `…${q.deviceKey}`}{q.deviceSeq ? <div className="text-slate-500">#{q.deviceSeq}</div> : null}</td>
+                    <td className="text-xs">{q.payload?.direction || 'ENTRY'} · on the device: {q.payload?.localResult || '—'}{q.payload?.gate ? ` · ${q.payload.gate}` : ''}<div className="text-slate-500">{q.payload?.scannedAt ? when(q.payload.scannedAt) : ''}</div></td>
+                    <td className="text-xs">{q.submittedBy || '—'}</td>
+                    <td className="text-xs">{q.status === 'REVIEWED' ? `${q.reviewedBy || '—'} · ${when(q.reviewedAt)}: ${q.reviewNote}` : 'To review'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {status !== 'REVIEWED' && (
+            <form className="flex flex-wrap gap-2 items-end mt-3" onSubmit={review}>
+              <input className="tl-dash-input flex-1" style={{ minWidth: 240 }} required minLength={10} maxLength={1000} placeholder="Review note (kept in the audit history)" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Review note" />
+              <button type="submit" className="tl-st-btn tl-st-btn--green tl-st-btn--sm" disabled={!ids.length}><Check className="w-4 h-4" /> Mark {ids.length || ''} reviewed</button>
+            </form>
+          )}
+        </>
+      )}
+    </DashCard>
+  );
+}
+
+// ── Conflicts ──────────────────────────────────────────────────────────────────────────────────────────
+
+const CONFLICT_TYPE = {
+  DUPLICATE_ADMISSION: 'Admitted on more than one device',
+  TICKET_INVALIDATED: 'Admitted with a ticket that is not valid',
+  ORDERING: 'Exit the server could not place',
+  REENTRY_LIMIT: 'Re-entry beyond the policy',
+  RULE_MISMATCH: 'Admitted against a gate rule',
+};
+const RESOLUTION = {
+  CONFIRMED_SINGLE_ENTRY: 'One guest, scanned more than once',
+  CONFIRMED_MULTIPLE_ENTRY: 'More than one person entered (suspected fraud)',
+  ADMISSION_ACCEPTED: 'Accept the admission',
+  ADMISSION_REJECTED: 'Should not have been admitted',
+  DEVICE_ERROR: 'Device data was wrong (clock, old list)',
+  DISMISSED: 'Not a real problem',
+};
+
+/**
+ * Offline scans that disagree with the server. Every scan stays listed; resolving records a decision with a reason
+ * and changes no ticket (use Check-ins → Reverse or an exception to correct attendance).
+ */
+function Conflicts({ eventId, flash, onChange }) {
+  const [status, setStatus] = useState('OPEN');
+  const [data, setData] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [form, setForm] = useState({});
+  const base = `/checkin/manage/events/${eventId}/conflicts`;
+  const load = useCallback(() => api.get(base, { params: { status: status || undefined } }).then((r) => setData(r.data.data)).catch((e) => flash('bad', errText(e))), [base, status]);
+  useEffect(() => { load(); }, [load]);
+  const resolve = async (c) => {
+    const f = form[c.id] || {};
+    try {
+      const r = await api.post(`${base}/${c.id}/resolve`, { resolution: f.resolution, reason: f.reason || '' });
+      flash('good', r.data.message);
+      setForm({ ...form, [c.id]: undefined });
+      load();
+      onChange();
+    } catch (e) {
+      flash('bad', errText(e));
+    }
+  };
+  const exportCsv = async () => {
+    try {
+      const r = await api.get(base, { params: { status: 'OPEN', format: 'csv' }, responseType: 'blob' });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gate-conflicts-open-${eventId.slice(0, 8)}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      flash('bad', errText(e));
+    }
+  };
+  return (
+    <DashCard
+      title="Offline scan conflicts"
+      sub="A device admitted or let out a ticket while offline and the server disagreed when the scan arrived. Attendance follows the server; nothing is decided automatically. Resolving needs a reason and is kept in the history; it doesn't change the ticket."
+      icon={GitCompareArrows}
+      aside={(
+        <div className="flex gap-2">
+          <select className="tl-dash-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
+            <option value="OPEN">Open{data ? ` (${data.open})` : ''}</option>
+            <option value="RESOLVED">Resolved{data ? ` (${data.resolved})` : ''}</option>
+            <option value="">All</option>
+          </select>
+          <button type="button" className="tl-st-btn tl-st-btn--sm" onClick={exportCsv}><Download className="w-4 h-4" /> Export open</button>
+        </div>
+      )}
+    >
+      {!data ? <DashState icon={RefreshCw} title="Loading…" /> : !data.conflicts.length ? <DashState icon={Check} title={status === 'OPEN' ? 'No open conflicts' : 'Nothing here'} /> : (
+        <ul className="space-y-3">
+          {data.conflicts.map((c) => (
+            <li key={c.id} className="rounded-lg border border-slate-200 p-3">
+              <button type="button" className="w-full text-left" onClick={() => setOpen(open === c.id ? null : c.id)} aria-expanded={open === c.id}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Status value={c.status === 'OPEN' ? 'FAILED' : 'ACTIVE'} label={c.status === 'OPEN' ? 'Open' : RESOLUTION[c.resolution]} />
+                  <strong>{CONFLICT_TYPE[c.type]}</strong>
+                  <span className="text-xs text-slate-500">{c.ticket ? `${c.ticket.code} · ${c.ticket.holder || 'Guest'} · ${c.ticket.type || 'Ticket'}` : 'Unknown ticket'} · {c.scans.length} scan{c.scans.length === 1 ? '' : 's'} · {when(c.createdAt)}</span>
+                </div>
+                <div className="text-xs mt-1">{c.summary}</div>
+              </button>
+              {open === c.id && (
+                <div className="mt-3 space-y-3">
+                  {c.ticket && <p className="text-xs">Ticket now: <strong>{c.ticket.status}</strong> · {c.ticket.isInside ? 'inside' : 'outside'} · {c.ticket.entryCount} entr{c.ticket.entryCount === 1 ? 'y' : 'ies'}{c.ticket.checkedInAt ? ` · first entry ${when(c.ticket.checkedInAt)}${c.ticket.gate ? ` at ${c.ticket.gate}` : ''}` : ''}</p>}
+                  <div className="tl-dash-table-wrap">
+                    <table className="tl-dash-table">
+                      <thead><tr><th>Scan</th><th>Device</th><th>Gate</th><th>On the device</th><th>Server</th><th>Device clock</th><th>Received</th></tr></thead>
+                      <tbody>
+                        {c.scans.map((x) => (
+                          <tr key={x.checkInId}>
+                            <td className="text-xs">{x.direction === 'EXIT' ? 'Exit' : 'Entry'}{x.offline ? ' · offline' : ' · online'}{x.flagged ? ' · flagged' : ''}{x.reversedAt ? ' · reversed' : ''}<div className="text-slate-500">{x.staff || '—'}</div></td>
+                            <td className="text-xs">{x.device?.name || '—'}{x.deviceSeq ? <div className="text-slate-500">#{x.deviceSeq}</div> : null}</td>
+                            <td className="text-xs">{x.gate || '—'}</td>
+                            <td className="text-xs">{x.localResult || '—'}{x.localReason ? <div className="text-slate-500">{x.localReason}</div> : null}</td>
+                            <td className="text-xs">{x.result}<div className="text-slate-500">{x.reason}</div></td>
+                            <td className="text-xs">{x.deviceScannedAt ? when(x.deviceScannedAt) : '—'}</td>
+                            <td className="text-xs">{when(x.receivedAt)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-500">Device clocks are shown as reported and may be wrong; the order of scans on one device follows its sequence number.</p>
+                  {c.status === 'OPEN' ? (
+                    <form className="flex flex-wrap gap-2 items-end" onSubmit={(e) => { e.preventDefault(); resolve(c); }}>
+                      <select className="tl-dash-select" required value={form[c.id]?.resolution || ''} onChange={(e) => setForm({ ...form, [c.id]: { ...form[c.id], resolution: e.target.value } })} aria-label="Decision">
+                        <option value="">Decision…</option>
+                        {c.allowedResolutions.map((r) => <option key={r} value={r}>{RESOLUTION[r]}</option>)}
+                      </select>
+                      <input className="tl-dash-input flex-1" style={{ minWidth: 220 }} required minLength={10} maxLength={1000} placeholder="Reason (kept in the audit history)" value={form[c.id]?.reason || ''} onChange={(e) => setForm({ ...form, [c.id]: { ...form[c.id], reason: e.target.value } })} aria-label="Reason" />
+                      <button type="submit" className="tl-st-btn tl-st-btn--green tl-st-btn--sm"><Check className="w-4 h-4" /> Resolve</button>
+                    </form>
+                  ) : (
+                    <p className="text-xs">Resolved by <strong>{c.resolvedBy || '—'}</strong> on {when(c.resolvedAt)}: {c.resolutionReason}</p>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold">History</p>
+                    <ul className="text-xs text-slate-600">
+                      {c.history.map((h, i) => <li key={i}>{when(h.at)} · {h.action.replace('GATE_CONFLICT_', '').replace(/_/g, ' ').toLowerCase()}{h.by ? ` · ${h.by}` : ''}{h.details?.reason ? ` · ${h.details.reason}` : ''}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
       )}
     </DashCard>
   );
@@ -494,9 +855,38 @@ function Report({ eventId }) {
     URL.revokeObjectURL(url);
   };
   const totals = useMemo(() => report?.totals, [report]);
+  const [busy, setBusy] = useState('');
+  const ops = async (kind, filename, path = `/checkin/manage/events/${eventId}/reports/${kind}`, params = {}) => {
+    setBusy(kind);
+    try {
+      await downloadCsv(path, params, filename);
+    } catch (e) {
+      setError(errText(e));
+    } finally {
+      setBusy('');
+    }
+  };
   if (error) return <Notice tone="bad">{error}</Notice>;
   if (!report) return <DashState icon={RefreshCw} title="Building the report…" />;
+  const opsReports = [
+    ['device-sync', 'Device synchronization', 'Every device: health, last heartbeat / upload / scan, waiting, failed, stuck, conflicts, uploads in the last 24 h.'],
+    ['failed-scans', 'Failed scans', 'Scans kept by the server (unreadable, revoked devices, lost access) and scans failing on devices.'],
+    ['conflicts', 'Unresolved conflicts', 'Open offline conflicts with tickets, devices and gates.'],
+    ['device-activity', 'Device activity', 'Scans per device: admitted, already used, turned away, offline, first and last scan.'],
+    ['recovery-history', 'Recovery history', 'Revocations, resets, enrollments, supervisor device actions, evidence, conflict decisions, reversals, exceptions.'],
+  ];
   return (
+    <div className="space-y-6">
+    <DashCard title="Gate operations reports" sub="CSV downloads for this event." icon={Download}>
+      <ul className="space-y-2">
+        {opsReports.map(([kind, title, sub]) => (
+          <li key={kind} className="flex flex-wrap items-center justify-between gap-2">
+            <span><strong className="text-sm">{title}</strong><span className="block text-xs text-slate-500">{sub}</span></span>
+            <button type="button" className="tl-st-btn tl-st-btn--sm" disabled={busy === kind} onClick={() => (kind === 'conflicts' ? ops(kind, `gate-conflicts-open-${eventId.slice(0, 8)}.csv`, `/checkin/manage/events/${eventId}/conflicts`, { status: 'OPEN' }) : ops(kind, `gate-${kind}-${eventId.slice(0, 8)}.csv`))}><Download className="w-3.5 h-3.5 inline" /> {busy === kind ? 'Preparing…' : 'CSV'}</button>
+          </li>
+        ))}
+      </ul>
+    </DashCard>
     <DashCard title="Attendance by gate" sub={`Generated ${when(report.generatedAt)}. Reversed scans are counted separately, not as entries.`} icon={FileBarChart} aside={<button type="button" className="tl-st-btn tl-st-btn--sm" onClick={csv}><Download className="w-3.5 h-3.5 inline" /> CSV</button>}>
       <p className="text-sm mb-4">{totals.entered} of {totals.sold} tickets entered · {totals.inside} inside · {totals.reentries} re-entries · {totals.exits} exits · {totals.turnedAway} turned away · {totals.duplicates} duplicate scans · {totals.exceptions} exceptions · {totals.reversed} reversed</p>
       <div className="tl-dash-table-wrap">
@@ -516,5 +906,6 @@ function Report({ eventId }) {
         </table>
       </div>
     </DashCard>
+    </div>
   );
 }

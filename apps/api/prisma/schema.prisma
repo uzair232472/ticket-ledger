@@ -900,6 +900,13 @@ model GateScan {
   result     GateScanResult
   gateNumber String?
   notes      String?
+  checkInId  String? // the CheckIn this row mirrors (rows written since check-in idempotency)
+  // A reversed admission is kept (history) and left out of admission counts
+  reversedAt     DateTime?
+  reversedById   String?
+  reversalReason String?
+
+  @@index([checkInId])
 
   @@index([ticketId])
   @@index([staffId])
@@ -929,8 +936,21 @@ model CheckIn {
   exceptionId    String?
   scannedAt      DateTime      @default(now())
   syncedAt       DateTime?
-  createdAt      DateTime      @default(now())
+  createdAt      DateTime      @default(now()) // server receipt time
+  // Idempotency and evidence from the scanner (offline scan store): the device's scan id, which device it was
+  // (GateDevice.id), its per-device sequence number, its clock reading as sent, and its own verdict
+  clientScanId    String?
+  deviceRecordId  String?
+  deviceSeq       Int?
+  deviceScannedAt String?
+  localResult     CheckInResult?
+  localReason     String?
+  conflictId      String? // the ScanConflict this scan is part of
 
+  // One record per scan per device: an upload repeated (retry, lost response, two requests at once) is the same scan
+  @@unique([deviceRecordId, clientScanId])
+  @@index([deviceRecordId, deviceSeq])
+  @@index([conflictId])
   @@index([eventId, scannedAt])
   @@index([ticketId])
   @@index([staffId])
@@ -1431,12 +1451,37 @@ model GateDevice {
   lastSeenAt     DateTime?
   lastSyncAt     DateTime?
   pendingScans   Int          @default(0) // offline scans waiting on the device (last heartbeat)
+  lastSeqAcked   Int? // highest device sequence number the server has acknowledged
+  // Diagnostics reported by the scanner (heartbeat): see gateService.deviceHealth
+  appVersion        String?
+  failedScans       Int       @default(0) // scans the server refused that wait on the device
+  deviceConflicts   Int       @default(0) // scans the device holds as conflicts
+  stuckScans        Int       @default(0) // pending longer than 15 minutes, or retried 5+ times
+  oldestPendingAt   DateTime? // device time of the oldest scan not uploaded
+  lastScanAt        DateTime? // the device's last scan (any result)
+  storagePersisted  Boolean? // the browser agreed to keep the scan storage
+  clockSkewMs       Int? // device clock minus server clock at the last heartbeat
+  lastSyncError     String?
+  lastSyncErrorAt   DateTime?
+  pendingManifest   Json? // the device's unprocessed scans, sent when a supervisor asked to see them
+  manifestAt        DateTime?
   packAt         DateTime? // when the device last downloaded the offline list
   online         Boolean      @default(true)
   userAgent      String?
   revokedAt      DateTime?
   revokedById    String?
   revokeReason   String?
+  // Server-issued device credential (deviceAuthService): only the SHA-256 of the token is stored. Null = not
+  // enrolled (legacy device, or enrollment reset / revoked by a supervisor).
+  tokenHash         String?   @unique
+  tokenIssuedAt     DateTime?
+  enrolledById      String?
+  // Requests made without a device token while the migration flag allowed it (GATE_DEVICE_AUTH=warn)
+  legacyRequests    Int       @default(0)
+  lastLegacyAt      DateTime?
+  // Rejected device credentials (wrong / missing token for an enrolled device)
+  authFailures      Int       @default(0)
+  lastAuthFailureAt DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1746,5 +1791,109 @@ model EventAnnouncement {
   recipientCount Int      @default(0)
   createdAt      DateTime @default(now())
 
+  @@index([eventId, createdAt])
+}
+
+enum QuarantineReason {
+  DEVICE_REVOKED // sent by a device a supervisor revoked
+  ACCESS_REMOVED // the account no longer scans for the event
+  INVALID // the scan could not be read (malformed record)
+}
+
+enum QuarantineStatus {
+  PENDING_REVIEW
+  REVIEWED
+}
+
+// Scans the server received but did not process: kept as evidence for supervisors, never admit anyone
+model QuarantinedScan {
+  id            String           @id @default(uuid())
+  companyId     String
+  eventId       String
+  deviceKey     String
+  deviceId      String? // GateDevice.id when the device is known
+  clientScanId  String?
+  deviceSeq     Int?
+  submittedById String
+  reason        QuarantineReason
+  detail        String?
+  payload       Json // the scan exactly as submitted
+  status        QuarantineStatus @default(PENDING_REVIEW)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+  createdAt     DateTime         @default(now())
+
+  @@unique([companyId, deviceKey, clientScanId])
+  @@index([eventId, status])
+}
+
+enum ScanConflictType {
+  DUPLICATE_ADMISSION // admitted offline, but the ticket had already entered (another device, or online)
+  TICKET_INVALIDATED // admitted offline, but the ticket was refunded, cancelled, transferred or never paid
+  ORDERING // an exit the server can't place (the ticket wasn't inside / hadn't entered)
+  REENTRY_LIMIT // re-admitted offline beyond the event's re-entry policy
+  RULE_MISMATCH // admitted offline against another server rule (gate, unknown ticket)
+}
+
+enum ScanConflictStatus {
+  OPEN
+  RESOLVED
+}
+
+enum ScanConflictResolution {
+  CONFIRMED_SINGLE_ENTRY // one guest, scanned more than once: attendance stays one
+  CONFIRMED_MULTIPLE_ENTRY // more than one person entered on the ticket (suspected fraud)
+  ADMISSION_ACCEPTED // the supervisor accepts the offline admission (the ticket itself is not changed)
+  ADMISSION_REJECTED // the guest should not have been admitted (follow-up recorded in the reason)
+  DEVICE_ERROR // the device's data was wrong (clock, stale list)
+  DISMISSED // not a real problem
+}
+
+// Offline scans that disagree with the server's ticket state. The scans themselves stay in CheckIn (linked by
+// conflictId); a conflict is never resolved automatically and its resolution never changes the ticket.
+model ScanConflict {
+  id               String                  @id @default(uuid())
+  eventId          String
+  companyId        String
+  ticketId         String?
+  type             ScanConflictType
+  status           ScanConflictStatus      @default(OPEN)
+  summary          String
+  evidence         Json // server ticket state, verdicts and prior admission when detected
+  detectedById     String // the staff member whose upload revealed it
+  resolution       ScanConflictResolution?
+  resolutionReason String?
+  resolvedById     String?
+  resolvedAt       DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([eventId, status])
+  @@index([ticketId, type, status])
+}
+
+// One upload request from a scanner (sync or evidence): what was received and how it ended. Device sync history,
+// recent errors and the device synchronization report read from here.
+model GateSyncBatch {
+  id               String   @id @default(uuid())
+  companyId        String
+  eventId          String
+  deviceId         String // GateDevice.id
+  userId           String
+  kind             String // SYNC | EVIDENCE
+  received         Int      @default(0)
+  accepted         Int      @default(0)
+  alreadyProcessed Int      @default(0)
+  rejected         Int      @default(0)
+  retry            Int      @default(0)
+  conflicts        Int      @default(0)
+  quarantined      Int      @default(0)
+  lastAckedSeq     Int?
+  durationMs       Int      @default(0)
+  error            String?
+  createdAt        DateTime @default(now())
+
+  @@index([deviceId, createdAt])
   @@index([eventId, createdAt])
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { io } from 'socket.io-client';
+import { connectSocket } from '../lib/socket';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -84,9 +84,7 @@ export default function NotificationBell() {
     fetchNotifications();
 
     // Socket.io Real-Time Connection
-    const socket = io(import.meta.env.VITE_SOCKET_URL || import.meta.env.VITE_API_URL || 'http://localhost:5000', {
-      transports: ['websocket', 'polling'],
-    });
+    const socket = connectSocket();
 
     socket.on('connect', () => {
       socket.emit('join_user_room', user.id);

@@ -1,8 +1,10 @@
 /**
  * Offline support for the gate scanner.
  *
- * IndexedDB keeps, per event: the offline pack (public key + every paid ticket with its status, qrVersion and
- * manual code), the check-ins this device made, and a queue of scans to upload with POST /api/checkin/sync.
+ * IndexedDB (tl-gate) keeps, per event: the offline pack (public key + every paid ticket with its status, qrVersion
+ * and manual code) and the check-ins this device made. Scans themselves live in gateScanStore.js (tl-gate-scans);
+ * the old `queue` store here is kept at version 1 so an older scanner build still opens this database, and holds a
+ * mirror of the scans not processed by the server yet (a rolled-back scanner uploads exactly those).
  * Passes are verified locally with the public key (WebCrypto Ed25519), which can check passes but never make
  * them. If the device has been offline for more than 2 hours, scanning locks until it reconnects.
  */
@@ -14,7 +16,8 @@ const LAST_ONLINE_KEY = 'tl-gate-last-online';
 const DEVICE_KEY = 'tl-gate-device';
 
 let dbPromise = null;
-const openDb = () => {
+/** Kept at version 1 on purpose: an older scanner build must still be able to open it (rollback). */
+export const openLegacyDb = () => {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -32,7 +35,7 @@ const openDb = () => {
 };
 
 const tx = async (store, mode, fn) => {
-  const db = await openDb();
+  const db = await openLegacyDb();
   return new Promise((resolve, reject) => {
     const t = db.transaction(store, mode);
     const request = fn(t.objectStore(store));
@@ -49,26 +52,22 @@ export const loadPack = async (eventId, ownerId) => {
 };
 export const markUsedLocally = (eventId, ticketId, info) => tx('used', 'readwrite', (s) => s.put(info, `${eventId}:${ticketId}`));
 export const usedLocally = (eventId, ticketId) => tx('used', 'readonly', (s) => s.get(`${eventId}:${ticketId}`));
-export const enqueue = (scan) => tx('queue', 'readwrite', (s) => s.put(scan));
-export const queued = async (eventId) => {
-  const all = await tx('queue', 'readonly', (s) => s.getAll());
-  return (all || []).filter((q) => !eventId || q.eventId === eventId).sort((a, b) => a.scannedAt.localeCompare(b.scannedAt));
-};
-export const dequeue = (ids) => tx('queue', 'readwrite', (s) => ids.forEach((id) => s.delete(id)));
+// The version-1 queue (see the header): written and cleared only by gateScanStore.js
+export const legacyPut = (item) => tx('queue', 'readwrite', (s) => s.put(item));
+export const legacyAll = async () => (await tx('queue', 'readonly', (s) => s.getAll())) || [];
+export const legacyDelete = (ids) => (ids.length ? tx('queue', 'readwrite', (s) => ids.forEach((id) => s.delete(id))) : Promise.resolve());
 
 /**
- * Access to an event was revoked: remove everything this device holds for it (the ticket list, its own
- * check-ins and scans waiting to upload, which the server would refuse). Returns how many queued scans
- * were dropped.
+ * Access to an event (or this device) was revoked: delete the event's ticket list and the device's local
+ * presence copy, so it can't decide scans any more. Scans waiting to upload are evidence of what happened at the
+ * gate and are KEPT: scan records (gateScanStore.js) are never deleted here (supervisors review them; they never
+ * admit anyone by themselves).
  */
-export async function wipeEvent(eventId) {
-  const dropped = (await queued(eventId)).map((q) => q.clientId);
-  await dequeue(dropped);
+export async function wipeEventPack(eventId) {
   await tx('packs', 'readwrite', (s) => s.delete(eventId));
   const keys = (await tx('used', 'readonly', (s) => s.getAllKeys())) || [];
   const mine = keys.filter((k) => String(k).startsWith(`${eventId}:`));
   if (mine.length) await tx('used', 'readwrite', (s) => mine.forEach((k) => s.delete(k)));
-  return dropped.length;
 }
 
 // ---------- Device identity and connectivity ----------
@@ -89,7 +88,8 @@ const safeSet = (k, v) => {
 export const deviceId = () => {
   let id = safeGet(DEVICE_KEY);
   if (!id) {
-    id = `gate-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
+    const rnd = crypto.randomUUID?.() || [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    id = `gate-${rnd}`;
     safeSet(DEVICE_KEY, id);
   }
   return id;
@@ -172,7 +172,7 @@ export async function evaluateOffline(pack, raw, gate, { direction = 'ENTRY', ga
     version = Number(v);
   }
 
-  const view = { type: ticket.type, seat: ticket.seat, holder: ticket.holder };
+  const view = { id: ticket.id, type: ticket.type, seat: ticket.seat, holder: ticket.holder };
   if (version !== ticket.qrVersion) return { result: 'RED', reason: 'Old QR: this ticket was transferred', ticket: view };
   if (ticket.status === 'CANCELLED') return { result: 'RED', reason: 'Ticket refunded / cancelled', ticket: view };
 

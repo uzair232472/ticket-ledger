@@ -89,8 +89,8 @@ export const dispatchNotification = async ({
     if (io) {
       // Emit to targeted user room
       io.to(`user_${userId}`).emit('notification', inAppRecord);
-      // Emit to global user-specific event channel
-      io.emit(`notification_${userId}`, inAppRecord);
+      // Same payload under the older per-user event name, still only to that user's (authenticated) room
+      io.to(`user_${userId}`).emit(`notification_${userId}`, inAppRecord);
       responseSummary.channels.socket = { success: true, event: 'notification' };
     }
   } catch (socketErr) {

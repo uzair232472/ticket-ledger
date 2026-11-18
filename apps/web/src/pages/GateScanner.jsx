@@ -1,18 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { io } from 'socket.io-client';
+import { connectSocket } from '../lib/socket';
 import {
   AlertTriangle, ArrowLeft, Armchair, Camera, Check, ChevronRight, Clock, ShieldOff, CheckCircle2, CloudOff, CloudUpload, ImageUp, Info, Keyboard, MapPin,
   RefreshCw, ScanLine, ShieldCheck, Tag, Ticket, User, Users, Wifi, X,
 } from 'lucide-react';
 import api from '../utils/api';
-import { API_URL } from '../lib/session';
 import { useAuth } from '../context/AuthContext';
 import QrCamera from '../components/scanner/QrCamera';
 import { decodeQrFromFile } from '../lib/qrImage';
 import {
-  deviceId as getDeviceId, enqueue, dequeue, queued, evaluateOffline, loadPack, savePack, markUsedLocally, noteOnline, offlineTooLong, lastOnline, wipeEvent,
+  deviceId as getDeviceId, evaluateOffline, loadPack, savePack, markUsedLocally, noteOnline, offlineTooLong, lastOnline, wipeEventPack,
 } from '../lib/gateOffline';
+import {
+  APP_VERSION, applyEvidenceResults, applySyncResults, exportScans, initScanStore, scanDiagnostics, listScans, recordScan, recoverInterrupted, releaseBatch, retryFailed, scanCounts, takeForEvidence, takeForUpload, withUploadLock,
+} from '../lib/gateScanStore';
+import { backoffDelay, classifySyncError, newScanId, toUploadItem } from '../lib/gateScanModel';
+import { DEVICE_AUTH_CODES, clearDeviceToken, ensureDeviceToken, loadDeviceToken } from '../lib/gateDeviceAuth';
 import '../components/scanner/scanner.css';
 
 const GATES = ['Gate A', 'Gate B', 'Gate C', 'Gate D', 'Gate E', 'VIP Gate'];
@@ -144,7 +148,7 @@ function Verdict({ verdict, eventName, gate, online, onNext, onManual, onExcepti
         )}
 
         {verdict.result === 'GREEN' && (
-          <p className="tl-gv-ok"><CheckCircle2 aria-hidden="true" /> Ticket valid • Ownership verified</p>
+          <p className="tl-gv-ok"><CheckCircle2 aria-hidden="true" /> {verdict.offline ? 'Valid on this device (offline) • checked against the other gates when it uploads' : 'Ticket valid • Ownership verified'}</p>
         )}
 
         {verdict.result === 'YELLOW' && (exceptionBox || (
@@ -206,6 +210,65 @@ function ImageScan({ disabled, busy, onCode, onError, compact }) {
   );
 }
 
+const STATE_LABEL = { PENDING: 'Waiting to upload', UPLOADING: 'Uploading', SYNCED: 'Uploaded', FAILED: 'Upload failed', CONFLICT: 'Conflict: supervisor review', QUARANTINED: 'Kept for supervisor review (not admitted)' };
+const STATE_TONE = { PENDING: 'yellow', UPLOADING: 'yellow', SYNCED: 'green', FAILED: 'red', CONFLICT: 'red', QUARANTINED: 'yellow' };
+
+/** This device's scan records for the event: sync state, failure reasons, upload / retry, and a JSON export. */
+function DeviceScans({ eventId, counts, online, onSync, onChange }) {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState('');
+  useEffect(() => {
+    listScans(eventId, { limit: 100 }).then(setRows).catch(() => setRows([]));
+  }, [eventId, counts]);
+  const run = async (what, fn) => {
+    setBusy(what);
+    try {
+      await fn();
+    } finally {
+      setBusy('');
+      onChange();
+    }
+  };
+  const download = () => run('export', async () => {
+    const data = await exportScans(eventId);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gate-scans-${eventId.slice(0, 8)}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  return (
+    <div>
+      <div className="tl-gs-gates" style={{ marginTop: 8 }}>
+        <button type="button" onClick={() => run('sync', () => onSync({ manual: true }))} disabled={!online || Boolean(busy) || !counts?.PENDING}>{busy === 'sync' ? 'Uploading…' : 'Upload now'}</button>
+        <button type="button" onClick={() => run('retry', async () => { await retryFailed(eventId); if (online) await onSync({ manual: true }); })} disabled={Boolean(busy) || !counts?.FAILED}>Retry failed ({counts?.FAILED || 0})</button>
+        <button type="button" onClick={download} disabled={Boolean(busy)}>Export (JSON)</button>
+      </div>
+      {!rows ? <p className="tl-gs-muted">Loading…</p> : !rows.length ? <p className="tl-gs-empty">No offline scans on this device for this event.</p> : (
+        <ul className="tl-gs-recent">
+          {rows.map((r) => (
+            <li key={r.scanId} className={`is-${STATE_TONE[r.syncState]}`}>
+              <i aria-hidden="true" />
+              <span>
+                <strong>#{r.seq} · {STATE_LABEL[r.syncState]}</strong>
+                <small>
+                  {r.direction === 'EXIT' ? 'Exit' : 'Entry'} · on this device: {r.localResult}{r.localReason ? ` (${r.localReason})` : ''}
+                  {r.server?.result ? ` · server: ${r.server.result}${r.server.reason ? ` (${r.server.reason})` : ''}${r.server.status === 'ALREADY_PROCESSED' ? ' · already received earlier' : ''}` : r.server?.status === 'QUARANTINED' ? ' · handed in for supervisor review' : ''}
+                  {r.lastError && r.syncState !== 'SYNCED' ? ` · ${r.lastError}` : ''}
+                  {r.attempts > 1 ? ` · ${r.attempts} attempts` : ''}
+                  {r.migratedFrom ? ' · from the previous scanner version' : ''}
+                </small>
+              </span>
+              <time>{clock(r.deviceScannedAt)}{r.gate ? ` · ${r.gate}` : ''}</time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function EventPicker({ events, loading, onPick }) {
   return (
     <section className="tl-gs-card">
@@ -255,19 +318,70 @@ export default function GateScanner() {
   const [packError, setPackError] = useState('');
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
-  const [queueCount, setQueueCount] = useState(0);
+  const [counts, setCounts] = useState(null); // this device's scans for the event by sync state (gateScanStore)
+  const [storeInfo, setStoreInfo] = useState(null); // { persisted, migration, pruned } or { error }
+  const [showScans, setShowScans] = useState(false);
   const [syncNote, setSyncNote] = useState('');
   const [scanning, setScanning] = useState(false);
   const [verdict, setVerdict] = useState(null);
   const [checking, setChecking] = useState(false);
   const [manual, setManual] = useState('');
   const [locked, setLocked] = useState(false);
-  const [revoked, setRevoked] = useState(null); // { dropped, device? } once access to this event (or this device) is removed
+  const [revoked, setRevoked] = useState(null); // { kept, device? } once access to this event (or this device) is removed
   const [direction, setDirection] = useState('ENTRY'); // at gates that take both
+  const [deviceAuth, setDeviceAuth] = useState(null); // null | { state, message } from enrollment
   const busyRef = useRef(false);
   const resetTimer = useRef(null);
+  const revokedRef = useRef(false);
+  const tokenRef = useRef(null);
+  const needsResetRef = useRef(false);
+  const handInRef = useRef(null); // handInEvidence (declared after revoke)
+  const backoffRef = useRef({ failures: 0, nextAt: 0 }); // automatic uploads after consecutive failures
+  const lastSyncErrorRef = useRef(null); // reported with the heartbeat until an upload succeeds
+  const [recovery, setRecovery] = useState(null); // { recovered, nextAt, failures, error } shown under “Scans on this device”
+  const [connTest, setConnTest] = useState(null); // result of “Test connection”
 
   const event = events.find((e) => e.id === eventId) || pack?.event || null;
+  const companyId = event?.companyId || pack?.event?.companyId || null;
+
+  // ---------- Device credential ----------
+  // Every scanner request carries the device id and, once enrolled, the device token (X-Device-Token). A request
+  // refused for the credential enrolls (or re-enrolls) the device and is sent once more.
+  const enroll = useCallback(async (invalidToken = null) => {
+    if (!eventId) return null;
+    const out = await ensureDeviceToken({ eventId, deviceKey: device, companyId, invalidToken });
+    tokenRef.current = out.token || null;
+    // Waits for the supervisor's reset (gate:device-reset) or a reload instead of retrying on every request
+    needsResetRef.current = out.state === 'needs-reset';
+    setDeviceAuth(out.state === 'enrolled' ? null : { state: out.state, message: out.message });
+    return out.token || null;
+  }, [eventId, device, companyId]);
+
+  const deviceCall = useCallback(async (config) => {
+    if (!tokenRef.current && companyId) tokenRef.current = await loadDeviceToken(companyId, device);
+    const send = () => api.request({ ...config, headers: { ...(config.headers || {}), ...(tokenRef.current ? { 'X-Device-Token': tokenRef.current } : {}) } });
+    try {
+      return await send();
+    } catch (err) {
+      const code = err.response?.status === 401 ? err.response.data?.code : null;
+      if (!DEVICE_AUTH_CODES.includes(code) || needsResetRef.current) throw err;
+      if (!(await enroll(code === 'DEVICE_TOKEN_INVALID' ? tokenRef.current : null))) throw err;
+      return send();
+    }
+  }, [companyId, device, enroll]);
+
+  // Silent migration: a device without a token enrolls as soon as it is online and knows the organization
+  useEffect(() => {
+    tokenRef.current = null;
+    if (!eventId || !companyId) return;
+    let cancelled = false;
+    loadDeviceToken(companyId, device).then((t) => {
+      if (cancelled) return;
+      tokenRef.current = t;
+      if (!t && navigator.onLine) enroll();
+    });
+    return () => { cancelled = true; };
+  }, [eventId, companyId, device, enroll]);
 
   // ---------- Events and gate ----------
   useEffect(() => {
@@ -276,23 +390,32 @@ export default function GateScanner() {
       .catch(() => setEvents([]))
       .finally(() => setEventsLoading(false));
   }, []);
-  // Access to this event was removed: wipe the device's copy and stop scanning (online or offline)
-  const revoke = useCallback(async (device = false) => {
+  // Access to this event (or this device) was removed: delete the ticket list (and, for a revoked device, its
+  // credential) and stop scanning. Scans not uploaded yet are kept as evidence for supervisor review.
+  const revoke = useCallback(async (deviceRevoked = false) => {
     if (!eventId) return;
-    const dropped = await wipeEvent(eventId).catch(() => 0);
+    revokedRef.current = true;
+    await wipeEventPack(eventId).catch(() => {});
+    // Hand the scans the server hasn't processed in as evidence (quarantined for supervisors; never admissions)
+    await handInRef.current?.().catch(() => {});
+    const kept = (await scanCounts(eventId).catch(() => null))?.unsynced || 0;
+    if (deviceRevoked) {
+      await clearDeviceToken(companyId);
+      tokenRef.current = null;
+    }
     setPack(null);
-    setQueueCount(0);
     setScanning(false);
     setVerdict(null);
-    setRevoked({ dropped, device });
-    if (!device) setEvents((list) => list.filter((e) => e.id !== eventId));
-  }, [eventId]);
+    setRevoked({ kept, device: deviceRevoked });
+    if (!deviceRevoked) setEvents((list) => list.filter((e) => e.id !== eventId));
+  }, [eventId, companyId]);
   // A 403 means: this device was revoked, or this account lost the event (other refusals are shown as a verdict)
   const isAccessLoss = (err) => err.response?.status === 403 && (!err.response.data?.code || err.response.data.code === 'DEVICE_REVOKED');
   const loseAccess = useCallback((err) => revoke(err.response?.data?.code === 'DEVICE_REVOKED'), [revoke]);
 
   useEffect(() => {
     setRevoked(null);
+    revokedRef.current = false;
     setGate(eventId ? readGate(eventId) : '');
     setVerdict(null);
     setRecent([]);
@@ -304,12 +427,51 @@ export default function GateScanner() {
   };
 
   // ---------- Offline pack, queue and connectivity ----------
-  const refreshQueue = useCallback(async () => setQueueCount((await queued(eventId)).length), [eventId]);
+  const refreshQueue = useCallback(async () => {
+    if (!eventId) return;
+    try {
+      setCounts(await scanCounts(eventId));
+    } catch (err) {
+      setStoreInfo({ error: err.message || 'This device can’t store offline scans.' });
+    }
+  }, [eventId]);
+  const queueCount = counts?.unsynced || 0;
+
+  /**
+   * Revoked device or access removed: the scans not processed yet are handed in to POST /api/checkin/evidence and
+   * become QUARANTINED (kept by the server for supervisor review). Without a connection they stay on the device
+   * and are handed in the next time the scanner opens online.
+   */
+  const handInEvidence = useCallback(async () => {
+    if (!eventId) return;
+    await withUploadLock(async () => {
+      await initScanStore();
+      for (;;) {
+        const batch = await takeForEvidence(eventId);
+        if (!batch.length) break;
+        try {
+          const res = await api.post('/checkin/evidence', { eventId, deviceId: device, scans: batch.map(toUploadItem) });
+          const out = await applyEvidenceResults(batch, res.data.data.results);
+          if (out.unacknowledged) break;
+        } catch (err) {
+          await releaseBatch(batch, { state: 'PENDING', message: err.response?.data?.message || 'Could not hand in the scans yet; they stay on this device.' });
+          break;
+        }
+      }
+    });
+    refreshQueue();
+  }, [eventId, device, refreshQueue]);
+  handInRef.current = handInEvidence;
+
+  // Opens the scan store once: moves scans from the previous scanner version (backed up and verified first)
+  useEffect(() => {
+    initScanStore().then(setStoreInfo, (err) => setStoreInfo({ error: err.message || 'This device can’t store offline scans.' }));
+  }, []);
 
   const refreshPack = useCallback(async () => {
     if (!eventId) return;
     try {
-      const res = await api.get(`/checkin/events/${eventId}/pack`, { params: { deviceId: device } });
+      const res = await deviceCall({ method: 'get', url: `/checkin/events/${eventId}/pack`, params: { deviceId: device } });
       await savePack(eventId, res.data.data, user?.id);
       setPack({ ...res.data.data, savedAt: Date.now() });
       setPackError('');
@@ -325,7 +487,7 @@ export default function GateScanner() {
       const cached = await loadPack(eventId, user?.id).catch(() => null);
       if (cached) setPack(cached);
     }
-  }, [eventId, user?.id, loseAccess, device]);
+  }, [eventId, user?.id, loseAccess, device, deviceCall]);
 
   const loadStats = useCallback(async () => {
     if (!eventId) return;
@@ -338,50 +500,147 @@ export default function GateScanner() {
     }
   }, [eventId]);
 
-  const syncQueue = useCallback(async () => {
-    if (!eventId) return;
-    const items = await queued(eventId);
-    if (!items.length) return;
-    try {
+  /**
+   * Uploads this device's PENDING scans for the event, oldest first, one batch at a time (one uploader across tabs).
+   * Each scan is marked from the server's acknowledgement; a failed request returns its batch to PENDING (retried)
+   * or FAILED (kept, shown, "Retry failed"). No scan is removed because an upload failed.
+   */
+  const syncQueue = useCallback(async ({ manual = false } = {}) => {
+    // A revoked device keeps its scans but doesn't try to upload them as admissions
+    if (!eventId || revokedRef.current) return;
+    // After failures, automatic attempts wait (backoff); "Upload now" doesn't
+    if (!manual && Date.now() < backoffRef.current.nextAt) return;
+    let retryLater = false;
+    await withUploadLock(async () => {
+      await initScanStore();
+      // Holding the lock: anything still UPLOADING was cut off (page closed, connection lost mid-upload)
+      const recovered = await recoverInterrupted(eventId);
+      if (recovered) setRecovery((r) => ({ ...r, recovered: (r?.recovered || 0) + recovered, recoveredAt: Date.now() }));
+      let synced = 0;
       let conflicts = 0;
-      for (let i = 0; i < items.length; i += 200) {
-        const batch = items.slice(i, i + 200);
-        const res = await api.post('/checkin/sync', {
-          eventId,
-          deviceId: device,
-          pending: items.length - i,
-          scans: batch.map(({ clientId, code, gate: g, gateId: gid, direction: dir, scannedAt, localResult, localReason }) => ({ clientId, code, gate: g || undefined, gateId: gid || undefined, direction: dir || 'ENTRY', scannedAt, localResult, localReason: localReason?.slice(0, 200) })),
-        });
-        conflicts += res.data.data.conflicts;
-        await dequeue(batch.map((b) => b.clientId));
+      let failed = 0;
+      let unacknowledged = 0;
+      for (;;) {
+        const batch = await takeForUpload(eventId);
+        if (!batch.length) break;
+        try {
+          const left = (await scanCounts(eventId)).unsynced;
+          const res = await deviceCall({ method: 'post', url: '/checkin/sync', data: { eventId, deviceId: device, pending: left, scans: batch.map(toUploadItem) } });
+          const out = await applySyncResults(batch, res.data.data.results);
+          synced += out.synced;
+          conflicts += out.conflicts;
+          failed += out.rejected;
+          unacknowledged += out.unacknowledged;
+          noteOnline();
+          setOnline(true);
+          if (out.unacknowledged) {
+            retryLater = true;
+            break; // sent again on the next run, not in a loop now
+          }
+        } catch (err) {
+          const outcome = classifySyncError(err);
+          lastSyncErrorRef.current = outcome.message;
+          await releaseBatch(batch, outcome);
+          if (outcome.state === 'FAILED') {
+            failed += batch.length;
+            continue;
+          }
+          if (isAccessLoss(err)) loseAccess(err);
+          else if (!err.response) setOnline(false);
+          retryLater = outcome.retry || retryLater;
+          break;
+        }
       }
-      noteOnline();
-      setOnline(true);
-      setSyncNote(`${items.length} offline scan${items.length === 1 ? '' : 's'} uploaded${conflicts ? ` · ${conflicts} flagged for the organizer (admitted twice while offline)` : ''}.`);
-      loadStats();
-    } catch (err) {
-      if (isAccessLoss(err)) loseAccess(err);
-      else if (!err.response) setOnline(false);
-    } finally {
-      refreshQueue();
-    }
-  }, [eventId, device, loadStats, refreshQueue, loseAccess]);
+      if (synced || failed || unacknowledged) {
+        setSyncNote([
+          synced && `${synced} offline scan${synced === 1 ? '' : 's'} uploaded`,
+          conflicts && `${conflicts} flagged for the organizer (admitted twice while offline)`,
+          failed && `${failed} could not be uploaded (kept on this device: see “Scans on this device”)`,
+          unacknowledged && `${unacknowledged} not confirmed by the server yet (will be sent again)`,
+        ].filter(Boolean).join(' · ') + '.');
+      }
+      if (synced) loadStats();
+    }).catch((err) => setStoreInfo({ error: err.message || 'This device can’t store offline scans.' }));
+    const b = backoffRef.current;
+    b.failures = retryLater ? b.failures + 1 : 0;
+    b.nextAt = Date.now() + backoffDelay(b.failures);
+    if (!retryLater) lastSyncErrorRef.current = null;
+    setRecovery((r) => ({ ...r, failures: b.failures, nextAt: b.failures ? b.nextAt : null, error: lastSyncErrorRef.current }));
+    refreshQueue();
+  }, [eventId, device, loadStats, refreshQueue, loseAccess, deviceCall]);
 
   // Sync status for supervisors: every 30 s the device reports its gate, waiting scans and list age
   const queueRef = useRef(0);
   queueRef.current = queueCount;
+  // With it the scanner's own health: failed / stuck / conflict counts, oldest unprocessed and last scan, app
+  // version, whether the browser keeps the storage, its clock, and the last upload problem
+  const lastScanRef = useRef(null);
+  const persistedRef = useRef(undefined);
+  persistedRef.current = storeInfo?.persisted;
+  const sendHeartbeat = useCallback(async () => {
+    if (!eventId || revokedRef.current || !navigator.onLine) return null;
+    const d = await scanDiagnostics(eventId).catch(() => null);
+    const lastScanAt = [d?.lastScanAt, lastScanRef.current].filter(Boolean).sort().pop() || undefined;
+    return deviceCall({ method: 'post', url: '/checkin/heartbeat', data: {
+      eventId, deviceId: device, gate: gate || undefined, pending: queueRef.current, online: true, packAt: pack?.generatedAt,
+      appVersion: APP_VERSION, clientTime: new Date().toISOString(), lastSyncError: lastSyncErrorRef.current,
+      ...(d ? { failed: d.failed, conflicts: d.conflicts, stuck: d.stuck, oldestPendingAt: d.oldestPendingAt } : {}),
+      ...(lastScanAt ? { lastScanAt } : {}),
+      ...(typeof persistedRef.current === 'boolean' ? { persisted: persistedRef.current } : {}),
+    } }).catch((err) => {
+      if (isAccessLoss(err)) loseAccess(err);
+      return null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, device, gate, pack?.generatedAt, deviceCall, loseAccess]);
   useEffect(() => {
     if (!eventId || revoked) return undefined;
-    const beat = () => {
-      if (!navigator.onLine) return;
-      api.post('/checkin/heartbeat', { eventId, deviceId: device, gate: gate || undefined, pending: queueRef.current, online: true, packAt: pack?.generatedAt })
-        .catch((err) => isAccessLoss(err) && loseAccess(err));
-    };
-    beat();
-    const id = setInterval(beat, 30000);
+    sendHeartbeat();
+    const id = setInterval(sendHeartbeat, 30000);
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, device, gate, revoked, pack?.generatedAt]);
+  }, [eventId, revoked, sendHeartbeat]);
+
+  /** “Test connection”: device-authenticated round trip; shows latency, credential state and clock difference. */
+  const testConnection = useCallback(async () => {
+    const started = Date.now();
+    setConnTest({ state: 'testing' });
+    try {
+      const res = await deviceCall({ method: 'get', url: '/checkin/ping', params: { eventId, deviceId: device }, timeout: 8000 });
+      const ms = Date.now() - started;
+      const skew = Math.round((Date.now() - ms / 2 - new Date(res.data.data.serverTime).getTime()) / 1000);
+      noteOnline();
+      setOnline(true);
+      setConnTest({ state: 'ok', ms, skew, device: res.data.data.device, via: res.data.data.auth.via });
+      sendHeartbeat();
+    } catch (err) {
+      if (!err.response) setOnline(false);
+      setConnTest({ state: 'failed', message: err.response?.data?.message || 'No connection to the server' });
+    }
+  }, [eventId, device, deviceCall, sendHeartbeat]);
+
+  /** A supervisor's request (Gate management → Devices), delivered over the socket to this device. */
+  const supervisorAction = useCallback(async ({ action, requestedBy }) => {
+    const who = requestedBy ? ` (${requestedBy})` : '';
+    if (action === 'PING') {
+      await sendHeartbeat();
+      setSyncNote(`Supervisor${who} checked this device's connection.`);
+    } else if (action === 'SYNC') {
+      setSyncNote(`Supervisor${who} asked this device to upload now.`);
+      await syncQueue({ manual: true });
+      await sendHeartbeat();
+    } else if (action === 'RETRY_FAILED') {
+      const n = await retryFailed(eventId).catch(() => 0);
+      setSyncNote(`Supervisor${who} asked to retry ${n} failed upload${n === 1 ? '' : 's'}.`);
+      await syncQueue({ manual: true });
+      await sendHeartbeat();
+    } else if (action === 'SEND_PENDING') {
+      const d = await scanDiagnostics(eventId).catch(() => null);
+      if (d) await deviceCall({ method: 'post', url: '/checkin/devices/manifest', data: { eventId, deviceId: device, scans: d.manifest } }).catch(() => {});
+      setSyncNote(`Supervisor${who} asked to see this device's scans waiting to upload (${d?.manifest.length || 0} sent).`);
+    }
+  }, [eventId, device, deviceCall, sendHeartbeat, syncQueue]);
+  const supervisorActionRef = useRef(null);
+  supervisorActionRef.current = supervisorAction;
 
   useEffect(() => {
     if (!eventId) return undefined;
@@ -394,6 +653,7 @@ export default function GateScanner() {
     const syncTimer = setInterval(() => navigator.onLine && syncQueue(), 30000);
     const goOnline = () => {
       setOnline(true);
+      backoffRef.current = { failures: 0, nextAt: 0 }; // the connection came back: try at once
       syncQueue();
       refreshPack();
       loadStats();
@@ -420,7 +680,7 @@ export default function GateScanner() {
   // Live entry counter
   useEffect(() => {
     if (!eventId) return undefined;
-    const socket = io(import.meta.env.VITE_SOCKET_URL || API_URL, { transports: ['websocket', 'polling'] });
+    const socket = connectSocket();
     socket.on('connect', () => {
       socket.emit('join_event_room', eventId);
       if (user?.id) socket.emit('join_user_room', user.id);
@@ -428,13 +688,22 @@ export default function GateScanner() {
     socket.on('checkin:stats', (s) => s.eventId === eventId && setStats(s));
     socket.on('staff:access-revoked', (p) => p?.eventId === eventId && revoke());
     socket.on('gate:device-revoked', (p) => p?.deviceKey === device && revoke(true));
+    // A supervisor reset this device's enrollment: drop the old credential and enroll again
+    socket.on('gate:device-reset', async (p) => {
+      if (p?.deviceKey !== device) return;
+      await clearDeviceToken(companyId);
+      tokenRef.current = null;
+      needsResetRef.current = false;
+      enroll();
+    });
     socket.on('gate:assignments-changed', (p) => p?.eventId === eventId && refreshPack());
+    socket.on('gate:device-action', (p) => p?.deviceKey === device && p.eventId === eventId && supervisorActionRef.current?.(p));
     socket.on('gate:exception-decided', (p) => setSyncNote(`Supervisor ${p.status === 'APPROVED' ? 'approved' : 'denied'} an exception request${p.note ? `: ${p.note}` : ''}.`));
     return () => {
       socket.emit('leave_event_room', eventId);
       socket.disconnect();
     };
-  }, [eventId, user?.id, revoke, device, refreshPack]);
+  }, [eventId, user?.id, revoke, device, refreshPack, companyId, enroll]);
 
   // ---------- Gates from the event's setup (when configured) ----------
   const configured = (pack?.gates || []).filter((g) => g.active);
@@ -452,13 +721,24 @@ export default function GateScanner() {
   }, []);
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
-  const decideOffline = useCallback(async (code) => {
+  /**
+   * Decides a scan on the device and saves its record BEFORE the verdict is shown. If the record can't be saved
+   * the verdict is red: nobody is admitted on a scan the device couldn't keep.
+   */
+  const decideOffline = useCallback(async (code, scanId) => {
     const p = pack || (await loadPack(eventId, user?.id).catch(() => null));
-    if (!p) return { result: 'RED', reason: 'No connection and no offline list yet. Reconnect to download it.', offline: true };
-    const row = (p.gates || []).find((g) => g.name === gate) || null;
-    const v = await evaluateOffline(p, code, gate, { direction: dir, gateRow: row });
-    await enqueue({ clientId: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, eventId, code, gate, gateId: row?.id, direction: dir, scannedAt: new Date().toISOString(), localResult: v.result, localReason: v.reason });
-    refreshQueue();
+    const row = (p?.gates || []).find((g) => g.name === gate) || null;
+    const v = p
+      ? await evaluateOffline(p, code, gate, { direction: dir, gateRow: row })
+      : { result: 'RED', reason: 'No connection and no offline list yet. Reconnect to download it.' };
+    try {
+      await recordScan({ scanId, eventId, ticketId: v.ticket?.id, code, gate, gateId: row?.id, direction: dir, localResult: v.result, localReason: v.reason, recordedBy: user?.id });
+    } catch (err) {
+      console.error('[gate] could not save the offline scan', err);
+      return { result: 'RED', reason: 'This device could not save the scan, so it can’t be admitted offline. Do not let the guest in; reconnect or use another device.', direction: dir, offline: true };
+    } finally {
+      refreshQueue();
+    }
     return { ...v, direction: dir, offline: true };
   }, [pack, eventId, gate, dir, refreshQueue, user?.id]);
 
@@ -468,9 +748,12 @@ export default function GateScanner() {
     busyRef.current = true;
     setChecking(true);
     let v;
+    // One id per scan: sent with the online attempt and reused by the offline record if that attempt fails, so the
+    // server can recognise the two as the same scan
+    const scanId = newScanId();
     try {
       if (!navigator.onLine) throw Object.assign(new Error('offline'), { offline: true });
-      const res = await api.post('/checkin/scan', { code, eventId, gate, gateId: gateRow?.id, direction: dir, deviceId: device }, { timeout: 6000 });
+      const res = await deviceCall({ method: 'post', url: '/checkin/scan', data: { code, eventId, gate, gateId: gateRow?.id, direction: dir, deviceId: device, clientScanId: scanId }, timeout: 6000 });
       v = res.data.data;
       noteOnline();
       setOnline(true);
@@ -489,22 +772,23 @@ export default function GateScanner() {
         v = { result: 'RED', reason: err.response.data?.message || 'This ticket could not be checked.' };
       } else {
         setOnline(false);
-        v = await decideOffline(code);
+        v = await decideOffline(code, scanId);
       }
     } finally {
       busyRef.current = false;
       setChecking(false);
     }
     show(v);
+    lastScanRef.current = new Date().toISOString();
     setRecent((r) => [{ id: `${Date.now()}`, result: v.result, reason: v.reason, gate, direction: v.direction || dir, reentry: v.reentry, offline: Boolean(v.offline), scannedAt: new Date().toISOString(), holder: v.ticket?.holder, type: v.ticket?.type }, ...r].slice(0, 12));
     lastCodeRef.current = code;
-  }, [eventId, gate, gateRow, gateOk, dir, device, locked, revoked, decideOffline, show, loseAccess]);
+  }, [eventId, gate, gateRow, gateOk, dir, device, locked, revoked, decideOffline, show, loseAccess, deviceCall]);
 
   // Ask a supervisor to let in someone the scanner turned away (online only)
   const lastCodeRef = useRef('');
   const requestException = async (reasonText) => {
     try {
-      await api.post('/checkin/exceptions', { eventId, code: lastCodeRef.current || undefined, gate, gateId: gateRow?.id, scanResult: `${verdict?.result}: ${verdict?.reason || ''}`.slice(0, 300), reason: reasonText, deviceId: device });
+      await deviceCall({ method: 'post', url: '/checkin/exceptions', data: { eventId, code: lastCodeRef.current || undefined, gate, gateId: gateRow?.id, scanResult: `${verdict?.result}: ${verdict?.reason || ''}`.slice(0, 300), reason: reasonText, deviceId: device } });
       return null;
     } catch (err) {
       return err.response?.data?.message || 'No connection: radio your supervisor instead.';
@@ -581,14 +865,39 @@ export default function GateScanner() {
             <ShieldCheck className="w-4 h-4" aria-hidden="true" />
             {pack?.tickets ? `Offline list: ${pack.tickets.length} tickets · ${ago(pack.savedAt)}` : packError || 'Downloading offline list…'}
           </span>
-          {queueCount > 0 && (
-            <button type="button" className="tl-gs-badge is-queue" onClick={syncQueue}>
-              <CloudUpload className="w-4 h-4" aria-hidden="true" /> {queueCount} scan{queueCount === 1 ? '' : 's'} waiting to upload
+          {counts && counts.PENDING + counts.UPLOADING > 0 && (
+            <button type="button" className="tl-gs-badge is-queue" onClick={() => setShowScans(true)}>
+              <CloudUpload className="w-4 h-4" aria-hidden="true" /> {counts.PENDING + counts.UPLOADING} scan{counts.PENDING + counts.UPLOADING === 1 ? '' : 's'} waiting to upload{counts.UPLOADING ? ' · uploading' : ''}
+            </button>
+          )}
+          {counts?.FAILED > 0 && (
+            <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)}>
+              <AlertTriangle className="w-4 h-4" aria-hidden="true" /> {counts.FAILED} scan{counts.FAILED === 1 ? '' : 's'} failed to upload
+            </button>
+          )}
+          {recovery?.error && queueCount > 0 && (
+            <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)} title={recovery.error}>
+              <CloudOff className="w-4 h-4" aria-hidden="true" /> Upload problem: {recovery.error}
+            </button>
+          )}
+          {counts?.CONFLICT > 0 && (
+            <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)}>
+              <Users className="w-4 h-4" aria-hidden="true" /> {counts.CONFLICT} conflict{counts.CONFLICT === 1 ? '' : 's'} for the supervisor
             </button>
           )}
         </div>
       </header>
 
+      {storeInfo?.error && (
+        <p className="tl-gs-note" role="alert"><AlertTriangle className="w-4 h-4 inline" aria-hidden="true" /> Offline scans can’t be saved on this device ({storeInfo.error}). Don’t scan offline here; use another device.</p>
+      )}
+      {storeInfo?.migration && !storeInfo.migration.verified && (storeInfo.migration.imported > 0 || storeInfo.migration.error) && (
+        <p className="tl-gs-note" role="alert"><AlertTriangle className="w-4 h-4 inline" aria-hidden="true" /> Some scans from the previous scanner version could not be checked after moving them. They are kept in both places; export them from “Scans on this device” and give the file to your supervisor.</p>
+      )}
+
+      {deviceAuth?.state === 'needs-reset' && (
+        <p className="tl-gs-note" role="alert"><ShieldOff className="w-4 h-4 inline" aria-hidden="true" /> This device’s credential is missing. Ask a supervisor to reset its enrollment (Gate management → Devices); scans made offline stay on this device meanwhile.</p>
+      )}
       {syncNote && <p className="tl-gs-note" role="status">{syncNote} <button type="button" onClick={() => setSyncNote('')} aria-label="Dismiss"><X className="w-4 h-4" /></button></p>}
 
       {/* Gate */}
@@ -652,6 +961,34 @@ export default function GateScanner() {
 
       <section className="tl-gs-card">{manualForm(false)}</section>
 
+      <section className="tl-gs-card">
+        <div className="tl-gs-recent-head">
+          <h2 className="tl-gs-h2">Scans on this device</h2>
+          <button type="button" className="tl-gs-icon" onClick={() => setShowScans((v) => !v)} aria-expanded={showScans}>{showScans ? 'Hide' : 'Show'}</button>
+        </div>
+        <p className="tl-gs-muted">
+          {counts ? `${counts.unsynced} not uploaded · ${counts.SYNCED} uploaded · ${counts.CONFLICT} conflicts${counts.QUARANTINED ? ` · ${counts.QUARANTINED} handed in for review` : ''}` : 'Loading…'}
+          {storeInfo && !storeInfo.error && ` · storage ${storeInfo.persisted ? 'kept by the browser' : 'may be cleared by the browser if the device runs low on space'}`}
+        </p>
+        <div className="tl-gs-gates" style={{ marginTop: 8 }}>
+          <button type="button" onClick={testConnection} disabled={connTest?.state === 'testing'}><Wifi className="w-4 h-4 inline" aria-hidden="true" /> {connTest?.state === 'testing' ? 'Testing…' : 'Test connection'}</button>
+        </div>
+        {connTest && connTest.state !== 'testing' && (
+          <p className="tl-gs-muted" role="status">
+            {connTest.state === 'ok'
+              ? `Connected · ${connTest.ms} ms · device ${connTest.device.enrolled ? 'enrolled' : 'not enrolled yet'}${Math.abs(connTest.skew) > 60 ? ` · this device's clock is ${Math.round(Math.abs(connTest.skew) / 60)} min ${connTest.skew > 0 ? 'ahead' : 'behind'}` : ''}`
+              : `Connection test failed: ${connTest.message}`}
+          </p>
+        )}
+        {recovery && (recovery.failures > 0 || recovery.recovered > 0) && (
+          <p className="tl-gs-muted" role="status">
+            {recovery.recovered > 0 && `Recovered ${recovery.recovered} interrupted upload${recovery.recovered === 1 ? '' : 's'}; they are sent again. `}
+            {recovery.failures > 0 && recovery.nextAt && `${recovery.failures} upload attempt${recovery.failures === 1 ? '' : 's'} failed${recovery.error ? ` (${recovery.error})` : ''}. Next automatic try at ${clock(recovery.nextAt)}; “Upload now” tries at once.`}
+          </p>
+        )}
+        {showScans && <DeviceScans eventId={eventId} counts={counts} online={online} onSync={syncQueue} onChange={refreshQueue} />}
+      </section>
+
       {/* Recent scans */}
       <section className="tl-gs-card">
         <div className="tl-gs-recent-head">
@@ -703,8 +1040,8 @@ export default function GateScanner() {
           <ShieldOff className="w-12 h-12" aria-hidden="true" />
           <h2 id="gs-revoked-title">{revoked.device ? 'This scanner device was revoked' : 'Your access to this event was removed'}</h2>
           <p>
-            {revoked.device ? 'A supervisor revoked this device, so it can no longer scan or download ticket lists.' : `You can no longer scan tickets for ${event?.name || 'this event'}.`} Its offline ticket list was deleted from this device
-            {revoked.dropped ? `, along with ${revoked.dropped} scan${revoked.dropped === 1 ? '' : 's'} that hadn’t uploaded yet` : ''}. Contact your organizer if this is a mistake.
+            {revoked.device ? 'A supervisor revoked this device, so it can no longer scan or download ticket lists, and its device credential was deleted.' : `You can no longer scan tickets for ${event?.name || 'this event'}.`} Its offline ticket list was deleted from this device.
+            {revoked.kept ? ` ${revoked.kept} scan${revoked.kept === 1 ? '' : 's'} that hadn’t uploaded yet ${revoked.kept === 1 ? 'is' : 'are'} kept on this device as a record for your supervisor. Don’t clear this browser’s data.` : ''} Contact your organizer if this is a mistake.
           </p>
           <button type="button" onClick={() => navigate('/scanner')}><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to my events</button>
         </div>
@@ -715,7 +1052,7 @@ export default function GateScanner() {
           <CloudOff className="w-12 h-12" aria-hidden="true" />
           <h2 id="gs-lock-title">Reconnect to keep scanning</h2>
           <p>This device has been offline since {lastOnline() ? clock(lastOnline()) : 'a while'}, more than 2 hours. Connect to the internet so the ticket list and the scans made here can sync.</p>
-          <button type="button" onClick={() => { refreshPack(); syncQueue(); }}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try to reconnect</button>
+          <button type="button" onClick={() => { refreshPack(); syncQueue({ manual: true }); }}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try to reconnect</button>
         </div>
       )}
     </div>

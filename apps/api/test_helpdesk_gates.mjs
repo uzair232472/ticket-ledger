@@ -12,6 +12,10 @@ import prisma from './src/config/prisma.js';
 import { escalateOverdue } from './src/services/supportService.js';
 
 const PASSWORD = 'Password@123';
+// This suite drives scanners that never enrolled a device token (as deployed before device enrollment), so it pins
+// the migration mode; enrolled devices, enforcement and the deadline are covered in test_gate_device_auth.mjs.
+process.env.GATE_DEVICE_AUTH = 'warn';
+process.env.GATE_DEVICE_AUTH_DEADLINE = '2999-01-01T00:00:00Z';
 
 test('Helpdesk and gate management', async (t) => {
   const server = http.createServer(app);
