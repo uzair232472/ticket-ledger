@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import prisma from '../config/prisma.js';
 import { deviceAuthMode } from '../config/gateDeviceAuth.js';
 import { GateError } from './checkinService.js';
+import { cleanPublicJwk } from './scanSignature.js';
 
 /*
  * Scanner device identity.
@@ -148,7 +149,7 @@ export async function authenticateDevice(req, eventId, deviceKey, status = {}) {
  * Enrolls a device for the event's organization and returns its token (shown once, never stored). An enrolled
  * device can only rotate its token by presenting the current one; otherwise a supervisor must reset it.
  */
-export async function enrollDevice(req, eventId, deviceKey) {
+export async function enrollDevice(req, eventId, deviceKey, { signingKey } = {}) {
   const key = cleanKey(deviceKey);
   const companyId = await eventCompany(eventId);
   const existing = await prisma.gateDevice.findUnique({ where: { companyId_deviceKey: { companyId, deviceKey: key } } });
@@ -164,7 +165,10 @@ export async function enrollDevice(req, eventId, deviceKey) {
 
   const token = newToken();
   const now = new Date();
-  const cred = { tokenHash: hashDeviceToken(token), tokenIssuedAt: now, enrolledById: req.user.id };
+  const jwk = signingKey ? cleanPublicJwk(signingKey) : null;
+  if (signingKey && !jwk) throw new GateError(400, 'The device signing key is not a valid public P-256 key.', 'BAD_SIGNING_KEY');
+  // A new key replaces the old one; enrolling without one keeps the registered key (older scanner builds)
+  const cred = { tokenHash: hashDeviceToken(token), tokenIssuedAt: now, enrolledById: req.user.id, ...(jwk ? { signingKey: jwk, signingKeyAt: now } : {}) };
   const data = { ...statusData(req, eventId), ...cred };
   let device;
   if (existing) {
@@ -181,6 +185,6 @@ export async function enrollDevice(req, eventId, deviceKey) {
     }
   }
   const action = rotating ? 'GATE_DEVICE_TOKEN_ROTATED' : 'GATE_DEVICE_ENROLLED';
-  await prisma.auditLog.create({ data: auditData(req, companyId, action, device, { name: device.name, eventId, previouslyLegacy: Boolean(existing && !rotating), legacyRequests: existing?.legacyRequests || 0 }) });
-  return { token, companyId, device: { id: device.id, name: device.name, status: device.status, tokenIssuedAt: device.tokenIssuedAt } };
+  await prisma.auditLog.create({ data: auditData(req, companyId, action, device, { name: device.name, eventId, previouslyLegacy: Boolean(existing && !rotating), legacyRequests: existing?.legacyRequests || 0, signingKeyRegistered: Boolean(jwk) }) });
+  return { token, companyId, device: { id: device.id, name: device.name, status: device.status, tokenIssuedAt: device.tokenIssuedAt, signing: Boolean(device.signingKey) } };
 }

@@ -14,7 +14,9 @@
     "prisma:studio": "prisma studio",
     "seed": "node prisma/seed.js",
     "create-admin": "node scripts/create-super-admin.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "gate:preflight": "node scripts/gate-preflight.mjs",
+    "gate:monitor": "node scripts/gate-preflight.mjs --monitor"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

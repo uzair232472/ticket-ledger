@@ -235,8 +235,8 @@ export async function updateDevice(req, event, deviceId, { name, status, reason,
   if (resetEnrollment && !reason) throw new GateError(400, 'Say why the enrollment is reset (e.g. browser data was cleared).');
   const data = {};
   if (name) data.name = name;
-  if (status && status !== d.status) Object.assign(data, status === 'REVOKED' ? { status, revokedAt: new Date(), revokedById: req.user.id, revokeReason: reason, tokenHash: null } : { status, revokedAt: null, revokedById: null, revokeReason: null });
-  if (resetEnrollment && d.tokenHash) data.tokenHash = null;
+  if (status && status !== d.status) Object.assign(data, status === 'REVOKED' ? { status, revokedAt: new Date(), revokedById: req.user.id, revokeReason: reason, tokenHash: null, signingKey: null, signingKeyAt: null } : { status, revokedAt: null, revokedById: null, revokeReason: null });
+  if (resetEnrollment && d.tokenHash) Object.assign(data, { tokenHash: null, signingKey: null, signingKeyAt: null });
   if (!Object.keys(data).length) return deviceView(d);
   const action = data.status === 'REVOKED' ? 'GATE_DEVICE_REVOKED' : data.status === 'ACTIVE' ? 'GATE_DEVICE_RESTORED' : 'tokenHash' in data ? 'GATE_DEVICE_ENROLLMENT_RESET' : 'GATE_DEVICE_RENAMED';
   const u = await prisma.$transaction(async (tx) => {

@@ -64,3 +64,25 @@ export const gateSyncRateLimiter = rateLimit({
   keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
   handler: tooManyRequests,
 });
+
+// Scanner traffic: scans, heartbeats, connection tests (600 per minute per user: a busy gate scans ~1 ticket / s)
+export const gateDeviceRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 600 : 5000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
+
+// Offline ticket-list downloads (every paid ticket of the event): 30 per minute per user
+export const gatePackRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 30 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});

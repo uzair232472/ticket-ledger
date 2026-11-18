@@ -210,3 +210,25 @@ test('diagnostics: counts, stuck scans, oldest unprocessed and last scan; the pe
   assert.ok(d.manifest.every((m) => !('code' in m)), 'the pending list does not carry ticket codes');
   assert.deepEqual(M.scanDiagnostics([], now).stuck, 0);
 });
+
+test('after the server holds a scan its ticket code is removed from the device (last 4 kept); unprocessed keep it', () => {
+  const batch = [1, 2, 3].map((n) => ({ ...record(n), syncState: 'UPLOADING' }));
+  const out = M.applyAcks(batch, [
+    { clientId: batch[0].scanId, status: 'ACCEPTED', result: 'GREEN' },
+    { clientId: batch[1].scanId, status: 'REJECTED', reason: 'unreadable' },
+  ]);
+  assert.equal(out[0].code, null);
+  assert.equal(out[0].codeHint, batch[0].code.slice(-4));
+  assert.equal(out[1].code, batch[1].code, 'FAILED keeps it for "Retry failed"');
+  assert.equal(out[2].code, batch[2].code, 'not acknowledged: still needed');
+  assert.match(M.uploadProblem(out[0]), /no longer has its ticket code/);
+  const q = M.applyEvidenceAcks([batch[2]], [{ clientId: batch[2].scanId, status: 'QUARANTINED' }]);
+  assert.equal(q[0].code, null);
+});
+
+test('canonical text for signing covers id, sequence, event, code, direction, gate, device time and verdict', () => {
+  const r = record(9, { direction: 'EXIT', localResult: 'YELLOW' });
+  const parts = M.canonicalScan(r).split('|');
+  assert.deepEqual(parts, ['TL-SCAN-1', r.scanId, '9', 'event-1', r.code, 'EXIT', 'gate-a', 'Gate A', r.deviceScannedAt, 'YELLOW']);
+  assert.equal(M.toUploadItem({ ...r, sig: 'abc' }).sig, 'abc');
+});

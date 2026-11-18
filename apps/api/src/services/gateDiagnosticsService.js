@@ -208,7 +208,7 @@ export async function reviewQuarantine(req, event, ids, note) {
 
 // ── Reports ────────────────────────────────────────────────────────────────────────────────────────────
 
-const RECOVERY_ACTIONS = ['GATE_DEVICE_REVOKED', 'GATE_DEVICE_RESTORED', 'GATE_DEVICE_ENROLLMENT_RESET', 'GATE_DEVICE_ENROLLED', 'GATE_DEVICE_TOKEN_ROTATED', 'GATE_DEVICE_AUTH_FAILED', 'GATE_DEVICE_ACTION_REQUESTED', 'GATE_SCANS_QUARANTINED', 'GATE_QUARANTINE_REVIEWED', 'GATE_CONFLICT_DETECTED', 'GATE_CONFLICT_SCAN_ADDED', 'GATE_CONFLICT_RESOLVED', 'GATE_CHECKIN_REVERSED', 'GATE_EXCEPTION_APPROVED', 'GATE_EXCEPTION_DENIED'];
+const RECOVERY_ACTIONS = ['GATE_SYNC_SUSPICIOUS', 'GATE_DEVICE_REVOKED', 'GATE_DEVICE_RESTORED', 'GATE_DEVICE_ENROLLMENT_RESET', 'GATE_DEVICE_ENROLLED', 'GATE_DEVICE_TOKEN_ROTATED', 'GATE_DEVICE_AUTH_FAILED', 'GATE_DEVICE_ACTION_REQUESTED', 'GATE_SCANS_QUARANTINED', 'GATE_QUARANTINE_REVIEWED', 'GATE_CONFLICT_DETECTED', 'GATE_CONFLICT_SCAN_ADDED', 'GATE_CONFLICT_RESOLVED', 'GATE_CHECKIN_REVERSED', 'GATE_EXCEPTION_APPROVED', 'GATE_EXCEPTION_DENIED'];
 
 const csvCell = (v) => {
   const s = v == null ? '' : v instanceof Date ? v.toISOString() : typeof v === 'object' ? JSON.stringify(v) : String(v);
@@ -276,4 +276,36 @@ export async function buildReport(event, kind) {
     return { rows: data, csv: toCsv(['At', 'Action', 'By', 'Target', 'Target id', 'Reason', 'Details'], data.map((r) => Object.values(r))) };
   }
   throw new GateError(404, 'Unknown report.');
+}
+
+// ── Suspicious upload activity and housekeeping ────────────────────────────────────────────────────────
+
+const SUSPICIOUS_EVERY_MS = 5 * 60 * 1000;
+const SUSPICIOUS_THRESHOLD = { rejected: 10, regressions: 5 };
+
+/**
+ * Flags an upload that looks wrong: tampered records, unsigned records from a device that has a signing key, many
+ * unreadable scans, or new scans numbered below what the device already had acknowledged (storage replaced or
+ * edited). Audited as GATE_SYNC_SUSPICIOUS at most every 5 minutes per device, and sent to the event's supervisors.
+ */
+export async function flagSuspicious(req, device, eventId, { tampered = 0, unsigned = 0, rejected = 0, regressions = 0 }) {
+  const signs = [];
+  if (tampered) signs.push(`${plural(tampered, 'scan')} changed after they were made (signature mismatch)`);
+  if (unsigned) signs.push(`${plural(unsigned, 'unsigned scan')} from a device that signs its scans`);
+  if (rejected >= SUSPICIOUS_THRESHOLD.rejected) signs.push(`${plural(rejected, 'unreadable scan')}`);
+  if (regressions >= SUSPICIOUS_THRESHOLD.regressions) signs.push(`${plural(regressions, 'new scan')} numbered below the device's acknowledged sequence`);
+  if (!signs.length) return null;
+  console.warn(`[gate] suspicious upload device=${device.id} user=${req.user.id} ip=${req.ip}: ${signs.join('; ')}`);
+  const recent = await prisma.auditLog.findFirst({ where: { action: 'GATE_SYNC_SUSPICIOUS', targetId: device.id, createdAt: { gte: new Date(Date.now() - SUSPICIOUS_EVERY_MS) } }, select: { id: true } });
+  if (recent) return { signs, logged: false };
+  await prisma.auditLog.create({ data: { userId: req.user.id, companyId: device.companyId, actorRole: req.org?.role || req.user.role, action: 'GATE_SYNC_SUSPICIOUS', targetType: 'GateDevice', targetId: device.id, ipAddress: req.ip || null, userAgent: req.headers?.['user-agent']?.slice(0, 300) || null, details: { eventId, signs, tampered, unsigned, rejected, regressions, name: device.name } } });
+  getIO()?.to(`event_${eventId}_supervisors`).emit('gate:suspicious', { eventId, deviceId: device.id, name: device.name, signs });
+  return { signs, logged: true };
+}
+
+export const SYNC_LOG_RETENTION_DAYS = 90;
+/** Upload log rows older than the retention period are removed (daily job; scans themselves are never touched). */
+export async function pruneSyncBatches(days = SYNC_LOG_RETENTION_DAYS) {
+  const { count } = await prisma.gateSyncBatch.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - days * 86400000) } } });
+  return count;
 }

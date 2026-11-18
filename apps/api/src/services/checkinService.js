@@ -176,6 +176,7 @@ async function logScan({ verdict, eventId, staffId, deviceId, gate, gateId, dire
       deviceScannedAt: evidence.deviceScannedAt ? String(evidence.deviceScannedAt).slice(0, 40) : null,
       localResult: evidence.localResult || null,
       localReason: evidence.localReason ? String(evidence.localReason).slice(0, 300) : null,
+      deviceSigned: Boolean(evidence.deviceSigned),
     },
   });
   // The older GateScan log still feeds the dashboards' turnout figures (entries only)
@@ -386,6 +387,8 @@ const scanTime = (raw, receivedAt) => {
  * never rewrites the recorded check-in (device clocks are evidence, not truth).
  */
 export async function syncOffline({ scans, eventId, staffId, deviceId, deviceRecordId = null, supervisor = false }) {
+  // Staff limited to some gates may only admit there, offline too (supervisors anywhere)
+  const myGates = supervisor ? [] : (await prisma.gateAssignment.findMany({ where: { staffId, eventId }, select: { gateId: true } })).map((g) => g.gateId);
   const receivedAt = new Date();
   const ordered = [...scans].sort((a, b) => {
     if (Number.isInteger(a.seq) && Number.isInteger(b.seq)) return a.seq - b.seq;
@@ -412,6 +415,9 @@ export async function syncOffline({ scans, eventId, staffId, deviceId, deviceRec
         if (verdict.result === 'GREEN' && s.localResult && s.localResult !== 'GREEN') {
           verdict = { ...verdict, result: s.localResult, reason: `Turned away while offline: ${s.localReason || 'not valid on this device'}` };
         }
+        if (verdict.result === 'GREEN' && myGates.length && allGates.length && !(row && myGates.includes(row.id))) {
+          verdict = { ...verdict, result: 'RED', code: 'GATE_NOT_ASSIGNED', reason: `Scanned at ${gate || 'a gate'}, which this staff member is not assigned to` };
+        }
         if (verdict.result === 'GREEN') verdict = await admit(verdict, { code: s.code, eventId, staffId, gate, gateId: row?.id, direction, at: scannedAt, opts }, tx);
         // The device let the guest in (or out) but the server's ticket state disagrees: a conflict for supervisors.
         // The ticket is not changed (scanConflictService: business rules).
@@ -422,7 +428,7 @@ export async function syncOffline({ scans, eventId, staffId, deviceId, deviceRec
         }
         const checkIn = await logScan({
           verdict, eventId, staffId, deviceId, gate, gateId: row?.id, direction, offline: true, scannedAt, conflict,
-          evidence: { clientScanId, deviceRecordId, deviceSeq: s.seq, deviceScannedAt: s.deviceScannedAt || s.scannedAt, localResult: s.localResult, localReason: s.localReason },
+          evidence: { clientScanId, deviceRecordId, deviceSeq: s.seq, deviceScannedAt: s.deviceScannedAt || s.scannedAt, localResult: s.localResult, localReason: s.localReason, deviceSigned: s.deviceSigned },
         }, tx);
         const found = type ? await recordConflict(tx, { type, checkIn, verdict, direction, localResult: s.localResult, localReason: s.localReason, eventId, staffId }) : null;
         return { verdict, conflict, checkIn, conflictType: type, conflictId: found?.conflict.id || null, newConflict: found?.created ? found.conflict : null };

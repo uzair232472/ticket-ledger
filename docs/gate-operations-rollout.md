@@ -299,3 +299,114 @@ A problem becomes the device's `lastSyncError`; a clean upload clears it.
   diagnostics.
 - `GateSyncBatch` grows by one row per upload request. Plan a retention job before large-scale use (not added
   yet).
+
+## Phase 7: testing, security review and deployment
+
+### Security hardening in this phase
+
+- **Tamper evidence:**
+  - Each scanner has an ECDSA P-256 key pair whose private key is non-extractable. The public key is registered at
+    enrollment; devices enrolled earlier register it by rotating their token.
+  - Each scan record is signed when it is made. The server verifies the signature (`scanSignature.js`):
+    - a changed record is quarantined as `TAMPERED` and never processed;
+    - an unsigned record from a signing device is accepted (`CheckIn.deviceSigned=false`) and reported.
+  - Revoking a device or resetting its enrollment deletes its key.
+- **Offline gate permissions:** staff limited to some gates can't admit at another gate offline either. The scan
+  is logged RED (`GATE_NOT_ASSIGNED`) and, if the device admitted the guest, a `RULE_MISMATCH` conflict is opened.
+  Supervisors may scan anywhere.
+- **Suspicious uploads** are audited as `GATE_SYNC_SUSPICIOUS` (at most every 5 minutes per device) and sent to
+  supervisors: tampered records, unsigned records from a signing device, 10+ unreadable scans, or 5+ new scans
+  numbered below the device's acknowledged sequence.
+- **Ticket codes are removed** from records on the device once the server holds the scan (the last 4 characters
+  are kept).
+- **Rate limits** (production, per user): scan, heartbeat and ping 600/min; ticket list 30/min; sync, evidence and
+  pending list 120/min; enrollment 10/min.
+- **Retention:** the upload log (`GateSyncBatch`) is pruned after 90 days by the hourly job. Scan records are never
+  pruned on the server.
+- Migration `20261118200000_gate_security` is additive. Rollback script: `prisma/rollbacks/`.
+
+### Test map (the 20 scenarios)
+
+| # | Scenario | Covered by |
+|---|---|---|
+| 1 | Normal online scan | `test_gate_scanner` 3; `test_helpdesk_gates` gates |
+| 2 | Normal offline scan | `test_gate_scan_sync_contract` 1; `test_gate_sync_idempotency` 1 |
+| 3 | Multiple scans from one device | `test_gate_sync_idempotency` 2, 14 (1,000 scans) |
+| 4 | Same ticket offline on two devices | `test_gate_conflicts` 1, 2 |
+| 5 | Same scan uploaded twice | `test_gate_sync_idempotency` 1; `test_gate_conflicts` 3 |
+| 6 | Two devices sync simultaneously | `test_gate_sync_idempotency` 3, 4 |
+| 7 | Sync interrupted midway | `test_gate_sync_idempotency` 2; web store "upload cut off by a reload"* |
+| 8 | Device restarted with pending scans | web store "records survive a reload"*; model recovery tests |
+| 9 | Server unavailable during sync | `test_gate_security` "server failure on one scan"; model `classifySyncError` |
+| 10 | Internet disconnects and reconnects | model `classifySyncError` / `backoffDelay`; store recovery* |
+| 11 | Device revoked while offline | `test_gate_sync_idempotency` 10; `test_gate_device_auth` revocation; `test_gate_diagnostics` evidence |
+| 12 | Ticket invalidated before sync | `test_gate_conflicts` 4, 5 |
+| 13 | Ticket already used elsewhere | `test_gate_conflicts` 1; `test_gate_sync_idempotency` 9 |
+| 14 | Entry and exit ordering | `test_gate_sync_idempotency` 8; `test_gate_conflicts` 6 |
+| 15 | Re-entry restrictions | `test_helpdesk_gates` exits / re-entry; `test_gate_conflicts` 7 |
+| 16 | Device clock differences | `test_gate_sync_idempotency` 8, 9; `test_gate_diagnostics` clock skew |
+| 17 | Duplicate attendance prevention | `test_gate_sync_idempotency` 3, 4; `test_gate_conflicts` 1 |
+| 18 | Supervisor conflict resolution | `test_gate_conflicts` 9–13 |
+| 19 | Recovery action audit logging | `test_gate_diagnostics` actions, evidence, recovery-history report |
+| 20 | Large offline queue | `test_gate_sync_idempotency` 14; model 5,000-item migration |
+
+\* `apps/web/tests/gateScanStore.test.mjs` runs the scanner's IndexedDB store and needs the dev dependency
+`fake-indexeddb` (`npm i -D fake-indexeddb@6.0.0 -w apps/web`). Without it those 7 tests are skipped.
+
+Run everything:
+
+```
+cd apps/api && node --test test_gate_*.mjs test_helpdesk_gates.mjs test_staff_invites.mjs test_org_membership.mjs
+cd apps/web && npm test && npm run build
+```
+
+### Security review
+
+| Check | Status |
+|---|---|
+| Authenticate every scanner device | Device tokens, hashed at rest; `enforce` after the deadline (Phase 1) |
+| Verify device authorization during sync | Token, device status and event access on every request (Phase 1, 3) |
+| Enforce event and gate permissions | Event access on every route; gate assignment online and offline (Phase 7) |
+| Revoked devices can't process admissions | 403 on scan, sync, pack, heartbeat and ping; credential and key deleted; scans go to quarantine (Phase 1, 3) |
+| Validate every uploaded scan server-side | Per-scan schema, signature, full ticket evaluation in a transaction (Phase 3, 7) |
+| Protect offline records against modification | Signed records; tampered ones quarantined (Phase 7). Limit: code running in the page can still sign |
+| Protect sensitive queued data | Device token encrypted at rest; ticket codes removed after upload; pending list carries no codes. Not done: the offline ticket list (pack) is stored unencrypted |
+| Rate-limit sync endpoints | All scanner endpoints (Phase 3, 7) |
+| Log suspicious synchronization activity | `GATE_SYNC_SUSPICIOUS`, `GATE_DEVICE_AUTH_FAILED` (Phase 1, 7) |
+| Prevent unauthorized conflict resolution | `gate.supervise`, own organization only, once, reason required (Phase 4) |
+| Socket authorization | Authenticated rooms, supervisor-only room, eviction on access change (Phase 1) |
+
+### Deployment checklist
+
+1. **Back up the database:** `pg_dump "$DATABASE_URL" -Fc -f ticketledger-before-gate-ops.dump`
+2. **Review the migrations:** `apps/api/prisma/migrations/20261118*_gate_*`. All are additive and each has a
+   rollback script in `prisma/rollbacks/`.
+3. **Apply the migrations:** `cd apps/api && npx prisma migrate deploy && npx prisma generate`
+4. **Configure:** `GATE_DEVICE_AUTH=warn` and `GATE_DEVICE_AUTH_DEADLINE=<date>`.
+5. **Deploy the backend** and restart. The log shows `Gate device auth: warn …`.
+6. **Run the preflight:** `npm run gate:preflight` (in `apps/api`). It must not say STOP. CHECK items are to
+   review, for example scanners not enrolled yet.
+7. **Deploy the scanner frontend** (`apps/web` build).
+8. **Verify existing devices:** open the scanner on each device while online, then check Gate management →
+   Devices: enrolled, healthy, ticket list fresh.
+9. **Test online and offline scanning:** one online scan; then airplane mode, an offline scan, reconnect, and
+   check it uploads (Scans on this device → Uploaded) and appears under Check-ins.
+10. **Test recovery:**
+    - From Devices → Details, run Test connection, Upload now and Show pending scans.
+    - Revoke a spare device: it shows the revoked screen and its scans appear under Evidence.
+    - Then restore it.
+11. **Monitor after release:** `npm run gate:monitor` (prints uploads, problems, conflicts and suspicious activity
+    every minute), the Live dashboard, and `npm run gate:preflight` again after the first hour.
+12. **Enforce:** when the preflight shows every active scanner enrolled, set `GATE_DEVICE_AUTH=enforce` before the
+    deadline and restart.
+
+### Rollback
+
+- **Scanners refused after enforcement:** `GATE_DEVICE_AUTH=warn` (before the deadline) or `off`, then restart.
+- **Frontend problem:** redeploy the previous web build. It works against this API in `warn` or `off` mode, and
+  unprocessed scans are mirrored in its queue (Phase 2).
+- **Backend problem:** set `GATE_DEVICE_AUTH=off` and deploy the previous API. All migrations are additive and the
+  old code ignores the new columns.
+- **Restoring the database:** `pg_restore` the backup. Only if needed, run the rollback scripts newest first:
+  `20261118200000` → `180000` → `160000` → `140000` → `120000`. Export `QuarantinedScan` and `ScanConflict`
+  first.

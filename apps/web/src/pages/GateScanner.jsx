@@ -16,7 +16,7 @@ import {
   APP_VERSION, applyEvidenceResults, applySyncResults, exportScans, initScanStore, scanDiagnostics, listScans, recordScan, recoverInterrupted, releaseBatch, retryFailed, scanCounts, takeForEvidence, takeForUpload, withUploadLock,
 } from '../lib/gateScanStore';
 import { backoffDelay, classifySyncError, newScanId, toUploadItem } from '../lib/gateScanModel';
-import { DEVICE_AUTH_CODES, clearDeviceToken, ensureDeviceToken, loadDeviceToken } from '../lib/gateDeviceAuth';
+import { DEVICE_AUTH_CODES, clearDeviceToken, ensureDeviceToken, loadDeviceToken, signScan } from '../lib/gateDeviceAuth';
 import '../components/scanner/scanner.css';
 
 const GATES = ['Gate A', 'Gate B', 'Gate C', 'Gate D', 'Gate E', 'VIP Gate'];
@@ -732,7 +732,7 @@ export default function GateScanner() {
       ? await evaluateOffline(p, code, gate, { direction: dir, gateRow: row })
       : { result: 'RED', reason: 'No connection and no offline list yet. Reconnect to download it.' };
     try {
-      await recordScan({ scanId, eventId, ticketId: v.ticket?.id, code, gate, gateId: row?.id, direction: dir, localResult: v.result, localReason: v.reason, recordedBy: user?.id });
+      await recordScan({ scanId, eventId, ticketId: v.ticket?.id, code, gate, gateId: row?.id, direction: dir, localResult: v.result, localReason: v.reason, recordedBy: user?.id }, { sign: signScan });
     } catch (err) {
       console.error('[gate] could not save the offline scan', err);
       return { result: 'RED', reason: 'This device could not save the scan, so it can’t be admitted offline. Do not let the guest in; reconnect or use another device.', direction: dir, offline: true };

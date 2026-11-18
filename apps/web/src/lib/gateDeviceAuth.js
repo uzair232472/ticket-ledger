@@ -58,6 +58,40 @@ async function wrappingKey() {
   });
 }
 
+// ---------- Scan signing key (tamper evidence; API src/services/scanSignature.js) ----------
+// An ECDSA P-256 key pair generated here with a NON-extractable private key: page scripts can sign with it, but the
+// key itself can't be read or copied out. Its public half is registered with the server at enrollment.
+const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+
+async function signingKeyPair() {
+  if (!canEncrypt()) return null;
+  return withLock('tl-gate-cred-key', async () => {
+    const existing = await tx('keys', 'readonly', (s) => s.get('sign'));
+    if (existing) return existing;
+    const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']).catch(() => null);
+    if (pair) await tx('keys', 'readwrite', (s) => s.put(pair, 'sign'));
+    return pair;
+  }).catch(() => null);
+}
+
+/** The public signing key as the enrollment endpoint takes it, or null (no WebCrypto ECDSA in this browser). */
+export async function publicSigningJwk() {
+  const pair = await signingKeyPair();
+  if (!pair) return null;
+  const j = await crypto.subtle.exportKey('jwk', pair.publicKey).catch(() => null);
+  return j ? { kty: j.kty, crv: j.crv, x: j.x, y: j.y } : null;
+}
+
+/** Signs a scan record's canonical text (gateScanModel.canonicalScan); null when the device can't sign. */
+export async function signScan(text) {
+  const pair = await signingKeyPair();
+  if (!pair) return null;
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, pair.privateKey, new TextEncoder().encode(text));
+  return b64url(sig);
+}
+
+const loadRecord = (companyId) => (companyId ? tx('tokens', 'readonly', (s) => s.get(companyId)).catch(() => null) : Promise.resolve(null));
+
 export async function loadDeviceToken(companyId, deviceKey) {
   if (!companyId) return null;
   try {
@@ -72,15 +106,31 @@ export async function loadDeviceToken(companyId, deviceKey) {
   }
 }
 
-export async function saveDeviceToken(companyId, deviceKey, token) {
+export async function saveDeviceToken(companyId, deviceKey, token, { keyRegistered = false } = {}) {
   if (!canEncrypt()) {
-    await tx('tokens', 'readwrite', (s) => s.put({ deviceKey, plain: token, savedAt: Date.now() }, companyId));
+    await tx('tokens', 'readwrite', (s) => s.put({ deviceKey, plain: token, keyRegistered, savedAt: Date.now() }, companyId));
     return;
   }
   const key = await wrappingKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token));
-  await tx('tokens', 'readwrite', (s) => s.put({ deviceKey, iv, ct, savedAt: Date.now() }, companyId));
+  await tx('tokens', 'readwrite', (s) => s.put({ deviceKey, iv, ct, keyRegistered, savedAt: Date.now() }, companyId));
+}
+
+/**
+ * A device enrolled before scan signing registers its signing key once, by rotating its token (the current token
+ * proves it is the same device). Returns the token to use from now on.
+ */
+async function registerSigningKey({ eventId, deviceKey, companyId, token }) {
+  const signingKey = await publicSigningJwk();
+  if (!signingKey) return token;
+  try {
+    const res = await api.post('/checkin/devices/enroll', { eventId, deviceId: deviceKey, signingKey }, { headers: { 'X-Device-Token': token } });
+    await saveDeviceToken(res.data.data.companyId, deviceKey, res.data.data.token, { keyRegistered: true });
+    return res.data.data.token;
+  } catch {
+    return token; // try again next time; the current token still works
+  }
 }
 
 /** Forget this device's credential for one organization (or for all of them without a companyId). */
@@ -94,12 +144,17 @@ export const clearDeviceToken = (companyId) => tx('tokens', 'readwrite', (s) => 
 export async function ensureDeviceToken({ eventId, deviceKey, companyId, invalidToken = null }) {
   return withLock('tl-gate-enroll', async () => {
     const stored = await loadDeviceToken(companyId, deviceKey);
-    if (stored && stored !== invalidToken) return { token: stored, companyId, state: 'enrolled' };
+    if (stored && stored !== invalidToken) {
+      const rec = await loadRecord(companyId);
+      const token = rec?.keyRegistered ? stored : await registerSigningKey({ eventId, deviceKey, companyId, token: stored });
+      return { token, companyId, state: 'enrolled' };
+    }
     if (stored && companyId) await clearDeviceToken(companyId);
     try {
-      const res = await api.post('/checkin/devices/enroll', { eventId, deviceId: deviceKey });
+      const signingKey = await publicSigningJwk();
+      const res = await api.post('/checkin/devices/enroll', { eventId, deviceId: deviceKey, ...(signingKey ? { signingKey } : {}) });
       const { token, companyId: cid } = res.data.data;
-      await saveDeviceToken(cid, deviceKey, token);
+      await saveDeviceToken(cid, deviceKey, token, { keyRegistered: Boolean(signingKey) });
       return { token, companyId: cid, state: 'enrolled' };
     } catch (err) {
       const code = err.response?.data?.code;
