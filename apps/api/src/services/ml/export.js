@@ -77,7 +77,12 @@ class Rows {
     this.map.set(id, { ...row, feature_source: source });
     this.tally.keep(source);
   }
-  get rows() { return [...this.map.values()].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0)); }
+  // Deterministic order (time, then the row's own key): the database returns rows in physical order, which
+  // changes when rows are updated, so identical data must still give identical files (and hashes).
+  get rows() {
+    const cmp = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+    return [...this.map.entries()].sort(([ka, a], [kb, b]) => cmp(a.ts, b.ts) || cmp(String(ka), String(kb))).map(([, r]) => r);
+  }
 }
 
 /**
@@ -159,6 +164,7 @@ const realEvent = (ctx, eventId) => {
 };
 const snaps = (db, modelName, subjectType, now) => db.mlPrediction.findMany({
   where: { modelName, role: 'RULES', subjectType, asOf: { lt: now }, createdAt: { lt: now } },
+  orderBy: [{ asOf: 'asc' }, { subjectId: 'asc' }],
   select: { subjectId: true, eventId: true, userId: true, features: true, output: true, asOf: true, score: true, decision: true },
 });
 const noteTimes = (ctx, eventId, c) => {
@@ -215,6 +221,7 @@ async function exportFraud(db, ctx, now) {
   const out = new Rows((r) => r.order_id, t);
   const preds = await db.mlPrediction.findMany({
     where: { modelName: 'fraud', role: 'RULES', asOf: { lt: now }, createdAt: { lt: now } },
+    orderBy: [{ asOf: 'asc' }, { subjectId: 'asc' }],
     select: { subjectType: true, subjectId: true, features: true, output: true, asOf: true, score: true, decision: true },
   });
   const blocked = preds.filter((p) => p.subjectType === 'CHECKOUT_ATTEMPT');

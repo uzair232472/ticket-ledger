@@ -200,8 +200,14 @@ test('search and wishlist activity is recorded', async () => {
   const req = { user: { id: w.id }, params: { eventId: ev.id }, headers: {} };
   await addToWishlist(req, res);
   await removeFromWishlist(req, res);
-  await new Promise((r) => setTimeout(r, 200));
-  assert.deepEqual((await prisma.behaviorEvent.findMany({ where: { userId: w.id }, orderBy: { createdAt: 'asc' } })).map((x) => x.action), ['wishlist_added', 'wishlist_removed']);
+  // Tracking is fire-and-forget (it never delays the request), so the two writes land in either order and
+  // at an unknown moment: wait until both are there (up to 10 s) instead of a fixed sleep, compare as a set.
+  let actions = [];
+  for (let i = 0; i < 100 && actions.length < 2; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    actions = (await prisma.behaviorEvent.findMany({ where: { userId: w.id } })).map((x) => x.action).sort();
+  }
+  assert.deepEqual(actions, ['wishlist_added', 'wishlist_removed']);
 });
 
 // ---------------------------------------------------------------------------------------------

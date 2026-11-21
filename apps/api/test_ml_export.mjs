@@ -304,3 +304,23 @@ test('no current values and no future data: later edits and records change nothi
   const again = await buildExport({ policy, now: NOW });
   for (const name of Object.keys(COLUMNS)) assert.deepEqual(mine(again.datasets[name]), mine(first.datasets[name]), name);
 });
+
+test('the export does not depend on the order the database returns rows in', async () => {
+  // PostgreSQL returns rows without ORDER BY in whatever order its plan and storage give (it changes after
+  // updates, vacuum, concurrent writes). Every findMany is answered here in REVERSED order: identical data
+  // must still give identical rows in identical order (and so identical CSV files and hashes).
+  const reversedFindMany = (model) => new Proxy(model, {
+    get: (m, k) => (k === 'findMany' ? async (...a) => (await m.findMany(...a)).reverse() : typeof m[k] === 'function' ? m[k].bind(m) : m[k]),
+  });
+  const db = new Proxy(prisma, {
+    get: (t, k) => {
+      const v = t[k];
+      if (v && typeof v === 'object' && typeof v.findMany === 'function') return reversedFindMany(v);
+      return typeof v === 'function' ? v.bind(t) : v;
+    },
+  });
+  const normal = await buildExport({ policy, now: NOW });
+  const reversed = await buildExport({ db, policy, now: NOW });
+  for (const name of Object.keys(COLUMNS)) assert.deepEqual(reversed.datasets[name], normal.datasets[name], name);
+  for (const name of Object.keys(normal.datasetsStep5)) assert.deepEqual(reversed.datasetsStep5[name], normal.datasetsStep5[name], name);
+});
