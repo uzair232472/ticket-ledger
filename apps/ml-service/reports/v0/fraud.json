@@ -1,0 +1,214 @@
+{
+  "model": "fraud",
+  "title": "Fraud (flag for review)",
+  "label": "is_fraud",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "payment_method"
+    ],
+    "numeric": [
+      "tickets_requested",
+      "unit_price_rel",
+      "checkout_duration_seconds",
+      "clicks_per_minute",
+      "rapid_seat_attempts",
+      "time_on_seatmap_seconds",
+      "device_switches",
+      "account_age_days",
+      "customer_prior_orders",
+      "orders_last_24h",
+      "failed_payments_30d",
+      "prior_resale_listings",
+      "hours_since_sales_open"
+    ]
+  },
+  "data": {
+    "dataset": "fraud_purchases.csv",
+    "rows": 50000,
+    "source": "synthetic-v0",
+    "sha256": "f4fcdc28cdb79af9ee76b59621f71e8311bfde0611f2d9ae91ad804757a5f939",
+    "from": "2023-01-01T11:07:00+00:00",
+    "to": "2025-12-31T17:25:00+00:00"
+  },
+  "split": {
+    "train_rows": 30717,
+    "val_rows": 6279,
+    "test_rows": 7500,
+    "val_start": "2025-02-20T23:18:54+00:00",
+    "test_start": "2025-08-03T13:25:18+00:00",
+    "purged_train_rows": 707,
+    "purged_val_rows": 541,
+    "holdout_groups": 1473
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "share of flagged orders that are fraud (precision)",
+  "higher_is_better": true,
+  "test_size": {
+    "frauds": 293
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.9746,
+        "train_vs_validation": 0.0236,
+        "not_memorising": true
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.9783,
+        "train_vs_validation": 0.0162,
+        "not_memorising": true
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.9784,
+        "train_vs_validation": 0.0132,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "simple"
+  },
+  "result": {
+    "model": 0.8929,
+    "baseline": 0.9938,
+    "improvement": -0.1009,
+    "improvement_95ci": [
+      -0.1422,
+      -0.0662
+    ]
+  },
+  "details": {
+    "test_auc": 0.9748,
+    "test_brier": 0.0127,
+    "baseline_auc": 0.7934,
+    "threshold": 0.2394,
+    "model_flags": {
+      "precision": 0.8929,
+      "false_flag_rate": 0.0033,
+      "recall": 0.6826,
+      "flag_rate": 0.0299
+    },
+    "rule_flags": {
+      "precision": 0.9938,
+      "false_flag_rate": 0.0001,
+      "recall": 0.5427,
+      "flag_rate": 0.0213
+    }
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.015,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "false flags among legitimate orders",
+      "value": 0.0033,
+      "limit": "<= 0.01",
+      "passed": true
+    },
+    {
+      "name": "share of frauds caught vs rules",
+      "value": 0.1399,
+      "limit": ">= 0 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 4930,
+      "model": 0.9457,
+      "baseline": 0.9931
+    },
+    "customers_unseen": {
+      "rows": 2570,
+      "model": 0.65,
+      "baseline": 1.0
+    },
+    "events_known": {
+      "rows": 304,
+      "note": "too few cases to measure"
+    },
+    "events_unseen": {
+      "rows": 7196,
+      "model": 0.8929,
+      "baseline": 0.9938
+    },
+    "human_speed": {
+      "rows": 7327,
+      "model": 0.549,
+      "baseline": 0.0
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 3071,
+        "value": 0.9312
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 7679,
+        "value": 0.9564
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 15358,
+        "value": 0.973
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 30717,
+        "value": 0.9765
+      }
+    ],
+    "still_improving": false,
+    "note": "score has levelled off: more data of the same kind adds little"
+  },
+  "status": "REJECTED",
+  "reasons": [
+    "not clearly better than the baseline: 95% interval of the improvement is [-0.1422, -0.0662]"
+  ],
+  "shadow_decision": {
+    "date": "2026-11-20",
+    "decision": "Option 1: the existing rules stay the active decision-making system; the v0 fraud model runs in shadow only. The precision benchmark is not changed to let a synthetic-trained model pass.",
+    "keep": "improved fraud recall and bot-detection capability (incl. human-speed bots) - tracked, not used",
+    "record": "every shadow prediction, compared against verified fraud and verified legitimate outcomes",
+    "re_evaluate": "on real client data once enough reviewed cases exist (minimums in ml/gates.py)",
+    "measures": "precision (main), false-flag rate among legitimate orders (separate limit, <= 1%), recall (tracked) - reported separately, never combined"
+  },
+  "final_model": {
+    "calibration": "isotonic, 5-fold (CalibratedClassifierCV)",
+    "trained_rows": 50000,
+    "trained_from": "2023-01-01T11:07:00+00:00",
+    "trained_to": "2025-12-31T17:25:00+00:00"
+  },
+  "duration_seconds": 24.3,
+  "artifact": "models/v0/fraud.joblib"
+}

@@ -1,13 +1,18 @@
+import hashlib
+import hmac
+import json
 import os
 import sys
+import threading
 import time
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import joblib
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
+import sklearn
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 # Ensure root directory is on python path for script imports
@@ -18,6 +23,15 @@ if BASE_DIR not in sys.path:
 from scripts.train_intent_model import train_intent
 from scripts.train_fraud_model import train_fraud
 from scripts.train_demand_model import train_demand
+from ml.models import predict as ml_predict
+from ml.schema import NULLABLE_FEATURES, SPECS
+
+# Legacy formula-trained models and their /train/* endpoints only run in development with
+# ML_ALLOW_SYNTHETIC=1. Otherwise the legacy endpoints answer with their built-in rules, so every
+# active decision in the app comes from rules. New models only run in shadow (/v2/shadow).
+ALLOW_SYNTHETIC = os.environ.get("ML_ALLOW_SYNTHETIC") == "1"
+ML_ENV = os.environ.get("ML_ENV", "development")
+SERVICE_TOKEN = os.environ.get("ML_SERVICE_TOKEN", "")
 
 app = FastAPI(
     title="TicketLedger ML Service",
@@ -25,14 +39,20 @@ app = FastAPI(
     version="2.2.0"
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Internal service: only the API calls it (no browser, so no CORS). Every route except /health needs
+# the shared token in X-ML-Token. In production the service refuses to work without a token.
+@app.middleware("http")
+async def require_service_token(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+    if not SERVICE_TOKEN:
+        if ML_ENV == "production":
+            return JSONResponse(status_code=503, content={"detail": "ML_SERVICE_TOKEN is not configured"})
+        return await call_next(request)
+    given = request.headers.get("x-ml-token", "")
+    if not hmac.compare_digest(given.encode(), SERVICE_TOKEN.encode()):
+        return JSONResponse(status_code=401, content={"detail": "invalid service token"})
+    return await call_next(request)
 
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 FRAUD_MODEL_PATH = os.path.join(MODELS_DIR, "fraud_model.joblib")
@@ -46,6 +66,8 @@ intent_pkg = None
 
 def load_models():
     global fraud_pkg, demand_pkg, intent_pkg
+    if not ALLOW_SYNTHETIC:
+        return            # legacy synthetic models never drive decisions outside development
     try:
         if os.path.exists(FRAUD_MODEL_PATH):
             fraud_pkg = joblib.load(FRAUD_MODEL_PATH)
@@ -434,6 +456,8 @@ def post_predict_intent_alias(req: IntentPredictRequest):
 # -----------------
 @app.post("/train/intent", response_model=TrainingResponse, summary="Module 15: Retrain Purchase Intent Scoring Model")
 def post_train_intent():
+    if not ALLOW_SYNTHETIC:
+        raise HTTPException(status_code=403, detail="Legacy synthetic training is disabled. Models are trained by the gated pipeline (python -m ml.train).")
     t0 = time.time()
     try:
         train_intent()
@@ -453,6 +477,8 @@ def post_train_intent():
 
 @app.post("/train/fraud", response_model=TrainingResponse, summary="Module 15: Retrain Fraud Detection & Anti-Scalping Model")
 def post_train_fraud():
+    if not ALLOW_SYNTHETIC:
+        raise HTTPException(status_code=403, detail="Legacy synthetic training is disabled. Models are trained by the gated pipeline (python -m ml.train).")
     t0 = time.time()
     try:
         train_fraud()
@@ -472,6 +498,8 @@ def post_train_fraud():
 
 @app.post("/train/demand", response_model=TrainingResponse, summary="Module 15: Retrain Event Demand Forecasting Model")
 def post_train_demand():
+    if not ALLOW_SYNTHETIC:
+        raise HTTPException(status_code=403, detail="Legacy synthetic training is disabled. Models are trained by the gated pipeline (python -m ml.train).")
     t0 = time.time()
     try:
         train_demand()
@@ -488,6 +516,107 @@ def post_train_demand():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrain demand forecasting model: {str(e)}")
+
+# -----------------
+# v2: shadow scoring with gated-pipeline artifacts (never serves decisions)
+# -----------------
+ARTIFACT_DIR = os.environ.get("ML_ARTIFACT_DIR", os.path.join(BASE_DIR, "models", "v0"))
+MAX_SHADOW_ROWS = 1000
+_artifact_cache = {}
+_artifact_lock = threading.Lock()
+
+
+def _registry():
+    path = os.path.join(ARTIFACT_DIR, "registry.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        return {m["name"]: m for m in json.load(f)["models"]}
+
+
+def _file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _load_artifact(name, sha256):
+    """Loads a registered artifact only if its file matches the fingerprint the API asked for and was
+    built with the same scikit-learn version as this service (otherwise it might load but behave
+    differently). Raises HTTPException with the reason."""
+    key = (name, sha256)
+    with _artifact_lock:
+        if key in _artifact_cache:
+            return _artifact_cache[key]
+        entry = _registry().get(name)
+        if not entry:
+            raise HTTPException(status_code=404, detail=f"model '{name}' is not registered")
+        if entry["sha256"] != sha256:
+            raise HTTPException(status_code=409, detail=f"model '{name}' fingerprint mismatch: registry has {entry['sha256'][:12]}")
+        path = os.path.join(ARTIFACT_DIR, entry["file"])
+        if not os.path.exists(path) or _file_sha256(path) != sha256:
+            raise HTTPException(status_code=409, detail=f"model '{name}' file is missing or does not match its fingerprint")
+        artifact = joblib.load(path)
+        built = artifact["versions"]["sklearn"].split(".")[:2]
+        if built != sklearn.__version__.split(".")[:2]:
+            raise HTTPException(status_code=409, detail=f"model '{name}' was built with scikit-learn {artifact['versions']['sklearn']}, service runs {sklearn.__version__}")
+        _artifact_cache[key] = artifact
+        return artifact
+
+
+class ShadowRequest(BaseModel):
+    sha256: str = Field(..., min_length=64, max_length=64)
+    rows: List[Dict[str, Any]]
+
+
+@app.get("/v2/models")
+def list_shadow_models():
+    return {"artifact_dir": ARTIFACT_DIR, "sklearn": sklearn.__version__,
+            "models": [{k: v for k, v in m.items() if k != "evaluation"} for m in _registry().values()]}
+
+
+@app.post("/v2/shadow/{name}")
+def shadow_predict(name: str, req: ShadowRequest):
+    if name not in SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    if not req.rows or len(req.rows) > MAX_SHADOW_ROWS:
+        raise HTTPException(status_code=422, detail=f"send 1 to {MAX_SHADOW_ROWS} rows")
+    spec = SPECS[name]
+    artifact = _load_artifact(name, req.sha256)
+    needed = list(artifact["features"]["categorical"]) + list(artifact["features"]["numeric"])
+    if name == "demand":
+        needed = sorted(set(needed) | {"venue_capacity"})
+    missing = sorted({c for r in req.rows for c in needed if c not in r})
+    if missing:
+        raise HTTPException(status_code=422, detail=f"rows are missing features: {missing}")
+    df = pd.DataFrame(req.rows)
+    for c in artifact["features"]["numeric"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    nullable = NULLABLE_FEATURES.get(name, set())
+    bad = [c for c in artifact["features"]["numeric"] if c not in nullable and df[c].isna().any()]
+    if bad:
+        raise HTTPException(status_code=422, detail=f"non-numeric or empty values in: {bad}")
+    out = ml_predict(artifact["model"], df, spec)
+    th = artifact.get("thresholds", {})
+    preds = []
+    for i, v in enumerate(out):
+        v = float(v)
+        if spec.kind == "binary":
+            item = {"probability": round(v, 6)}
+            if name == "fraud":
+                item["would_flag"] = bool(v >= th["threshold"])
+        elif name == "demand":
+            cap = float(df["venue_capacity"].iloc[i])
+            q = th["conformal_q"]
+            share = v / cap if cap > 0 else 0.0
+            item = {"sales_48h": round(v, 1), "low": round(max(0.0, share - q) * cap, 1), "high": round(min(1.0, share + q) * cap, 1)}
+        else:
+            item = {"scans": round(v, 2)}
+        preds.append(item)
+    return {"model": name, "sha256": req.sha256, "role": "SHADOW", "may_serve_decisions": False, "predictions": preds}
+
 
 if __name__ == "__main__":
     import uvicorn

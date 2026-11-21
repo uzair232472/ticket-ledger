@@ -22,7 +22,8 @@ from sklearn.metrics import (
 )
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# Legacy formula-generated data (superseded by data/ v0 datasets; replaced in Step 2)
+DATA_DIR = os.path.join(BASE_DIR, "dev", "legacy-synthetic", "data")
 DATA_PATH = os.path.join(DATA_DIR, "fraud_purchases.csv")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)

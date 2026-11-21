@@ -29,6 +29,7 @@ import ResaleMarketplace from './pages/ResaleMarketplace';
 import DigitalWallet from './pages/DigitalWallet';
 import GateScanner from './pages/GateScanner';
 import AdminFraudWatchlist from './pages/AdminFraudWatchlist';
+import AdminFraudReview from './pages/AdminFraudReview';
 import DemandForecast from './pages/DemandForecast';
 import Notifications from './pages/Notifications';
 import NotificationBell from './components/NotificationBell';
@@ -270,6 +271,7 @@ export default function App() {
               <Route path="/admin/investigations/:id" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminInvestigations /></ProtectedRoute></DashShell>} />
               <Route path="/admin/payouts" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminPayouts /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/fraud-review" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudReview /></ProtectedRoute></DashShell>} />
               <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviorProfile />)}</ProtectedRoute>} />

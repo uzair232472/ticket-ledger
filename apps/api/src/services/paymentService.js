@@ -161,6 +161,9 @@ class PaymentService {
               transactionId: intent.id,
               fee: 0,
               paidAt: new Date(intent.created * 1000),
+              // Provider's own statement: live or test mode (recorded as payment evidence; paymentEvidence.js)
+              livemode: Boolean(intent.livemode),
+              verifiedVia: 'stripe.paymentIntents.retrieve',
             };
           } catch (err) {
             console.error('[STRIPE RETRIEVE ERROR]', err.message);

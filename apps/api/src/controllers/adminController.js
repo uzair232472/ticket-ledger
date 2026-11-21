@@ -1,4 +1,5 @@
 import adminService from '../services/adminService.js';
+import { recordWatchlistView } from '../services/ml/fraudReview.js';
 import organizerDashboardService from '../services/organizerDashboardService.js';
 
 /**
@@ -104,6 +105,9 @@ export const getFraudAlerts = async (req, res) => {
   try {
     const { page, limit, minScore } = req.query;
     const data = await adminService.getFraudAlerts({ page, limit, minScore });
+    // Lists fraud scores per account: logged so a later blind fraud review by this admin is marked exposed
+    const shown = (Array.isArray(data) ? data : data?.alerts || []).map((a) => a.userId);
+    await recordWatchlistView(req.user?.id, shown, undefined, 'fraud-alerts').catch(() => {});
     return res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('Error in getFraudAlerts:', error);

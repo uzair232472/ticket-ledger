@@ -93,7 +93,13 @@ export const listCases = handle('Could not load investigations.', async (req, re
   const q = z.object({ status: z.enum(['OPEN', 'MONITORING', 'CLOSED']).optional(), userId: z.string().uuid().optional() }).parse(req.query);
   res.json({ success: true, data: { cases: await cases.listCases(q) } });
 });
-export const getCase = handle('Could not load the investigation.', async (req, res) => res.json({ success: true, data: { case: await cases.getCase(req.params.id) } }));
+export const getCase = handle('Could not load the investigation.', async (req, res) => {
+  const c = await cases.getCase(req.params.id);
+  // An investigation shows bot checks and fraud flags for the account: logged so a later fraud review of this
+  // customer by the same admin is recorded as not blind (services/ml/fraudReview.js)
+  await prisma.auditLog.create({ data: { userId: req.user.id, action: 'INVESTIGATION_VIEWED', targetType: 'User', targetId: c.userId, details: { investigationId: c.id } } });
+  return res.json({ success: true, data: { case: c } });
+});
 export const openCase = handle('Could not open the investigation.', async (req, res) => {
   const body = z.object({ userId: z.string().uuid(), title: z.string().trim().min(3).max(140), riskLevel: z.enum(cases.RISK).default('MEDIUM'), note: z.string().trim().max(3000).optional() }).parse(req.body || {});
   res.status(201).json({ success: true, message: 'Investigation opened.', data: { case: await cases.openCase(req.user, body) } });

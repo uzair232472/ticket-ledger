@@ -1,6 +1,7 @@
 import { eventWhereFor, memberContext } from './orgAccess.js';
 import { getSetting } from './systemConfig.js';
 import prisma from '../config/prisma.js';
+import { showRate } from './ml/attendanceBaseline.js';
 
 /**
  * Service to aggregate comprehensive organizer dashboard metrics, sales charts,
@@ -215,36 +216,19 @@ const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null
   const invalidScans = gateScans.filter((s) => s.result === 'INVALID_SCAN').length;
   const turnoutPercentage = totalTicketsSold > 0 ? Math.round((validScans / totalTicketsSold) * 100) : 0;
 
-  // 7. Attendance Prediction & No-Show Risk Model
-  // Based on the Module 14 synthetic attendance dataset patterns:
-  // Factors: city, event type, ticket price average, days to event.
+  // 7. Attendance prediction: tickets sold x historical show rate of past finished events
+  // (falls back to the previous fixed percentages until enough check-ins exist; see services/ml/attendanceBaseline.js)
   let predictedAttendanceRate = 88.5;
   let predictedNoShowRisk = 11.5;
   let attendanceFactors = [];
+  let attendanceBasis = 'FIXED_RULE';
 
   const targetEventObj = selectedEvent || organizerEvents[0];
   if (targetEventObj) {
-    if (targetEventObj.type === 'CRICKET_MATCH') {
-      predictedAttendanceRate = 92.4;
-      predictedNoShowRisk = 7.6;
-      attendanceFactors.push('High fan enthusiasm for live cricket match');
-    } else if (targetEventObj.type === 'MUSIC_CONCERT' || targetEventObj.type === 'MUSIC_FESTIVAL') {
-      predictedAttendanceRate = 86.8;
-      predictedNoShowRisk = 13.2;
-      attendanceFactors.push('Weekend music concert profile with average 13% no-show buffer');
-    } else if (targetEventObj.type === 'KABADDI') {
-      predictedAttendanceRate = 89.1;
-      predictedNoShowRisk = 10.9;
-      attendanceFactors.push('Strong regional sports audience loyalty');
-    }
-
-    if (targetEventObj.city === 'Lahore' || targetEventObj.city === 'Karachi') {
-      predictedAttendanceRate += 2.0;
-      predictedNoShowRisk -= 2.0;
-      attendanceFactors.push(`Metro city venue (${targetEventObj.city}) minimizes commute attrition`);
-    }
-
-    predictedAttendanceRate = Math.min(98, Math.max(65, Math.round(predictedAttendanceRate * 10) / 10));
+    const sr = await showRate({ type: targetEventObj.type, city: targetEventObj.city });
+    predictedAttendanceRate = sr.rate;
+    attendanceFactors = sr.factors;
+    attendanceBasis = sr.basis;
     predictedNoShowRisk = Math.round((100 - predictedAttendanceRate) * 10) / 10;
   }
 
@@ -326,6 +310,7 @@ const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null
       totalTicketsSold,
       confidenceScore: 0.91,
       factors: attendanceFactors,
+      basis: attendanceBasis, // HISTORY_TYPE | HISTORY_ALL | FIXED_RULE
     },
     fraudFeed,
     modulesPreview: {

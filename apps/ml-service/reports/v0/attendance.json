@@ -1,0 +1,178 @@
+{
+  "model": "attendance",
+  "title": "Attendance (no-show)",
+  "label": "checked_in",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "day_of_week"
+    ],
+    "numeric": [
+      "start_hour",
+      "tier_rank",
+      "ticket_price_rel",
+      "tickets_in_order",
+      "days_before_event_purchased",
+      "is_transferred",
+      "is_resold",
+      "customer_prior_tickets",
+      "customer_prior_attended",
+      "customer_prior_no_shows"
+    ]
+  },
+  "data": {
+    "dataset": "attendance_no_show.csv",
+    "rows": 50000,
+    "source": "synthetic-v0",
+    "sha256": "5746167a46c53121be9dc042d7d58128da43363d745d6d442c7479e757aa8774",
+    "from": "2023-01-23T15:00:00+00:00",
+    "to": "2025-12-29T10:00:00+00:00"
+  },
+  "split": {
+    "train_rows": 31408,
+    "val_rows": 6611,
+    "test_rows": 7500,
+    "val_start": "2025-04-04T22:11:59.999999744+00:00",
+    "test_start": "2025-08-15T15:54:00.000000256+00:00",
+    "purged_train_rows": 100,
+    "purged_val_rows": 100,
+    "holdout_groups": 1491
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "average error in people attending per event",
+  "higher_is_better": false,
+  "test_size": {
+    "positives (rare outcome)": 1181,
+    "other outcome": 6319,
+    "events": 150
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.6297,
+        "train_vs_validation": 0.1104,
+        "not_memorising": false
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.6323,
+        "train_vs_validation": 0.059,
+        "not_memorising": false
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.6379,
+        "train_vs_validation": 0.0372,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "simple"
+  },
+  "result": {
+    "model": 393.355,
+    "baseline": 432.7696,
+    "improvement": 39.4146,
+    "improvement_95ci": [
+      -31.9056,
+      123.0016
+    ]
+  },
+  "details": {
+    "test_auc": 0.638,
+    "test_brier": 0.1298,
+    "current_fixed_rule_error": 638.7,
+    "no_show_threshold": 0.8507,
+    "average_event_attendance": 6781.1
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.0351,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "calibration error (ECE)",
+      "value": 0.02,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "per-ticket balanced accuracy vs baseline (0.5)",
+      "value": 0.6084,
+      "limit": ">= 0.5 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 4850,
+      "model": 328.777,
+      "baseline": 2413.9402
+    },
+    "customers_unseen": {
+      "rows": 2650,
+      "model": 209.22,
+      "baseline": 4404.015
+    },
+    "first_time_attendees": {
+      "rows": 1694,
+      "model": 168.5725,
+      "baseline": 5258.1215
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 3140,
+        "value": 0.5886
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 7852,
+        "value": 0.623
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 15704,
+        "value": 0.6273
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 31408,
+        "value": 0.64
+      }
+    ],
+    "still_improving": true,
+    "note": "more data would likely still help"
+  },
+  "status": "REJECTED",
+  "reasons": [
+    "not clearly better than the baseline: 95% interval of the improvement is [-31.9056, 123.0016]"
+  ],
+  "duration_seconds": 7.5
+}

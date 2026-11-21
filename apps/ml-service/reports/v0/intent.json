@@ -1,0 +1,185 @@
+{
+  "model": "intent",
+  "title": "Purchase intent",
+  "label": "purchased_7d",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country"
+    ],
+    "numeric": [
+      "event_views",
+      "seat_selections",
+      "checkout_started",
+      "session_duration_seconds",
+      "ticket_price_rel",
+      "tier_count",
+      "hours_since_sales_open",
+      "days_until_event",
+      "customer_prior_sessions",
+      "customer_prior_purchases",
+      "prior_sessions_this_event",
+      "account_age_days"
+    ]
+  },
+  "data": {
+    "dataset": "behavior_sequences.csv",
+    "rows": 100000,
+    "source": "synthetic-v0",
+    "sha256": "ddc7c6d198342c9ef5eac7ddd51d987358bc793e27db6f094496c4d70a373279",
+    "from": "2023-01-01T10:28:00+00:00",
+    "to": "2025-12-24T18:55:00+00:00"
+  },
+  "split": {
+    "train_rows": 62656,
+    "val_rows": 13056,
+    "test_rows": 15000,
+    "val_start": "2025-02-21T17:52:06+00:00",
+    "test_start": "2025-07-29T05:16:03+00:00",
+    "purged_train_rows": 659,
+    "purged_val_rows": 519,
+    "holdout_groups": 1746
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "share of actual buyers among the top 10% scored visitors",
+  "higher_is_better": true,
+  "test_size": {
+    "positives (rare outcome)": 2756,
+    "other outcome": 12244
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.9176,
+        "train_vs_validation": 0.0188,
+        "not_memorising": true
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.9186,
+        "train_vs_validation": 0.0082,
+        "not_memorising": true
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.9191,
+        "train_vs_validation": 0.0034,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "simple"
+  },
+  "result": {
+    "model": 0.8272,
+    "baseline": 0.7921,
+    "improvement": 0.0351,
+    "improvement_95ci": [
+      0.0204,
+      0.0518
+    ]
+  },
+  "details": {
+    "test_auc": 0.9141,
+    "test_brier": 0.0703,
+    "baseline_auc": 0.8858
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.0071,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "calibration error (ECE)",
+      "value": 0.008,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "first-time visitors: top-10% share vs rule",
+      "value": 0.0232,
+      "limit": ">= 0 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 11144,
+      "model": 0.8318,
+      "baseline": 0.7897
+    },
+    "customers_unseen": {
+      "rows": 3856,
+      "model": 0.8075,
+      "baseline": 0.797
+    },
+    "events_known": {
+      "rows": 940,
+      "model": 0.8241,
+      "baseline": 0.8135
+    },
+    "events_unseen": {
+      "rows": 14060,
+      "model": 0.8282,
+      "baseline": 0.7906
+    },
+    "first_time_visitors": {
+      "rows": 1845,
+      "model": 0.7821,
+      "baseline": 0.759
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 6265,
+        "value": 0.9092
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 15664,
+        "value": 0.9135
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 31328,
+        "value": 0.914
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 62656,
+        "value": 0.9154
+      }
+    ],
+    "still_improving": false,
+    "note": "score has levelled off: more data of the same kind adds little"
+  },
+  "status": "PASSED",
+  "reasons": [],
+  "duration_seconds": 16.7,
+  "artifact": "models/v0/intent.joblib"
+}

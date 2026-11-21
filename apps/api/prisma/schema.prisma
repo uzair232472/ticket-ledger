@@ -1902,3 +1902,130 @@ model GateSyncBatch {
   @@index([deviceId, createdAt])
   @@index([eventId, createdAt])
 }
+
+// ---------------------------------------------------------------------------------------------
+// Machine learning (shadow mode). Rules make every decision; registered models only score in the
+// background and their outputs are logged next to the rule's decision for later comparison with
+// real outcomes. Nothing here can change what a customer or organizer sees.
+// ---------------------------------------------------------------------------------------------
+enum MlModelStatus {
+  SHADOW // scores in the background only
+  READY // passed the live shadow check; waiting for an admin (not used yet)
+  ACTIVE // serves decisions (not reachable yet: no promotion path exists)
+  RETIRED
+  REJECTED
+}
+
+enum MlPredictionRole {
+  RULES // what the app actually decided / showed
+  SHADOW // what a shadow model would have said
+}
+
+enum FraudReviewDecision {
+  CONFIRMED_FRAUD
+  LEGITIMATE
+  UNRESOLVED // reviewer could not decide; stays in the queue
+}
+
+// Which detector flagged the order (never shown to reviewers)
+enum FraudSampleCell {
+  RULE_AND_ML // rules flagged and the shadow model would flag
+  RULE_ONLY
+  ML_ONLY
+  NEITHER // neither flagged: a random sample of these estimates fraud missed by both
+}
+
+model MlModel {
+  id                String         @id @default(uuid())
+  name              String // intent, abandonment, fraud, demand, crowd
+  version           String // e.g. v0
+  sha256            String // fingerprint of the artifact file the ML service loads
+  file              String
+  source            String // synthetic-v0 | db-export
+  status            MlModelStatus  @default(SHADOW)
+  mayServeDecisions Boolean        @default(false) // false for anything synthetic or rejected
+  evaluationStatus  String // PASSED | REJECTED (offline evaluation)
+  evaluation        Json
+  features          Json? // exact model inputs (from the registry)
+  shadowDecision    Json? // recorded reason to keep a rejected model in shadow (e.g. fraud, Option 1)
+  registeredAt      DateTime       @default(now())
+  retiredAt         DateTime?
+  predictions       MlPrediction[]
+
+  @@unique([name, sha256])
+  @@index([name, status])
+}
+
+/// One row per (model, role, subject): the database itself prevents duplicates, so background jobs can
+/// re-run and several API servers can run them at once.
+model MlPrediction {
+  id           String           @id @default(uuid())
+  modelName    String
+  modelId      String?
+  model        MlModel?         @relation(fields: [modelId], references: [id], onDelete: SetNull)
+  role         MlPredictionRole
+  subjectType  String // ORDER | CHECKOUT_ATTEMPT | EVENT_FORECAST | VISIT | GATE_SLOT
+  subjectId    String
+  eventId      String?
+  userId       String?
+  score        Float? // rule score or model probability / value
+  decision     String? // rule decision or would-be model flag
+  output       Json?
+  features     Json? // the exact inputs, as of `asOf`
+  asOf         DateTime // the moment the prediction refers to (inputs use only data before it)
+  createdAt    DateTime         @default(now())
+  // Outcome learning: the real outcome, attached once it is known
+  outcomeLabel Float? // 1/0 or a count, in the model's own terms
+  outcome      Json? // how it was determined
+  outcomeAt    DateTime?
+
+  @@unique([modelName, role, subjectType, subjectId])
+  @@index([modelName, createdAt])
+  @@index([modelName, outcomeAt])
+  @@index([subjectType, subjectId])
+  @@index([eventId])
+}
+
+/// Blind fraud review sampling. Every scored order gets a row (so population sizes are exact); only
+/// `selected` rows reach reviewers. `cell` and the scores are never sent to reviewers.
+model FraudSample {
+  id                   String          @id @default(uuid())
+  orderId              String          @unique // no foreign key: review history must survive if a failed order is deleted
+  cell                 FraudSampleCell
+  selected             Boolean
+  inclusionProbability Float // sampling rate of the cell when the order was sampled
+  ruleDecision         String?
+  ruleScore            Float?
+  mlProbability        Float?
+  mlWouldFlag          Boolean
+  modelId              String?
+  rulePredictionId     String?
+  shadowPredictionId   String?
+  sampledAt            DateTime        @default(now())
+  reviews              FraudReview[]
+
+  @@index([selected, cell])
+  @@index([sampledAt])
+}
+
+/// Review history (append-only). The latest review of a sample is its current decision.
+/// Recording a review never changes the order, its tickets, payment or the account.
+model FraudReview {
+  id         String              @id @default(uuid())
+  sampleId   String
+  sample     FraudSample         @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  orderId    String
+  decision   FraudReviewDecision
+  reviewerId String
+  note       String?
+  // Was the reviewer blind to the detectors for this customer? false = they had seen detector output (fraud
+  // watchlist, investigation, account action) first: kept in the history, never used as a label. null = recorded
+  // before this check existed (treated as not blind). `exposure` lists what was found.
+  blind      Boolean?
+  exposure   Json?
+  createdAt  DateTime            @default(now())
+
+  @@index([sampleId, createdAt])
+  @@index([orderId])
+  @@index([decision, createdAt])
+}

@@ -2,6 +2,26 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+// A slow or hung ML service must never hold up a request: after this many ms the caller uses its rules
+export const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 300;
+const ML_TRAINING_TIMEOUT_MS = 60_000;
+
+/** POST to the ML service with the shared service token and a hard timeout. Throws on timeout / non-2xx. */
+export async function mlPost(path, body, { timeoutMs = ML_TIMEOUT_MS } = {}) {
+  const res = await fetch(`${ML_SERVICE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-ML-Token': process.env.ML_SERVICE_TOKEN || '' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    const err = new Error(detail.detail || `ML service returned status ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
 
 /**
  * 1. AI Anti-Scalping & Bot Detection Evaluator (Module 15: POST /fraud/score)
@@ -38,28 +58,9 @@ export const checkFraudRisk = async (telemetry = {}) => {
   };
 
   try {
-    // Try primary Module 15 endpoint: POST /fraud/score
-    let res = await fetch(`${ML_SERVICE_URL}/fraud/score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok && res.status === 404) {
-      // Fallback alias
-      res = await fetch(`${ML_SERVICE_URL}/predict/fraud`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
-
-    if (res.ok) {
-      return await res.json();
-    }
-    throw new Error(`ML service returned status ${res.status}`);
+    return await mlPost('/fraud/score', payload);
   } catch (error) {
-    console.warn(`[ML Service] Warning: Python ML service unreachable at ${ML_SERVICE_URL}. Using defensive heuristic fallback.`);
+    console.warn(`[ML Service] fraud check unavailable (${error.name === 'TimeoutError' ? 'timeout' : error.message}); using the built-in rules.`);
 
     const isBotSpeed = Number(checkoutDurationSeconds) < 2.5;
     const isHighClick = Number(clicksPerMinute) > 150;
@@ -138,25 +139,7 @@ export const forecastEventDemand = async (eventParams = {}) => {
   };
 
   try {
-    // Try primary Module 15 endpoint: POST /forecast/demand
-    let res = await fetch(`${ML_SERVICE_URL}/forecast/demand`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok && res.status === 404) {
-      res = await fetch(`${ML_SERVICE_URL}/predict/demand`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
-
-    if (res.ok) {
-      return await res.json();
-    }
-    throw new Error(`ML service returned status ${res.status}`);
+    return await mlPost('/forecast/demand', payload);
   } catch (error) {
     console.warn(`[ML Service] Warning: Python ML service unreachable for demand forecast. Using baseline ratio.`);
     const projectedSales = Math.floor(venueCapacity * 0.78);
@@ -205,25 +188,7 @@ export const scorePurchaseIntent = async (sessionParams = {}) => {
   };
 
   try {
-    // Try primary Module 15 endpoint: POST /intent/predict
-    let res = await fetch(`${ML_SERVICE_URL}/intent/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok && res.status === 404) {
-      res = await fetch(`${ML_SERVICE_URL}/predict/intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
-
-    if (res.ok) {
-      return await res.json();
-    }
-    throw new Error(`ML service returned status ${res.status}`);
+    return await mlPost('/intent/predict', payload);
   } catch (error) {
     return {
       purchase_intent_score: checkoutStarted ? 85.0 : 45.0,
@@ -245,17 +210,8 @@ export const triggerModelTraining = async (modelType = 'fraud') => {
     throw new Error(`Invalid model type '${modelType}'. Must be one of: ${validTypes.join(', ')}`);
   }
 
-  const res = await fetch(`${ML_SERVICE_URL}/train/${modelType.toLowerCase()}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-
-  if (res.ok) {
-    return await res.json();
-  }
-  const errData = await res.json().catch(() => ({}));
-  throw new Error(errData.detail || `ML training failed with HTTP ${res.status}`);
+  // Legacy synthetic training: the ML service refuses it (403) unless ML_ALLOW_SYNTHETIC=1 in development
+  return mlPost(`/train/${modelType.toLowerCase()}`, {}, { timeoutMs: ML_TRAINING_TIMEOUT_MS });
 };
 
 export default {

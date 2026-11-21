@@ -23,6 +23,7 @@ const CONSOLES = {
       { to: '/admin/event-approvals', label: 'Event approvals', badge: 'eventApprovals', adminPermission: 'admin.approvals' },
       { to: '/admin/finance', label: 'Finance', adminPermission: 'admin.finance' },
       { to: '/admin/fraud-watchlist', label: 'Fraud watchlist', adminPermission: 'admin.fraud' },
+      { to: '/admin/fraud-review', label: 'Fraud review', adminPermission: 'admin.fraud' },
       { to: '/admin/investigations', label: 'Investigations', adminPermission: 'admin.fraud' },
       { to: '/organizer/team', label: 'Organization teams', adminPermission: 'admin.orgs' },
       { to: '/admin/platform', label: 'Platform', adminPermission: 'admin.view' },
@@ -91,7 +92,7 @@ function consoleFor(user) {
 const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.

@@ -1,8 +1,10 @@
+import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { assertConfirmed, recordAdminAction } from '../services/adminActions.js';
 import { noteAccountAction } from '../services/investigationService.js';
 import { revokeAllRefreshTokens } from '../services/tokenService.js';
 import mlService from '../services/mlService.js';
+import { recordReview, recordWatchlistView, reviewHistory, reviewMetrics, reviewQueue } from '../services/ml/fraudReview.js';
 
 /**
  * 1. AI Real-Time Fraud & Scalper Bot Check (Module 15: Calls FastAPI /fraud/score and saves score)
@@ -282,6 +284,10 @@ export const getFraudWatchlist = async (req, res) => {
       };
     });
 
+    // The watchlist shows detector output: remember who saw which accounts, so a later fraud review of
+    // those accounts by the same admin is recorded as not blind (services/ml/fraudReview.js)
+    await recordWatchlistView(req.user?.id, formatted.map((f) => f.userId));
+
     const totalFlagged = formatted.length;
     const criticalBots = formatted.filter((f) => f.riskLevel === 'CRITICAL_BOT').length;
     const suspicious = formatted.filter((f) => f.riskLevel === 'SUSPICIOUS').length;
@@ -409,4 +415,45 @@ export default {
   getFraudWatchlist,
   freezeUserAccount,
   unfreezeUserAccount,
+};
+
+/**
+ * Blind fraud review (services/ml/fraudReview.js). Reviewers see order facts only - never the detector or
+ * scores. Recording a review changes nothing about the order, payment, tickets or account.
+ */
+const reviewSchema = z.object({
+  decision: z.enum(['CONFIRMED_FRAUD', 'LEGITIMATE', 'UNRESOLVED']),
+  note: z.string().trim().max(1000).optional(),
+});
+const fail = (res, error) => {
+  if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message });
+  return res.status(error.status || 500).json({ success: false, message: error.message });
+};
+
+export const fraudReviewQueue = async (req, res) => {
+  try {
+    return res.status(200).json({ success: true, data: await reviewQueue({ limit: Number(req.query.limit) || 25, reviewerId: req.user.id }) });
+  } catch (error) { return fail(res, error); }
+};
+
+export const submitFraudReview = async (req, res) => {
+  try {
+    const { decision, note } = reviewSchema.parse(req.body);
+    const review = await recordReview({ sampleId: req.params.sampleId, decision, note, reviewerId: req.user.id });
+    return res.status(201).json({ success: true, data: review });
+  } catch (error) { return fail(res, error); }
+};
+
+export const fraudReviewHistory = async (req, res) => {
+  try {
+    return res.status(200).json({ success: true, data: await reviewHistory(req.params.sampleId) });
+  } catch (error) { return fail(res, error); }
+};
+
+export const fraudReviewMetrics = async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from) : undefined;
+    const to = req.query.to ? new Date(req.query.to) : undefined;
+    return res.status(200).json({ success: true, data: await reviewMetrics({ from, to }) });
+  } catch (error) { return fail(res, error); }
 };

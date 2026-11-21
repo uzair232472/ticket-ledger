@@ -12,6 +12,8 @@
 import 'dotenv/config';
 import prisma from '../src/config/prisma.js';
 import { deviceAuthStatus } from '../src/config/gateDeviceAuth.js';
+import { crowdReadiness } from '../src/services/ml/crowd.js';
+import { startOf } from '../src/services/ml/features.js';
 
 const GATE_MIGRATIONS = ['20261118120000_gate_device_tokens', '20261118140000_gate_sync_idempotency', '20261118160000_gate_scan_conflicts', '20261118180000_gate_diagnostics', '20261118200000_gate_security'];
 const args = new Set(process.argv.slice(2));
@@ -66,6 +68,16 @@ async function checks() {
   const rate = batches ? Math.round((problems / batches) * 100) : 0;
   add(rate >= 10 ? 'STOP' : rate > 2 ? 'CHECK' : 'OK', 'Upload errors (last hour)', `${problems} of ${batches} upload(s) failed or had server retries (${rate}%)`);
   add(suspicious ? 'CHECK' : 'OK', 'Suspicious uploads (24 h)', `${suspicious} flagged (tampered, unsigned, unreadable or out-of-sequence scans)`);
+
+  // Crowd-flow forecasts: upcoming events (next 14 days) whose gates can't be forecast
+  const upcoming = (await prisma.event.findMany({
+    where: { status: 'PUBLISHED', cancelledAt: null },
+    select: { id: true, name: true, date: true, time: true, startsAt: true, gates: { select: { name: true, active: true, capacityPerHour: true } } },
+  })).filter((e) => { const s = startOf(e).getTime(); return s > Date.now() && s <= Date.now() + 14 * DAY; });
+  const notReady = upcoming.map((e) => ({ e, r: crowdReadiness(e.gates) })).filter((x) => !x.r.ready);
+  add(notReady.length ? 'CHECK' : 'OK', 'Gate capacity (crowd forecasts)', notReady.length
+    ? `${notReady.length} of ${upcoming.length} upcoming event(s) can't be forecast: ${notReady.slice(0, 5).map(({ e, r }) => `${e.name} (${r.reason === 'NO_ACTIVE_GATES' ? 'no active gates' : `no capacity per hour: ${r.missingCapacity.join(', ')}`})`).join('; ')}`
+    : `${upcoming.length} upcoming event(s), every active gate has a capacity per hour`);
 
   const verdict = out.some((c) => c.level === 'STOP') ? 'STOP' : out.some((c) => c.level === 'CHECK') ? 'CHECK' : 'GO';
   return { verdict, at: new Date().toISOString(), checks: out };

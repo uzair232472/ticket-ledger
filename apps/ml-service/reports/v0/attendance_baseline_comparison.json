@@ -1,0 +1,44 @@
+{
+  "question": "replace the fixed-percentage attendance rule with the historical-average baseline?",
+  "measure": "average error in people attending per event (lower is better)",
+  "leakage_checks": "passed",
+  "split": {
+    "train_rows": 31408,
+    "val_rows": 6611,
+    "test_rows": 7500,
+    "val_start": "2025-04-04T22:11:59.999999744+00:00",
+    "test_start": "2025-08-15T15:54:00.000000256+00:00",
+    "purged_train_rows": 100,
+    "purged_val_rows": 100,
+    "holdout_groups": 1491
+  },
+  "results": {
+    "test period (newest 15%)": {
+      "events": 150,
+      "historical_average_error": 432.8,
+      "fixed_rule_error": 638.7,
+      "improvement": 205.9,
+      "improvement_95ci": [
+        102.0,
+        301.5
+      ],
+      "historical_average_bias": 18.4,
+      "fixed_rule_bias": 533.2,
+      "clearly_better": true
+    },
+    "all events after the first 15% (burn-in)": {
+      "events": 850,
+      "historical_average_error": 449.5,
+      "fixed_rule_error": 579.9,
+      "improvement": 130.4,
+      "improvement_95ci": [
+        88.8,
+        175.5
+      ],
+      "historical_average_bias": -37.0,
+      "fixed_rule_bias": 469.7,
+      "clearly_better": true
+    }
+  },
+  "recommendation": "replace"
+}

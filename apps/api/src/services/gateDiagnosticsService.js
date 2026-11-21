@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { crowdReadiness } from './ml/crowd.js';
 import { getIO } from '../config/socket.js';
 import { deviceAuthStatus } from '../config/gateDeviceAuth.js';
 import { GateError, eventStats } from './checkinService.js';
@@ -118,7 +119,11 @@ export async function operationsSummary(event) {
     scans: { pending: sum('pendingScans'), failed: sum('failedScans'), stuck: sum('stuckScans'), failedUploadsLastHour: failedLastHour, quarantinedAwaitingReview: quarantined },
     conflicts: { open: live.openConflicts },
     attendance: { sold: live.sold, entered: live.entered, inside: live.inside, remaining: live.remaining },
-    capacity: { perHour: capacity || null, currentRatePerHour: rate, loadPct: capacity ? Math.round((rate / capacity) * 100) : null, overloadedGates: gates.filter((g) => g.overloaded).map((g) => g.gate) },
+    capacity: {
+      perHour: capacity || null, currentRatePerHour: rate, loadPct: capacity ? Math.round((rate / capacity) * 100) : null, overloadedGates: gates.filter((g) => g.overloaded).map((g) => g.gate),
+      // Crowd-flow forecasts need every active gate's capacity per hour (never guessed)
+      crowdForecast: crowdReadiness(gates.filter((g) => g.id).map((g) => ({ name: g.gate, active: g.active, capacityPerHour: g.capacityPerHour }))),
+    },
     attention: rows.filter((r) => r.reasons.length).map((r) => ({ id: r.device.id, name: r.device.name, health: r.health, reasons: r.reasons })).slice(0, 50),
     auth: deviceAuthStatus(),
   };

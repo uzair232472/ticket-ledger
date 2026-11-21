@@ -18,6 +18,7 @@ import { runAutoRecovery } from './services/recoveryService.js';
 import { runPayouts } from './services/payoutService.js';
 import { runScheduledBroadcasts } from './services/broadcastService.js';
 import { applyPhases, runScheduledPublishing } from './services/eventToolsService.js';
+import { runMlJobs } from './services/ml/jobs.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -96,6 +97,13 @@ async function startServer() {
   const eventJobs = () => Promise.all([applyPhases().catch((e) => console.error('[Sale phases] failed:', e.message)), runScheduledPublishing().catch((e) => console.error('[Scheduled publishing] failed:', e.message))]);
   setTimeout(eventJobs, 45 * 1000).unref();
   setInterval(eventJobs, 5 * 60 * 1000).unref();
+
+  // Every 15 minutes: ML shadow scoring (finished visits, gates before events), blind fraud-review sampling,
+  // and attaching real outcomes to past predictions. Logs only: never changes orders, tickets, payments,
+  // accounts or gate admission. Safe on several servers (the database rejects duplicates).
+  const mlJobs = () => runMlJobs().then((r) => console.log('[ML jobs]', JSON.stringify(r))).catch((e) => console.error('[ML jobs] failed:', e.message));
+  setTimeout(mlJobs, 3 * 60 * 1000).unref();
+  setInterval(mlJobs, 15 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log(`🚀 TicketLedger Express API is running on http://localhost:${PORT}`);

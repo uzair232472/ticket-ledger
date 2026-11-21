@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { applyPhases, assertOnSale, capacityLeft } from '../services/eventToolsService.js';
 import prisma from '../config/prisma.js';
 import { checkSeatLock, releaseSeatLock } from '../config/redis.js';
@@ -11,6 +12,9 @@ import { notifyAdmins } from '../services/notificationService.js';
 // Each ticket with its payment, entry and NFT states (separate facts; services/ticketStatus.js)
 const withStates = (order) => order && { ...order, tickets: (order.tickets || []).map((t) => ({ ...t, states: ticketStates(t, order) })) };
 import mlService from '../services/mlService.js';
+import { recordShadow } from '../services/ml/shadow.js';
+import { recordPaymentEvidence } from '../services/paymentEvidence.js';
+import { fraudFeatures } from '../services/ml/features.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { expireStaleHolds } from '../services/venueService.js';
 import { DiscountError, markRedeemed, normalizeCode, quote as quoteDiscount, reserve as reserveDiscount } from '../services/discountService.js';
@@ -231,7 +235,16 @@ export const initiateBooking = async (req, res) => {
       }
     }
 
-    // AI Scalper Bot Pre-Checkout Detection
+    // AI Scalper Bot Pre-Checkout Detection (rules decide; the fraud model only runs in shadow, below)
+    let fraudRule = null;
+    const fraudShadow = (subjectType, subjectId) => fraudRule && recordShadow({
+      name: 'fraud', subjectType, subjectId, eventId, userId, asOf: now,
+      rule: {
+        score: fraudRule.fraud_score, decision: fraudRule.risk_level,
+        output: { classification: fraudRule.classification, action: fraudRule.action_recommended, anomalies: fraudRule.anomaly_factors, fallback: Boolean(fraudRule.fallback) },
+      },
+      buildFeatures: () => fraudFeatures({ userId, eventId, seatIds, telemetry: validated.telemetry, paymentMethod, at: now }),
+    });
     if (validated.telemetry) {
       const fraudEvaluation = await mlService.checkFraudRisk({
         ...validated.telemetry,
@@ -252,8 +265,11 @@ export const initiateBooking = async (req, res) => {
         },
       });
 
+      fraudRule = fraudEvaluation;
+
       // If Critical Bot detected -> BLOCK transaction
       if (fraudEvaluation.risk_level === 'CRITICAL_BOT') {
+        fraudShadow('CHECKOUT_ATTEMPT', randomUUID());
         await prisma.auditLog.create({
           data: {
             userId,
@@ -511,6 +527,9 @@ export const initiateBooking = async (req, res) => {
         paymentMethod,
       },
     });
+
+    // Shadow log for the new order (after the response path; never affects this checkout)
+    fraudShadow('ORDER', order.id);
 
     // 5. Payment parameters from the gateway (one payment per order, reused on retries)
     return sendPayment(req, res, order, { reused: false });
@@ -856,6 +875,8 @@ export const confirmBooking = async (req, res) => {
 
     const done = await finalizePaidOrder(req, order, { transactionId: verification.transactionId, userId });
     const updatedOrder = done?.updatedOrder;
+    // What the provider confirmed to the server (live or test mode). Only live evidence makes an order real ML data.
+    if (updatedOrder) await recordPaymentEvidence({ orderIds: [order.id], userId, paymentMethod: order.paymentMethod, verification });
     if (!updatedOrder) {
       const current = await prisma.order.findUnique({ where: { id: orderId }, include: { event: true, tickets: { include: { seat: { include: { tier: true } } } } } });
       if (current?.status === 'SUCCESSFUL') {
@@ -985,6 +1006,7 @@ export const confirmCart = async (req, res) => {
     const lapsed = [];
     for (const order of group.orders) {
       const done = order.status === 'PENDING' ? await finalizePaidOrder(req, order, { transactionId: v.transactionId, userId }) : null;
+      if (done) await recordPaymentEvidence({ orderIds: [order.id], userId, paymentMethod: group.paymentMethod, verification: v });
       if (done) confirmed.push({ id: order.id, event: order.event.name, invoiceNumber: (await prisma.order.findUnique({ where: { id: order.id }, select: { invoiceNumber: true } })).invoiceNumber, issuance: done.issuance });
       else {
         // Paid, but its seats were released: give that part of the payment back

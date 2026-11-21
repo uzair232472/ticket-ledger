@@ -1,0 +1,172 @@
+{
+  "model": "demand",
+  "title": "Demand forecast (48-hour sales)",
+  "label": "sales_48h",
+  "kind": "regression",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "day_of_week"
+    ],
+    "numeric": [
+      "venue_capacity",
+      "tier_count",
+      "min_price_rel",
+      "avg_price_rel",
+      "max_price_rel",
+      "start_hour",
+      "sales_open_hour",
+      "lead_days",
+      "start_month",
+      "organizer_past_events",
+      "organizer_past_sell_through_48h"
+    ]
+  },
+  "data": {
+    "dataset": "event_demand.csv",
+    "rows": 5000,
+    "source": "synthetic-v0",
+    "sha256": "8d26c1a9fe5bd7bf1cb86b3b62df777034ba759d90c5dc7e7ed6870a41f40226",
+    "from": "2023-01-01T09:00:00+00:00",
+    "to": "2025-12-19T13:00:00+00:00"
+  },
+  "split": {
+    "train_rows": 3108,
+    "val_rows": 662,
+    "test_rows": 751,
+    "val_start": "2025-02-14T06:36:00+00:00",
+    "test_start": "2025-07-15T05:00:00+00:00",
+    "purged_train_rows": 11,
+    "purged_val_rows": 7,
+    "holdout_groups": 15
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "weighted % error of 48-hour sales",
+  "higher_is_better": false,
+  "test_size": {
+    "events": 751
+  },
+  "complexity_selection": {
+    "measure": "validation error",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.3338,
+        "train_vs_validation": 0.8026,
+        "not_memorising": true
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.3423,
+        "train_vs_validation": 0.9211,
+        "not_memorising": true
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.3582,
+        "train_vs_validation": 0.9517,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "flexible"
+  },
+  "result": {
+    "model": 0.3546,
+    "baseline": 0.4119,
+    "improvement": 0.0573,
+    "improvement_95ci": [
+      0.0329,
+      0.0816
+    ]
+  },
+  "details": {
+    "model_mae_tickets": 1365.9,
+    "baseline_mae_tickets": 1586.7,
+    "range_width_share": 0.1559
+  },
+  "guards": [
+    {
+      "name": "train error / test error (memorising)",
+      "value": 0.7556,
+      "limit": ">= 0.7",
+      "passed": true
+    },
+    {
+      "name": "range holds the real number",
+      "value": 0.8003,
+      "limit": ">= 0.75",
+      "passed": true
+    },
+    {
+      "name": "range coverage vs baseline range",
+      "value": 0.0346,
+      "limit": ">= -0.02",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "organizers_known": {
+      "rows": 663,
+      "model": 0.3518,
+      "baseline": 0.4065
+    },
+    "organizers_unseen": {
+      "rows": 88,
+      "model": 0.3765,
+      "baseline": 0.4549
+    },
+    "organizer_first_event": {
+      "rows": 0
+    }
+  },
+  "learning_curve": {
+    "measure": "test weighted % error (lower is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 310,
+        "value": 0.3623
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 777,
+        "value": 0.3584
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 1554,
+        "value": 0.3515
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 3108,
+        "value": 0.3546
+      }
+    ],
+    "still_improving": false,
+    "note": "score has levelled off: more data of the same kind adds little"
+  },
+  "status": "PASSED",
+  "reasons": [],
+  "duration_seconds": 3.9,
+  "artifact": "models/v0/demand.joblib"
+}

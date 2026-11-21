@@ -10,6 +10,10 @@ import {
   getFraudWatchlist,
   freezeUserAccount,
   unfreezeUserAccount,
+  fraudReviewQueue,
+  submitFraudReview,
+  fraudReviewHistory,
+  fraudReviewMetrics,
 } from '../controllers/mlController.js';
 
 const router = Router();
@@ -43,5 +47,12 @@ router.get('/predictions', authenticateJWT, requireRole('SUPER_ADMIN'), getPredi
 router.get('/fraud-watchlist', authenticateJWT, requireRole('SUPER_ADMIN'), getFraudWatchlist);
 router.post('/freeze-user/:userId', authenticateJWT, requireAdmin('admin.fraud'), freezeUserAccount);
 router.post('/unfreeze-user/:userId', authenticateJWT, requireAdmin('admin.fraud'), unfreezeUserAccount);
+
+// Blind fraud review: reviewers never see which detector flagged an order or any score.
+// Metrics (sampling-weighted precision / recall / false-flag rate) are for super admins only.
+router.get('/fraud-review/queue', authenticateJWT, requireAdmin('admin.fraud'), fraudReviewQueue);
+router.post('/fraud-review/:sampleId', authenticateJWT, requireAdmin('admin.fraud'), submitFraudReview);
+router.get('/fraud-review/:sampleId/history', authenticateJWT, requireAdmin('admin.fraud'), fraudReviewHistory);
+router.get('/fraud-review-metrics', authenticateJWT, requireRole('SUPER_ADMIN'), fraudReviewMetrics);
 
 export default router;

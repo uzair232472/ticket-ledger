@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { recordProfileView } from '../services/ml/fraudReview.js';
 import { getScopedEventIds } from '../services/accessService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
@@ -65,6 +66,8 @@ export const getUserBehaviorProfileById = async (req, res) => {
     // their organization's events they cover, and only for people who bought tickets to one of them.
     if (req.user.role === 'SUPER_ADMIN') {
       const profile = await behaviorService.getUserBehavioralProfile(userId);
+      // Shows the account's fraud score: logged so a later blind fraud review by this admin is marked exposed
+      await recordProfileView(req.user.id, userId).catch(() => {});
       return res.status(200).json({ success: true, data: profile });
     }
     const eventIds = await getScopedEventIds(req.user, 'attendee.view');

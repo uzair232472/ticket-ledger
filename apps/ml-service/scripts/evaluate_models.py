@@ -21,7 +21,8 @@ from sklearn.metrics import (
 )
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# Legacy formula-generated data (superseded by data/ v0 datasets; replaced in Step 2)
+DATA_DIR = os.path.join(BASE_DIR, "dev", "legacy-synthetic", "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 METRICS_JSON_PATH = os.path.join(MODELS_DIR, "model_metrics.json")
 

@@ -1,5 +1,11 @@
 # Module 14: Machine Learning Dataset Generation & Model Training
 
+> **Outdated: the datasets have been replaced.** This page describes the original formula-generated
+> datasets, now kept in `apps/ml-service/dev/legacy-synthetic/` (see the README there for why they must
+> not train production models). The current v0 datasets have IDs and timestamps, a fifth crowd-flow file
+> and a validation script. They are described in `apps/ml-service/data/README.md`. This page will be
+> rewritten when the new training pipeline lands.
+
 This document details the synthetic data synthesis methodology, model training procedures, feature engineering pipelines, evaluation benchmarks, and FastAPI deployment architecture implemented for **TicketLedger (Phase 2 FYP)**.
 
 ---

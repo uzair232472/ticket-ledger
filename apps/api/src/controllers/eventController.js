@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
+import { recordShadow } from '../services/ml/shadow.js';
+import { demandSnapshot } from '../services/ml/features.js';
 import { MediaValidationError, uploadEventImages } from '../services/eventMediaService.js';
 import { EVENT_IMAGE_SPECS } from '../config/eventMedia.js';
 import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE } from '../utils/eventAccess.js';
@@ -805,6 +807,20 @@ export const getPreLaunchDemandForecast = async (req, res) => {
         message: `Current average price of PKR ${Math.round(avgPrice).toLocaleString()} aligns squarely with historical demand and purchasing power in ${event.city}.`,
         recommendation: 'Pricing structure is optimal for 48-hour launch velocity.',
       };
+    }
+
+    // Shadow log (real forecasts only, not "what if" simulations): what the page showed, and what the
+    // demand model would say. Runs after the response; never changes the forecast.
+    if (!simulatedPrice && !simulatedCapacity && !simulatedMarketingTier) {
+      const asOf = new Date();
+      recordShadow({
+        name: 'demand', subjectType: 'EVENT_FORECAST', subjectId: `${event.id}|${asOf.toISOString().slice(0, 10)}`, // one per event per day, eventId: event.id, userId: req.user?.id ?? null, asOf,
+        rule: {
+          score: forecastResult.projected_48h_sales, decision: forecastResult.demand_tier,
+          output: { sellout_probability: forecastResult.sellout_probability, capacity_used: capacity, fallback: Boolean(forecastResult.fallback) },
+        },
+        buildFeatures: () => demandSnapshot({ eventId: event.id, at: asOf }),
+      });
     }
 
     return res.status(200).json({
