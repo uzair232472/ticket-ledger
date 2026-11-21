@@ -20,7 +20,9 @@ phase; rules keep making every decision.
 > | R0.6 | Group stability done; impressions-on-render belongs with display (Step 6) |
 > | R0.7 | Done; migration `20261124120000` applied to the main development database (2026-11-22: verified backup, rehearsal, business data unchanged) |
 > | R0.8 | Reviewed: docs/email-readiness.md. **E1–E3 must be completed before the real-user beta (R4)**; E4–E7 are also needed for it |
-| Closure | 43 server-test failures classified (docs/server-test-failures.md); cross-organizer pricing fixed; Stripe test-mode end-to-end steps in docs/stripe-test-mode-e2e.md (not yet run) |
+| Closure | 43 server-test failures reconciled entry by entry (docs/server-test-failures.md: 27 obsolete + 6 testnet + 10 module tests); cross-organizer pricing fixed |
+| Pending | Stripe test-mode end-to-end (docs/stripe-test-mode-e2e.md): **pending until a Stripe test account is available** |
+| Before R4 | Company-e-mail registration: invitation-based organizer onboarding (docs/organizer-invitations.md), after the e-mail blockers E1–E3 |
 >
 > Resale purchases, which had no payment step at all, are now refused wherever real payments are required. A
 > Stripe resale payment flow is new work.

@@ -1,4 +1,8 @@
-# Stripe test-mode end-to-end verification (steps; not yet run)
+# Stripe test-mode end-to-end verification
+
+> **Status: PENDING.** Blocked until the business provides a Stripe **test** account. Not run. Until then the card
+> flow is verified only against a fake Stripe client (`test_payment_security.mjs`, `test_org_profile_checkout.mjs`).
+> Live payments stay disabled; this procedure never uses live keys.
 
 The card flow has so far been tested only against a **fake Stripe client** (`test_payment_security.mjs`,
 `test_org_profile_checkout.mjs`). These are the exact steps to verify it against Stripe's own **test mode**.
