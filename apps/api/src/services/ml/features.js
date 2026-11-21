@@ -335,3 +335,68 @@ export async function attendanceSnapshot({ ticketId, at = null }) {
   });
   return { features: r.features, context: { ticket_price: Number(t.price), event_start: startOf(t.event).toISOString(), holder_id: r.holderId, reference_at: refAt.toISOString(), reference_price: refPrice } };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Checkout abandonment: one checkout at the moment it starts (order created, seats held)
+// ---------------------------------------------------------------------------------------------
+/**
+ * Only facts known at `at`. A first-time customer has zero history: the counts are 0, `first_time` is 1 and
+ * the model relies on the checkout itself (activity in this visit, price, timing, seats) - nothing is guessed.
+ */
+export async function checkoutSnapshot({ userId, eventId, seatIds, paymentMethod, at }) {
+  const db = prisma;
+  const [event, user, seats, priorOrders, priorPaid, expired, views, selections] = await Promise.all([
+    db.event.findUnique({ where: { id: eventId }, select: { type: true, city: true, date: true, time: true, startsAt: true, salesOpenAt: true, publishAt: true, approvedAt: true, createdAt: true, tiers: { select: { price: true } } } }),
+    db.user.findUnique({ where: { id: userId }, select: { createdAt: true } }),
+    db.seat.findMany({ where: { id: { in: seatIds } }, select: { tier: { select: { price: true } } } }),
+    db.order.count({ where: { userId, createdAt: { lt: at } } }),
+    db.order.count({ where: { userId, createdAt: { lt: at }, status: { in: SOLD } } }),
+    db.auditLog.count({ where: { userId, action: 'CHECKOUT_ENDED', createdAt: { lt: at }, details: { path: ['reason'], equals: 'HOLD_EXPIRED' } } }),
+    db.behaviorEvent.count({ where: { userId, eventId, action: 'event_view', createdAt: { gte: new Date(at - 2 * HOUR), lt: at } } }),
+    db.behaviorEvent.count({ where: { userId, eventId, action: { in: ['seat_selected', 'seat_locked'] }, createdAt: { gte: new Date(at - 2 * HOUR), lt: at } } }),
+  ]);
+  if (!event || !event.tiers.length) throw new MissingInput('event or its price tiers not found');
+  if (!user) throw new MissingInput('user not found');
+  if (!seats.length) throw new MissingInput('seats not found');
+  const unit = mean(seats.map((s) => Number(s.tier.price)));
+  const refAt = at;
+  const ref = await referencePrice(refAt, avgTierPrice(event.tiers));
+  const start = startOf(event);
+  const features = {
+    event_type: event.type, city: event.city, country: COUNTRY, payment_method: paymentMethod,
+    tickets_requested: seatIds.length, unit_price_rel: round(unit / ref),
+    hours_since_sales_open: round(Math.max(0, at - salesOpenOf(event)) / HOUR, 2),
+    days_until_event: round((start - at) / DAY, 2),
+    account_age_days: round(Math.max(0, at - user.createdAt) / DAY, 2),
+    customer_prior_orders: priorOrders, customer_prior_purchases: priorPaid, customer_prior_expired_checkouts: expired,
+    first_time: priorPaid === 0 ? 1 : 0,
+    visit_event_views: views, visit_seat_selections: selections,
+  };
+  return { features, context: { unit_price: unit, event_start: start.toISOString(), reference_at: refAt.toISOString(), reference_price: ref } };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Demand after publication: one event at one hour while on sale (sales so far, pace, time left)
+// ---------------------------------------------------------------------------------------------
+export async function demandHourlySnapshot({ eventId, at }) {
+  const { features: base, context } = await demandSnapshot({ eventId, at });
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { date: true, time: true, startsAt: true, salesOpenAt: true, publishAt: true, approvedAt: true, createdAt: true } });
+  const open = salesOpenOf(event);
+  if (at < open) throw new MissingInput('sales not open yet');
+  const start = startOf(event);
+  if (at >= start) throw new MissingInput('event already started');
+  const soldWhere = (from) => ({ eventId, createdAt: { ...(from ? { gte: from } : {}), lt: at }, order: { status: { in: SOLD } } });
+  const [soldSoFar, soldLast24h] = await Promise.all([
+    prisma.ticket.count({ where: soldWhere(null) }),
+    prisma.ticket.count({ where: soldWhere(new Date(at - DAY)) }),
+  ]);
+  const features = {
+    ...base,
+    hours_since_sales_open: round((at - open) / HOUR, 2),
+    days_until_event: round((start - at) / DAY, 2),
+    sold_so_far: soldSoFar,
+    sold_last_24h: soldLast24h,
+    sell_through_so_far: round(soldSoFar / base.venue_capacity, 4),
+  };
+  return { features, context: { ...context, as_of_hour: at.toISOString() } };
+}

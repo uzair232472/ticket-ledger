@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { recordCheckoutEnd } from './checkoutOutcome.js';
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
 import { buildTemplate, layoutInventory, suggestTemplate, validateLayout } from '../../../venue-core/src/index.js';
@@ -58,6 +59,8 @@ export async function expireStaleHolds(eventId) {
     await prisma.$transaction(async (tx) => {
       const flipped = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING' }, data: { status: 'FAILED' } });
       if (!flipped.count) return; // confirmed or cancelled meanwhile
+      await recordCheckoutEnd(tx, [order], 'HOLD_EXPIRED');
+      await tx.behaviorEvent.create({ data: { userId: order.userId, eventId: order.eventId, sessionId: 'system:hold-expiry', action: 'checkout_expired', metadata: { orderId: order.id } } });
       await tx.ticket.deleteMany({ where: { orderId: order.id } });
       const tierCounts = {};
       for (const t of order.tickets) tierCounts[t.seat.tierId] = (tierCounts[t.seat.tierId] || 0) + 1;

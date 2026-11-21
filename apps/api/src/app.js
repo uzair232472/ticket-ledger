@@ -1,4 +1,5 @@
 import express from 'express';
+import { handleStripeWebhook } from './services/stripeWebhookService.js';
 import cors from 'cors';
 import { corsOrigin } from './config/cors.js';
 import morgan from 'morgan';
@@ -38,6 +39,17 @@ app.use(cors({
   origin: corsOrigin,
   credentials: true,
 }));
+// Stripe webhooks need the RAW body to verify the signature: mounted before the JSON parser.
+// Evidence only: it never changes orders, payments or tickets (services/stripeWebhookService.js).
+app.post('/api/payments/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  try {
+    const { status, body } = await handleStripeWebhook({ rawBody: req.body, signature: req.headers['stripe-signature'] });
+    return res.status(status).json(body);
+  } catch (e) {
+    console.error('[stripe webhook]', e.message);
+    return res.status(500).json({ received: false }); // Stripe retries
+  }
+});
 // Venue plans can be larger than the default 100kb body limit (scoped to these routes only)
 app.use('/api/venues', express.json({ limit: '2mb' }));
 app.use(express.json());

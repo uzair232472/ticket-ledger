@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { recordCheckoutEnd } from './checkoutOutcome.js';
 import { notifyAdmins } from './notificationService.js';
 import { slotText } from './eventReviewNotices.js';
 import { LIVE_TICKET_STATUSES, createRefunds, methodText, payerFor, pkr, processRefunds, processRefundsLater } from './refundService.js';
@@ -109,7 +110,9 @@ export async function cancelEvent({ event, actor, reason }) {
       });
       await tx.eventScheduleChange.updateMany({ where: { eventId: event.id, status: 'PENDING' }, data: { status: 'WITHDRAWN' } });
       // Checkouts in progress can't complete any more
-      await tx.order.updateMany({ where: { eventId: event.id, status: 'PENDING' }, data: { status: 'FAILED' } });
+      const open = await tx.order.findMany({ where: { eventId: event.id, status: 'PENDING' }, select: { id: true, userId: true, eventId: true } });
+      await tx.order.updateMany({ where: { id: { in: open.map((o) => o.id) }, status: 'PENDING' }, data: { status: 'FAILED' } });
+      await recordCheckoutEnd(tx, open, 'EVENT_CANCELLED');
       await tx.seat.updateMany({ where: { eventId: event.id, status: 'LOCKED' }, data: { status: 'AVAILABLE' } });
       return { refunds: await createRefunds(tx, tickets, 'EVENT_CANCELLED') };
     },

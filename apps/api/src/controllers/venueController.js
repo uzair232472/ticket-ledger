@@ -123,7 +123,7 @@ export const releaseHold = async (req, res) => {
     behaviorService.trackBehavior({
       req,
       userId: req.user.id,
-      action: BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED,
+      action: BEHAVIOR_ACTIONS.SEAT_HOLD_RELEASED, // the customer let go of seats: not an abandoned checkout
       eventId: req.params.eventId,
       metadata: { releasedKeys: keys, reason: 'seat_hold_released' },
     });

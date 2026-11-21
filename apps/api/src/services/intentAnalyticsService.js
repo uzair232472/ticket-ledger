@@ -1,4 +1,5 @@
 import { canAccessEvent, eventWhereFor, memberContext } from './orgAccess.js';
+import { LEFT_CHECKOUT_ACTIONS } from './checkoutOutcome.js';
 import prisma from '../config/prisma.js';
 import mlService from './mlService.js';
 import { dispatchNotification, NOTIFICATION_TYPES } from './notificationService.js';
@@ -140,7 +141,10 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
         entry.checkoutStarts += 1;
         break;
       case 'checkout_abandoned':
-        entry.checkoutAbandons += 1;
+      case 'checkout_cancelled':
+      case 'seat_hold_released':
+      case 'checkout_expired':
+        entry.checkoutAbandons += 1; // "left checkout", any reason (reasons kept apart for ML)
         break;
       case 'payment_completed':
         paymentCompleters.add(identifier);
@@ -575,7 +579,7 @@ export const getAbandonedIntentDashboard = async ({
     if (b.action === 'event_view') item.views += 1;
     if (b.action === 'seat_selected' || b.action === 'seat_locked') item.selectedSeat = true;
     if (b.action === 'checkout_started') item.startedCheckout = true;
-    if (b.action === 'checkout_abandoned') item.abandonedCheckout = true;
+    if (LEFT_CHECKOUT_ACTIONS.includes(b.action)) item.abandonedCheckout = true;
 
     if (b.createdAt > item.lastActionTime) {
       item.lastAction = b.action;

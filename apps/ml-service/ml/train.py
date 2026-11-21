@@ -23,7 +23,7 @@ import sys
 import time
 
 from .evaluate import evaluate, recommendation, save_artifact
-from .schema import SPECS
+from .schema import ALL_SPECS, SPECS
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -209,6 +209,9 @@ def main(argv=None):
 
     with open(os.path.join(args.data, "manifest.json")) as f:
         manifest = json.load(f)
+    if manifest.get("source_class") == "PUBLIC":
+        print("Refusing: PUBLIC datasets are for experiments only (ml.public_experiment), never for app candidates.")
+        return 2
     if manifest.get("source") != "db-export" and not args.allow_synthetic:
         print(f"Refusing to train on '{manifest.get('source')}' data without --allow-synthetic.")
         return 2
@@ -227,11 +230,15 @@ def main(argv=None):
     print(check.stdout.strip().splitlines()[-1])
 
     names = list(SPECS) if args.models == "all" else args.models.split(",")
+    unknown = [n for n in names if n not in ALL_SPECS]
+    if unknown:
+        print(f"Unknown model(s): {', '.join(unknown)}")
+        return 2
     os.makedirs(args.reports, exist_ok=True)
     reports = []
     t0 = time.time()
     for name in names:
-        spec = SPECS[name]
+        spec = ALL_SPECS[name]
         print(f"\n== {spec.title}")
         report, artifact = evaluate(spec, args.data, manifest, seed=args.seed, shadow_decision=SHADOW_DECISIONS.get(name) if manifest.get("source") != "db-export" else None,
                                     deployed=deployed_artifact(name, manifest, args.deployed))

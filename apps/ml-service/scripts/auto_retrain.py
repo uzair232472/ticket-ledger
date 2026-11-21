@@ -10,6 +10,12 @@ Automatic retraining of CANDIDATE models from a database export. Safe to run on 
      runs now (manifest.deployed_models, found in --deployed by SHA-256)
   5. writes candidates to models/candidates/<stamp>/ and reports to reports/candidates/<stamp>/, plus
      retrain_summary.md/.json
+  6. also writes, every run: data-drift (PSI) per dataset, the recommendation-experiment report and the customer
+     behaviour report (these need no model)
+
+Threshold-based retraining: with --min-new-rows N a model is only retrained when its verified label count grew by
+at least N since its last candidate (reports/candidates/last_run.json). A failed training run removes its partial
+candidate folder, leaves earlier candidates untouched and does not update last_run.json, so the next run retries.
 
 It NEVER registers, promotes or deploys a model: it does not touch the database, models/v0, the ML
 service or the app. A person reads the summary and, if they agree, registers a candidate in shadow mode
@@ -21,14 +27,18 @@ Exit code: 0 = ran (even if nothing was trained), 1 = export failed validation, 
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
 
+import pandas as pd
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
-from ml.schema import SPECS  # noqa: E402
+from ml.schema import ALL_SPECS as SPECS  # noqa: E402  (v0 models + Step 5 real-data models)
+from ml.insights import behaviour_report, recommendation_report, time_drift  # noqa: E402
 
 
 def _summary_md(s):
@@ -57,6 +67,7 @@ def main(argv=None):
     ap.add_argument("--out", default=os.path.join(BASE_DIR, "models", "candidates"))
     ap.add_argument("--reports", default=os.path.join(BASE_DIR, "reports", "candidates"))
     ap.add_argument("--allow-test-fixture", action="store_true", help="tests only: accept an export marked test_fixture")
+    ap.add_argument("--min-new-rows", type=int, default=0, help="retrain a model only when its verified labels grew by this many")
     args = ap.parse_args(argv)
 
     with open(os.path.join(args.data, "manifest.json")) as f:
@@ -99,19 +110,50 @@ def main(argv=None):
 
     if v.returncode != 0:
         return finish("EXPORT_INVALID", f"{len(val.get('failures', []))} validation failure(s): {'; '.join(val.get('failures', [])[:5])}", 1)
+    # Analyses that need no model (always written)
+    insights = {}
+    for name, fn in (("recommendation_impressions", recommendation_report), ("customer_behaviour", behaviour_report)):
+        path = os.path.join(args.data, f"{name}.csv")
+        if os.path.exists(path):
+            insights[name] = fn(pd.read_csv(path))
+    drift = {}
+    for name, spec in SPECS.items():
+        path = os.path.join(args.data, f"{spec.dataset}.csv")
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            drift[name] = time_drift(df, list(spec.cat) + list(spec.num)) if "ts" in df else {"status": "NO_TIMESTAMPS"}
+    with open(os.path.join(rep_dir, "insights.json"), "w") as f:
+        json.dump({"reports": insights, "drift": drift}, f, indent=2, default=str)
+    summary["insights"] = {k: v.get("status") for k, v in insights.items()}
+    summary["drift"] = {k: v.get("drifted", v.get("status")) for k, v in drift.items()}
+
     ready = [n for n, m in summary["models"].items() if m["sufficient"]]
+    # Threshold: enough NEW verified rows since this model's last candidate
+    state_path = os.path.join(args.reports, "last_run.json")
+    last = json.load(open(state_path)) if os.path.exists(state_path) else {}
+    if args.min_new_rows:
+        for n in list(ready):
+            grew = sum(summary["models"][n]["have"].get(k, 0) for k in summary["models"][n]["have"] if k != "months") -                 sum(last.get(n, {}).get(k, 0) for k in last.get(n, {}) if k != "months")
+            if n in last and grew < args.min_new_rows:
+                summary["models"][n]["skipped"] = f"only {grew} new verified rows since the last candidate (< {args.min_new_rows})"
+                ready.remove(n)
     if not ready:
-        return finish("NOTHING_TO_TRAIN", "no model has enough verified data yet")
+        return finish("NOTHING_TO_TRAIN", "no model has enough (new) verified data yet")
 
     art_dir = os.path.join(args.out, stamp)
     os.makedirs(art_dir, exist_ok=True)
-    t = subprocess.run([sys.executable, "-m", "ml.train", "--models", ",".join(ready), "--data", args.data,
+    models_arg = ",".join(ready)
+    if args.allow_test_fixture and os.environ.get("ML_RETRAIN_FAULT") == "train":
+        models_arg += ",__fault_injected__"   # tests only: makes the training step fail
+    t = subprocess.run([sys.executable, "-m", "ml.train", "--models", models_arg, "--data", args.data,
                         "--reports", rep_dir, "--artifacts", art_dir, "--deployed", args.deployed]
                        + (["--allow-test-fixture"] if args.allow_test_fixture else []),
                        cwd=BASE_DIR, capture_output=True, text=True)
     with open(os.path.join(rep_dir, "train.log"), "w", encoding="utf-8") as f:
         f.write(t.stdout + t.stderr)
     if t.returncode != 0:
+        # Recovery: no partial candidate is left behind; earlier candidates and last_run.json are untouched
+        shutil.rmtree(art_dir, ignore_errors=True)
         return finish("TRAINING_FAILED", (t.stdout + t.stderr).strip().splitlines()[-1] if (t.stdout + t.stderr).strip() else "see train.log", 1)
     for name in ready:
         p = os.path.join(rep_dir, f"{name}.json")
@@ -122,6 +164,10 @@ def main(argv=None):
                                        deployed=r.get("deployed_model"), recommendation=r.get("recommendation"),
                                        artifact=r.get("artifact"))
     summary["candidates_dir"] = os.path.abspath(art_dir)
+    for n in ready:
+        last[n] = summary["models"][n]["have"]
+    with open(state_path, "w") as f:
+        json.dump(last, f, indent=2)
     return finish("RAN")
 
 

@@ -18,6 +18,7 @@ GATES = {
     "min_test_events_demand": 100,
     "min_test_events_attendance": 30,
     "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,  # Step 5 (new model; no existing gate was changed)
     # Must-not-get-worse guards
     "max_calibration_error": 0.05,      # predicted 30% should mean ~30% (ECE)
     "max_false_flag_rate": 0.01,        # fraud flags among legitimate orders

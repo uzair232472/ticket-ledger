@@ -71,3 +71,5 @@ apps/api/private_uploads/
 apps/ml-service/exports/
 apps/ml-service/models/candidates/
 apps/ml-service/reports/candidates/
+# PUBLIC datasets: re-fetched with apps/ml-service/scripts/fetch_public_datasets.py (sources, licenses, checksums there)
+apps/ml-service/data/public/*/

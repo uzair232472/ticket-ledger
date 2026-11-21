@@ -7,7 +7,15 @@ export const BEHAVIOR_ACTIONS = {
   SEAT_SELECTED: 'seat_selected',
   SEAT_LOCKED: 'seat_locked',
   CHECKOUT_STARTED: 'checkout_started',
-  CHECKOUT_ABANDONED: 'checkout_abandoned',
+  CHECKOUT_ABANDONED: 'checkout_abandoned', // legacy rows; new rows use the specific actions below
+  CHECKOUT_CANCELLED: 'checkout_cancelled', // the customer cancelled the checkout
+  SEAT_HOLD_RELEASED: 'seat_hold_released', // the customer released held seats
+  CHECKOUT_EXPIRED: 'checkout_expired', // the seat hold expired unpaid
+  SEARCH: 'search',
+  WISHLIST_ADDED: 'wishlist_added',
+  WISHLIST_REMOVED: 'wishlist_removed',
+  RECOMMENDATION_IMPRESSION: 'recommendation_impression',
+  RECOMMENDATION_CLICK: 'recommendation_click',
   PAYMENT_COMPLETED: 'payment_completed',
   PAYMENT_FAILED: 'payment_failed',
   TICKET_PURCHASED: 'ticket_purchased',
@@ -84,20 +92,32 @@ export const trackBehavior = async ({
 /**
  * Attach guest session history to authenticated user on login/signup
  */
-export const attachSessionToUser = async ({ sessionId, userId }) => {
+export const GUEST_LINK_WINDOW_DAYS = 30;
+/**
+ * Eligibility (no fingerprinting: only the app's own session id is used):
+ *   - only anonymous activity of this session from the last GUEST_LINK_WINDOW_DAYS days is linked;
+ *   - nothing is linked when the session already holds activity of a DIFFERENT account (a shared device:
+ *     the anonymous part cannot be attributed to either person);
+ *   - every link is audited (GUEST_ACTIVITY_LINKED: how many rows, which time range, pseudonymous session).
+ */
+export const attachSessionToUser = async ({ sessionId, userId, now = new Date() }) => {
   if (!sessionId || !userId) return { count: 0 };
 
   try {
-    const result = await prisma.behaviorEvent.updateMany({
-      where: {
-        sessionId,
-        userId: null,
-      },
-      data: {
-        userId,
-      },
-    });
-
+    const others = await prisma.behaviorEvent.count({ where: { sessionId, userId: { not: null, notIn: [userId] } } });
+    if (others) return { count: 0, skipped: 'shared session: activity of another account' };
+    const since = new Date(now.getTime() - GUEST_LINK_WINDOW_DAYS * 86_400_000);
+    const where = { sessionId, userId: null, createdAt: { gte: since, lte: now } };
+    const range = await prisma.behaviorEvent.aggregate({ where, _min: { createdAt: true }, _max: { createdAt: true } });
+    const result = await prisma.behaviorEvent.updateMany({ where, data: { userId } });
+    if (result.count) {
+      await prisma.auditLog.create({
+        data: {
+          userId, action: 'GUEST_ACTIVITY_LINKED', targetType: 'User', targetId: userId,
+          details: { session: crypto.createHash('sha256').update(`session:${sessionId}`).digest('hex').slice(0, 16), count: result.count, from: range._min.createdAt, to: range._max.createdAt },
+        },
+      });
+    }
     return result;
   } catch (err) {
     console.warn('[BehaviorService] Session-to-user attribution failed:', err.message);
@@ -118,17 +138,8 @@ export const getUserBehavioralProfile = async (userId, sessionId = null, scope =
     throw new Error('User ID is required to fetch behavioral profile');
   }
 
-  // If a session ID is provided, automatically attach any unattached events for this session
-  if (sessionId && !scopedIds) {
-    try {
-      await prisma.behaviorEvent.updateMany({
-        where: { sessionId, userId: null },
-        data: { userId },
-      });
-    } catch (e) {
-      // Non-blocking
-    }
-  }
+  // Guest activity is linked only at login / sign-up, under the eligibility rules of attachSessionToUser
+  // (viewing a profile no longer attaches a session's anonymous activity)
 
   // 1. Fetch user profile
   const user = await prisma.user.findUnique({
@@ -216,7 +227,10 @@ export const getUserBehavioralProfile = async (userId, sessionId = null, scope =
         counts.checkoutsStarted++;
         break;
       case BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED:
-        counts.abandonedCheckouts++;
+      case BEHAVIOR_ACTIONS.CHECKOUT_CANCELLED:
+      case BEHAVIOR_ACTIONS.SEAT_HOLD_RELEASED:
+      case BEHAVIOR_ACTIONS.CHECKOUT_EXPIRED:
+        counts.abandonedCheckouts++; // "left checkout" (any reason), as this counter always meant
         break;
       case BEHAVIOR_ACTIONS.PAYMENT_COMPLETED:
         counts.paymentsCompleted++;
@@ -318,7 +332,7 @@ const INTENT_ACTIONS = {
   view: [BEHAVIOR_ACTIONS.EVENT_VIEW],
   seat: [BEHAVIOR_ACTIONS.SEAT_SELECTED, BEHAVIOR_ACTIONS.SEAT_LOCKED],
   checkout: [BEHAVIOR_ACTIONS.CHECKOUT_STARTED],
-  abandon: [BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED],
+  abandon: [BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED, BEHAVIOR_ACTIONS.CHECKOUT_CANCELLED, BEHAVIOR_ACTIONS.SEAT_HOLD_RELEASED, BEHAVIOR_ACTIONS.CHECKOUT_EXPIRED],
   failed: [BEHAVIOR_ACTIONS.PAYMENT_FAILED],
   bought: [BEHAVIOR_ACTIONS.PAYMENT_COMPLETED, BEHAVIOR_ACTIONS.TICKET_PURCHASED],
 };

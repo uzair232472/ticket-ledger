@@ -81,6 +81,10 @@ def baseline(spec: ModelSpec, df: pd.DataFrame) -> dict:
         return {"rate": baselines.attendance_show_rate(df), "current_rule": baselines.attendance_current_rule(df)}
     if spec.name == "crowd":
         return {"pred": df["baseline_scans"].to_numpy(dtype=float)}
+    if spec.name == "checkout_abandonment":
+        return {"score": baselines.checkout_abandonment_rule(df)}
+    if spec.name == "demand_hourly":
+        return {"pred": baselines.demand_hourly_rule(df)}
     raise ValueError(spec.name)
 
 
@@ -88,7 +92,7 @@ def baseline(spec: ModelSpec, df: pd.DataFrame) -> dict:
 # Main measure per model, for the model and the baseline on a set of rows
 # ---------------------------------------------------------------------------------------------
 HIGHER_IS_BETTER = {"intent": True, "abandonment": True, "fraud": True, "demand": False, "attendance": False,
-                    "crowd": False}
+                    "crowd": False, "checkout_abandonment": True, "demand_hourly": False}
 MAIN_NAME = {
     "intent": "share of actual buyers among the top 10% scored visitors",
     "abandonment": "share of actual abandons among the top 10% scored checkouts",
@@ -96,6 +100,8 @@ MAIN_NAME = {
     "demand": "weighted % error of 48-hour sales",
     "attendance": "average error in people attending per event",
     "crowd": "average error in scans per gate per 5 minutes",
+    "checkout_abandonment": "share of actual abandons among the top 10% scored checkouts",
+    "demand_hourly": "weighted % error of next-24-hour sales (zero sales handled)",
 }
 
 
@@ -111,9 +117,11 @@ def _per_event_attendance(df, idx, p_show, rate):
 def main_measure(spec, df, idx, out, base, ctx):
     """Returns (model_value, baseline_value) of the main measure on rows idx."""
     y = df[spec.label].to_numpy()[idx]
-    if spec.name in ("intent", "abandonment"):
+    if spec.name in ("intent", "abandonment", "checkout_abandonment"):
         f = GATES["top_fraction"]
         return metrics.top_share(y, out["p"][idx], f), metrics.top_share(y, base["score"][idx], f)
+    if spec.name == "demand_hourly":
+        return metrics.wape_safe(y, out["pred"][idx])[0], metrics.wape_safe(y, base["pred"][idx])[0]
     if spec.name == "fraud":
         w = _sub(weights(spec, df), idx)
         m = metrics.flag_stats(y, out["p"][idx] >= ctx["threshold"], w)
@@ -179,7 +187,7 @@ def _select_complexity(spec, df, split, seed=0):
             score, gap_value = a_va, metrics.auc(y_tr, p_tr, _sub(w, tr)) - a_va
             ok = gap_value <= GATES["max_auc_gap"]
         else:
-            err = metrics.wape if spec.name == "demand" else metrics.mae
+            err = metrics.wape if spec.name == "demand" else (lambda a, b: metrics.wape_safe(a, b)[0]) if spec.name == "demand_hourly" else metrics.mae
             score = err(y_va, p_va)
             gap_value = err(y_tr, p_tr) / max(score, 1e-9)
             ok = gap_value >= GATES["min_error_ratio"]
@@ -254,6 +262,8 @@ def _enough_data(spec, df, test):
             need["events"] = (n_events, GATES["min_test_events_attendance"])
     elif spec.name == "demand":
         need = {"events": (n_events, GATES["min_test_events_demand"])}
+    elif spec.name == "demand_hourly":
+        need = {"events": (n_events, GATES["min_test_events_demand_hourly"])}
     else:
         need = {"events": (n_events, GATES["min_test_events_crowd"])}
     missing = {k: f"{have} < {req}" for k, (have, req) in need.items() if have < req}
@@ -280,16 +290,17 @@ def _guards(spec, df, split, out, base, ctx, train_out):
             add("calibration error (ECE)", e, f"<= {GATES['max_calibration_error']}", e <= GATES["max_calibration_error"])
     else:
         y_tr = df[spec.label].to_numpy()[train]
-        err = metrics.wape if spec.name == "demand" else metrics.mae
+        err = metrics.wape if spec.name == "demand" else (lambda a, b: metrics.wape_safe(a, b)[0]) if spec.name == "demand_hourly" else metrics.mae
         ratio = err(y_tr, train_out["pred"]) / max(err(y_t, out["pred"][test]), 1e-9)
         add("train error / test error (memorising)", ratio, f">= {GATES['min_error_ratio']}", ratio >= GATES["min_error_ratio"])
 
-    if spec.name in ("intent", "abandonment"):
-        seg = spec.segments["first_time_visitors"](df.iloc[test]).to_numpy()
+    if spec.name in ("intent", "abandonment", "checkout_abandonment"):
+        first = "first_time_customers" if spec.name == "checkout_abandonment" else "first_time_visitors"
+        seg = spec.segments[first](df.iloc[test]).to_numpy()
         f = GATES["top_fraction"]
         m = metrics.top_share(y_t[seg], out["p"][test][seg], f)
         b = metrics.top_share(y_t[seg], base["score"][test][seg], f)
-        add("first-time visitors: top-10% share vs rule", m - b, ">= 0 (not worse)", m >= b)
+        add("first-time customers/visitors: top-10% share vs rule", m - b, ">= 0 (not worse)", m >= b)
     if spec.name == "fraud":
         m = metrics.flag_stats(y_t, out["p"][test] >= ctx["threshold"], _sub(w, test))
         b = metrics.flag_stats(y_t, base["flag"][test], _sub(w, test))
@@ -356,6 +367,8 @@ def _learning_curve(spec, df, split, ctx_full, seed=0):
             value, name = metrics.auc(y_t, raw, w_t), "test AUC (higher is better)"
         elif spec.name == "demand":
             value, name = metrics.wape(y_t, raw), "test weighted % error (lower is better)"
+        elif spec.name == "demand_hourly":
+            value, name = metrics.wape_safe(y_t, raw)[0], "test weighted % error (lower is better)"
         else:
             value, name = metrics.mae(y_t, raw), "test error (lower is better)"
         curve.append({"train_fraction": frac, "train_rows": int(len(idx)), "value": round(float(value), 4)})
@@ -473,6 +486,31 @@ def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True,
         extra["model_mae_tickets"] = round(metrics.mae(y_t, out["pred"][split.test]), 1)
         extra["baseline_mae_tickets"] = round(metrics.mae(y_t, base["pred"][split.test]), 1)
         extra["range_width_share"] = round(ctx["conformal_q"], 4)
+    if spec.name == "checkout_abandonment":
+        # False predictions when the top 10% are treated as "will abandon"
+        f = GATES["top_fraction"]
+        for who, score in (("model", out["p"][split.test]), ("rule", base["score"][split.test])):
+            k = max(1, int(round(len(score) * f)))
+            flag = np.zeros(len(score), dtype=bool)
+            flag[np.argsort(-score, kind="stable")[:k]] = True
+            extra[f"{who}_top10_false_predictions"] = {
+                "false_alarm_share": round(float((y_t[flag] == 0).mean()), 4),
+                "completed_checkouts_flagged": round(float(flag[y_t == 0].mean()) if (y_t == 0).any() else 0.0, 4),
+                "abandons_missed": round(float((~flag[y_t == 1]).mean()) if (y_t == 1).any() else 0.0, 4)}
+        extra["calibration_error_ece"] = round(metrics.ece(y_t, out["p"][split.test]), 4)
+    if spec.name == "demand_hourly":
+        v, note = metrics.wape_safe(y_t, out["pred"][split.test])
+        extra["zero_sales_note"] = note
+        extra["test_hours_with_zero_sales"] = int((y_t == 0).sum())
+    if spec.name == "crowd":
+        d = df.iloc[split.test].assign(err_m=np.abs(out["pred"][split.test] - y_t), err_b=np.abs(base["pred"][split.test] - y_t))
+        by = lambda col: {str(k): {"model": round(float(g["err_m"].mean()), 3), "baseline": round(float(g["err_b"].mean()), 3), "rows": int(len(g))}
+                          for k, g in d.groupby(col)}
+        extra["error_by_minutes_from_start"] = by("minutes_from_start")
+        extra["error_by_event_type"] = by("event_type")
+        extra["error_by_day_of_week"] = by("day_of_week")
+        gate = d.groupby("gate_id")[["err_m", "err_b"]].mean()
+        extra["gate_level"] = {"gates": int(len(gate)), "gates_where_model_better": int((gate["err_m"] < gate["err_b"]).sum())}
     if spec.name == "attendance":
         pred, _, act = _per_event_attendance(df, split.test, out["p"][split.test], base["rate"][split.test])
         cur = _per_event_attendance(df, split.test, out["p"][split.test], base["current_rule"][split.test])[1]

@@ -71,11 +71,11 @@ class Tally {
 
 class Rows {
   constructor(idOf, tally) { this.map = new Map(); this.idOf = idOf; this.tally = tally; }
-  add(row) {
+  add(row, source = 'snapshot') {
     const id = this.idOf(row);
     if (this.map.has(id)) { this.tally.duplicates += 1; return; }
-    this.map.set(id, { ...row, feature_source: 'snapshot' });
-    this.tally.keep('snapshot');
+    this.map.set(id, { ...row, feature_source: source });
+    this.tally.keep(source);
   }
   get rows() { return [...this.map.values()].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0)); }
 }
@@ -105,7 +105,7 @@ export function snapshotProblem(p, need = []) {
 // ---------------------------------------------------------------------------------------------
 async function loadContext(db, now) {
   const [users, companies, events, evidence] = await Promise.all([
-    db.user.findMany({ select: { id: true, email: true, role: true } }),
+    db.user.findMany({ select: { id: true, email: true, role: true, createdAt: true } }),
     db.company.findMany({ select: { id: true, userId: true } }),
     db.event.findMany({
       select: {
@@ -123,13 +123,40 @@ async function loadContext(db, now) {
   const deployedModels = {};
   for (const m of deployed) if (!deployedModels[m.name]) deployedModels[m.name] = { sha256: m.sha256, version: m.version, source: m.source, modelId: m.id };
   const firstLive = [...evidence.values()].reduce((a, e) => (!a || e.at < a ? e.at : a), null);
+  const evidenceOrders = await db.order.findMany({ where: { id: { in: [...evidence.keys()] } }, select: { userId: true, eventId: true } });
+  const evidenceUsers = new Set(evidenceOrders.map((o) => o.userId));
+  const evidenceEvents = new Set(evidenceOrders.map((o) => o.eventId));
   const eventTimes = new Map(); // pseudonymised event id -> {sales_open, event_start} (from snapshots where known)
-  return { userById, ownerOf, eventById, deployedModels, evidence, firstLive, eventTimes };
+  return { userById, ownerOf, eventById, deployedModels, evidence, evidenceUsers, evidenceEvents, firstLive, eventTimes };
+}
+
+/**
+ * Why an account's activity is not GENUINE_CUSTOMER data (null = genuine). Beyond the test/internal policy, an
+ * account counts only once genuine use has demonstrably begun: it has its own live, server-verified purchase,
+ * or it was created after the platform's first live-verified payment. Accounts from before that (developers,
+ * testers, demo users with ordinary e-mail domains) are INTERNAL_TEST, whatever their domain.
+ */
+export function accountClass(ctx, userId) {
+  const u = ctx.userById.get(userId);
+  const why = accountExclusion(u, ctx.policy);
+  if (why) return why;
+  if (ctx.evidenceUsers.has(userId)) return null;
+  if (ctx.firstLive && u.createdAt >= ctx.firstLive) return null;
+  return 'account from before genuine use began (no live-verified purchase): internal test';
 }
 
 const verifiedPaid = (ctx, o) => SOLD.includes(o.status) && ctx.evidence.has(o.id);
 const paidUnverified = (ctx, o) => SOLD.includes(o.status) && !ctx.evidence.has(o.id);
-const realEvent = (ctx, eventId) => { const e = ctx.eventById.get(eventId); return eventExclusion(e, e && ctx.ownerOf.get(e.companyId), ctx.policy); };
+const realEvent = (ctx, eventId) => {
+  const e = ctx.eventById.get(eventId);
+  const why = eventExclusion(e, e && ctx.ownerOf.get(e.companyId), ctx.policy);
+  if (why) return why;
+  // Same rule as accounts: genuine operation of this event must have begun (a live-verified sale, or the
+  // event was created after the platform's first live-verified payment)
+  if (ctx.evidenceEvents.has(eventId)) return null;
+  if (ctx.firstLive && e.createdAt >= ctx.firstLive) return null;
+  return 'event from before genuine use began (no live-verified sale): internal test';
+};
 const snaps = (db, modelName, subjectType, now) => db.mlPrediction.findMany({
   where: { modelName, role: 'RULES', subjectType, asOf: { lt: now }, createdAt: { lt: now } },
   select: { subjectId: true, eventId: true, userId: true, features: true, output: true, asOf: true, score: true, decision: true },
@@ -153,7 +180,7 @@ async function exportVisits(db, ctx, now) {
   const interventions = { intentRowsWithReminderInWindow: 0, abandonmentRowsWithReminderInWindow: 0 };
   for (const p of preds) {
     const v = parseVisitId(p.subjectId);
-    const why = accountExclusion(ctx.userById.get(v.userId), ctx.policy) || realEvent(ctx, v.eventId);
+    const why = accountClass(ctx, v.userId) || realEvent(ctx, v.eventId);
     if (why) { t.skip(why); continue; }
     const bad = snapshotProblem(p, ['ticket_price', 'min_price']);
     if (bad) { t.skip(bad); continue; }
@@ -199,14 +226,16 @@ async function exportFraud(db, ctx, now) {
   const orders = new Map((await db.order.findMany({
     where: { id: { in: orderPreds.map((p) => p.subjectId) } }, select: { id: true, userId: true, eventId: true, totalAmount: true, status: true },
   })).map((o) => [o.id, o]));
-  const quality = { blockedCheckouts: blocked.length, blockedByRuleDecision: {}, notSampled: 0, sampledNotSelected: 0, unreviewed: 0, unresolved: 0, exposedOnly: 0, resolved: 0 };
+  const quality = { blockedCheckouts: blocked.length, blockedByRuleDecision: {}, notSampled: 0, sampledNotSelected: 0, unreviewed: 0, unresolved: 0, exposedOnly: 0, resolved: 0, disputed: 0 };
+  const disputed = new Set((await db.auditLog.findMany({ where: { action: 'PAYMENT_DISPUTE', createdAt: { lt: now } }, select: { targetId: true } })).map((r) => r.targetId));
   for (const b of blocked) quality.blockedByRuleDecision[b.decision || 'none'] = (quality.blockedByRuleDecision[b.decision || 'none'] || 0) + 1;
   for (const p of orderPreds) {
     const order = orders.get(p.subjectId);
     if (!order) { t.skip('order deleted'); continue; }
-    const why = accountExclusion(ctx.userById.get(order.userId), ctx.policy) || realEvent(ctx, order.eventId);
+    const why = accountClass(ctx, order.userId) || realEvent(ctx, order.eventId);
     if (why) { t.skip(why); continue; }
     if (!ctx.evidence.has(order.id)) { t.skip('no live server-side payment evidence'); continue; }
+    if (disputed.has(order.id)) { quality.disputed += 1; t.skip('payment disputed (kept separate from fraud labels)'); continue; }
     const bad = snapshotProblem(p);
     if (bad) { t.skip(bad); continue; }
     const s = samples.get(p.subjectId);
@@ -242,7 +271,7 @@ async function exportDemand(db, ctx, now) {
   const byEvent = new Map();
   for (const p of preds) { if (!byEvent.has(p.eventId)) byEvent.set(p.eventId, []); byEvent.get(p.eventId).push(p); }
   for (const event of ctx.eventById.values()) {
-    const why = eventExclusion(event, ctx.ownerOf.get(event.companyId), ctx.policy);
+    const why = realEvent(ctx, event.id);
     if (why) { t.skip(why); continue; }
     const list = byEvent.get(event.id) || [];
     const problems = list.map((p) => snapshotProblem(p, DEMAND_CONTEXT));
@@ -295,7 +324,7 @@ async function exportAttendance(db, ctx, now) {
       const x = tickets.get(p.subjectId);
       if (!x) { unusable = 'a ticket was deleted'; break; }
       if (!verifiedPaid(ctx, x.order)) { unusable = 'a ticket without live server-side payment evidence'; break; }
-      const holderWhy = accountExclusion(ctx.userById.get(p.output.context.holder_id), ctx.policy);
+      const holderWhy = accountClass(ctx, p.output.context.holder_id);
       if (holderWhy) { unusable = `a ticket holder is a ${holderWhy}`; break; }
     }
     if (unusable) { t.skip(`event left out: ${unusable}`, list.length); continue; }
@@ -325,7 +354,7 @@ async function exportCrowd(db, ctx, now) {
   for (const p of preds) { if (!byEvent.has(p.eventId)) byEvent.set(p.eventId, []); byEvent.get(p.eventId).push(p); }
   const readiness = { snapshotted: byEvent.size, finishedWithoutSnapshot: {} };
   for (const event of ctx.eventById.values()) {
-    if (byEvent.has(event.id) || startOf(event).getTime() + DAY > now.getTime() || eventExclusion(event, ctx.ownerOf.get(event.companyId), ctx.policy)) continue;
+    if (byEvent.has(event.id) || startOf(event).getTime() + DAY > now.getTime() || realEvent(ctx, event.id)) continue;
     const r = crowdReadiness(event.gates);
     const reason = r.ready ? 'not scored before it started' : r.reason === 'NO_ACTIVE_GATES' ? 'no active gates' : 'gate capacity per hour missing';
     readiness.finishedWithoutSnapshot[reason] = (readiness.finishedWithoutSnapshot[reason] || 0) + 1;
@@ -405,8 +434,13 @@ export async function buildExport({ db = prisma, policy = exportPolicy(), now = 
   const demand = await exportDemand(db, ctx, now);
   const attendance = await exportAttendance(db, ctx, now);
   const crowd = await exportCrowd(db, ctx, now);
+  const checkouts = await exportCheckouts(db, ctx, now);
+  const hourly = await exportDemandHourly(db, ctx, now);
+  const recs = await exportRecommendations(db, ctx, now);
+  const behaviour = await exportCustomerBehaviour(db, ctx, now);
   const datasets = { behavior_sequences: visits.rows, fraud_purchases: fraud.rows, event_demand: demand.rows, attendance_no_show: attendance.rows, crowd_flow: crowd.rows };
-  const used = new Set(Object.values(datasets).flatMap((rows) => rows.map((r) => r.event_id)));
+  const datasetsStep5 = { checkout_abandonment: checkouts.rows, demand_hourly: hourly.rows, recommendation_impressions: recs.rows, customer_behaviour: behaviour.rows };
+  const used = new Set([...Object.values(datasets), checkouts.rows, hourly.rows, recs.rows].flatMap((rows) => rows.map((r) => r.event_id)));
   const events = [...ctx.eventById.values()].filter((e) => used.has(pseudo('E', e.id))).map((e) => {
     const k = pseudo('E', e.id);
     const known = ctx.eventTimes.get(k) || {};
@@ -418,12 +452,226 @@ export async function buildExport({ db = prisma, policy = exportPolicy(), now = 
     payments: { liveVerifiedOrders: ctx.evidence.size, firstLiveVerifiedPayment: ctx.firstLive ? iso(ctx.firstLive) : null },
     datasets: Object.fromEntries(Object.entries({ behavior_sequences: visits, fraud_purchases: fraud, event_demand: demand, attendance_no_show: attendance, crowd_flow: crowd })
       .map(([k, v]) => [k, { ...v.tally.toJSON(), labels: labelStats(k, v.rows), problems: checkRows(k, v.rows) }])),
+    datasetsStep5: Object.fromEntries(Object.entries({ checkout_abandonment: checkouts, demand_hourly: hourly, recommendation_impressions: recs, customer_behaviour: behaviour })
+      .map(([k, v]) => [k, { ...v.tally.toJSON(), problems: checkRowsStep5(k, v.rows) }])),
+    checkoutOutcomes: checkouts.outcomes,
+    attendanceQuality: await attendanceQuality(db, ctx, now),
     fraudLabels: fraud.quality,
     interventions: visits.interventions,
     crowdReadiness: crowd.readiness,
     deployedModels: ctx.deployedModels,
     country: COUNTRY,
     containsTestData: false,
+    sourceClass: 'GENUINE_CUSTOMER',
   };
-  return { datasets, events, report };
+  // Every row kept is GENUINE_CUSTOMER; every row left out is counted under its data-source class
+  const excludedByClass = {};
+  for (const d of [...Object.values(report.datasets), ...Object.values(report.datasetsStep5)]) {
+    for (const [reason, n] of Object.entries(d.excluded)) {
+      const c = sourceClassOfReason(reason);
+      excludedByClass[c] = (excludedByClass[c] || 0) + n;
+    }
+  }
+  report.excludedBySourceClass = excludedByClass;
+  return { datasets, datasetsStep5, events, report };
+}
+
+// =============================================================================================
+// Step 5 datasets: checkout abandonment (agreed definition), post-publication hourly demand,
+// recommendation impressions (with control group), customer behaviour, attendance quality
+// =============================================================================================
+export const COLUMNS_STEP5 = {
+  checkout_abandonment: ['order_id', 'customer_id', 'event_id', 'ts', 'event_type', 'city', 'country', 'payment_method',
+    'tickets_requested', 'unit_price_rel', 'hours_since_sales_open', 'days_until_event', 'account_age_days', 'customer_prior_orders',
+    'customer_prior_purchases', 'customer_prior_expired_checkouts', 'first_time', 'visit_event_views', 'visit_seat_selections',
+    'abandoned', 'feature_source'],
+  demand_hourly: ['event_id', 'organizer_id', 'ts', 'event_type', 'city', 'country', 'day_of_week', 'venue_capacity', 'tier_count',
+    'min_price_rel', 'avg_price_rel', 'max_price_rel', 'start_hour', 'start_month', 'organizer_past_events',
+    'organizer_past_sell_through_48h', 'hours_since_sales_open', 'days_until_event', 'sold_so_far', 'sold_last_24h',
+    'sell_through_so_far', 'rule_next_24h', 'sales_next_24h', 'feature_source'],
+  recommendation_impressions: ['list_id', 'customer_id', 'event_id', 'ts', 'variant', 'basis', 'surface', 'position',
+    'popularity_rank', 'exploration', 'is_new_event', 'first_time', 'clicked', 'purchased_7d', 'feature_source'],
+  customer_behaviour: ['customer_id', 'first_seen', 'last_seen', 'visits', 'events_viewed', 'searches', 'wishlists',
+    'verified_orders', 'verified_tickets', 'verified_spend', 'categories_bought', 'top_category', 'repeat_customer',
+    'days_first_to_last_purchase', 'recommendation_clicks', 'feature_source'],
+};
+// Columns that may be empty
+const NULLABLE_STEP5 = { demand_hourly: new Set(['organizer_past_sell_through_48h']) };
+
+/** Data-source class of an exclusion reason (everything kept is GENUINE_CUSTOMER). */
+export function sourceClassOfReason(reason) {
+  if (/internal test|test e-mail|internal e-mail|not a customer|test organizer|internal organizer|excluded (account|event)|MOCK|live (server-side )?payment|live method|live-verified|server-verified|holder is a|before genuine use began/i.test(reason)) return 'INTERNAL_TEST';
+  return 'DATA_QUALITY';
+}
+
+async function auditMap(db, action, now) {
+  const rows = await db.auditLog.findMany({ where: { action, createdAt: { lt: now } }, select: { targetId: true, details: true, createdAt: true } });
+  const m = new Map();
+  for (const r of rows) if (!m.has(r.targetId)) m.set(r.targetId, r);
+  return m;
+}
+
+async function exportCheckouts(db, ctx, now) {
+  const { checkoutAbandonmentLabel, ABANDON_OUTCOME_WINDOW_MS } = await import('./labels.js');
+  const t = new Tally();
+  const out = new Rows((r) => r.order_id, t);
+  const preds = await snaps(db, 'checkout_abandonment', 'ORDER', now);
+  const ends = await auditMap(db, 'CHECKOUT_ENDED', now);
+  const orders = new Map((await db.order.findMany({ where: { id: { in: preds.map((p) => p.subjectId) } }, select: { id: true, userId: true, eventId: true, status: true, createdAt: true } })).map((o) => [o.id, o]));
+  const failed = new Set((await db.behaviorEvent.findMany({ where: { action: 'payment_failed', createdAt: { lt: now } }, select: { metadata: true } })).map((b) => b.metadata?.orderId).filter(Boolean));
+  const reasons = {};
+  for (const p of preds) {
+    const o = orders.get(p.subjectId);
+    if (!o) { t.skip('order deleted'); continue; }
+    const why = accountClass(ctx, o.userId) || realEvent(ctx, o.eventId);
+    if (why) { t.skip(why); continue; }
+    const bad = snapshotProblem(p);
+    if (bad) { t.skip(bad); continue; }
+    if (!ctx.firstLive || o.createdAt < ctx.firstLive) { t.skip('before the first server-verified live payment (an unpaid checkout cannot be verified)'); continue; }
+    if (SOLD.includes(o.status) && !ctx.evidence.has(o.id)) { t.skip('paid without live server-side payment evidence'); continue; }
+    const windowEnd = new Date(o.createdAt.getTime() + ABANDON_OUTCOME_WINDOW_MS);
+    const later = await db.order.findMany({ where: { userId: o.userId, eventId: o.eventId, id: { not: o.id }, createdAt: { gte: o.createdAt, lte: windowEnd, lt: now } }, select: { id: true, status: true } });
+    if (later.some((x) => paidUnverified(ctx, x))) { t.skip('a purchase in the window without live server-side evidence'); continue; }
+    const { label, reason } = checkoutAbandonmentLabel({
+      order: { status: o.status, createdAt: o.createdAt, paid: verifiedPaid(ctx, o) }, endReason: ends.get(o.id)?.details?.reason ?? null,
+      paymentFailed: failed.has(o.id), boughtInWindow: later.some((x) => verifiedPaid(ctx, x)), now,
+    });
+    reasons[reason] = (reasons[reason] || 0) + 1;
+    if (label === null) { t.skip(`no abandonment label: ${reason}`); continue; }
+    out.add({ order_id: pseudo('O', o.id), customer_id: pseudo('C', o.userId), event_id: pseudo('E', o.eventId), ts: iso(p.asOf), ...p.features, abandoned: label });
+    noteTimes(ctx, o.eventId, null);
+  }
+  return { rows: out.rows, tally: t, outcomes: reasons };
+}
+
+async function exportDemandHourly(db, ctx, now) {
+  const { DEMAND_HOURLY_HORIZON_MS } = await import('./labels.js');
+  const t = new Tally();
+  const out = new Rows((r) => `${r.event_id}|${r.ts}`, t);
+  const preds = await snaps(db, 'demand_hourly', 'EVENT_HOURLY', now);
+  for (const p of preds) {
+    const why = realEvent(ctx, p.eventId);
+    if (why) { t.skip(why); continue; }
+    const bad = snapshotProblem(p, ['organizer_id', 'event_start']);
+    if (bad) { t.skip(bad); continue; }
+    const end = new Date(p.asOf.getTime() + DEMAND_HOURLY_HORIZON_MS);
+    if (end > now) { t.skip('24-hour horizon not over yet'); continue; }
+    if (!ctx.firstLive || p.asOf < ctx.firstLive) { t.skip('before the first server-verified live payment'); continue; }
+    const orders = await db.order.findMany({ where: { eventId: p.eventId, createdAt: { lt: now }, tickets: { some: { createdAt: { gte: p.asOf, lt: end } } } }, select: { id: true, status: true } });
+    if (orders.some((o) => paidUnverified(ctx, o))) { t.skip('sales in the horizon without live server-side evidence'); continue; }
+    const sold = await db.ticket.count({ where: { eventId: p.eventId, createdAt: { gte: p.asOf, lt: end }, orderId: { in: orders.filter((o) => verifiedPaid(ctx, o)).map((o) => o.id) } } });
+    const f = p.features;
+    out.add({
+      event_id: pseudo('E', p.eventId), organizer_id: pseudo('G', p.output.context.organizer_id), ts: iso(p.asOf),
+      ...Object.fromEntries(COLUMNS_STEP5.demand_hourly.filter((c) => c in f).map((c) => [c, f[c]])),
+      rule_next_24h: p.score ?? f.sold_last_24h, sales_next_24h: sold,
+    });
+    noteTimes(ctx, p.eventId, p.output.context);
+  }
+  return { rows: out.rows, tally: t };
+}
+
+async function exportRecommendations(db, ctx, now) {
+  const { REC_ATTRIBUTION_MS, REC_CLICK_WINDOW_MS } = await import('./labels.js');
+  const t = new Tally();
+  const out = new Rows((r) => `${r.list_id}|${r.event_id}`, t);
+  const lists = await db.behaviorEvent.findMany({ where: { action: 'recommendation_impression', createdAt: { lt: now } }, select: { userId: true, createdAt: true, metadata: true } });
+  const clicks = await db.behaviorEvent.findMany({ where: { action: 'recommendation_click', createdAt: { lt: now } }, select: { eventId: true, createdAt: true, metadata: true } });
+  const clickKey = new Set(clicks.map((c) => `${c.metadata?.listId}|${c.eventId}`));
+  const clickAt = new Map(clicks.map((c) => [`${c.metadata?.listId}|${c.eventId}`, c.createdAt]));
+  const purchased = new Map();
+  for (const l of lists) {
+    const m = l.metadata || {};
+    if (!l.userId) { t.skip('anonymous visitor never linked to an account (cannot be shown to be genuine)', (m.items || []).length || 1); continue; }
+    const why = accountClass(ctx, l.userId);
+    if (why) { t.skip(why, (m.items || []).length || 1); continue; }
+    const attrEnd = new Date(l.createdAt.getTime() + REC_ATTRIBUTION_MS);
+    const done = attrEnd <= now;
+    if (!purchased.has(l.userId)) purchased.set(l.userId, await db.order.findMany({ where: { userId: l.userId, createdAt: { lt: now } }, select: { id: true, eventId: true, status: true, createdAt: true } }));
+    const userOrders = purchased.get(l.userId);
+    const firstTime = !userOrders.some((o) => o.createdAt < l.createdAt && verifiedPaid(ctx, o));
+    for (const it of m.items || []) {
+      const ev = realEvent(ctx, it.eventId);
+      if (ev) { t.skip(ev); continue; }
+      const k = `${m.listId}|${it.eventId}`;
+      const clicked = clickKey.has(k) && clickAt.get(k) - l.createdAt <= REC_CLICK_WINDOW_MS ? 1 : 0;
+      const inWindow = userOrders.filter((o) => o.eventId === it.eventId && o.createdAt >= l.createdAt && o.createdAt <= attrEnd);
+      let bought = -1; // unknown: window open, or no live payments possible yet
+      if (done && ctx.firstLive && l.createdAt >= ctx.firstLive && !inWindow.some((o) => paidUnverified(ctx, o))) bought = inWindow.some((o) => verifiedPaid(ctx, o)) ? 1 : 0;
+      out.add({
+        list_id: pseudo('L', m.listId), customer_id: pseudo('C', l.userId), event_id: pseudo('E', it.eventId), ts: iso(l.createdAt),
+        variant: m.variant, basis: m.basis, surface: m.surface, position: it.position, popularity_rank: it.popularityRank,
+        exploration: it.exploration ? 1 : 0, is_new_event: it.isNew ? 1 : 0, first_time: firstTime ? 1 : 0, clicked, purchased_7d: bought,
+      }, 'impression-log');
+    }
+  }
+  return { rows: out.rows, tally: t };
+}
+
+async function exportCustomerBehaviour(db, ctx, now) {
+  const t = new Tally();
+  const out = new Rows((r) => r.customer_id, t);
+  const users = [...ctx.userById.values()];
+  for (const u of users) {
+    const why = accountClass(ctx, u.id);
+    if (why) { if (u.role === 'CUSTOMER') t.skip(why); continue; }
+    const [acts, orders] = await Promise.all([
+      db.behaviorEvent.findMany({ where: { userId: u.id, createdAt: { lt: now } }, select: { action: true, eventId: true, createdAt: true } }),
+      db.order.findMany({ where: { userId: u.id, createdAt: { lt: now } }, select: { id: true, status: true, eventId: true, totalAmount: true, createdAt: true, _count: { select: { tickets: true } } } }),
+    ]);
+    if (!acts.length && !orders.length) { t.skip('no activity'); continue; }
+    const paid = orders.filter((o) => verifiedPaid(ctx, o) && !realEvent(ctx, o.eventId));
+    const cats = {};
+    for (const o of paid) { const e = ctx.eventById.get(o.eventId); if (e) cats[e.type] = (cats[e.type] || 0) + 1; }
+    const times = acts.map((a) => a.createdAt).sort((a, b) => a - b);
+    const sessions = new Set(acts.filter((a) => a.eventId).map((a) => `${a.eventId}|${Math.floor(a.createdAt / (30 * 60_000))}`)).size;
+    const pt = paid.map((o) => o.createdAt).sort((a, b) => a - b);
+    out.add({
+      customer_id: pseudo('C', u.id), first_seen: times.length ? iso(times[0]) : iso(orders[0].createdAt), last_seen: times.length ? iso(times.at(-1)) : iso(orders.at(-1).createdAt),
+      visits: sessions, events_viewed: new Set(acts.filter((a) => a.action === 'event_view').map((a) => a.eventId)).size,
+      searches: acts.filter((a) => a.action === 'search').length, wishlists: acts.filter((a) => a.action === 'wishlist_added').length,
+      verified_orders: paid.length, verified_tickets: paid.reduce((n, o) => n + o._count.tickets, 0),
+      verified_spend: Math.round(paid.reduce((n, o) => n + Number(o.totalAmount), 0) * 100) / 100,
+      categories_bought: Object.keys(cats).length, top_category: Object.entries(cats).sort((a, b) => b[1] - a[1])[0]?.[0] || 'NONE',
+      repeat_customer: paid.length > 1 ? 1 : 0, days_first_to_last_purchase: pt.length > 1 ? Math.round((pt.at(-1) - pt[0]) / DAY * 10) / 10 : 0,
+      recommendation_clicks: acts.filter((a) => a.action === 'recommendation_click').length,
+    }, 'aggregate');
+  }
+  return { rows: out.rows, tally: t };
+}
+
+/** Attendance data quality for finished real events: sold, refunded, valid attendance, no-shows, late, corrected. */
+async function attendanceQuality(db, ctx, now) {
+  const { LATE_CHECKIN_MS } = await import('./labels.js');
+  const q = { events: 0, ticketsSold: 0, refundedOrCancelled: 0, attended: 0, noShows: 0, lateCheckIns: 0, correctedCheckIns: 0, exceptionAdmissions: 0 };
+  for (const e of ctx.eventById.values()) {
+    if (realEvent(ctx, e.id) || endOf(e) >= now) continue;
+    const tickets = await db.ticket.findMany({ where: { eventId: e.id, createdAt: { lt: now } }, select: { status: true, checkedInAt: true } });
+    if (!tickets.length) continue;
+    q.events += 1;
+    q.ticketsSold += tickets.length;
+    const live = tickets.filter((x) => LIVE_STATUSES.includes(x.status));
+    q.refundedOrCancelled += tickets.length - live.length;
+    q.attended += live.filter((x) => x.checkedInAt).length;
+    q.noShows += live.filter((x) => !x.checkedInAt).length;
+    q.lateCheckIns += live.filter((x) => x.checkedInAt && x.checkedInAt - startOf(e) > LATE_CHECKIN_MS).length;
+    q.correctedCheckIns += await db.checkIn.count({ where: { eventId: e.id, reversedAt: { not: null } } });
+    q.exceptionAdmissions += await db.checkIn.count({ where: { eventId: e.id, exceptionId: { not: null } } });
+  }
+  return q;
+}
+const LIVE_STATUSES = ['ACTIVE', 'SCANNED'];
+
+export function checkRowsStep5(name, rows) {
+  const cols = COLUMNS_STEP5[name];
+  const problems = [];
+  rows.forEach((r, i) => {
+    for (const c of cols) {
+      const v = r[c];
+      if ((v === undefined || v === null || (typeof v === 'number' && !Number.isFinite(v))) && !NULLABLE_STEP5[name]?.has(c)) problems.push(`row ${i}: ${c} missing`);
+    }
+    const extra = Object.keys(r).filter((k) => !cols.includes(k));
+    if (extra.length) problems.push(`row ${i}: unexpected ${extra.join(', ')}`);
+  });
+  return problems.slice(0, 20);
 }

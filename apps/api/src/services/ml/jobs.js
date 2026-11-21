@@ -15,10 +15,11 @@
  */
 import { createHash } from 'node:crypto';
 import prisma from '../../config/prisma.js';
-import { ATTENDANCE_LEAD_MS, LIVE_TICKET, MissingInput, attendanceSnapshot, demandSnapshot, endOf, salesOpenOf, startOf } from './features.js';
+import { ATTENDANCE_LEAD_MS, LIVE_TICKET, MissingInput, attendanceSnapshot, demandHourlySnapshot, demandSnapshot, endOf, salesOpenOf, startOf } from './features.js';
 import { logPredictions, snapshotsEnabled } from './shadow.js';
 import { finishedVisits, intentRule, parseVisitId, SOLD, visitFeatures, visitId, visitPrice } from './visits.js';
 import { showRate } from './attendanceBaseline.js';
+import { ABANDON_OUTCOME_WINDOW_MS, DEMAND_HOURLY_HORIZON_MS, checkoutAbandonmentLabel } from './labels.js';
 import { arrivalHistory, crowdRows, entriesBySlot, parseSlotSubject, slotSubject } from './crowd.js';
 import { effectiveReview } from './fraudReview.js';
 
@@ -138,6 +139,32 @@ export async function snapshotDemand({ now = new Date(), windowMs = HOUR } = {})
   return { opened: events.length, alreadyLogged: done.size, skipped, demand: await logPredictions('demand', items) };
 }
 
+// Demand after publication: one snapshot per event per hour while on sale (sales so far, pace, time left)
+export async function snapshotDemandHourly({ now = new Date() } = {}) {
+  const hour = new Date(Math.floor(now.getTime() / HOUR) * HOUR);
+  const events = (await prisma.event.findMany({
+    where: { status: 'PUBLISHED', cancelledAt: null, tiers: { some: {} } },
+    select: { id: true, date: true, time: true, startsAt: true, salesOpenAt: true, publishAt: true, approvedAt: true, createdAt: true },
+  })).filter((e) => salesOpenOf(e) <= now && startOf(e) > now);
+  const ids = events.map((e) => `${e.id}|${hour.toISOString()}`);
+  const done = new Set((await prisma.mlPrediction.findMany({ where: { modelName: 'demand_hourly', role: 'RULES', subjectType: 'EVENT_HOURLY', subjectId: { in: ids } }, select: { subjectId: true } })).map((r) => r.subjectId));
+  const skipped = {};
+  const items = [];
+  for (const e of events) {
+    const subjectId = `${e.id}|${hour.toISOString()}`;
+    if (done.has(subjectId)) continue;
+    try {
+      const { features, context } = await demandHourlySnapshot({ eventId: e.id, at: now });
+      // Rule shown today: the last 24 hours' pace continues (naive persistence)
+      items.push({ subjectType: 'EVENT_HOURLY', subjectId, eventId: e.id, asOf: now, rule: { score: features.sold_last_24h, decision: null, output: { basis: 'last-24h pace' } }, features, context: { ...context, captured_at: now.toISOString() } });
+    } catch (err) {
+      if (!(err instanceof MissingInput)) throw err;
+      count(skipped, err.message);
+    }
+  }
+  return { onSale: events.length, alreadyLogged: done.size, skipped, demandHourly: await logPredictions('demand_hourly', items) };
+}
+
 // Attendance ~24 h before the start: every live ticket of events starting 22-24 h from now
 export async function snapshotAttendance({ now = new Date() } = {}) {
   const events = (await prisma.event.findMany({
@@ -217,10 +244,11 @@ export async function sampleFraudOrders({ now = new Date(), settleMs = HOUR } = 
 // ---------------------------------------------------------------------------------------------
 // Outcome learning: attach the real outcome to both the RULES and the SHADOW row of a subject
 // ---------------------------------------------------------------------------------------------
-async function setOutcome(modelName, subjectType, subjectId, label, outcome, now) {
+// settled: the outcome is final even without a label (e.g. a cancelled checkout is never an abandonment)
+async function setOutcome(modelName, subjectType, subjectId, label, outcome, now, settled = false) {
   await prisma.mlPrediction.updateMany({
     where: { modelName, subjectType, subjectId },
-    data: { outcomeLabel: label, outcome: outcome ?? undefined, outcomeAt: label === null ? null : now },
+    data: { outcomeLabel: label, outcome: outcome ?? undefined, outcomeAt: label === null && !settled ? null : now },
   });
 }
 
@@ -261,6 +289,26 @@ export async function attachOutcomes({ now = new Date() } = {}) {
       await setOutcome('demand', subjectType, p.subjectId, sold, { source: 'tickets', window: [open, end] }, now);
       done.demand += 1;
     }
+  }
+
+  // Checkout abandonment (labels.js, the same definition the exporter uses)
+  for (const p of await pending('checkout_abandonment', 'ORDER', new Date(now - ABANDON_OUTCOME_WINDOW_MS))) {
+    const o = await prisma.order.findUnique({ where: { id: p.subjectId }, select: { status: true, createdAt: true, userId: true, eventId: true } });
+    if (!o) continue;
+    const end = await prisma.auditLog.findFirst({ where: { action: 'CHECKOUT_ENDED', targetType: 'Order', targetId: p.subjectId }, select: { details: true } });
+    const failedAttempt = await prisma.behaviorEvent.count({ where: { action: 'payment_failed', metadata: { path: ['orderId'], equals: p.subjectId } } });
+    const bought = await prisma.order.count({ where: { userId: o.userId, eventId: o.eventId, id: { not: p.subjectId }, status: { in: SOLD }, createdAt: { gte: o.createdAt, lte: new Date(o.createdAt.getTime() + ABANDON_OUTCOME_WINDOW_MS) } } });
+    const { label, reason } = checkoutAbandonmentLabel({ order: { status: o.status, createdAt: o.createdAt, paid: SOLD.includes(o.status) }, endReason: end?.details?.reason ?? null, paymentFailed: failedAttempt > 0, boughtInWindow: bought > 0, now });
+    if (label === null && reason === 'checkout still open') continue;
+    await setOutcome('checkout_abandonment', 'ORDER', p.subjectId, label, { source: 'checkout end', reason }, now, true);
+    done.checkoutAbandonment = (done.checkoutAbandonment || 0) + 1;
+  }
+
+  // Demand after publication: tickets sold in the 24 hours after each hourly snapshot
+  for (const p of await pending('demand_hourly', 'EVENT_HOURLY', new Date(now - DEMAND_HOURLY_HORIZON_MS))) {
+    const sold = await prisma.ticket.count({ where: { eventId: p.eventId, createdAt: { gte: p.asOf, lt: new Date(p.asOf.getTime() + DEMAND_HOURLY_HORIZON_MS) }, order: { status: { in: SOLD } } } });
+    await setOutcome('demand_hourly', 'EVENT_HOURLY', p.subjectId, sold, { source: 'tickets', horizonHours: 24 }, now);
+    done.demandHourly = (done.demandHourly || 0) + 1;
   }
 
   // Attendance: was the ticket checked in (once the event has ended)
@@ -330,6 +378,7 @@ export async function runMlJobs({ now = new Date() } = {}) {
     await step('visits', () => scoreVisits({ now }));
     await step('crowd', () => scoreCrowd({ now }));
     await step('demandAtOpen', () => snapshotDemand({ now }));
+    await step('demandHourly', () => snapshotDemandHourly({ now }));
     await step('attendance', () => snapshotAttendance({ now }));
   }
   await step('fraudSampling', () => sampleFraudOrders({ now }));

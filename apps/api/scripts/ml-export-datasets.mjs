@@ -19,7 +19,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import prisma from '../src/config/prisma.js';
-import { COLUMNS, buildExport, exportPolicy } from '../src/services/ml/export.js';
+import { COLUMNS, COLUMNS_STEP5, buildExport, exportPolicy } from '../src/services/ml/export.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -35,12 +35,16 @@ const sha256 = (file) => createHash('sha256').update(fs.readFileSync(file)).dige
 function markdown(report, manifest) {
   const L = [`# ML training export ${report.exportedAt}`, '', `Source \`db-export\`. Orders with server-verified LIVE payment evidence: ${report.payments.liveVerifiedOrders}${report.payments.firstLiveVerifiedPayment ? ` (first ${report.payments.firstLiveVerifiedPayment})` : ' (**none**: no purchase-based labels)'}. Every row comes from a prediction-time snapshot.`, '',
     '| Dataset | Rows kept | Duplicates dropped | Left out |', '|---|---|---|---|'];
-  for (const [k, d] of Object.entries(report.datasets)) {
+  const all = { ...report.datasets, ...report.datasetsStep5 };
+  for (const [k, d] of Object.entries(all)) {
     const out = Object.values(d.excluded).reduce((a, b) => a + b, 0);
     L.push(`| ${k} | ${d.kept} | ${d.duplicatesDropped} | ${out} |`);
   }
+  L.push('', '## Data-source classes', 'Every row kept is GENUINE_CUSTOMER (a real customer account, a real organizer, verified outcomes). Left out:', '',
+    ...Object.entries(report.excludedBySourceClass).map(([c, n]) => `- ${c}: ${n}`),
+    '', 'SYNTHETIC (`data/`, `dev/legacy-synthetic/`) and PUBLIC (`data/public/`) datasets are never part of an export.');
   L.push('', '## Why rows were left out');
-  for (const [k, d] of Object.entries(report.datasets)) {
+  for (const [k, d] of Object.entries(all)) {
     const ex = Object.entries(d.excluded).sort((a, b) => b[1] - a[1]);
     L.push(`- **${k}**: ${ex.length ? ex.map(([r, n]) => `${r} (${n})`).join('; ') : 'nothing'}`);
   }
@@ -50,6 +54,8 @@ function markdown(report, manifest) {
   L.push('', '## Fraud labels (blind reviews only)', `Resolved blind reviews: ${f.resolved}. Unresolved: ${f.unresolved}. Exposed-only (reviewer had seen detector output): ${f.exposedOnly}. Selected but unreviewed: ${f.unreviewed}. Not selected: ${f.sampledNotSelected}. Not yet sampled: ${f.notSampled}.`,
     `Blocked checkouts (no order, so no outcome can be verified): ${f.blockedCheckouts} ${JSON.stringify(f.blockedByRuleDecision)}.`,
     '', '## Interventions inside label windows', `Intent rows whose 7-day window contained a cart-recovery reminder: ${report.interventions.intentRowsWithReminderInWindow} (kept; the label includes the effect of current reminders). Abandonment rows with a reminder inside the visit: ${report.interventions.abandonmentRowsWithReminderInWindow} (should be 0: reminders are sent at least 1 h after a checkout lapses).`,
+    '', '## Checkout outcomes (abandonment = hold expired, no failed payment, nothing bought within 24 h)', JSON.stringify(report.checkoutOutcomes),
+    '', '## Attendance data quality (finished real events)', JSON.stringify(report.attendanceQuality),
     '', '## Crowd readiness', `Events with crowd snapshots: ${report.crowdReadiness.snapshotted}; finished real events without one: ${JSON.stringify(report.crowdReadiness.finishedWithoutSnapshot)}.`,
     '', '## Models the app runs now (compared against by the retraining)', ...Object.entries(manifest.deployed_models).map(([n, m]) => `- ${n}: \`${m.sha256.slice(0, 12)}\` (${m.source})`), '');
   return L.join('\n');
@@ -64,7 +70,7 @@ async function main() {
   const out = path.resolve(arg('--out') || path.join(here, '../../ml-service/exports', stamp));
   fs.mkdirSync(out, { recursive: true });
 
-  const { datasets, events, report } = await buildExport({ policy, now });
+  const { datasets, datasetsStep5, events, report } = await buildExport({ policy, now });
   const files = {};
   let first = now.toISOString();
   for (const [name, rows] of Object.entries(datasets)) {
@@ -74,18 +80,25 @@ async function main() {
     if (ts.length && ts[0] < first) first = ts[0];
     files[name] = { file: `${name}.csv`, rows: rows.length, columns: COLUMNS[name], labels: report.datasets[name].labels, ts_from: ts[0] ?? null, ts_to: ts.at(-1) ?? null, sha256: sha256(file) };
   }
+  for (const [name, rows] of Object.entries(datasetsStep5)) {
+    const file = path.join(out, `${name}.csv`);
+    fs.writeFileSync(file, toCsv(COLUMNS_STEP5[name], rows));
+    const ts = rows.map((r) => r.ts || r.first_seen).filter(Boolean).sort();
+    files[name] = { file: `${name}.csv`, rows: rows.length, columns: COLUMNS_STEP5[name], ts_from: ts[0] ?? null, ts_to: ts.at(-1) ?? null, sha256: sha256(file) };
+  }
   fs.writeFileSync(path.join(out, 'events.csv'), toCsv(['event_id', 'sales_open', 'event_start'], events));
   const manifest = {
     source: 'db-export', exporter_version: '1.0.0', exported_at: now.toISOString(), history: { from: first, to: now.toISOString() },
     countries: [report.country], currencies: { PK: 'PKR' }, timezones: { PK: 'Asia/Karachi' }, scale: 1.0,
     files, deployed_models: report.deployedModels, policy: report.policy, payments: report.payments,
-    feature_sources: ['snapshot'], contains_test_data: false,
+    feature_sources: ['snapshot'], contains_test_data: false, source_class: 'GENUINE_CUSTOMER',
+    excluded_by_source_class: report.excludedBySourceClass,
   };
   fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify(manifest, null, 2));
   fs.writeFileSync(path.join(out, 'export_report.json'), JSON.stringify(report, null, 2));
   fs.writeFileSync(path.join(out, 'export_report.md'), markdown(report, manifest));
-  const problems = Object.entries(report.datasets).filter(([, d]) => d.problems.length);
-  for (const [k, d] of Object.entries(report.datasets)) console.log(`${k.padEnd(20)} ${String(d.kept).padStart(7)} rows`);
+  const problems = Object.entries({ ...report.datasets, ...report.datasetsStep5 }).filter(([, d]) => d.problems.length);
+  for (const [k, d] of Object.entries({ ...report.datasets, ...report.datasetsStep5 })) console.log(`${k.padEnd(27)} ${String(d.kept).padStart(7)} rows`);
   console.log(`\nWritten to ${out}`);
   if (problems.length) { console.error(`Row problems in: ${problems.map(([k]) => k).join(', ')} (see export_report.md)`); process.exitCode = 1; }
 }

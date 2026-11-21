@@ -94,7 +94,29 @@ MIN_REAL = {
     "attendance": {"checked_in=0": 800, "checked_in=1": 800, "events": 250, "months": 3},
     "crowd": {"events": 250, "months": 3},
 }
-MODEL_DATASET = {"intent": "behavior_sequences", "abandonment": "behavior_sequences", "fraud": "fraud_purchases",
+# Step 5 files of a database export (checked when present; synthetic data has none of them)
+STEP5_SCHEMA = {
+    "checkout_abandonment": ["order_id", "customer_id", "event_id", "ts", "event_type", "city", "country", "payment_method",
+                             "tickets_requested", "unit_price_rel", "hours_since_sales_open", "days_until_event", "account_age_days",
+                             "customer_prior_orders", "customer_prior_purchases", "customer_prior_expired_checkouts", "first_time",
+                             "visit_event_views", "visit_seat_selections", "abandoned", "feature_source"],
+    "demand_hourly": ["event_id", "organizer_id", "ts", "event_type", "city", "country", "day_of_week", "venue_capacity", "tier_count",
+                      "min_price_rel", "avg_price_rel", "max_price_rel", "start_hour", "start_month", "organizer_past_events",
+                      "organizer_past_sell_through_48h", "hours_since_sales_open", "days_until_event", "sold_so_far", "sold_last_24h",
+                      "sell_through_so_far", "rule_next_24h", "sales_next_24h", "feature_source"],
+    "recommendation_impressions": ["list_id", "customer_id", "event_id", "ts", "variant", "basis", "surface", "position",
+                                   "popularity_rank", "exploration", "is_new_event", "first_time", "clicked", "purchased_7d", "feature_source"],
+    "customer_behaviour": ["customer_id", "first_seen", "last_seen", "visits", "events_viewed", "searches", "wishlists",
+                           "verified_orders", "verified_tickets", "verified_spend", "categories_bought", "top_category",
+                           "repeat_customer", "days_first_to_last_purchase", "recommendation_clicks", "feature_source"],
+}
+STEP5_SOURCES = {"checkout_abandonment": {"snapshot"}, "demand_hourly": {"snapshot"}, "recommendation_impressions": {"impression-log"},
+                 "customer_behaviour": {"aggregate"}}
+MIN_REAL.update({
+    "checkout_abandonment": {"abandoned=1": 800, "abandoned=0": 800, "months": 3},
+    "demand_hourly": {"events": 250, "months": 3},
+})
+MODEL_DATASET = {"checkout_abandonment": "checkout_abandonment", "demand_hourly": "demand_hourly","intent": "behavior_sequences", "abandonment": "behavior_sequences", "fraud": "fraud_purchases",
                  "demand": "event_demand", "attendance": "attendance_no_show", "crowd": "crowd_flow"}
 
 
@@ -178,6 +200,9 @@ def main():
         r.check(not fixture or args.allow_test_fixture, "export is not a test fixture")
         r.check(fixture or manifest.get("contains_test_data") is False, "manifest declares no test data (contains_test_data = false)")
         r.check(manifest.get("feature_sources") == ["snapshot"], "manifest: every row from prediction-time snapshots")
+        r.check(fixture or manifest.get("source_class") == "GENUINE_CUSTOMER", "manifest: data-source class GENUINE_CUSTOMER")
+    else:
+        r.check(manifest.get("source_class") in (None, "SYNTHETIC"), "synthetic data is labelled SYNTHETIC", str(manifest.get("source_class")))
 
     d = {}
     for name, cols in SCHEMA.items():
@@ -407,6 +432,39 @@ def _finish_export(r, d, args, manifest, hist_to):
         r.check(((cf["ts"].to_numpy() - starts) == (cf["minutes_from_start"].to_numpy() * np.timedelta64(1, "m"))).all(), "crowd: slot time = event start + minutes_from_start")
         r.check((cf["ts"] <= hist_to).all(), "crowd: slots before the export")
         r.check((cf.groupby("gate_id")["gate_count"].nunique() == 1).all(), "crowd: gate metadata consistent")
+    # ---- Step 5 files (present in exports from Step 5 on)
+    for name, cols in STEP5_SCHEMA.items():
+        path = os.path.join(args.data, f"{name}.csv")
+        if not os.path.exists(path):
+            continue
+        df = pd.read_csv(path)
+        d[name] = df
+        r.check(sha256(path) == manifest["files"].get(name, {}).get("sha256"), f"{name}: file matches manifest hash")
+        r.check(list(df.columns) == cols, f"{name}: exact columns", f"got {list(df.columns)}")
+        if not len(df):
+            print(f"  ok    {name}.csv  0 rows (nothing verified to export yet)")
+            continue
+        ids = [c for c in df.columns if c.endswith("_id")]
+        bad = {c: int((~df[c].astype(str).str.fullmatch(r"[A-Z][0-9a-f]{16}")).sum()) for c in ids}
+        r.check(not any(bad.values()), f"{name}: ids are export pseudonyms", str(bad))
+        r.check(df["feature_source"].isin(STEP5_SOURCES[name]).all(), f"{name}: rows from the expected source")
+        r.check(not df.duplicated([c for c in ids if c != "customer_id" or name == "customer_behaviour"] + (["ts"] if name == "demand_hourly" else [])).any(), f"{name}: no duplicate rows")
+        tcol = "first_seen" if name == "customer_behaviour" else "ts"
+        t = pd.to_datetime(df[tcol], utc=True, errors="coerce")
+        r.check(t.notna().all() and (t <= hist_to).all(), f"{name}: timestamps valid and before the export")
+        nulls = {c: int(n) for c, n in df.isna().sum().items() if n and c != "organizer_past_sell_through_48h"}
+        r.check(not nulls, f"{name}: no missing values", str(nulls))
+        if name == "checkout_abandonment":
+            r.check(df["abandoned"].isin([0, 1]).all(), "checkouts: abandoned is 0/1")
+            r.check(df["first_time"].isin([0, 1]).all() and ((df["first_time"] == 1) == (df["customer_prior_purchases"] == 0)).all(), "checkouts: first_time = no earlier purchase")
+        if name == "demand_hourly":
+            r.check((df["sales_next_24h"] >= 0).all() and (df["sold_so_far"] >= 0).all(), "hourly demand: sales not negative")
+            r.check((df["sold_last_24h"] <= df["sold_so_far"]).all(), "hourly demand: last-24h sales within sales so far")
+        if name == "recommendation_impressions":
+            r.check(df["variant"].isin(["CONTROL", "PERSONALISED"]).all(), "recommendations: known variants")
+            r.check(((df["variant"] == "CONTROL") <= (df["basis"] == "population")).all(), "recommendations: the control group is never personalised")
+            r.check(df["clicked"].isin([0, 1]).all() and df["purchased_7d"].isin([-1, 0, 1]).all(), "recommendations: labels in range")
+        print(f"  ok    {name}.csv  {len(df):,} rows")
     suff = sufficiency(d, True)
     print("\nVerified data per model (real-data minimums before training is attempted):")
     for m, s in suff.items():

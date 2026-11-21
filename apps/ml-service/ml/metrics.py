@@ -62,6 +62,16 @@ def wape(y, yhat):
     return float(np.abs(np.asarray(yhat, dtype=float) - y).sum() / max(y.sum(), 1e-9))
 
 
+def wape_safe(y, yhat):
+    """Weighted % error with zero sales handled: total |error| / total actual. When every actual is zero the
+    ratio is undefined, so the mean absolute error (tickets) is returned with a note instead of infinity."""
+    y = np.asarray(y, dtype=float)
+    err = np.abs(np.asarray(yhat, dtype=float) - y).sum()
+    if y.sum() <= 0:
+        return float(err / max(len(y), 1)), "all actual sales were zero: mean absolute error in tickets instead"
+    return float(err / y.sum()), None
+
+
 def mae(y, yhat):
     return float(np.mean(np.abs(np.asarray(yhat, dtype=float) - np.asarray(y, dtype=float))))
 

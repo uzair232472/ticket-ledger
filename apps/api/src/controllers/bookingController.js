@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { recordCheckoutEnd } from '../services/checkoutOutcome.js';
 import { randomUUID } from 'node:crypto';
 import { applyPhases, assertOnSale, capacityLeft } from '../services/eventToolsService.js';
 import prisma from '../config/prisma.js';
@@ -14,7 +15,7 @@ const withStates = (order) => order && { ...order, tickets: (order.tickets || []
 import mlService from '../services/mlService.js';
 import { recordShadow } from '../services/ml/shadow.js';
 import { recordPaymentEvidence } from '../services/paymentEvidence.js';
-import { fraudFeatures } from '../services/ml/features.js';
+import { checkoutSnapshot, fraudFeatures } from '../services/ml/features.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 import { expireStaleHolds } from '../services/venueService.js';
 import { DiscountError, markRedeemed, normalizeCode, quote as quoteDiscount, reserve as reserveDiscount } from '../services/discountService.js';
@@ -431,6 +432,7 @@ export const initiateBooking = async (req, res) => {
           const flipped = old.status === 'PENDING'
             ? await tx.order.updateMany({ where: { id: old.id, status: 'PENDING' }, data: { status: 'FAILED', idempotencyKey: null } })
             : { count: 0 };
+          if (flipped.count) await recordCheckoutEnd(tx, [old], 'SUPERSEDED');
           await tx.ticket.deleteMany({ where: { orderId: old.id } });
           if (flipped.count) {
             const restore = {};
@@ -530,6 +532,12 @@ export const initiateBooking = async (req, res) => {
 
     // Shadow log for the new order (after the response path; never affects this checkout)
     fraudShadow('ORDER', order.id);
+    // Checkout-abandonment snapshot at checkout start (logged only; the label comes later from how it ended)
+    recordShadow({
+      name: 'checkout_abandonment', subjectType: 'ORDER', subjectId: order.id, eventId, userId, asOf: now,
+      rule: { score: null, decision: null, output: { trigger: 'checkout_started' } },
+      buildFeatures: () => checkoutSnapshot({ userId, eventId, seatIds, paymentMethod, at: now }),
+    });
 
     // 5. Payment parameters from the gateway (one payment per order, reused on retries)
     return sendPayment(req, res, order, { reused: false });
@@ -1075,6 +1083,7 @@ export const cancelBooking = async (req, res) => {
       // 1. Mark order failed, only if it is still pending
       const flipped = await tx.order.updateMany({ where: { id: orderId, status: 'PENDING' }, data: { status: 'FAILED' } });
       if (!flipped.count) return false;
+      await recordCheckoutEnd(tx, [order], 'CUSTOMER_CANCELLED');
 
       // 2. Delete placeholder tickets to release unique seatId constraint
       await tx.ticket.deleteMany({ where: { orderId } });
@@ -1133,11 +1142,11 @@ export const cancelBooking = async (req, res) => {
       }
     }
 
-    // Module 13: Track checkout_abandoned
+    // The customer cancelled: recorded as a cancellation, never as an abandoned checkout
     behaviorService.trackBehavior({
       req,
       userId,
-      action: BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED,
+      action: BEHAVIOR_ACTIONS.CHECKOUT_CANCELLED,
       eventId: order.eventId,
       metadata: {
         orderId: order.id,

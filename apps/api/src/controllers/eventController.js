@@ -458,6 +458,20 @@ export const getEvents = async (req, res) => {
       });
     }
 
+    // Search activity (normalised text only, at most 80 characters; the results shown, not personal data)
+    if (search && String(search).trim()) {
+      behaviorService.trackBehavior({
+        req,
+        action: BEHAVIOR_ACTIONS.SEARCH,
+        metadata: {
+          query: String(search).trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 80),
+          filters: { type: type || null, city: city || null, category: category || null },
+          resultCount: formattedEvents.length,
+          resultEventIds: formattedEvents.slice(0, 20).map((e) => e.id),
+        },
+      });
+    }
+
     return res.status(200).json({
       success: true,
       count: formattedEvents.length,

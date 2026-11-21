@@ -68,6 +68,18 @@ def _as_of_groups(df, known_at, keys_fn, value_fn, fallback_chain, reduce_fn):
     return out
 
 
+def checkout_abandonment_rule(df):
+    """The app's existing rule on what a checkout row records: 100 - intent rule (40 +15 three+ views
+    +20 seat selected +25 checkout started), from this visit's views and seat selections."""
+    s = 40 + 15 * (df["visit_event_views"] >= 3) + 20 * (df["visit_seat_selections"] >= 1) + 25
+    return (100 - np.clip(s, 10, 99)).to_numpy(dtype=float)
+
+
+def demand_hourly_rule(df):
+    """The rule logged with each hourly snapshot: the last 24 hours' pace continues."""
+    return df["rule_next_24h"].to_numpy(dtype=float)
+
+
 def demand_baseline(df):
     """Returns (prediction, low, high) in tickets for each event row."""
     known_at = (df["ts"] + pd.Timedelta(days=2)).to_numpy()

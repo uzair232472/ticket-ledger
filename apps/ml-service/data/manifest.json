@@ -1,5 +1,6 @@
 {
   "source": "synthetic-v0",
+  "source_class": "SYNTHETIC",
   "generator_version": "2.1.0",
   "seed": 42,
   "scale": 1.0,

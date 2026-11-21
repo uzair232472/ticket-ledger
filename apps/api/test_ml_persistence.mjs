@@ -219,9 +219,15 @@ test('10. sampling-weighted metrics are computed from what was stored', async ()
 });
 
 test('11. a full job run is idempotent', async () => {
-  const before = await prisma.mlPrediction.count();
+  const notHourly = { modelName: { not: 'demand_hourly' } };
+  const before = await prisma.mlPrediction.count({ where: notHourly });
   const last = await prisma.behaviorEvent.findFirst({ orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
   await jobs.scoreVisits({ now: new Date(last.createdAt.getTime() + 2 * 3600_000), lookbackHours: 24 * 365 });
-  await jobs.runMlJobs({ now: new Date(startOf(globalThis.crowdEvent).getTime() - 6 * 3600_000) });
-  assert.equal(await prisma.mlPrediction.count(), before);
+  const at = new Date(startOf(globalThis.crowdEvent).getTime() - 6 * 3600_000);
+  await jobs.runMlJobs({ now: at });
+  // A first run at a new hour may add only that hour's post-publication demand snapshots
+  assert.equal(await prisma.mlPrediction.count({ where: notHourly }), before);
+  const afterFirst = await prisma.mlPrediction.count();
+  await jobs.runMlJobs({ now: at });
+  assert.equal(await prisma.mlPrediction.count(), afterFirst, 'the same run again adds nothing');
 });

@@ -41,8 +41,8 @@ const dom = `fx${tag}.pk`;
 const policy = exportPolicy({}, {});
 const ids = {};
 
-async function user(key, role = 'CUSTOMER', domain = dom) {
-  const u = await prisma.user.create({ data: { email: `${key}-${tag}@${domain}`, passwordHash: 'x', name: key, role, status: 'ACTIVE', createdAt: ago(400 * D) } });
+async function user(key, role = 'CUSTOMER', domain = dom, createdAt = ago(400 * D)) {
+  const u = await prisma.user.create({ data: { email: `${key}-${tag}@${domain}`, passwordHash: 'x', name: key, role, status: 'ACTIVE', createdAt } });
   ids[key] = u.id;
   return u;
 }
@@ -108,7 +108,8 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   await user('staff', 'GATE_STAFF');
   const c1 = await user('c1');
   const c2 = await user('c2');
-  const c3 = await user('c3');
+  // c3 signs up after genuine use began (the first live-verified payment, 80 days ago) and receives a ticket
+  const c3 = await user('c3', 'CUSTOMER', dom, ago(70 * D));
   const tst = await user('tst', 'CUSTOMER', 'example.com');
   const co = await company(org);
   const tCo = await company(tOrg);

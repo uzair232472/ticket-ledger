@@ -463,7 +463,7 @@ export const getFraudAlerts = async ({
   // Fetch behavior events that record fraud / rapid bot activities
   const where = {
     action: {
-      in: ['bot_risk_flagged', 'rapid_clicks', 'seat_rapid_click', 'fraud_score_computed', 'checkout_abandoned'],
+      in: ['bot_risk_flagged', 'rapid_clicks', 'seat_rapid_click', 'fraud_score_computed', 'checkout_abandoned', 'checkout_expired'],
     },
   };
 

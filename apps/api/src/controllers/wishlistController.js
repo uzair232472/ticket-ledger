@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
 /*
  * Wishlist: events a user saved with the heart. Every query is scoped to the signed-in user, so people
@@ -67,6 +68,7 @@ export const addToWishlist = async (req, res) => {
       update: {},
       create: { userId: req.user.id, eventId: event.id },
     });
+    behaviorService.trackBehavior({ req, userId: req.user.id, action: BEHAVIOR_ACTIONS.WISHLIST_ADDED, eventId: event.id });
     return res.status(201).json({ success: true, message: 'Saved to your wishlist.' });
   } catch (error) {
     console.error('Add to wishlist failed:', error);
@@ -77,7 +79,8 @@ export const addToWishlist = async (req, res) => {
 /** Remove an event (idempotent; only ever touches the caller's own item). */
 export const removeFromWishlist = async (req, res) => {
   try {
-    await prisma.wishlistItem.deleteMany({ where: { userId: req.user.id, eventId: req.params.eventId } });
+    const removed = await prisma.wishlistItem.deleteMany({ where: { userId: req.user.id, eventId: req.params.eventId } });
+    if (removed.count) behaviorService.trackBehavior({ req, userId: req.user.id, action: BEHAVIOR_ACTIONS.WISHLIST_REMOVED, eventId: req.params.eventId });
     return res.json({ success: true, message: 'Removed from your wishlist.' });
   } catch (error) {
     console.error('Remove from wishlist failed:', error);

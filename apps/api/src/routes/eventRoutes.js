@@ -34,6 +34,7 @@ import {
   getEventWaitlistStatus,
 } from '../controllers/ticketTransferController.js';
 import { authenticateJWT, optionalAuth, loadOrgContext, orgGuard } from '../middlewares/auth.js';
+import { getRecommendations, postRecommendationClick } from '../controllers/recommendationController.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 
 import { getSubmissionStatus, submitEventForReview, replyToReview, withdrawFromReview } from '../controllers/eventReviewController.js';
@@ -89,6 +90,9 @@ router.get('/schedule-check', ...orgGuard('event.view'), checkEventSchedule);
 
 // Public discovery endpoints with optional authentication to attribute user views
 router.get('/', optionalAuth, getEvents);
+// Recommendation experiment (rules + control group; logged for Step 5 data collection, not shown in the app yet)
+router.get('/recommendations', optionalAuth, getRecommendations);
+router.post('/recommendations/:listId/click', optionalAuth, postRecommendationClick);
 // Events approved for the home page hero (before /:id so it isn't an event id)
 router.get('/promoted-hero', getHeroPromotions);
 router.get('/:id', optionalAuth, getEventById);

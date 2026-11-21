@@ -1,4 +1,5 @@
 import { eventWhereFor, memberContext } from './orgAccess.js';
+import { LEFT_CHECKOUT_ACTIONS } from './checkoutOutcome.js';
 import { getSetting } from './systemConfig.js';
 import prisma from '../config/prisma.js';
 import { showRate } from './ml/attendanceBaseline.js';
@@ -268,7 +269,7 @@ const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null
       where: { eventId: { in: activeEventIds }, action: 'event_view' },
     }),
     prisma.behaviorEvent.count({
-      where: { eventId: { in: activeEventIds }, action: 'checkout_abandoned' },
+      where: { eventId: { in: activeEventIds }, action: { in: LEFT_CHECKOUT_ACTIONS } },
     }),
   ]);
 
