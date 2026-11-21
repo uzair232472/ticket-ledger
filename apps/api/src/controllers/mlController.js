@@ -191,6 +191,10 @@ export const trainModel = async (req, res) => {
       data: result,
     });
   } catch (error) {
+    // Legacy synthetic training is switched off on purpose (models come from the gated pipeline, python -m
+    // ml.train): the ML service refuses with 403, which is a refusal, not a server failure
+    if (error.status === 403) return res.status(403).json({ success: false, code: 'TRAINING_DISABLED', message: error.message });
+    if (error.message?.startsWith('Invalid model type')) return res.status(400).json({ success: false, message: error.message });
     console.error('Error retraining model:', error);
     return res.status(500).json({ success: false, message: error.message });
   }

@@ -4,6 +4,9 @@ Reviewed: `apps/api/src/services/emailService.js`, `otpService.js`, `notificatio
 `recoveryService.js`, `config/brand.js`, `.env.example`. **Nothing was changed by this review**; it lists what
 must be done before invited real users receive e-mail. No e-mail was sent while preparing it.
 
+**Status (R0 closure, 2026-11-22):** open. E1–E3 (blocking) and E4–E7 (high) must be completed before the
+real-user beta (platform-readiness-plan.md R4). Nothing here has been changed yet.
+
 ## How e-mail works today
 
 - **One sender:** `emailService.js`, using nodemailer.

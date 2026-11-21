@@ -880,6 +880,16 @@ export const getPreLaunchDemandForecast = async (req, res) => {
 /**
  * Adjust ticket tier prices before publishing
  */
+/**
+ * The tiers a pricing request may change: every id must be a tier of THIS event. Checked before anything is
+ * written, so a request naming another event's tier (another organizer's) changes nothing.
+ */
+async function foreignTierIds(eventId, tiers) {
+  const own = new Set((await prisma.ticketTier.findMany({ where: { eventId }, select: { id: true } })).map((t) => t.id));
+  return tiers.filter((t) => t?.id && !own.has(t.id)).map((t) => t.id);
+}
+const FOREIGN_TIER = { success: false, code: 'TIER_NOT_IN_EVENT', message: 'A ticket tier in this request does not belong to this event.' };
+
 export const updateEventPricing = async (req, res) => {
   try {
     const { id } = req.params;
@@ -904,13 +914,10 @@ export const updateEventPricing = async (req, res) => {
     }
     if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
 
-    // Update each tier in parallel
+    if ((await foreignTierIds(id, tiers)).length) return res.status(400).json(FOREIGN_TIER);
     for (const t of tiers) {
       if (t.id && t.price) {
-        await prisma.ticketTier.update({
-          where: { id: t.id },
-          data: { price: Number(t.price) },
-        });
+        await prisma.ticketTier.updateMany({ where: { id: t.id, eventId: id }, data: { price: Number(t.price) } });
       }
     }
 
@@ -959,12 +966,10 @@ export const publishEventWithPricing = async (req, res) => {
 
     // If tiers were adjusted, update them
     if (Array.isArray(tiers) && tiers.length > 0) {
+      if ((await foreignTierIds(id, tiers)).length) return res.status(400).json(FOREIGN_TIER);
       for (const t of tiers) {
         if (t.id && t.price) {
-          await prisma.ticketTier.update({
-            where: { id: t.id },
-            data: { price: Number(t.price) },
-          });
+          await prisma.ticketTier.updateMany({ where: { id: t.id, eventId: id }, data: { price: Number(t.price) } });
         }
       }
     }

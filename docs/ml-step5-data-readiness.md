@@ -146,8 +146,9 @@ data needs authorization.
 
 > **R0 status (2026-11-22): implemented.** Paging, grouped SQL, chunked lookups, streamed CSV output with
 > incremental hashing, one read-only `REPEATABLE READ` snapshot per export, and the indexes (migration
-> `20261124120000_export_and_payment_indexes`, applied to fresh test copies only, **not yet to the main
-> development database**).
+> `20261124120000_export_and_payment_indexes`). The migration was applied to the main development database on
+> 2026-11-22, after a verified backup and a restore rehearsal; all 61 business tables are byte-identical before and
+> after.
 >
 > **Verification:**
 > - same rows and report as the previous exporter at four export moments on both fixture worlds (327 to 720
@@ -333,7 +334,11 @@ Built (API only): `GET /api/events/recommendations?surface=home` and
 > - legacy synthetic ML models are off in production mode, and the profile fraud score is "unavailable" since
 >   Stage 4;
 > - minting is simulated in the sandbox (no contract address);
-> - three not yet explained: recovery reminders return 400, and a pre-publish price edit.
+> - recovery reminders and a pre-publish price edit, explained since.
+>
+> All 43 are classified in `docs/server-test-failures.md`: 27 obsolete test expectations and 6 that need live
+> testnet minting. The investigation also found two application issues, both fixed: cross-organizer price changes,
+> and a 500 for disabled training.
 >
 > The text below is the original plan.
 

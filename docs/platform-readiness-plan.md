@@ -18,8 +18,9 @@ phase; rules keep making every decision.
 > | R0.4 | Done: the 153 server tests were run in the sandbox. 110 pass, the same as before R0; the 43 earlier failures are listed in ml-step5 §13 |
 > | R0.5 | Done: `ML_GENUINE_FROM`. The staff/invited-tester lists use the existing `ML_EXPORT_EXCLUDE_USERS` and internal domains |
 > | R0.6 | Group stability done; impressions-on-render belongs with display (Step 6) |
-> | R0.7 | Done, with migration `20261124120000` **pending approval for the main development database** |
-> | R0.8 | Reviewed: docs/email-readiness.md (E1–E3 blocking) |
+> | R0.7 | Done; migration `20261124120000` applied to the main development database (2026-11-22: verified backup, rehearsal, business data unchanged) |
+> | R0.8 | Reviewed: docs/email-readiness.md. **E1–E3 must be completed before the real-user beta (R4)**; E4–E7 are also needed for it |
+| Closure | 43 server-test failures classified (docs/server-test-failures.md); cross-organizer pricing fixed; Stripe test-mode end-to-end steps in docs/stripe-test-mode-e2e.md (not yet run) |
 >
 > Resale purchases, which had no payment step at all, are now refused wherever real payments are required. A
 > Stripe resale payment flow is new work.
