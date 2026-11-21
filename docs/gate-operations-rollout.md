@@ -58,10 +58,12 @@ API logs the effective mode at startup.
 - **Web app rollback:** the previous web build works against the new API in `warn` or `off` mode (it sends the
   device id without a token). The `tl-gate-cred` IndexedDB database is simply unused by it.
 - **API rollback to before this phase:** set `GATE_DEVICE_AUTH=off` and deploy the previous API. The added columns
-  are ignored by the old code, so the migration can stay. Only if the columns must go, run
-  `prisma/rollbacks/20261118120000_gate_device_tokens.down.sql`, then
-  `npx prisma migrate resolve --rolled-back 20261118120000_gate_device_tokens`. Issued tokens are discarded and
-  devices re-enroll after the next upgrade.
+  are ignored by the old code, so the migration can stay. Only if the columns must go, roll back the newer gate
+  migrations first (newest first), then run
+  `psql -v ON_ERROR_STOP=1 -d "$DATABASE_URL" -f prisma/rollbacks/20261118120000_gate_device_tokens.down.sql`.
+  Issued tokens are discarded and devices re-enroll after the next upgrade. (Do not use
+  `prisma migrate resolve --rolled-back`: it only applies to failed migrations. Each down script removes its own
+  `_prisma_migrations` record instead, so `npx prisma migrate deploy` re-applies the migration later.)
 
 ### Known limits
 
@@ -380,7 +382,10 @@ cd apps/web && npm test && npm run build
 
 1. **Back up the database:** `pg_dump "$DATABASE_URL" -Fc -f ticketledger-before-gate-ops.dump`
 2. **Review the migrations:** `apps/api/prisma/migrations/20261118*_gate_*`. All are additive and each has a
-   rollback script in `prisma/rollbacks/`.
+   rollback script in `prisma/rollbacks/`. The scripts are transactional, are run newest first, and are tested
+   on throwaway databases by `bash prisma/rollbacks/test-rollbacks.sh` (rollback -> schema equals the state before
+   the migration -> `migrate deploy` re-applies it; plus the whole chain). The `gate_security` rollback stops,
+   changing nothing, while any quarantined scan has reason `TAMPERED`.
 3. **Apply the migrations:** `cd apps/api && npx prisma migrate deploy && npx prisma generate`
 4. **Configure:** `GATE_DEVICE_AUTH=warn` and `GATE_DEVICE_AUTH_DEADLINE=<date>`.
 5. **Deploy the backend** and restart. The log shows `Gate device auth: warn …`.
