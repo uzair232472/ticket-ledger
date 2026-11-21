@@ -199,33 +199,15 @@ def execute_fraud_score(req: FraudScoreRequest) -> FraudScoreResponse:
     total_amt = req.total_amount if req.total_amount is not None else float(tickets * 3500.0)
     resale = req.resale_attempts or 0
 
-    if fraud_pkg is not None:
-        pipeline = fraud_pkg["pipeline"]
-        input_df = pd.DataFrame([{
-            "account_age_days": float(account_age),
-            "ticket_count": int(tickets),
-            "total_amount": float(total_amt),
-            "failed_payments": int(failed_pmts),
-            "device_change_count": int(devices),
-            "ip_city_mismatch": int(mismatch),
-            "purchase_speed_seconds": float(speed),
-            "resale_attempts": int(resale)
-        }])
-
-        proba = float(pipeline.predict_proba(input_df)[0][1])
-        if speed < 1.0 or clicks > 300:
-            proba = max(proba, 0.95)
-        elif speed > 30.0 and clicks < 50:
-            proba = min(proba, 0.15)
-        
-        fraud_score = round(proba * 100.0, 1)
-    else:
-        base = 10.0
-        if speed < 3.0: base += 55.0
-        if clicks > 150: base += 25.0
-        if rapid_seats >= 5: base += 20.0
-        fraud_score = min(99.0, base)
-        proba = fraud_score / 100.0
+    # Checkout blocks follow these RULES only. A trained model never decides here, not even the legacy
+    # synthetic model loaded with ML_ALLOW_SYNTHETIC=1 (it used to set this score when that flag was on).
+    # New models run in shadow only (/v2/shadow). Same thresholds as before, so decisions are unchanged.
+    base = 10.0
+    if speed < 3.0: base += 55.0
+    if clicks > 150: base += 25.0
+    if rapid_seats >= 5: base += 20.0
+    fraud_score = min(99.0, base)
+    proba = fraud_score / 100.0
 
     if fraud_score >= 75.0:
         classification = "HIGH_RISK_BOT"

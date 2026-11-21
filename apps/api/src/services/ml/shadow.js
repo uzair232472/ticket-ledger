@@ -16,6 +16,7 @@
  */
 import prisma from '../../config/prisma.js';
 import { mlPost } from '../mlService.js';
+import { checkSnapshots } from './snapshotIntegrity.js';
 
 const SHADOW_TIMEOUT_MS = Number(process.env.ML_SHADOW_TIMEOUT_MS) || 2000; // off the request path
 const MODEL_CACHE_MS = 60_000;
@@ -49,7 +50,11 @@ const scoreOf = (p) => p.probability ?? p.sales_48h ?? p.scans ?? null;
 /**
  * Logs RULES (+ SHADOW when a shadow model is registered) rows for many subjects, with one ML call per
  * batch. Each item: { subjectType, subjectId, eventId?, userId?, asOf, rule: {score, decision, output},
- * features?: object, context?: object, skipped?: string }. Returns { rules, shadow, skipped, errors } counts.
+ * features?: object, context?: object, windowStart?: Date, skipped?: string }. Returns { rules, shadow, skipped, errors } counts.
+ *
+ * Right before the rows are written (after every input was read) each snapshot's integrity is checked
+ * (snapshotIntegrity.js): output.context.exact is true only if none of the event's inputs changed since
+ * `windowStart` (default: asOf, the prediction moment). Training uses exact snapshots only.
  */
 export async function logPredictions(name, items) {
   const counts = { rules: 0, shadow: 0, skipped: 0, errors: 0 };
@@ -69,13 +74,19 @@ export async function logPredictions(name, items) {
         callError = e.name === 'TimeoutError' ? 'timeout' : e.message;
       }
     }
+    // Integrity of each snapshot, checked after all inputs were read and right before the rows are written
+    const withInputs = chunk.filter((it) => it.features);
+    const integrity = new Map((await checkSnapshots(deps.db, withInputs.map((it) => ({ eventId: it.eventId, windowStart: it.windowStart || it.asOf }))))
+      .map((r, j) => [withInputs[j], r]));
     let k = 0;
     for (const it of chunk) {
       const base = {
         modelName: name, subjectType: it.subjectType, subjectId: String(it.subjectId), eventId: it.eventId ?? null,
         userId: it.userId ?? null, asOf: it.asOf, features: it.features ?? undefined,
       };
-      const ruleOutput = it.context ? { ...(it.rule?.output || {}), context: it.context } : it.rule?.output;
+      const check = integrity.get(it);
+      const context = check ? { ...(it.context || {}), captured_at: it.context?.captured_at ?? check.checked_at, exact: check.exact, integrity: check } : it.context;
+      const ruleOutput = context ? { ...(it.rule?.output || {}), context } : it.rule?.output;
       rows.push({ ...base, role: 'RULES', score: it.rule?.score ?? null, decision: it.rule?.decision ?? null, output: ruleOutput ?? undefined });
       counts.rules += 1;
       if (!model) continue;

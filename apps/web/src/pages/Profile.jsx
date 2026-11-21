@@ -1054,7 +1054,8 @@ export default function Profile() {
                     : scores.purchaseIntent?.description || 'Across all events you interacted with';
                   const totalActions = picked ? picked.actions : behaviorProfile?.totalEventsTracked ?? summary.totalActions ?? (behaviorProfile?.timeline?.length || 0);
                   const topCategory = summary.categoryAffinity?.[0]?.category || summary.topCategory || '';
-                  const riskLevel = scores.fraudRisk?.level || summary.riskLevel || 'LOW_RISK';
+                  const riskLevel = scores.fraudRisk?.level || summary.riskLevel || 'UNAVAILABLE';
+                  const riskScored = riskLevel !== 'UNAVAILABLE' && scores.fraudRisk?.available !== false;
 
                   return (
                     <>
@@ -1119,9 +1120,9 @@ export default function Profile() {
                         <span className="text-[10px] uppercase font-bold text-slate-400 block">Security Verification</span>
                         <div className="text-sm font-bold text-[#008459] flex items-center gap-1.5">
                           <ShieldCheck className="w-4 h-4 text-[#008459]" />
-                          <span>{riskLevel === 'LOW_RISK' ? 'Human Verified' : riskLevel}</span>
+                          <span>{!riskScored ? 'Checked at checkout' : riskLevel === 'LOW_RISK' ? 'Human Verified' : riskLevel}</span>
                         </div>
-                        <p className="text-[10px] text-slate-500">Anti-scalping score normal</p>
+                        <p className="text-[10px] text-slate-500">{!riskScored ? 'No profile score: anti-scalping checks run on each checkout' : 'Anti-scalping score normal'}</p>
                       </div>
                     </div>
 

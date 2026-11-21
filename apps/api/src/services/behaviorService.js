@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import prisma from '../config/prisma.js';
-import mlService from './mlService.js';
 
 export const BEHAVIOR_ACTIONS = {
   EVENT_VIEW: 'event_view',
@@ -257,26 +256,17 @@ export const getUserBehavioralProfile = async (userId, sessionId = null, scope =
   const overall = overallIntent(intentByEvent, counts);
   const intentScore = overall.score;
   const intentClass = overall.tier;
-  let fraudScore = 12; // Default normal customer
-  let fraudStatus = 'LOW';
-
-  if (!scopedIds) try {
-    const fraudRes = await mlService.predictFraud({
-      checkoutDurationSeconds: 45.0,
-      clicksPerMinute: 24.0,
-      seatLockAttempts: Math.max(1, counts.seatsLocked),
-      deviceSwitches: 1,
-      ticketCount: Math.max(1, counts.ticketsPurchased),
-    });
-
-    if (fraudRes && fraudRes.fraud_score !== undefined) {
-      fraudScore = fraudRes.fraud_score;
-      fraudStatus = fraudRes.risk_level || (fraudScore > 75 ? 'CRITICAL_BOT' : fraudScore > 40 ? 'SUSPICIOUS' : 'LOW');
-    }
-  } catch (fraudErr) {
-    fraudScore = 14;
-    fraudStatus = 'LOW';
-  }
+  // No fraud score for a profile. Fraud is assessed only at checkout (by the rules, from that checkout's
+  // real telemetry). This used to call mlService.predictFraud, which does not exist, so it always showed a
+  // fixed 14 "low risk" (and with it, invented telemetry). That could be mistaken for a genuine ML score, so
+  // the profile now says plainly that no score is available.
+  const fraudRisk = {
+    available: false,
+    score: null,
+    level: 'UNAVAILABLE',
+    isBot: false,
+    description: 'Not scored: fraud checks run at checkout only, using that checkout activity',
+  };
 
   const profile = {
     user,
@@ -290,18 +280,13 @@ export const getUserBehavioralProfile = async (userId, sessionId = null, scope =
         basis: 'rules',
         eventsConsidered: intentByEvent.length,
       },
-      fraudRisk: {
-        score: Math.round(fraudScore),
-        level: fraudStatus,
-        isBot: fraudStatus === 'CRITICAL_BOT',
-        description: fraudStatus === 'LOW' ? 'Verified Human Behavior' : 'Requires Review',
-      },
+      fraudRisk,
     },
     summary: {
       intentScore: Math.round(intentScore),
       intentLevel: intentClass,
       totalActions: events.length,
-      riskLevel: fraudStatus === 'LOW' ? 'LOW_RISK' : fraudStatus === 'CRITICAL_BOT' ? 'CRITICAL_BOT' : 'SUSPICIOUS',
+      riskLevel: 'UNAVAILABLE',
       // Event categories the user actually interacted with, most active first
       topCategory: categoryAffinity(intentByEvent)[0]?.category || null,
       categoryAffinity: categoryAffinity(intentByEvent),

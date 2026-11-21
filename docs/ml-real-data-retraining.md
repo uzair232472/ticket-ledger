@@ -42,8 +42,31 @@ after that moment and checks the export does not change.
 **Every row comes from a prediction-time snapshot.** Each live prediction stores its exact inputs
 (`MlPrediction.features`, role `RULES`) and the raw values a training row needs, read at that moment
 (`output.context`: prices, capacity, start time, holder, with `captured_at`). Nothing is rebuilt from current
-values. A row without a usable snapshot (none logged, logged before raw values were stored, or read more than
-2 hours after the prediction moment) is left out, and the reason is counted.
+values. A row without a usable snapshot (none logged, logged before raw values were stored, not exact, or read
+more than 2 hours after the prediction moment) is left out, and the reason is counted.
+
+**Only exact snapshots are used.** Some inputs are read a little after the prediction's reference moment:
+- **Request-path predictions** (checkout fraud, demand forecast views) are read on the next tick after the
+  response.
+- **Visits** are read 30 to 45 minutes after the visit ends, because a visit is only finished after 30 quiet
+  minutes. The reference moment is the visit's start, i.e. the prices the customer saw.
+- **Demand at sales open** is read within the hour after the open.
+
+Database triggers (migration `20261122120000_ml_input_changes`) record every change to an event's inputs in
+the same transaction as the change: schedule, capacity, type, city, sales-open times, organizer,
+cancellation, tier prices and quantities, and tiers or gates added or removed. Ticket sales are not inputs.
+Right after the inputs are read, and before the prediction row is written, the logger checks that event's
+change log from the reference moment (minus 2 minutes, to cover a transaction that started just before it).
+- **Any change** → `context.exact = false`, with the changed sources. The exporter leaves the row out
+  ("not exact: event inputs changed after the prediction moment").
+- **No change** → `exact = true`. A change committed after the check cannot have affected values already
+  read. Changes after the prediction is stored never alter it.
+- **The check cannot run** (e.g. the migration is not applied) → every snapshot is marked not exact.
+- **Older snapshots** without the flag are never used.
+
+The typical-price reference is rebuilt as soon as any input change is logged, so it is never stale either.
+`test_ml_snapshot_integrity.mjs` covers price, quantity, tier, capacity, start, city, sales-open and gate
+changes before and immediately after a prediction.
 
 | File | Row = | Snapshot logged by | Prediction time (`ts`) | Label |
 |---|---|---|---|---|
@@ -112,6 +135,22 @@ count.
 
 ## Foundation items
 
+### Fraud dataset scope (what it does and does not represent)
+- **Current fraud labels cover only eligible paid orders**: an order by a real customer account, on a real
+  event, whose payment the server confirmed with the provider in live mode, whose checkout logged an exact
+  snapshot, that was selected for blind review and received a resolved blind decision.
+- **Left out, and kept out of training**, until a separately reviewed and reliable labeling process exists
+  for them:
+  - unpaid checkout attempts (failed or abandoned orders);
+  - blocked checkout attempts (`CRITICAL_BOT`: no order exists, see item 3);
+  - orders without live payment evidence;
+  - unresolved and exposed-only reviews.
+- **The dataset does not represent all fraud activity.** It describes paid orders that passed the rules. The
+  most bot-like attempts are blocked before payment and never appear. The sampling weights correct for
+  *which paid orders were reviewed*, not for the orders that never reached payment. Precision, recall and
+  false-flag rates computed from it apply to **paid orders only**, and reports must say so.
+- Nothing in the exporter or the evaluation infers a label for an excluded attempt.
+
 ### 1. Fraud review blindness (fixed)
 The fraud watchlist, the admin fraud alerts, an admin's view of a customer's behaviour profile,
 investigations, and freezing or unfreezing an account from the watchlist all show fraud-detector output.
@@ -176,6 +215,17 @@ needs a business decision.
   needs a randomised hold-out group to measure the effect. It must not reuse the abandonment model, its
   data or its results.
 
+### No model makes decisions (verified)
+- Checkout blocks follow the ML service's `/fraud/score`. It now always answers with its rules (unchanged
+  thresholds), even when a trained model is loaded: the legacy synthetic model used to set the score
+  when `ML_ALLOW_SYNTHETIC=1`.
+- Payments, refunds, tickets, transfers and gate admission never read model output or the shadow log.
+  The shadow log is used only by the ML modules: logging, review sampling, outcomes and export.
+- The behaviour profile no longer shows a fraud score. It used to call `mlService.predictFraud`, which
+  doesn't exist, and always showed a fixed "low risk" (14) built from invented telemetry. It now says "not
+  scored": fraud checks run at checkout only.
+- Tests: `test_ml_hardening_unit.mjs` and `tests/test_no_model_decisions.py`.
+
 ### 5. Gate capacity (documented; checks added)
 Crowd-flow inputs split arrivals across gates by `capacityPerHour`, which is optional on gates. A missing
 capacity is never guessed: the event is skipped by live scoring, left out of the export (reason counted),
@@ -193,17 +243,19 @@ capacities. Making the field required on new gates is a product decision and has
   so no order can qualify. Real training needs a live Stripe key (or real JazzCash / EasyPaisa integrations
   that record provider confirmation), then months of live sales, check-ins and blind reviews. Snapshots only
   exist from this release onward: earlier history can never be used.
-- **Unpaid checkout attempts never qualify for fraud training**: an order needs live payment evidence, so
-  fraud labels only come from paid orders (and blocked attempts have none, item 3).
-- **A snapshot is read when its job runs**: within 15 minutes for demand at sales open, and 30 to 45 minutes
-  after a visit ends. A price edit inside that window is captured. Snapshots read more than 2 hours late are
-  left out (e.g. after server downtime).
+- **Fraud data covers eligible paid orders only** (see "Fraud dataset scope"): unpaid and blocked attempts
+  stay out of training, and the dataset does not represent all fraud activity.
+- **Snapshots are rejected, not repaired.** Any input change between the reference moment and the capture
+  excludes the row. For visits that window is the visit plus 30 to 45 minutes; for demand, the first hour
+  after sales open. Organizers who edit prices early lose those rows rather than getting reconstructed ones.
+  The check covers the predicted event's own inputs. The typical-price reference uses all real events'
+  prices as they are at capture time.
+- **The integrity check needs migration `20261122120000_ml_input_changes`.** Without it, every new snapshot
+  is marked not exact, so nothing becomes trainable (safe, but no data accumulates).
 - **Fraud labels are human judgment** from a stratified sample. The weights correct for the sampling, not
   for reviewer error.
 - **The deployed-model comparison needs newer data** than the deployed model's training period.
 - **Batching:** the exporter and the attendance snapshot read records one by one. That is fine at current
   sizes; batch them before events with tens of thousands of tickets.
-- Demand's average price is rounded to 10 (as in the training definition). When every tier has the same
-  price that isn't a multiple of 10 (e.g. 7777), the average can exceed the maximum.
 - Real-data sufficiency minimums are planning estimates derived from the evaluation's test-period gates, not
   guarantees of a PASSED result.

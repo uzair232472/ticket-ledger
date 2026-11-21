@@ -23,6 +23,7 @@ const { referencePrice, clearReferencePriceCache } = await import('./src/service
 const jobs = await import('./src/services/ml/jobs.js');
 const { visitId } = await import('./src/services/ml/visits.js');
 const { recordPaymentEvidence, EVIDENCE_ACTION } = await import('./src/services/paymentEvidence.js');
+const { logPredictions } = await import('./src/services/ml/shadow.js');
 test.after(() => prisma.$disconnect());
 
 const H = 3600_000;
@@ -52,6 +53,8 @@ async function event(key, { companyId, open, start, gates = [], price = 1000 }) 
     include: { tiers: true },
   });
   for (const [i, g] of gates.entries()) await prisma.eventGate.create({ data: { eventId: e.id, name: `G${i + 1}`, capacityPerHour: g, sortOrder: i } });
+  // Creating the event is not a change after any prediction: in the simulated timeline it happened at createdAt
+  await prisma.mlInputChange.deleteMany({ where: { eventId: e.id } });
   ids[key] = e.id;
   return { ...e, ga: e.tiers.find((t) => t.name === 'General'), vip: e.tiers.find((t) => t.name === 'VIP') };
 }
@@ -80,7 +83,8 @@ const checkIn = async (ticket, ev, gateName, at) => {
 const behave = (userId, eventId, action, at, metadata) => prisma.behaviorEvent.create({ data: { userId, eventId, action, sessionId: `fx-${tag}`, createdAt: at, metadata } });
 const FRAUD_FEATURES = { event_type: 'CRICKET_MATCH', city: 'Lahore', country: 'PK', payment_method: 'STRIPE', tickets_requested: 2, unit_price_rel: 1, checkout_duration_seconds: 40, clicks_per_minute: 20, rapid_seat_attempts: 0, time_on_seatmap_seconds: 30, device_switches: 0, account_age_days: 300, customer_prior_orders: 1, orders_last_24h: 0, failed_payments_30d: 0, prior_resale_listings: 0, hours_since_sales_open: 100 };
 async function fraudCase(o, { decision, cell, p, reviews }) {
-  await prisma.mlPrediction.create({ data: { modelName: 'fraud', role: 'RULES', subjectType: 'ORDER', subjectId: o.id, eventId: o.eventId, userId: o.userId, asOf: o.createdAt, createdAt: o.createdAt, score: decision === 'SUSPICIOUS' ? 60 : 10, decision, features: FRAUD_FEATURES } });
+  // Logged by the real prediction logger (as at checkout), which also checks the snapshot's integrity
+  await logPredictions('fraud', [{ subjectType: 'ORDER', subjectId: o.id, eventId: o.eventId, userId: o.userId, asOf: o.createdAt, rule: { score: decision === 'SUSPICIOUS' ? 60 : 10, decision }, features: FRAUD_FEATURES }]);
   const s = await prisma.fraudSample.create({ data: { orderId: o.id, cell, selected: true, inclusionProbability: p, ruleDecision: decision, mlWouldFlag: false } });
   for (const r of reviews) await prisma.fraudReview.create({ data: { sampleId: s.id, orderId: o.id, reviewerId: 'rev', ...r } });
 }
@@ -131,6 +135,12 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   const Dv = await event('D', { companyId: co.id, open: ago(20 * D), start: ago(3 * D), gates: [600] });
   await jobs.snapshotDemand({ now: plus(Dv.salesOpenAt, 10 * M) });
   const oD = await order('oD', { userId: c2.id, ev: Dv, tier: Dv.ga, at: plus(Dv.salesOpenAt, H), livemode: false });
+  // V: c1 visits V, and V's price is changed during the visit, before the visit job reads the inputs
+  const V = await event('V', { companyId: co.id, open: ago(50 * D), start: ago(8 * D), gates: [600] });
+  const vv = ago(33 * D);
+  await behave(c1.id, V.id, 'event_view', vv);
+  await prisma.mlInputChange.create({ data: { eventId: V.id, source: 'TicketTier', changedAt: plus(vv, 60_000) } });
+  await jobs.scoreVisits({ now: plus(vv, 40 * M) });
   // N: a real event nobody snapshotted (server down at sales open); T: a test organizer's event
   await event('N', { companyId: co.id, open: ago(25 * D), start: ago(4 * D), gates: [600] });
   await event('T', { companyId: tCo.id, open: ago(95 * D), start: ago(70 * D), price: 900000 });
@@ -163,7 +173,7 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   first = await buildExport({ policy, now: NOW });
 });
 
-const fx = () => ['A', 'B', 'C', 'P', 'D', 'N', 'T'].map((k) => pseudo('E', ids[k]));
+const fx = () => ['A', 'B', 'C', 'P', 'D', 'N', 'T', 'V'].map((k) => pseudo('E', ids[k]));
 const mine = (rows) => rows.filter((r) => fx().includes(r.event_id));
 const pick = (name) => mine(first.datasets[name]);
 
@@ -195,6 +205,8 @@ test('visits: verified labels from snapshots; test accounts left out', () => {
   assert.equal(c2.checkout_abandoned, -1);
   assert.ok(!rows.some((r) => r.customer_id === pseudo('C', ids.tst)), 'test account');
   assert.ok(first.report.datasets.behavior_sequences.excluded['test e-mail domain'] >= 1);
+  assert.ok(!rows.some((r) => r.event_id === pseudo('E', ids.V)), 'price changed between the visit and the capture');
+  assert.ok(first.report.datasets.behavior_sequences.excluded['not exact: event inputs changed after the prediction moment'] >= 1);
 });
 
 test('fraud: only blind resolved reviews of live-verified orders, weighted by the sampling design', () => {

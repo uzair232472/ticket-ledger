@@ -61,10 +61,11 @@ export async function scoreVisits({ now = new Date(), lookbackHours = 48 } = {})
     const base = { subjectType: 'VISIT', subjectId: id, eventId: f.visit.eventId, userId: f.userId, asOf: f.visit.end };
     const { price, minPrice } = visitPrice(f.visit, await getEvent(f.visit.eventId));
     const context = { ticket_price: price, min_price: minPrice, captured_at: now.toISOString() };
-    intent.push({ ...base, rule: { score: rule.score, decision: rule.decision, output: { orderIds } }, features, context });
+    // Reference moment for the integrity check: the visit's start (the prices the customer saw)
+    intent.push({ ...base, rule: { score: rule.score, decision: rule.decision, output: { orderIds } }, features, context, windowStart: f.visit.start });
     if (features.checkout_started) {
       const { checkout_started: _c, ...af } = features;
-      abandonment.push({ ...base, rule: { score: 100 - rule.score, decision: null, output: { orderIds } }, features: af, context });
+      abandonment.push({ ...base, rule: { score: 100 - rule.score, decision: null, output: { orderIds } }, features: af, context, windowStart: f.visit.start });
     }
   }
   return {
@@ -125,7 +126,8 @@ export async function snapshotDemand({ now = new Date(), windowMs = HOUR } = {})
   for (const e of events.filter((x) => !done.has(x.id))) {
     try {
       const { features, context } = await demandSnapshot({ eventId: e.id, at: salesOpenOf(e) });
-      items.push({ subjectType: 'EVENT_AT_SALES_OPEN', subjectId: e.id, eventId: e.id, asOf: now, rule: { score: null, decision: null, output: { trigger: 'sales_open' } }, features, context: { ...context, captured_at: now.toISOString() } });
+      // Reference moment: sales open (prices and capacity must be unchanged since then)
+      items.push({ subjectType: 'EVENT_AT_SALES_OPEN', subjectId: e.id, eventId: e.id, asOf: now, windowStart: salesOpenOf(e), rule: { score: null, decision: null, output: { trigger: 'sales_open' } }, features, context: { ...context, captured_at: now.toISOString() } });
     } catch (err) {
       if (!(err instanceof MissingInput)) throw err;
       count(skipped, err.message);

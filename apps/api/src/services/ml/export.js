@@ -3,8 +3,10 @@
  * tables, for retraining on the client's real data.
  *
  * Rules (each one is counted in the export report):
- *   - Inputs ONLY from prediction-time snapshots: the exact features a live prediction logged (MlPrediction,
- *     role RULES) and, in output.context, the raw values read at that moment (prices, capacity, start).
+ *   - Inputs ONLY from EXACT prediction-time snapshots: the features a live prediction logged (MlPrediction,
+ *     role RULES) and, in output.context, the raw values read at that moment (prices, capacity, start),
+ *     marked exact only when no input of that event changed between the prediction moment and the write
+ *     (snapshotIntegrity.js).
  *     Nothing is rebuilt from current values: a row without a usable snapshot is left out, with the reason.
  *     The snapshots come from the same builders the live predictions use (features.js, visits.js, crowd.js).
  *   - Labels only from verified real outcomes: paid orders with server-side LIVE payment evidence
@@ -83,8 +85,14 @@ class Rows {
  */
 export function snapshotProblem(p, need = []) {
   if (!p.features || typeof p.features !== 'object') return 'no inputs logged (prediction skipped)';
-  if (!need.length) return null;
   const c = p.output?.context;
+  // Exactness was checked when the snapshot was written (snapshotIntegrity.js); anything else is left out
+  if (!c || c.exact === undefined) return 'snapshot integrity not verified (logged before the check existed)';
+  if (c.exact !== true) {
+    const why = String(c.integrity?.reason || '');
+    return why.startsWith('inputs changed') ? 'not exact: event inputs changed after the prediction moment' : `not exact: ${why.split(':')[0] || 'unknown'}`;
+  }
+  if (!need.length) return null;
   if (!c || need.some((k) => c[k] === undefined || c[k] === null)) return 'snapshot without prediction-time prices / capacity / start (logged before they were stored)';
   if (c.captured_at && new Date(c.captured_at) - p.asOf > MAX_CAPTURE_LAG_MS) return 'snapshot read too long after the prediction moment';
   return null;

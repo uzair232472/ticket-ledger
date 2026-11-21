@@ -68,6 +68,7 @@ const formatTimeAgo = (dateStr) => {
 };
 
 function ScoreCard({ icon: Icon, blue, title, text, badge, badgeTone, score, danger, foot }) {
+  const unavailable = score === null || score === undefined;
   const v = Math.max(0, Math.min(100, Number(score) || 0));
   return (
     <section className="tl-bh-score">
@@ -77,8 +78,12 @@ function ScoreCard({ icon: Icon, blue, title, text, badge, badgeTone, score, dan
         <span className={`tl-bd tl-bd--${badgeTone}`}>{badge}</span>
         <p>{text}</p>
       </div>
-      <p className="tl-bh-score-value">{v} <span>/ 100</span></p>
-      <div className={`tl-bh-bar${danger ? ' is-rose' : ''}`} role="img" aria-label={`${title}: ${v} out of 100`}><span style={{ width: `${Math.max(2, v)}%` }} /></div>
+      {unavailable
+        ? <p className="tl-bh-score-value">Not available</p>
+        : <>
+            <p className="tl-bh-score-value">{v} <span>/ 100</span></p>
+            <div className={`tl-bh-bar${danger ? ' is-rose' : ''}`} role="img" aria-label={`${title}: ${v} out of 100`}><span style={{ width: `${Math.max(2, v)}%` }} /></div>
+          </>}
       {foot && <p className="tl-bh-score-foot"><span>{foot}</span></p>}
     </section>
   );
@@ -187,9 +192,9 @@ export default function BehaviorProfile() {
               blue
               title="Abuse / bot risk score"
               text="Risk of automated or abusive behavior based on activity patterns."
-              badge={`${(risk.level || 'Low').toString().toLowerCase().replace(/^\w/, (c) => c.toUpperCase())} risk`}
-              badgeTone={risk.level === 'LOW' || !risk.level ? 'green' : 'rose'}
-              score={risk.score ?? 0}
+              badge={risk.available === false || !risk.level ? 'Not scored' : `${risk.level.toString().toLowerCase().replace(/^\w/, (c) => c.toUpperCase())} risk`}
+              badgeTone={risk.available === false || !risk.level ? 'amber' : risk.level === 'LOW' ? 'green' : 'rose'}
+              score={risk.available === false ? null : risk.score}
               danger={(risk.score ?? 0) > 50}
               foot={risk.description}
             />

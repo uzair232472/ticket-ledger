@@ -9,6 +9,7 @@
  */
 import prisma from '../../config/prisma.js';
 import { dataPolicy, organizerExclusion } from './dataPolicy.js';
+import { latestInputChange } from './snapshotIntegrity.js';
 
 // Single place to change when events get their own country / time zone (the platform is Pakistan-only today)
 export const COUNTRY = 'PK';
@@ -58,15 +59,25 @@ const median = (xs) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
-/** Average tier price, as in training: mean of the tier prices, rounded to 10. */
-const avgTierPrice = (tiers) => Math.round(mean(tiers.map((t) => Number(t.price))) / 10) * 10;
+/**
+ * Average tier price, as in training: mean of the tier prices rounded to 10, kept within the cheapest and
+ * dearest tier (rounding alone can push it above the maximum, e.g. every tier at 7777 -> 7780).
+ */
+export const avgTierPrice = (tiers) => {
+  const prices = tiers.map((t) => Number(t.price));
+  const rounded = Math.round(mean(prices) / 10) * 10;
+  return Math.min(Math.max(...prices), Math.max(Math.min(...prices), rounded));
+};
 
 // The country's typical price: median average tier price of REAL events whose sales opened before `at`
 // (test and internal organizers' events are left out: dataPolicy.js).
 let refCache = { at: 0, events: null };
 export const clearReferencePriceCache = () => { refCache = { at: 0, events: null }; };
 async function eventsWithPrices() {
-  if (!refCache.events || Date.now() - refCache.at > HOUR) {
+  // Rebuilt hourly, and at once after any logged change to an event's prices (so a snapshot never uses a
+  // stale reference)
+  const changed = refCache.events ? await latestInputChange(prisma) : null;
+  if (!refCache.events || Date.now() - refCache.at > HOUR || (changed && changed.getTime() >= refCache.at)) {
     const policy = dataPolicy();
     const rows = await prisma.event.findMany({
       where: { tiers: { some: {} } },

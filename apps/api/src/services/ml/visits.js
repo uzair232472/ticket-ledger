@@ -11,7 +11,7 @@
  * Guest visits are not scored: purchases need an account, so their outcome could never be verified.
  */
 import prisma from '../../config/prisma.js';
-import { COUNTRY, MissingInput, referencePrice, salesOpenOf, startOf } from './features.js';
+import { COUNTRY, MissingInput, avgTierPrice, referencePrice, salesOpenOf, startOf } from './features.js';
 
 export const VISIT_GAP_MS = 30 * 60_000;
 export const DEDUPE_MS = 10_000;
@@ -84,9 +84,8 @@ export async function visitFeatures({ visit, history, orders, user, event }) {
   const start = startOf(event);
   if (visit.start >= start) throw new MissingInput('visit after the event started');
   const at = visit.end;
-  const prices = event.tiers.map((t) => Number(t.price));
   const { price } = visitPrice(visit, event);
-  const ref = await referencePrice(at, Math.round(prices.reduce((a, b) => a + b, 0) / prices.length / 10) * 10);
+  const ref = await referencePrice(at, avgTierPrice(event.tiers));
   const before = history.filter((h) => h.start < visit.start);
   return {
     event_type: event.type,
