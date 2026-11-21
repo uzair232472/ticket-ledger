@@ -66,8 +66,10 @@ test('2. fraud: every order gets a RULES and a SHADOW row with the exact inputs;
     });
   }
   const withSeats = orders.filter((o) => o.tickets.length).length;
-  assert.equal(await count({ modelName: 'fraud', role: 'RULES' }), orders.length);
-  assert.equal(await count({ modelName: 'fraud', role: 'SHADOW', score: { not: null } }), withSeats);
+  // Scoped to these orders (other test files may have logged other fraud subjects in the same copy)
+  const mine = { subjectType: 'ORDER', subjectId: { in: orders.map((o) => o.id) } };
+  assert.equal(await count({ modelName: 'fraud', role: 'RULES', ...mine }), orders.length);
+  assert.equal(await count({ modelName: 'fraud', role: 'SHADOW', score: { not: null }, ...mine }), withSeats);
   const s = await prisma.mlPrediction.findFirst({ where: { modelName: 'fraud', role: 'SHADOW', score: { not: null } } });
   const want = registry.models.find((m) => m.name === 'fraud').features;
   assert.deepEqual(Object.keys(s.features).sort(), [...want.categorical, ...want.numeric].sort());
@@ -127,12 +129,16 @@ test('5. crowd: skipped while a gate has no capacity; scored per gate and slot o
 });
 
 test('6. blind sampling: every scored order lands in one cell; selection follows the stated rates', async () => {
+  // Orders that already had a sample (e.g. from another test file in the same copy) are never sampled again
+  const already = new Set((await prisma.fraudSample.findMany({ select: { orderId: true } })).map((x) => x.orderId));
+  const scoredOrders = (await prisma.mlPrediction.findMany({ where: { modelName: 'fraud', role: 'SHADOW', subjectType: 'ORDER', score: { not: null } }, select: { subjectId: true } }))
+    .map((x) => x.subjectId).filter((id) => !already.has(id));
   process.env.ML_REVIEW_RATE_RANDOM = '0.5';
   const r = await jobs.sampleFraudOrders({ now: FAR, settleMs: 0 });
   delete process.env.ML_REVIEW_RATE_RANDOM;
-  const scored = await count({ modelName: 'fraud', role: 'SHADOW', score: { not: null } });
-  assert.equal(r.sampled, scored);
-  const samples = await prisma.fraudSample.findMany();
+  assert.equal(r.sampled, scoredOrders.length);
+  const samples = await prisma.fraudSample.findMany({ where: { orderId: { in: scoredOrders } } });
+  assert.equal(samples.length, scoredOrders.length);
   for (const s of samples) {
     const p = s.cell === 'NEITHER' ? 0.5 : 1;
     assert.equal(s.inclusionProbability, p);

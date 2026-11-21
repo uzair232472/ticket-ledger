@@ -15,7 +15,7 @@
  */
 import { createHash } from 'node:crypto';
 import prisma from '../../config/prisma.js';
-import { ATTENDANCE_LEAD_MS, LIVE_TICKET, MissingInput, attendanceSnapshot, demandSnapshot, salesOpenOf, startOf } from './features.js';
+import { ATTENDANCE_LEAD_MS, LIVE_TICKET, MissingInput, attendanceSnapshot, demandSnapshot, endOf, salesOpenOf, startOf } from './features.js';
 import { logPredictions, snapshotsEnabled } from './shadow.js';
 import { finishedVisits, intentRule, parseVisitId, SOLD, visitFeatures, visitId, visitPrice } from './visits.js';
 import { showRate } from './attendanceBaseline.js';
@@ -230,7 +230,7 @@ const pending = (modelName, subjectType, before, take = 500) => prisma.mlPredict
 });
 
 export async function attachOutcomes({ now = new Date() } = {}) {
-  const done = { intent: 0, abandonment: 0, demand: 0, crowd: 0, fraud: 0 };
+  const done = { intent: 0, abandonment: 0, demand: 0, attendance: 0, crowd: 0, fraud: 0 };
 
   // Intent: a paid order for that event within 7 days of the visit start
   for (const p of await pending('intent', 'VISIT', new Date(now - 7 * DAY))) {
@@ -249,16 +249,33 @@ export async function attachOutcomes({ now = new Date() } = {}) {
     done.abandonment += 1;
   }
 
-  // Demand: tickets sold in the first 48 hours after sales opened
-  for (const p of await pending('demand', 'EVENT_FORECAST', now)) {
-    const e = await prisma.event.findUnique({ where: { id: p.eventId }, select: { salesOpenAt: true, publishAt: true, approvedAt: true, createdAt: true } });
-    if (!e) continue;
-    const open = salesOpenOf(e);
-    const end = new Date(open.getTime() + 2 * DAY);
-    if (end > now) continue;
-    const sold = await prisma.ticket.count({ where: { eventId: p.eventId, createdAt: { gte: open, lt: end }, order: { status: { in: SOLD } } } });
-    await setOutcome('demand', 'EVENT_FORECAST', p.subjectId, sold, { source: 'tickets', window: [open, end] }, now);
-    done.demand += 1;
+  // Demand: tickets sold in the first 48 hours after sales opened (forecast views and sales-open snapshots)
+  for (const subjectType of ['EVENT_FORECAST', 'EVENT_AT_SALES_OPEN']) {
+    for (const p of await pending('demand', subjectType, now)) {
+      const e = await prisma.event.findUnique({ where: { id: p.eventId }, select: { salesOpenAt: true, publishAt: true, approvedAt: true, createdAt: true } });
+      if (!e) continue;
+      const open = salesOpenOf(e);
+      const end = new Date(open.getTime() + 2 * DAY);
+      if (end > now) continue;
+      const sold = await prisma.ticket.count({ where: { eventId: p.eventId, createdAt: { gte: open, lt: end }, order: { status: { in: SOLD } } } });
+      await setOutcome('demand', subjectType, p.subjectId, sold, { source: 'tickets', window: [open, end] }, now);
+      done.demand += 1;
+    }
+  }
+
+  // Attendance: was the ticket checked in (once the event has ended)
+  const att = await pending('attendance', 'TICKET', now, 3000);
+  const ended = new Map();
+  for (const p of att) {
+    if (!ended.has(p.eventId)) {
+      const e = await prisma.event.findUnique({ where: { id: p.eventId }, select: { date: true, time: true, startsAt: true, endsAt: true } });
+      ended.set(p.eventId, Boolean(e) && endOf(e) <= now);
+    }
+    if (!ended.get(p.eventId)) continue;
+    const t = await prisma.ticket.findUnique({ where: { id: p.subjectId }, select: { checkedInAt: true } });
+    if (!t) continue;
+    await setOutcome('attendance', 'TICKET', p.subjectId, t.checkedInAt ? 1 : 0, { source: 'check-ins' }, now);
+    done.attendance = (done.attendance || 0) + 1;
   }
 
   // Crowd: admitted first entries at that gate in that slot (a day after the event)
