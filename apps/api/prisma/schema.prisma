@@ -726,6 +726,8 @@ model Order {
   @@index([userId])
   @@index([status])
   @@index([paymentTxId])
+  @@index([eventId, createdAt])
+  @@index([userId, eventId, createdAt])
 }
 
 // One refund per ticket. `userId` is who gets the money: the order's buyer, or the resale buyer when the
@@ -870,6 +872,7 @@ model Ticket {
   @@index([eventId])
   @@index([status])
   @@index([mintStatus, mintNextAttemptAt])
+  @@index([eventId, createdAt])
 }
 
 model ResaleListing {
@@ -973,6 +976,9 @@ model BehaviorEvent {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+  // Exporter pages and per-customer aggregates; JSON-field partial indexes exist in migration 20261124120000 only
+  @@index([action, createdAt, id])
+  @@index([userId, createdAt])
 }
 
 model Notification {
@@ -1008,6 +1014,8 @@ model AuditLog {
   @@index([action])
   @@index([userId])
   @@index([companyId, createdAt])
+  // Partial UNIQUE indexes (one STRIPE_EVENT per Stripe event, one evidence row per order): migration 20261124120000
+  @@index([action, targetType, targetId])
 }
 
 enum TransferType {
@@ -1997,6 +2005,9 @@ model MlPrediction {
   @@index([modelName, outcomeAt])
   @@index([subjectType, subjectId])
   @@index([eventId])
+  // Exporter pages and per-event snapshots (migration 20261124120000)
+  @@index([modelName, role, subjectType, asOf, id])
+  @@index([modelName, role, subjectType, eventId])
 }
 
 /// Blind fraud review sampling. Every scored order gets a row (so population sizes are exact); only

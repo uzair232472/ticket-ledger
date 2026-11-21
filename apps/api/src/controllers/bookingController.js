@@ -5,7 +5,7 @@ import { applyPhases, assertOnSale, capacityLeft } from '../services/eventToolsS
 import prisma from '../config/prisma.js';
 import { checkSeatLock, releaseSeatLock } from '../config/redis.js';
 import { getIO } from '../config/socket.js';
-import paymentService from '../services/paymentService.js';
+import paymentService, { PaymentError } from '../services/paymentService.js';
 import nftService from '../services/nftService.js';
 import { ticketStates } from '../services/ticketStatus.js';
 import { notifyAdmins } from '../services/notificationService.js';
@@ -106,8 +106,6 @@ async function sendPayment(req, res, order, { reused }) {
     orderId: order.id,
     amount: order.totalAmount,
     paymentMethod: order.paymentMethod,
-    customerPhone: req.body?.customerPhone || req.user.phone,
-    customerEmail: req.user.email,
     paymentRef: order.paymentRef,
   });
   if (params.paymentRef && params.paymentRef !== order.paymentRef) {
@@ -184,6 +182,9 @@ export const initiateBooking = async (req, res) => {
     const validated = initiateBookingSchema.parse(req.body);
     const { eventId, seatIds, paymentMethod, customerPhone } = validated;
     const userId = req.user.id;
+    // A method that cannot take a payment now (not integrated, test checkout off, card payments unavailable)
+    // is refused before any seat is held. Cart orders are paid with the cart's method (checked there).
+    if (!validated.cart) paymentService.assertAvailable(paymentMethod);
     const now = new Date();
 
     // Verify Event
@@ -548,6 +549,9 @@ export const initiateBooking = async (req, res) => {
     if (error instanceof DiscountError) {
       return res.status(error.status).json({ success: false, code: error.code, field: 'discountCode', message: error.message });
     }
+    if (error instanceof PaymentError) {
+      return res.status(error.status).json({ success: false, code: error.code, message: error.message });
+    }
     if (error.code === 'P2002') {
       return res.status(409).json({ success: false, message: 'One of these seats was just taken by another checkout. Please choose again.' });
     }
@@ -843,8 +847,9 @@ export const confirmBooking = async (req, res) => {
     }
 
     // Verify payment with Payment Service (a real payment must be this order's, for this order's amount).
-    // Without a PaymentIntent id from the browser, the order's own one is checked (a paid earlier checkout).
-    const details = order.paymentMethod === 'STRIPE' && !paymentDetails.paymentIntentId && order.paymentRef?.startsWith('pi_')
+    // The server checks the order's OWN stored PaymentIntent whenever it has one; an id from the browser is only
+    // used when it has none, and must then belong to this order (metadata) and amount.
+    const details = order.paymentMethod === 'STRIPE' && order.paymentRef?.startsWith('pi_')
       ? { ...paymentDetails, paymentIntentId: order.paymentRef }
       : paymentDetails;
     const verification = await paymentService.verifyPayment({
@@ -875,8 +880,10 @@ export const confirmBooking = async (req, res) => {
         },
       });
 
-      return res.status(400).json({
+      return res.status(verification.retryable ? 503 : 400).json({
         success: false,
+        code: verification.code,
+        retryable: Boolean(verification.retryable),
         message: verification.message || 'Payment authorization failed.',
       });
     }
@@ -945,8 +952,9 @@ const cartCheckoutSchema = z.object({
  */
 export const checkoutCart = async (req, res) => {
   try {
-    const { orderIds, paymentMethod, customerPhone } = cartCheckoutSchema.parse(req.body);
+    const { orderIds, paymentMethod } = cartCheckoutSchema.parse(req.body);
     const userId = req.user.id;
+    paymentService.assertAvailable(paymentMethod);
     const ids = [...new Set(orderIds)];
     const orders = await prisma.order.findMany({ where: { id: { in: ids }, userId }, include: { event: { select: { name: true } } } });
     if (orders.length !== ids.length) return res.status(404).json({ success: false, message: 'One of these orders was not found.' });
@@ -973,7 +981,7 @@ export const checkoutCart = async (req, res) => {
         return g;
       });
     }
-    const params = await paymentService.initiatePayment({ orderId: group.id, amount: group.totalAmount, paymentMethod, customerPhone: customerPhone || req.user.phone, customerEmail: req.user.email, paymentRef: group.paymentRef });
+    const params = await paymentService.initiatePayment({ orderId: group.id, amount: group.totalAmount, paymentMethod, paymentRef: group.paymentRef });
     if (params.paymentRef && params.paymentRef !== group.paymentRef) await prisma.checkoutGroup.update({ where: { id: group.id }, data: { paymentRef: params.paymentRef } });
     return res.status(201).json({
       success: true,
@@ -982,6 +990,7 @@ export const checkoutCart = async (req, res) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message });
+    if (error instanceof PaymentError) return res.status(error.status).json({ success: false, code: error.code, message: error.message });
     console.error('Cart checkout failed:', error);
     return res.status(500).json({ success: false, message: 'Could not start the checkout.' });
   }
@@ -1000,9 +1009,9 @@ export const confirmCart = async (req, res) => {
     if (group.status === 'SUCCESSFUL') return res.status(200).json({ success: true, message: 'Already paid.', data: { groupId, orders: group.orders.map((o) => ({ id: o.id, status: o.status })) } });
     if (group.status !== 'PENDING') return res.status(409).json({ success: false, message: 'This checkout has ended. Start again from your cart.' });
 
-    const details = group.paymentMethod === 'STRIPE' && !paymentDetails.paymentIntentId && group.paymentRef?.startsWith('pi_') ? { ...paymentDetails, paymentIntentId: group.paymentRef } : paymentDetails;
+    const details = group.paymentMethod === 'STRIPE' && group.paymentRef?.startsWith('pi_') ? { ...paymentDetails, paymentIntentId: group.paymentRef } : paymentDetails;
     const v = await paymentService.verifyPayment({ paymentMethod: group.paymentMethod, paymentDetails: details, expectedAmount: group.totalAmount, orderId: group.id });
-    if (!v.success) return res.status(400).json({ success: false, message: v.message || 'Payment authorization failed.' });
+    if (!v.success) return res.status(v.retryable ? 503 : 400).json({ success: false, code: v.code, retryable: Boolean(v.retryable), message: v.message || 'Payment authorization failed.' });
     if (group.paymentMethod !== 'MOCK' && v.transactionId) {
       const used = await prisma.order.findFirst({ where: { paymentTxId: v.transactionId, checkoutGroupId: { not: group.id } }, select: { id: true } });
       if (used) return res.status(409).json({ success: false, code: 'PAYMENT_ALREADY_USED', message: 'This payment was already used for another booking.' });

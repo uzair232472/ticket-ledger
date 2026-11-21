@@ -17,22 +17,12 @@
 import Stripe from 'stripe';
 import prisma from '../config/prisma.js';
 import { recordPaymentEvidence } from './paymentEvidence.js';
+import { stripeConfig } from './payments/config.js';
+import { stripeAmount } from './payments/stripeProvider.js';
 
 export const STRIPE_EVENT = 'STRIPE_EVENT';
-const stripeAmount = (pkr) => Math.max(100, Math.round(Number(pkr) * 100)); // as paymentService.js
-
-/** Mode and configuration problems, without revealing any secret. */
-export function stripeConfig(env = process.env) {
-  const key = env.STRIPE_SECRET_KEY || '';
-  const keyMode = /^(sk|rk)_live_/.test(key) ? 'live' : /^(sk|rk)_test_/.test(key) ? 'test' : key ? 'unknown' : 'none';
-  const mode = env.STRIPE_MODE === 'live' ? 'live' : 'test';
-  const problems = [];
-  if (env.STRIPE_MODE && !['test', 'live'].includes(env.STRIPE_MODE)) problems.push('STRIPE_MODE must be test or live');
-  if (keyMode !== 'none' && keyMode !== mode) problems.push(`STRIPE_MODE is ${mode} but the secret key is a ${keyMode} key`);
-  if (!env.STRIPE_WEBHOOK_SECRET) problems.push('STRIPE_WEBHOOK_SECRET is not set (webhooks are refused)');
-  else if (!/^whsec_/.test(env.STRIPE_WEBHOOK_SECRET)) problems.push('STRIPE_WEBHOOK_SECRET does not look like a webhook signing secret');
-  return { mode, keyMode, webhookConfigured: Boolean(env.STRIPE_WEBHOOK_SECRET), problems };
-}
+// The one Stripe configuration check (payments/config.js), re-exported for existing callers
+export { stripeConfig };
 
 const verifier = new Stripe('sk_test_signature_verification_only'); // used only for constructEvent (no API calls)
 
@@ -71,6 +61,19 @@ export async function handleStripeWebhook({ rawBody, signature, env = process.en
   if (await db.auditLog.findFirst({ where: { action: STRIPE_EVENT, targetType: 'StripeEvent', targetId: event.id }, select: { id: true } })) {
     return { status: 200, body: { received: true, duplicate: true } };
   }
+  // Claim the event and process it in ONE transaction: the unique index on the STRIPE_EVENT row (migration
+  // 20261124120000_payment_integrity) lets exactly one of two concurrent deliveries through; a failure rolls the
+  // claim back, so Stripe's retry processes it again.
+  try {
+    return await db.$transaction((tx) => processEvent(tx, event));
+  } catch (e) {
+    if (e.code === 'P2002') return { status: 200, body: { received: true, duplicate: true } };
+    throw e;
+  }
+}
+
+async function processEvent(db, event) {
+  const claim = await db.auditLog.create({ data: { action: STRIPE_EVENT, targetType: 'StripeEvent', targetId: event.id, details: { type: event.type, processing: true } } });
   const obj = event.data?.object || {};
   const paymentIntentId = obj.object === 'payment_intent' ? obj.id : (obj.payment_intent || null);
   const orders = await orderFor(db, { paymentIntentId, metadataOrderId: obj.metadata?.orderId });
@@ -103,6 +106,6 @@ export async function handleStripeWebhook({ rawBody, signature, env = process.en
     outcome.recorded = null;
     outcome.reason = 'event type not used';
   }
-  await db.auditLog.create({ data: { action: STRIPE_EVENT, targetType: 'StripeEvent', targetId: event.id, details: outcome } });
+  await db.auditLog.update({ where: { id: claim.id }, data: { details: outcome } });
   return { status: 200, body: { received: true, recorded: outcome.recorded } };
 }

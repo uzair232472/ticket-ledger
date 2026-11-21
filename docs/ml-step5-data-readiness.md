@@ -144,6 +144,24 @@ data needs authorization.
 
 ## 10. Exporter scaling: batching needed before production-scale collection
 
+> **R0 status (2026-11-22): implemented.** Paging, grouped SQL, chunked lookups, streamed CSV output with
+> incremental hashing, one read-only `REPEATABLE READ` snapshot per export, and the indexes (migration
+> `20261124120000_export_and_payment_indexes`, applied to fresh test copies only, **not yet to the main
+> development database**).
+>
+> **Verification:**
+> - same rows and report as the previous exporter at four export moments on both fixture worlds (327 to 720
+>   rows);
+> - identical output with a page size of 1 and with unordered query results reversed;
+> - streamed files byte-identical to the in-memory export;
+> - writes made during an export are not seen.
+>
+> **Two old-exporter bugs fixed:** `first_seen` / `last_seen` of customers without browsing came from database
+> order (sometimes reversed), and a view without an event counted as an event viewed.
+>
+> The order of rows in the files is now the processing order (defined by every query), not sorted by time; the
+> ML service sorts by time itself. The table below is the original review.
+
 The exporter (`src/services/ml/export.js`) is correct at today's size (it finishes in about 1 second on the
 development database) but is written for small data. Reviewed on 2026-11-21:
 
@@ -193,6 +211,14 @@ business's authorisation.
    currencies page. Also legal terms, refund policy and tax handling for live sales.
 
 **B. Code changes required before any live key is set (blocking)**
+
+> **R0 status: B1–B4 implemented, with B5 left for the live set-up.**
+> - **B1:** fail-closed Stripe provider (`services/payments/`); JazzCash and EasyPaisa disabled; the MOCK test
+>   checkout refused in production and live mode; resale purchases refused wherever real payments are required.
+> - **B2:** the startup check.
+> - **B3:** database-enforced webhook and evidence idempotency.
+> - **B4:** only `orderId` in the PaymentIntent metadata.
+> - **B5 (restricted live key):** a configuration step for the live set-up.
 1. **Fail closed.** `paymentService.verifyPayment('STRIPE')` today returns success **without** asking Stripe
    in two cases: there is no Stripe client (placeholder key), or the retrieve call fails while the browser
    sent a `paymentTxId`. That is how the 4 "Stripe" orders were paid. With `STRIPE_MODE=live`, verification
@@ -243,6 +269,11 @@ business's authorisation.
 
 ## 12. Recommendation impressions, clicks and purchases once recommendations are displayed
 
+> **R0 status:** item 5 is implemented. A visitor keeps the group of their first list, also after logging in
+> and on later visits. Lists shown in the other group, from another device before linking, are left out of the
+> comparison (`experiment group changed`). Items 2, 3, 4 (impressions on render, click beacon, list id carried
+> to checkout) and 6 belong to the display work in Step 6.
+
 Built (API only): `GET /api/events/recommendations?surface=home` and
 `POST /api/events/recommendations/:listId/click`. What displaying them requires, in order:
 
@@ -274,6 +305,37 @@ Built (API only): `GET /api/events/recommendations?surface=home` and
    arm; until then the report states NOT_ENOUGH_DATA.
 
 ## 13. API tests not verified because the full environment was not running
+
+> **R0 status (2026-11-22): run.** All 153 tests ran with `scripts/test-server-suites.sh`. A preflight run with
+> the server's exact environment confirmed:
+> - mail goes to the in-memory transport;
+> - minting is in simulation;
+> - no usable Stripe key, and Cloudinary is off;
+> - the database is a `*_verify` copy.
+>
+> The server log showed no SMTP, chain, Stripe or Cloudinary activity.
+>
+> **Results:**
+>
+> | Tree | Passed | Failed |
+> |---|---|---|
+> | Before R0 (`8c837d1`) | 110 | 43 |
+> | After R0 | 110 | 43 (the same tests) |
+>
+> R0 first broke 9 `test_booking` tests that asserted the removed behaviour (a card checkout without any Stripe
+> account, and JazzCash confirming with the demo OTP). They were rewritten to the fail-closed requirements and
+> pass.
+>
+> The 43 failures existed before R0 and are outside its scope:
+> - seed data the tests expect but the database dump no longer has (demo logins, PSL event, bot ring user,
+>   resale listing);
+> - sign-up now requires an e-mail code;
+> - legacy synthetic ML models are off in production mode, and the profile fraud score is "unavailable" since
+>   Stage 4;
+> - minting is simulated in the sandbox (no contract address);
+> - three not yet explained: recovery reminders return 400, and a pre-publish price edit.
+>
+> The text below is the original plan.
 
 14 files, **153 tests**, need a running API server on `localhost:5000` (and 4 of them the ML service on
 `localhost:8000`). In every run they failed with `ECONNREFUSED`. They are **unverified**, neither passing

@@ -11,6 +11,7 @@ import { retryRefunds } from './services/refundService.js';
 import nftService, { MINTABLE } from './services/nftService.js';
 import { notifyAdmins } from './services/notificationService.js';
 import { assertSecrets } from './config/security.js';
+import { paymentStartupProblems } from './services/payments/config.js';
 import prisma from './config/prisma.js';
 import { runLifecycleJobs } from './services/eventLifecycleService.js';
 import { escalateOverdue } from './services/supportService.js';
@@ -47,6 +48,13 @@ io.on('connection', (socket) => {
 async function startServer() {
   // Unsafe secrets stop the server here, not on the first login or ticket
   assertSecrets();
+  // Payment configuration: a live/test mix-up, or live mode without everything it needs, stops the server
+  const payments = paymentStartupProblems();
+  if (payments.fatal.length) {
+    console.error(`❌ Payment configuration refused: ${payments.fatal.join(' | ')}`);
+    process.exit(1);
+  }
+  for (const w of payments.warnings) console.warn(`⚠️ Payments: ${w}`);
   const gateAuth = deviceAuthStatus();
   console.log(`🔐 Gate device auth: ${gateAuth.mode} (configured: ${gateAuth.configured}; enforced for every device from ${gateAuth.deadline})`);
   await connectRedis();

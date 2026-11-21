@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Calendar, Clock, Lock, MapPin, ShoppingBag } from 'lucide-react';
 import api from '../utils/api';
+import usePaymentMethods, { firstAvailable } from '../hooks/usePaymentMethods';
 import { useAuth } from '../context/AuthContext';
 import BookingShell from '../components/booking/BookingShell';
 import { formatPkr } from '../components/venue/venueTheme';
@@ -14,10 +15,11 @@ import { formatClock } from '../components/venue/BookingSummary';
  * checkout pays for all of them. Card payments and discount codes go through each event's own checkout.
  */
 
+// Which ones can be used comes from the server (GET /api/payments/methods)
 const METHODS = [
-  { value: 'MOCK', label: 'Instant test payment', note: 'Sandbox · confirms immediately' },
-  { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet · MPIN / OTP' },
-  { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet · OTP' },
+  { value: 'MOCK', label: 'Test payment', note: 'Development only · no money is charged' },
+  { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet' },
+  { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet' },
 ];
 const newKey = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `cart-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
@@ -28,7 +30,11 @@ export default function Cart() {
   const [offset, setOffset] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [quotes, setQuotes] = useState({});
-  const [method, setMethod] = useState('MOCK');
+  const available = usePaymentMethods();
+  const [method, setMethod] = useState(null);
+  useEffect(() => {
+    if (available && !available[method]?.available) setMethod(firstAvailable(available, METHODS.map((m) => m.value)));
+  }, [available, method]);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [phase, setPhase] = useState('idle'); // idle | paying | done
@@ -62,7 +68,7 @@ export default function Cart() {
   const live = (holds || []).filter((h) => new Date(h.expiresAt).getTime() > now + offset);
   const total = live.reduce((n, h) => n + (quotes[h.eventId]?.total ?? Number(h.totalPrice)), 0);
   const secondsLeft = live.length ? Math.max(0, Math.round((Math.min(...live.map((h) => new Date(h.expiresAt).getTime())) - (now + offset)) / 1000)) : null;
-  const wallet = method !== 'MOCK';
+  const wallet = method === 'JAZZCASH' || method === 'EASYPAISA';
 
   const pay = async (e) => {
     e.preventDefault();
@@ -159,14 +165,18 @@ export default function Cart() {
               <legend className="sr-only">Payment method</legend>
               <h2 className="tl-bk-h2" aria-hidden="true">Payment</h2>
               <div className="tl-co-methods" role="radiogroup" aria-label="Payment method">
-                {METHODS.map((m) => (
-                  <label key={m.value} className="tl-co-method">
-                    <input type="radio" name="method" value={m.value} checked={method === m.value} onChange={() => { setMethod(m.value); setProblem(''); }} />
-                    <span className="tl-co-radio" aria-hidden="true" />
-                    <span><strong>{m.label}</strong><small>{m.note}</small></span>
-                  </label>
-                ))}
+                {METHODS.filter((m) => m.value !== 'MOCK' || available?.MOCK?.available).map((m) => {
+                  const off = !available?.[m.value]?.available;
+                  return (
+                    <label key={m.value} className="tl-co-method" aria-disabled={off || undefined} style={off ? { opacity: 0.55 } : undefined}>
+                      <input type="radio" name="method" value={m.value} disabled={off} checked={method === m.value} onChange={() => { setMethod(m.value); setProblem(''); }} />
+                      <span className="tl-co-radio" aria-hidden="true" />
+                      <span><strong>{m.label}</strong><small>{off ? (available ? 'Coming soon' : 'Checking…') : m.note}</small></span>
+                    </label>
+                  );
+                })}
               </div>
+              {available && !method && <p className="tl-co-gateway" role="alert">Paying for several events at once is not available right now. Pay for each event from its own checkout.</p>}
               {wallet && (
                 <div className="tl-co-gateway">
                   <label className="tl-co-field" htmlFor="cart-phone"><span className="tl-bk-label">Mobile wallet number</span><input id="cart-phone" type="tel" inputMode="tel" placeholder="03001234567" value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
@@ -186,7 +196,7 @@ export default function Cart() {
               {problem && <div className="tl-bk-notice is-error" role="alert">{problem}</div>}
               <label className="tl-co-terms"><input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} /> <span>I accept each event's terms (shown on its event page)</span></label>
               <div className="tl-co-confirm">
-                <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={phase !== 'idle'}>
+                <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={phase !== 'idle' || !method}>
                   {phase === 'paying' ? <><span>Paying…</span><span className="tl-bk-spin" aria-hidden="true" /></> : <><span>Pay for {live.length} event{live.length === 1 ? '' : 's'}</span><span><Lock className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> {formatPkr(total)}</span></>}
                 </button>
                 <p className="tl-co-fine">One payment confirms every event. If a reservation expires before the payment arrives, that event is left out and its share is not kept.</p>

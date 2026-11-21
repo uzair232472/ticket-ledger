@@ -5,6 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useDialog } from '../components/ui/DialogProvider';
 import api from '../utils/api';
+import usePaymentMethods, { firstAvailable } from '../hooks/usePaymentMethods';
 import { useAuth } from '../context/AuthContext';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
@@ -19,13 +20,14 @@ const stripePromise = loadStripe(
   'pk_test_51UNHhM4Ve73zHzr5tqCqRRooaoF8dNMnKcv6aQyRV2d8tbZhf4QvO2q6w65A1YCr1lhVkcd1OOY0wZRwfDedBiUy00w2gURSW4'
 );
 
-// The payment options the API already supports (bookingController / paymentService)
+// Payment options; which ones can be used comes from the server (GET /api/payments/methods)
 const METHODS = [
-  { value: 'MOCK', label: 'Instant test payment', note: 'Sandbox · confirms immediately' },
-  { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet · MPIN / OTP' },
-  { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet · OTP' },
-  { value: 'STRIPE', label: 'Card (Stripe Sandbox)', note: 'Visa / Mastercard test payment' },
+  { value: 'STRIPE', label: 'Card', note: 'Visa / Mastercard, processed by Stripe' },
+  { value: 'MOCK', label: 'Test payment', note: 'Development only · no money is charged' },
+  { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet' },
+  { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet' },
 ];
+const PREFERRED = ['STRIPE', 'MOCK'];
 const WALLETS = new Set(['JAZZCASH', 'EASYPAISA']);
 const digits = (v) => v.replace(/\D/g, '');
 // "+92 300 1234567" and "0300-1234567" → "03001234567"
@@ -73,7 +75,8 @@ const newAttemptKey = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID()
 function paymentDetailsFor(method, params, form) {
   if (method === 'JAZZCASH') return { otpCode: form.otp, ppTxnRefNo: params.ppTxnRefNo };
   if (method === 'EASYPAISA') return { otpCode: form.otp, epOrderId: params.epOrderId };
-  if (method === 'STRIPE') return { clientSecret: params.clientSecret, paymentIntentId: params.paymentIntentId, paymentTxId: params.paymentIntentId || `ch_${Date.now()}` };
+  // The server checks the order's own PaymentIntent with Stripe; nothing from here is taken as proof of payment
+  if (method === 'STRIPE') return { paymentIntentId: params.paymentIntentId };
   return { paymentTxId: params.mockTxId };
 }
 
@@ -138,7 +141,12 @@ function CheckoutContent() {
   const [now, setNow] = useState(Date.now());
   const offset = useRef(0);
 
-  const [method, setMethod] = useState('MOCK');
+  const available = usePaymentMethods();
+  const [method, setMethod] = useState(null);
+  // The first method the server can take a payment with (card first); never one it refuses
+  useEffect(() => {
+    if (available && !available[method]?.available) setMethod(firstAvailable(available, PREFERRED));
+  }, [available, method]);
   const [form, setForm] = useState({
     phone: user?.phone || '',
     otp: '',
@@ -412,7 +420,7 @@ function CheckoutContent() {
       // (only that path returns paymentIntentId; the simulated fallback's clientSecret is unknown to Stripe)
       // Already paid at Stripe (a retry after the card went through): only the confirmation is left
       if (method === 'STRIPE' && order.params?.alreadyPaid) {
-        paymentDetails = { paymentIntentId: order.params.paymentIntentId, paymentTxId: order.params.paymentIntentId };
+        paymentDetails = { paymentIntentId: order.params.paymentIntentId };
       } else if (method === 'STRIPE' && stripe && elements) {
         const cardElement = elements.getElement(CardElement);
         if (cardElement && order.params?.paymentIntentId && order.params?.clientSecret) {
@@ -438,11 +446,8 @@ function CheckoutContent() {
             return;
           }
 
-          paymentDetails = {
-            paymentIntentId: stripeRes.paymentIntent.id,
-            paymentTxId: stripeRes.paymentIntent.id,
-            cardLast4: stripeRes.paymentIntent.payment_method?.card?.last4 || '4242',
-          };
+          // The server confirms the order only after checking this PaymentIntent with Stripe itself
+          paymentDetails = { paymentIntentId: stripeRes.paymentIntent.id };
         }
       }
 
@@ -645,14 +650,18 @@ function CheckoutContent() {
             <legend className="tl-sr">Payment method</legend>
             <h2 className="tl-bk-h2" aria-hidden="true">Payment</h2>
             <div className="tl-co-methods" role="radiogroup" aria-label="Payment method">
-              {METHODS.map((m) => (
-                <label key={m.value} className="tl-co-method">
-                  <input type="radio" name="method" value={m.value} checked={method === m.value} onChange={() => { setMethod(m.value); setFieldErrors({}); setProblem(null); }} />
-                  <span className="tl-co-radio" aria-hidden="true" />
-                  <span><strong>{m.label}</strong><small>{m.note}</small></span>
-                </label>
-              ))}
+              {METHODS.filter((m) => m.value !== 'MOCK' || available?.MOCK?.available).map((m) => {
+                const off = !available?.[m.value]?.available;
+                return (
+                  <label key={m.value} className="tl-co-method" aria-disabled={off || undefined} style={off ? { opacity: 0.55 } : undefined}>
+                    <input type="radio" name="method" value={m.value} disabled={off} checked={method === m.value} onChange={() => { setMethod(m.value); setFieldErrors({}); setProblem(null); }} />
+                    <span className="tl-co-radio" aria-hidden="true" />
+                    <span><strong>{m.label}</strong><small>{off ? (available ? (m.value === 'JAZZCASH' || m.value === 'EASYPAISA' ? 'Coming soon' : available[m.value]?.reason || 'Not available') : 'Checking…') : m.note}</small></span>
+                  </label>
+                );
+              })}
             </div>
+            {available && !method && <p className="tl-co-gateway" role="alert">No payment method is available right now. Please try again later.</p>}
             {WALLETS.has(method) && (
               <div className="tl-co-gateway">
                 <p className="tl-bk-muted">{method === 'JAZZCASH' ? 'JazzCash' : 'EasyPaisa'} sends an authorisation request to the number above. Sandbox code: 123456.</p>
@@ -783,7 +792,7 @@ function CheckoutContent() {
               </label>
             )}
             <div className="tl-co-confirm">
-              <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired} aria-busy={busy}>
+              <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired || !method} aria-busy={busy}>
                 {busy ? (
                   <>
                     <span>{phase === 'reserving' ? 'Creating your order…' : 'Confirming payment…'}</span>

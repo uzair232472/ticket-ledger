@@ -13,10 +13,13 @@
 #     already set): SMTP host/user "mock" -> nodemailer's in-memory JSON transport (nothing is sent);
 #     no NFT minter key and NODE_ENV=development -> minting "simulation" (no chain call, no transaction);
 #     a mock Stripe key -> no Stripe client; no Cloudinary keys -> local file storage; no admin e-mail list;
-#     Redis database 15 (not the development one);
+#     Redis database 15 (not the development one; without Redis the server uses its in-memory lock store);
+#   - a preflight (scripts/sandbox-preflight.mjs) run with the server's exact environment must confirm the
+#     in-memory mail transport, minting simulation, no usable Stripe key, no Cloudinary and a *_verify database;
 #   - the server log must say "minting mode: simulation" before any test runs;
 #   - after the run the log is searched for SMTP or chain activity and the database copy is dropped.
 # Not covered: outbound network is not blocked at the OS level. The values above are what prevent sending.
+# Ticket PDFs may download public event images (read-only GET requests, no side effects).
 set -u
 DUMP=$1; LABEL=${2:-server}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -55,6 +58,10 @@ stop() {
   done
 }
 trap stop EXIT
+
+# Preflight with exactly the server's environment: e-mail, minting, payments, uploads and database are checked
+env "${SANDBOX[@]}" node scripts/sandbox-preflight.mjs | tee "$OUT/preflight.txt" || { echo "refusing: preflight failed (see $OUT/preflight.txt)"; exit 3; }
+grep -q "^Preflight passed" "$OUT/preflight.txt" || { echo "refusing: preflight did not pass"; exit 3; }
 
 (cd "$ROOT/apps/ml-service" && ML_SERVICE_TOKEN=$TOKEN ML_ENV=production "$PY" -m uvicorn main:app --port 8000 > "$OUT/mlsvc.log" 2>&1) &
 env "${SANDBOX[@]}" node src/server.js > "$OUT/server.log" 2>&1 &

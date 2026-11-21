@@ -307,20 +307,74 @@ test('no current values and no future data: later edits and records change nothi
 
 test('the export does not depend on the order the database returns rows in', async () => {
   // PostgreSQL returns rows without ORDER BY in whatever order its plan and storage give (it changes after
-  // updates, vacuum, concurrent writes). Every findMany is answered here in REVERSED order: identical data
-  // must still give identical rows in identical order (and so identical CSV files and hashes).
-  const reversedFindMany = (model) => new Proxy(model, {
-    get: (m, k) => (k === 'findMany' ? async (...a) => (await m.findMany(...a)).reverse() : typeof m[k] === 'function' ? m[k].bind(m) : m[k]),
+  // updates, vacuum, concurrent writes). Here every findMany WITHOUT an orderBy is answered in REVERSED order
+  // (a database honours ORDER BY, so ordered queries are left alone): identical data must still give
+  // identical rows in identical order, so every query whose order matters must define it.
+  const reverseUnordered = (model) => new Proxy(model, {
+    get: (m, k) => (k === 'findMany'
+      ? async (args = {}) => { const rows = await m.findMany(args); return args.orderBy ? rows : rows.reverse(); }
+      : typeof m[k] === 'function' ? m[k].bind(m) : m[k]),
   });
   const db = new Proxy(prisma, {
     get: (t, k) => {
       const v = t[k];
-      if (v && typeof v === 'object' && typeof v.findMany === 'function') return reversedFindMany(v);
+      if (v && typeof v === 'object' && typeof v.findMany === 'function') return reverseUnordered(v);
       return typeof v === 'function' ? v.bind(t) : v;
     },
   });
-  const normal = await buildExport({ policy, now: NOW });
-  const reversed = await buildExport({ db, policy, now: NOW });
+  const normal = await buildExport({ policy, now: NOW, snapshot: false });
+  const reversed = await buildExport({ db, policy, now: NOW, snapshot: false });
   for (const name of Object.keys(COLUMNS)) assert.deepEqual(reversed.datasets[name], normal.datasets[name], name);
   for (const name of Object.keys(normal.datasetsStep5)) assert.deepEqual(reversed.datasetsStep5[name], normal.datasetsStep5[name], name);
+  assert.deepEqual(reversed.report, normal.report);
+});
+
+test('paging: a page size of 1 (every keyset boundary) gives exactly the same export', async () => {
+  const normal = await buildExport({ policy, now: NOW });
+  process.env.ML_EXPORT_PAGE_SIZE = '1';
+  try {
+    const tiny = await buildExport({ policy, now: NOW });
+    assert.deepEqual(tiny.datasets, normal.datasets);
+    assert.deepEqual(tiny.datasetsStep5, normal.datasetsStep5);
+    assert.deepEqual(tiny.events, normal.events);
+    assert.deepEqual(tiny.report, normal.report);
+  } finally { delete process.env.ML_EXPORT_PAGE_SIZE; }
+});
+
+test('streamed CSV files are byte-identical to the in-memory export, with matching hashes', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { createHash } = await import('node:crypto');
+  const { CsvFileSink, toCsv } = await import('./scripts/ml-export-datasets.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ml-export-'));
+  try {
+    const sink = new CsvFileSink(dir);
+    const streamed = await buildExport({ policy, now: NOW, sink });
+    const files = await sink.close();
+    const memory = await buildExport({ policy, now: NOW });
+    const { COLUMNS_STEP5 } = await import('./src/services/ml/export.js');
+    for (const [name, cols] of [...Object.entries(COLUMNS), ...Object.entries(COLUMNS_STEP5)]) {
+      const rows = (memory.datasets[name] || memory.datasetsStep5[name]);
+      const bytes = fs.readFileSync(path.join(dir, `${name}.csv`));
+      assert.equal(bytes.toString('utf8'), toCsv(cols, rows), name);
+      assert.equal(files[name].sha256, createHash('sha256').update(bytes).digest('hex'), `${name} hash`);
+      assert.equal(files[name].rows, rows.length);
+    }
+    assert.deepEqual(streamed.report, memory.report);
+    assert.equal(memory.report.consistentSnapshot, true, 'default export reads one database snapshot');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('consistent reads: inside the export snapshot, rows written meanwhile are not seen; it cannot write', async () => {
+  const { withSnapshot } = await import('./src/services/ml/export.js');
+  const r = await withSnapshot(async (tx) => {
+    const before = await tx.behaviorEvent.count();
+    // Another connection writes (and commits) while the snapshot is open
+    await prisma.behaviorEvent.create({ data: { userId: ids.c2, action: 'event_view', sessionId: `fx-${tag}-concurrent`, createdAt: plus(NOW, 9 * H) } });
+    return { before, after: await tx.behaviorEvent.count() };
+  });
+  assert.equal(r.after, r.before, 'the concurrent write is invisible inside the snapshot');
+  assert.equal(await prisma.behaviorEvent.count({ where: { sessionId: `fx-${tag}-concurrent` } }), 1, 'it was written');
+  await assert.rejects(withSnapshot((tx) => tx.behaviorEvent.create({ data: { action: 'event_view', sessionId: 'never' } })), /read-only/i);
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { testCheckoutAllowed } from '../services/payments/config.js';
 import crypto from 'crypto';
 import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
@@ -398,6 +399,16 @@ export const buyResaleTicket = async (req, res) => {
   try {
     const { listingId } = req.params;
     const buyerId = req.user.id;
+    // FAIL-CLOSED: resale has no provider payment flow yet, so a ticket may only change hands through the
+    // development test checkout. Wherever real payments are required (production, Stripe live mode, test
+    // checkout off) a resale purchase is refused instead of transferring a ticket nobody paid for.
+    if (!testCheckoutAllowed()) {
+      return res.status(503).json({ success: false, code: 'RESALE_PAYMENTS_UNAVAILABLE', message: 'Buying resale tickets is not available yet.' });
+    }
+    const method = req.body?.paymentMethod ?? 'TEST_INSTANT';
+    if (!['TEST_INSTANT', 'MOCK'].includes(method)) {
+      return res.status(400).json({ success: false, code: 'PAYMENT_METHOD_UNAVAILABLE', message: 'Only the test checkout is available for resale tickets.' });
+    }
 
     // Fetch listing with ticket
     const listing = await prisma.resaleListing.findUnique({

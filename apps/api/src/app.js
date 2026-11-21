@@ -1,3 +1,4 @@
+import paymentService from './services/paymentService.js';
 import express from 'express';
 import { handleStripeWebhook } from './services/stripeWebhookService.js';
 import cors from 'cors';
@@ -80,6 +81,11 @@ app.use('/uploads/support', (req, res) => res.status(404).end());
 app.use('/uploads', express.static('uploads'));
 
 // API Routes
+// Which payment methods can take a payment now (the checkout pages show only these as selectable). Public.
+app.get('/api/payments/methods', (req, res) => {
+  const a = paymentService.availability();
+  res.json({ success: true, data: { methods: Object.entries(a).map(([method, v]) => ({ method, available: v.available, test: Boolean(v.test), mode: v.mode || null, reason: v.available ? null : v.reason })) } });
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/companies', companyRoutes);

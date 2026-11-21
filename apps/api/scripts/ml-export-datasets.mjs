@@ -15,6 +15,7 @@
  */
 import 'dotenv/config';
 import fs from 'node:fs';
+import { once } from 'node:events';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -30,7 +31,43 @@ const cell = (v) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 export const toCsv = (cols, rows) => `${[cols.join(','), ...rows.map((r) => cols.map((c) => cell(r[c])).join(','))].join('\n')}\n`;
-const sha256 = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const line = (cols, r) => `${cols.map((c) => cell(r[c])).join(',')}
+`;
+
+/**
+ * Streams each dataset to its CSV file while the export runs (rows are never all in memory) and hashes the
+ * bytes as they are written. Same bytes as toCsv(cols, rows) of the whole dataset.
+ */
+export class CsvFileSink {
+  constructor(dir) { this.dir = dir; this.files = {}; }
+  open(name, cols) {
+    const stream = fs.createWriteStream(path.join(this.dir, `${name}.csv`));
+    const hash = createHash('sha256');
+    this.files[name] = { stream, hash, cols, rows: 0, tsFrom: null, tsTo: null };
+    this.put(name, `${cols.join(',')}
+`);
+  }
+  put(name, text) {
+    const f = this.files[name];
+    f.hash.update(text);
+    return f.stream.write(text);
+  }
+  async write(name, row) {
+    const f = this.files[name];
+    f.rows += 1;
+    const ts = row.ts || row.first_seen;
+    if (ts) { if (!f.tsFrom || ts < f.tsFrom) f.tsFrom = ts; if (!f.tsTo || ts > f.tsTo) f.tsTo = ts; }
+    if (!this.put(name, line(f.cols, row))) await once(f.stream, 'drain');
+  }
+  async close() {
+    const out = {};
+    for (const [name, f] of Object.entries(this.files)) {
+      await new Promise((resolve, reject) => f.stream.end((e) => (e ? reject(e) : resolve())));
+      out[name] = { file: `${name}.csv`, rows: f.rows, columns: f.cols, ts_from: f.tsFrom, ts_to: f.tsTo, sha256: f.hash.digest('hex') };
+    }
+    return out;
+  }
+}
 
 function markdown(report, manifest) {
   const L = [`# ML training export ${report.exportedAt}`, '', `Source \`db-export\`. Orders with server-verified LIVE payment evidence: ${report.payments.liveVerifiedOrders}${report.payments.firstLiveVerifiedPayment ? ` (first ${report.payments.firstLiveVerifiedPayment})` : ' (**none**: no purchase-based labels)'}. Every row comes from a prediction-time snapshot.`, '',
@@ -70,22 +107,18 @@ async function main() {
   const out = path.resolve(arg('--out') || path.join(here, '../../ml-service/exports', stamp));
   fs.mkdirSync(out, { recursive: true });
 
-  const { datasets, datasetsStep5, events, report } = await buildExport({ policy, now });
+  // One consistent database snapshot; rows streamed to the CSV files as they are produced
+  const sink = new CsvFileSink(out);
+  const { events, report } = await buildExport({ policy, now, sink });
+  const written = await sink.close();
   const files = {};
   let first = now.toISOString();
-  for (const [name, rows] of Object.entries(datasets)) {
-    const file = path.join(out, `${name}.csv`);
-    fs.writeFileSync(file, toCsv(COLUMNS[name], rows));
-    const ts = rows.map((r) => r.ts).sort();
-    if (ts.length && ts[0] < first) first = ts[0];
-    files[name] = { file: `${name}.csv`, rows: rows.length, columns: COLUMNS[name], labels: report.datasets[name].labels, ts_from: ts[0] ?? null, ts_to: ts.at(-1) ?? null, sha256: sha256(file) };
+  for (const name of Object.keys(COLUMNS)) {
+    const f = written[name];
+    if (f.ts_from && f.ts_from < first) first = f.ts_from;
+    files[name] = { file: f.file, rows: f.rows, columns: f.columns, labels: report.datasets[name].labels, ts_from: f.ts_from, ts_to: f.ts_to, sha256: f.sha256 };
   }
-  for (const [name, rows] of Object.entries(datasetsStep5)) {
-    const file = path.join(out, `${name}.csv`);
-    fs.writeFileSync(file, toCsv(COLUMNS_STEP5[name], rows));
-    const ts = rows.map((r) => r.ts || r.first_seen).filter(Boolean).sort();
-    files[name] = { file: `${name}.csv`, rows: rows.length, columns: COLUMNS_STEP5[name], ts_from: ts[0] ?? null, ts_to: ts.at(-1) ?? null, sha256: sha256(file) };
-  }
+  for (const name of Object.keys(COLUMNS_STEP5)) files[name] = written[name];
   fs.writeFileSync(path.join(out, 'events.csv'), toCsv(['event_id', 'sales_open', 'event_start'], events));
   const manifest = {
     source: 'db-export', exporter_version: '1.0.0', exported_at: now.toISOString(), history: { from: first, to: now.toISOString() },

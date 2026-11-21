@@ -14,6 +14,34 @@ import { runPayouts, computeEvent } from './src/services/payoutService.js';
 
 const PASSWORD = 'Password@123';
 
+// Card payments through a FAKE Stripe client (no network): JazzCash / EasyPaisa are not integrated, so the
+// second payment method these checkout tests switch to is the card. A PaymentIntent is unpaid until pay(id).
+const { setStripeClientForTesting } = await import('./src/services/payments/stripeProvider.js');
+process.env.STRIPE_SECRET_KEY = `sk_test_${'a1B2c3D4e5'.repeat(3)}`;
+process.env.STRIPE_MODE = 'test';
+const intents = new Map();
+let piSeq = 0;
+const fakeStripe = {
+  retrieved: [],
+  paymentIntents: {
+    create: async (p) => {
+      const id = `pi_fake${Date.now()}${++piSeq}`;
+      const pi = { object: 'payment_intent', id, client_secret: `${id}_secret_x`, status: 'requires_payment_method', amount: p.amount, currency: p.currency, livemode: false, metadata: p.metadata, created: Math.floor(Date.now() / 1000) };
+      intents.set(id, pi);
+      return pi;
+    },
+    retrieve: async (id) => {
+      fakeStripe.retrieved.push(id);
+      const pi = intents.get(id);
+      if (!pi) throw Object.assign(new Error('No such payment_intent'), { type: 'StripeInvalidRequestError' });
+      return { ...pi, amount_received: pi.status === 'succeeded' ? pi.amount : 0 };
+    },
+  },
+  refunds: { create: async () => ({ id: 're_fake', status: 'succeeded' }) },
+};
+setStripeClientForTesting(fakeStripe);
+const pay = (id) => { intents.get(id).status = 'succeeded'; };
+
 /** A valid Pakistani IBAN for a 16-digit account number (computes the mod-97 check digits). */
 function pkIban(bank, account) {
   const numeric = `${bank}${account}PK00`.replace(/[A-Z]/g, (ch) => String(ch.charCodeAt(0) - 55));
@@ -254,16 +282,23 @@ test('Organization profile, finance, branches, discounts and checkout retries', 
     assert.equal(misuse.status, 422);
 
     // Another payment method keeps the order and its discount, with a new payment
-    const switched = await call('POST', '/bookings/initiate', fanToken, { ...body, paymentMethod: 'JAZZCASH' });
+    const switched = await call('POST', '/bookings/initiate', fanToken, { ...body, paymentMethod: 'STRIPE' });
+    assert.equal(switched.status, 200, switched.body?.message);
     assert.equal(switched.body.data.orderId, order1);
-    assert.equal(switched.body.data.paymentMethod, 'JAZZCASH');
+    assert.equal(switched.body.data.paymentMethod, 'STRIPE');
+    assert.match(switched.body.data.paymentParams.paymentIntentId, /^pi_fake/);
     assert.equal(switched.body.data.totalAmount, 3200);
     assert.equal(await prisma.discountRedemption.count({ where: { orderId: order1 } }), 1);
   });
 
   await t.test('checkout: confirm once; code used up; one payment cannot confirm two orders', async () => {
     const o = await prisma.order.findUnique({ where: { id: order1 } });
-    const ok = await call('POST', '/bookings/confirm', fanToken, { orderId: order1, paymentDetails: { otpCode: '123456', ppTxnRefNo: o.paymentRef } });
+    // Not paid at Stripe yet: never confirmed
+    const unpaid = await call('POST', '/bookings/confirm', fanToken, { orderId: order1, paymentDetails: {} });
+    assert.equal(unpaid.status, 400);
+    assert.equal(unpaid.body.code, 'PAYMENT_NOT_COMPLETED');
+    pay(o.paymentRef);
+    const ok = await call('POST', '/bookings/confirm', fanToken, { orderId: order1, paymentDetails: {} });
     assert.equal(ok.status, 200, ok.body?.message);
     assert.equal(ok.body.data.order.status, 'SUCCESSFUL');
     assert.equal(ok.body.data.priceBreakdown.total, 3200);
@@ -272,16 +307,19 @@ test('Organization profile, finance, branches, discounts and checkout retries', 
 
     // EARLY20 allowed one use
     await hold(fan2.id, [seats[3]]);
-    const usedUp = await call('POST', '/bookings/initiate', fan2Token, { eventId: event.id, seatIds: [seats[3].id], paymentMethod: 'JAZZCASH', discountCode: 'EARLY20' });
+    const usedUp = await call('POST', '/bookings/initiate', fan2Token, { eventId: event.id, seatIds: [seats[3].id], paymentMethod: 'STRIPE', discountCode: 'EARLY20' });
     assert.equal(usedUp.status, 400);
     assert.equal(usedUp.body.code, 'DISCOUNT_USED_UP');
 
-    // Without the code: then try to pay it with the first order's JazzCash reference
-    const second = await call('POST', '/bookings/initiate', fan2Token, { eventId: event.id, seatIds: [seats[3].id], paymentMethod: 'JAZZCASH' });
+    // Without the code: then try to pay it with the first order's (paid) PaymentIntent. The server checks the
+    // second order's OWN PaymentIntent, which is unpaid, and never looks at the one the browser sent.
+    const second = await call('POST', '/bookings/initiate', fan2Token, { eventId: event.id, seatIds: [seats[3].id], paymentMethod: 'STRIPE' });
     assert.equal(second.status, 201, second.body?.message);
-    const reuse = await call('POST', '/bookings/confirm', fan2Token, { orderId: second.body.data.orderId, paymentDetails: { otpCode: '123456', ppTxnRefNo: o.paymentRef } });
-    assert.equal(reuse.status, 409);
-    assert.equal(reuse.body.code, 'PAYMENT_ALREADY_USED');
+    const before = fakeStripe.retrieved.length;
+    const reuse = await call('POST', '/bookings/confirm', fan2Token, { orderId: second.body.data.orderId, paymentDetails: { paymentIntentId: o.paymentRef } });
+    assert.equal(reuse.status, 400);
+    assert.equal(reuse.body.code, 'PAYMENT_NOT_COMPLETED');
+    assert.ok(!fakeStripe.retrieved.slice(before).includes(o.paymentRef), "the other order's payment is never checked for this order");
 
     const usage = await call('GET', '/org/discounts', ownerToken);
     const early = usage.body.data.codes.find((c) => c.id === codeId);

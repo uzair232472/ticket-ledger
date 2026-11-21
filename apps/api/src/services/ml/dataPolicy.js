@@ -14,8 +14,23 @@ export const DEFAULT_TEST_DOMAINS = ['example.com', 'example.org', 'example.net'
 export const DEFAULT_INTERNAL_DOMAINS = ['ticketledger.pk'];
 const list = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
 
+/**
+ * When genuine use of the platform began (ML_GENUINE_FROM, an ISO date-time; null = not set). When it is not set,
+ * the exporter uses the first live, server-verified payment. Set it explicitly when staff make live test
+ * purchases before real customers arrive: everything before it (accounts, events, payments) is internal test.
+ */
+export function genuineFromOf(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime()) || (typeof value === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(value))) {
+    throw new Error(`ML_GENUINE_FROM is not a valid ISO date-time: "${value}"`);
+  }
+  return d;
+}
+
 export function dataPolicy(opts = {}, env = process.env) {
   return {
+    genuineFrom: genuineFromOf(opts.genuineFrom !== undefined ? opts.genuineFrom : env.ML_GENUINE_FROM),
     testDomains: [...DEFAULT_TEST_DOMAINS, ...(opts.testDomains ?? list(env.ML_EXPORT_TEST_DOMAINS))].map((d) => d.toLowerCase()),
     internalDomains: (opts.internalDomains ?? (env.ML_EXPORT_INTERNAL_DOMAINS !== undefined ? list(env.ML_EXPORT_INTERNAL_DOMAINS) : DEFAULT_INTERNAL_DOMAINS)).map((d) => d.toLowerCase()),
     excludeUserIds: new Set(opts.excludeUserIds ?? list(env.ML_EXPORT_EXCLUDE_USERS)),

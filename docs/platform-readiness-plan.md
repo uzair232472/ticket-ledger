@@ -1,6 +1,6 @@
 # Proposed next phase: invited real users, safe genuine-data collection, path to validating the eight AI features
 
-**Status: PROPOSAL, awaiting approval. Nothing here has been started.** Written 2026-11-21 after the Step 5
+**Status: R0 approved and implemented locally (2026-11-22); R1–R6 not started, each still needs approval.** Written 2026-11-21 after the Step 5
 final verification. Every item that touches production, payments, real users or external services needs
 explicit authorisation at the step where it happens.
 
@@ -9,6 +9,20 @@ safely, so that genuine, verified data starts to accumulate. Every model stays s
 phase; rules keep making every decision.
 
 ## Phase R0: blockers that must be fixed in code first (local, testable, no deployment)
+
+> **R0 status (2026-11-22):**
+>
+> | Item | Status |
+> |---|---|
+> | R0.1–R0.3 | Done: fail-closed Stripe, disabled wallets and test checkout, startup check, idempotency, metadata |
+> | R0.4 | Done: the 153 server tests were run in the sandbox. 110 pass, the same as before R0; the 43 earlier failures are listed in ml-step5 §13 |
+> | R0.5 | Done: `ML_GENUINE_FROM`. The staff/invited-tester lists use the existing `ML_EXPORT_EXCLUDE_USERS` and internal domains |
+> | R0.6 | Group stability done; impressions-on-render belongs with display (Step 6) |
+> | R0.7 | Done, with migration `20261124120000` **pending approval for the main development database** |
+> | R0.8 | Reviewed: docs/email-readiness.md (E1–E3 blocking) |
+>
+> Resale purchases, which had no payment step at all, are now refused wherever real payments are required. A
+> Stripe resale payment flow is new work.
 
 | # | Item | Why it blocks |
 |---|---|---|

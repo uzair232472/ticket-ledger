@@ -192,6 +192,29 @@ test('recommendations: deterministic variant, a non-personalised control, first-
   assert.ok(cu);
 });
 
+test('recommendation groups stay the same when a guest logs in (no switching between control and personalised)', async () => {
+  const { variantFor } = await import('./src/services/recommendationService.js');
+  const u = await user('recstable');
+  const mine = assignVariant(`u:${u.id}`);
+  // A guest session whose own hash puts it in the OTHER group than the account's hash
+  let s = null;
+  for (let i = 0; i < 200 && !s; i++) if (assignVariant(`s:guest-${tag}-${i}`) !== mine) s = `guest-${tag}-${i}`;
+  assert.ok(s, 'found a session in the other group');
+  const guest = await recommend({ sessionId: s });
+  assert.notEqual(guest.variant, mine);
+  // Logged in on the same device, before or without linking (e.g. a shared device): the guest's group
+  assert.equal((await recommend({ userId: u.id, sessionId: s })).variant, guest.variant, 'right after login');
+  // After the guest lists are linked to the account: still the same group, on any later visit
+  await attachSessionToUser({ sessionId: s, userId: u.id });
+  assert.equal((await recommend({ userId: u.id })).variant, guest.variant, 'later, without the session');
+  assert.equal((await recommend({ userId: u.id, sessionId: `other-device-${tag}` })).variant, guest.variant, 'on another device');
+  assert.equal((await variantFor({ userId: u.id })).assignedBy, 'first-list');
+  const lists = await prisma.behaviorEvent.findMany({ where: { action: 'recommendation_impression', OR: [{ userId: u.id }, { sessionId: s }] } });
+  assert.ok(lists.length >= 4 && lists.every((l) => l.metadata.variant === guest.variant), 'every list in one group');
+  // A brand-new visitor is assigned by hash
+  assert.equal((await variantFor({ sessionId: `fresh-${tag}` })).assignedBy, 'hash');
+});
+
 test('search and wishlist activity is recorded', async () => {
   const { addToWishlist, removeFromWishlist } = await import('./src/controllers/wishlistController.js');
   const w = await user('wish');
@@ -243,6 +266,9 @@ test('Step 5 export: genuine-customer rows only, verified labels, first-time and
   await prisma.behaviorEvent.create({ data: { userId: r1.id, sessionId: `s-${tag}`, action: 'recommendation_impression', createdAt: ago(12 * D),
     metadata: { listId: randomUUID(), variant: 'PERSONALISED', basis: 'personal', surface: 'home', items: [{ eventId: later.id, position: 1, popularityRank: 1, exploration: false, isNew: false }] } } });
   await order('recbuy', { userId: r1.id, ev: later, at: ago(11 * D) });
+  // r1 on another device, before that device's guest lists were linked: the other group, so left out
+  await prisma.behaviorEvent.create({ data: { userId: r1.id, sessionId: `s2-${tag}`, action: 'recommendation_impression', createdAt: ago(11.9 * D),
+    metadata: { listId: randomUUID(), variant: 'CONTROL', basis: 'population', surface: 'home', items: [{ eventId: later.id, position: 1, popularityRank: 1, exploration: false, isNew: false }] } } });
   await prisma.behaviorEvent.create({ data: { sessionId: `anon-${tag}`, action: 'recommendation_impression', createdAt: ago(12 * D),
     metadata: { listId: randomUUID(), variant: 'CONTROL', basis: 'population', surface: 'home', items: [{ eventId: later.id, position: 1, popularityRank: 1 }] } } });
   // Hourly demand snapshot for `later` at ago 20 d (sales in the next 24 h: one verified ticket)
@@ -266,7 +292,9 @@ test('Step 5 export: genuine-customer rows only, verified labels, first-time and
   assert.equal(accountClass({ userById: new Map([[dev.id, { ...dev, role: 'CUSTOMER' }]]), policy, evidenceUsers: new Set(), firstLive: ago(60 * D) }, dev.id), 'account from before genuine use began (no live-verified purchase): internal test');
   assert.equal(sourceClassOfReason('account from before genuine use began (no live-verified purchase): internal test'), 'INTERNAL_TEST');
   const rec = mine(d.recommendation_impressions);
-  assert.equal(rec.length, 1, 'the anonymous impression is left out');
+  assert.equal(rec.length, 1, 'the anonymous impression and the other-group list are left out');
+  assert.equal(rec[0].variant, 'PERSONALISED', "r1's first group");
+  assert.ok(report.datasetsStep5.recommendation_impressions.excluded['experiment group changed (lists from another device before login)'] >= 1);
   assert.equal(rec[0].purchased_7d, 1);
   assert.equal(rec[0].first_time, 0);
   assert.ok(report.datasetsStep5.recommendation_impressions.excluded['anonymous visitor never linked to an account (cannot be shown to be genuine)'] >= 1);
@@ -278,6 +306,35 @@ test('Step 5 export: genuine-customer rows only, verified labels, first-time and
   assert.equal(beh.find((r) => r.customer_id === pseudo('C', ids.r1)).repeat_customer, 1);
   assert.ok(report.excludedBySourceClass.INTERNAL_TEST >= 1);
   assert.equal(report.sourceClass, 'GENUINE_CUSTOMER');
+});
+
+test('ML_GENUINE_FROM: an explicit start of genuine use; live payments and accounts before it are internal test', async () => {
+  const { genuineFromOf } = await import('./src/services/ml/dataPolicy.js');
+  assert.throws(() => genuineFromOf('next tuesday'), /ML_GENUINE_FROM/);
+  assert.throws(() => genuineFromOf('2026-13-45'), /ML_GENUINE_FROM/);
+  assert.equal(genuineFromOf(''), null);
+  assert.equal(genuineFromOf(undefined), null);
+  assert.equal(exportPolicy({}, { ML_GENUINE_FROM: '2026-11-01T00:00:00Z' }).genuineFrom.toISOString(), '2026-11-01T00:00:00.000Z');
+  const NOW = new Date('2026-11-15T00:00:00Z');
+  const base = await buildExport({ policy: exportPolicy({}, {}), now: NOW });
+  assert.equal(base.report.genuineUse.source, 'first live-verified payment');
+  // Staff tested live payments until 1 Nov; genuine use is declared to start then
+  const start = new Date('2026-11-01T00:00:00Z');
+  const later = await buildExport({ policy: exportPolicy({ genuineFrom: start.toISOString() }, {}), now: NOW });
+  assert.deepEqual(later.report.genuineUse, { start: start.toISOString(), source: 'ML_GENUINE_FROM' });
+  assert.ok(later.report.payments.liveVerifiedOrders < base.report.payments.liveVerifiedOrders, 'live payments before the start are no longer evidence');
+  const all = { ...later.datasets, ...later.datasetsStep5 };
+  for (const name of ['behavior_sequences', 'checkout_abandonment', 'demand_hourly', 'fraud_purchases']) {
+    assert.ok(all[name].every((r) => r.ts >= start.toISOString()), `${name}: nothing from before genuine use began`);
+  }
+  for (const [name, rows] of Object.entries(all)) {
+    const before = (base.datasets[name] || base.datasetsStep5[name]).length;
+    assert.ok(rows.length <= before, `${name}: a later start can only remove rows`);
+  }
+  // An account created before the start, with no live purchase after it, is internal test
+  const ctx = { userById: new Map([['u1', { id: 'u1', email: 'a@shop.pk', role: 'CUSTOMER', createdAt: new Date('2026-10-01') }], ['u2', { id: 'u2', email: 'b@shop.pk', role: 'CUSTOMER', createdAt: new Date('2026-11-02') }]]), policy: exportPolicy({}, {}), evidenceUsers: new Set(), firstLive: start };
+  assert.match(accountClass(ctx, 'u1'), /before genuine use began/);
+  assert.equal(accountClass(ctx, 'u2'), null);
 });
 
 test('model rollback: a retired shadow model can be restored (still shadow-only)', async () => {

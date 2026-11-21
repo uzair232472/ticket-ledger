@@ -25,7 +25,7 @@ const PUBLIC = ['PUBLISHED'];
 
 export const controlShare = () => Math.min(1, Math.max(0, Number(process.env.ML_REC_CONTROL_SHARE ?? 0.5)));
 
-/** Deterministic variant for a visitor key ("u:<userId>" or "s:<sessionId>"). */
+/** Deterministic first assignment for a visitor key ("u:<userId>" or "s:<sessionId>"). */
 export function assignVariant(key, share = controlShare()) {
   const u = parseInt(createHash('sha256').update(`${EXPERIMENT}:${key}`).digest('hex').slice(0, 12), 16) / 2 ** 48;
   return u < share ? 'CONTROL' : 'PERSONALISED';
@@ -67,10 +67,27 @@ async function interests(db, userId, now) {
  * Builds and logs one recommendation list. Returns { listId, variant, basis, experimental, events: [{eventId, position}] }.
  * `subject`: { userId?, sessionId? } (at least one).
  */
+/**
+ * The visitor's group, stable across login: the group of their FIRST list in this experiment. For a signed-in
+ * visitor that is their account's earliest list (guest lists linked at login count), else this session's
+ * earliest guest list (a visitor who just logged in keeps the group they had as a guest); only a visitor with no
+ * list yet is assigned by hash. Lists a visitor saw in another group on another device before the accounts were
+ * linked are left out of the comparison by the exporter.
+ */
+export async function variantFor({ userId = null, sessionId = null, db = prisma }) {
+  const first = (where) => db.behaviorEvent.findFirst({
+    where: { action: 'recommendation_impression', ...where, metadata: { path: ['experiment'], equals: EXPERIMENT } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { metadata: true },
+  });
+  const prior = (userId && await first({ userId })) || (sessionId && await first({ sessionId, userId: null })) || null;
+  const v = prior?.metadata?.variant;
+  if (v === 'CONTROL' || v === 'PERSONALISED') return { variant: v, assignedBy: 'first-list' };
+  return { variant: assignVariant(userId ? `u:${userId}` : `s:${sessionId}`), assignedBy: 'hash' };
+}
+
 export async function recommend({ userId = null, sessionId = null, surface = 'home', now = new Date(), db = prisma } = {}) {
   if (!userId && !sessionId) throw Object.assign(new Error('A signed-in user or a session id is needed'), { status: 400 });
-  const key = userId ? `u:${userId}` : `s:${sessionId}`;
-  const variant = assignVariant(key);
+  const { variant, assignedBy } = await variantFor({ userId, sessionId, db });
   const pool = await candidates(db, now);
   let basis = 'population';
   let ordered = pool;
@@ -90,7 +107,7 @@ export async function recommend({ userId = null, sessionId = null, surface = 'ho
   await db.behaviorEvent.create({
     data: {
       userId, sessionId: sessionId || `user:${userId}`, action: 'recommendation_impression', eventId: null,
-      metadata: { experiment: EXPERIMENT, listId, variant, basis, surface, items, candidates: pool.length },
+      metadata: { experiment: EXPERIMENT, listId, variant, assignedBy, basis, surface, items, candidates: pool.length },
     },
   });
   return { listId, variant, basis, experimental: true, events: items.map(({ eventId, position }) => ({ eventId, position })) };

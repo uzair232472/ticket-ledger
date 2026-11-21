@@ -2,26 +2,26 @@
 /**
  * Payment configuration check (read-only; prints modes and problems, never a secret value).
  *   node scripts/payment-config-check.mjs [--json]
- * Exit 1 when the configuration is inconsistent (e.g. STRIPE_MODE=live with a test key).
+ * Exit 1 when the server would refuse to start (e.g. STRIPE_MODE=live with a test key).
  */
 import 'dotenv/config';
-import { stripeConfig } from '../src/services/stripeWebhookService.js';
+import { methodAvailability, paymentStartupProblems, stripeConfig } from '../src/services/payments/config.js';
 
-const placeholder = (v) => !v || /mock|test|sandbox|demo|change|your|xxx/i.test(v);
 const stripe = stripeConfig();
+const methods = methodAvailability();
+const startup = paymentStartupProblems();
 const report = {
-  stripe: { ...stripe, livePaymentsPossible: stripe.mode === 'live' && stripe.keyMode === 'live' && stripe.problems.length === 0 },
-  jazzcash: { integration: 'simulated in paymentService.js (no provider call)', credentials: placeholder(process.env.JAZZCASH_MERCHANT_ID) ? 'placeholder or missing' : 'set (unused by the code)', canProduceEvidence: false },
-  easypaisa: { integration: 'simulated in paymentService.js (no provider call)', credentials: placeholder(process.env.EASYPAISA_STORE_ID) ? 'placeholder or missing' : 'set (unused by the code)', canProduceEvidence: false },
-  mock: { integration: 'test checkout', canProduceEvidence: false },
+  stripe: { mode: stripe.mode, key: stripe.keyKind, webhookConfigured: stripe.webhookConfigured, cardPaymentsAvailable: stripe.usable, livePaymentsPossible: stripe.usable && stripe.mode === 'live' && !startup.fatal.length, problems: stripe.problems },
+  methods,
+  startup,
   genuinePurchases: 'only orders with server-verified Stripe evidence in live mode (paymentEvidence.js)',
 };
 if (process.argv.includes('--json')) console.log(JSON.stringify(report, null, 2));
 else {
-  console.log(`Stripe: mode ${stripe.mode}, key ${stripe.keyMode}, webhook ${stripe.webhookConfigured ? 'configured' : 'NOT configured'}, live payments possible: ${report.stripe.livePaymentsPossible}`);
+  console.log(`Stripe: mode ${stripe.mode}, key ${stripe.keyKind}, webhook ${stripe.webhookConfigured ? 'configured' : 'NOT configured'}, card payments available: ${stripe.usable}, live payments possible: ${report.stripe.livePaymentsPossible}`);
   for (const p of stripe.problems) console.log(`  problem: ${p}`);
-  console.log(`JazzCash: ${report.jazzcash.integration}; credentials ${report.jazzcash.credentials}`);
-  console.log(`EasyPaisa: ${report.easypaisa.integration}; credentials ${report.easypaisa.credentials}`);
+  for (const [m, a] of Object.entries(methods)) console.log(`${m}: ${a.available ? `available${a.test ? ' (test checkout, no money)' : ''}` : `unavailable (${a.reason})`}`);
+  for (const f of startup.fatal) console.log(`  STARTUP REFUSED: ${f}`);
   console.log(`Genuine purchases: ${report.genuinePurchases}`);
 }
-process.exitCode = stripe.problems.some((p) => p.startsWith('STRIPE_MODE')) ? 1 : 0;
+process.exitCode = startup.fatal.length ? 1 : 0;

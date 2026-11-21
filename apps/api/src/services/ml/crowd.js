@@ -23,8 +23,8 @@ export function parseSlotSubject(id) {
 }
 
 /** Entries counted per slot for one event (all gates or one gate). */
-export async function entriesBySlot(eventId, start, gateId = null) {
-  const rows = await prisma.checkIn.findMany({
+export async function entriesBySlot(eventId, start, gateId = null, db = prisma) {
+  const rows = await db.checkIn.findMany({
     where: {
       eventId, ...(gateId ? { gateId } : {}), direction: 'ENTRY', result: 'GREEN', reentry: false, reversedAt: null,
       scannedAt: { gte: new Date(start.getTime() + SLOTS[0] * MIN), lt: new Date(start.getTime() + (SLOTS.at(-1) + 5) * MIN) },

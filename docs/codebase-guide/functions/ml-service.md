@@ -93,7 +93,7 @@ Loads each dictionary-format model and its `data/test_*.csv`, recomputes metrics
 `train_fraud_model()` (`:25`), `train_demand_model()` (`:68`), `train_intent_model()` (`:135`) generate their own random data in memory (different feature sets: e.g. clicks per minute, marketing tier, session duration) and save **bare estimators**. `main.py` cannot use these files (see the status box above). Treat this file as superseded by `scripts/`.
 
 ### `test_health.py`
-`test_root()` asserts `GET /` returns `service == "TicketLedger ML Service"`, but `read_root` returns `"TicketLedger AI Analytics & Bot Defense Engine (Module 15)"`, so **this assertion fails** against the current code (not executed here; inferred from the source). `test_health()` matches the current `/health` response. Requires `httpx` for FastAPI's `TestClient`, which is not in `requirements.txt`.
+`test_root()` checks `GET /`: the current display name (`"TicketLedger AI Analytics & Bot Defense Engine (Module 15)"`, changed on purpose in commit `6114e20`; the API title stays `"TicketLedger ML Service"`), status `online`, a version, the endpoint list and the loaded-model flags. `test_health()` matches the current `/health` response. Requires `httpx` for FastAPI's `TestClient`, which is not in `requirements.txt`.
 
 ### Data files (`apps/ml-service/data/`)
 | File | Rows | Produced by | Used by |

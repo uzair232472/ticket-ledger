@@ -34,7 +34,8 @@ export async function recordPaymentEvidence({ orderIds, userId, paymentMethod, v
     })).map((r) => r.targetId));
     const rows = orderIds.filter((id) => !existing.has(id))
       .map((id) => ({ userId, action: EVIDENCE_ACTION, targetType: 'Order', targetId: id, details }));
-    if (rows.length) await db.auditLog.createMany({ data: rows });
+    // skipDuplicates + the unique index (one evidence row per order): the checkout and the webhook may race
+    if (rows.length) await db.auditLog.createMany({ data: rows, skipDuplicates: true });
     return rows.length;
   } catch (e) {
     console.warn('[payment evidence] not recorded:', e.message);
@@ -44,20 +45,26 @@ export async function recordPaymentEvidence({ orderIds, userId, paymentMethod, v
 
 /**
  * Orders with live, server-verified evidence created before `now`: Map orderId -> { at, transactionId }.
- * The evidence's transaction id must still be the order's own (paymentTxId).
+ * The evidence's transaction id must still be the order's own (paymentTxId). Read in pages (earliest first; the
+ * earliest evidence of an order is the one kept), so it scales with the number of paid orders.
  */
-export async function liveEvidence(db = prisma, now = new Date()) {
-  const rows = await db.auditLog.findMany({
-    where: { action: EVIDENCE_ACTION, targetType: 'Order', createdAt: { lt: now } },
-    select: { targetId: true, createdAt: true, details: true },
-  });
-  const live = rows.filter((r) => r.details?.livemode === true);
-  const orders = new Map((await db.order.findMany({ where: { id: { in: live.map((r) => r.targetId) } }, select: { id: true, paymentTxId: true } }))
-    .map((o) => [o.id, o]));
+export async function liveEvidence(db = prisma, now = new Date(), pageSize = 5000) {
   const out = new Map();
-  for (const r of live) {
-    const o = orders.get(r.targetId);
-    if (o && o.paymentTxId && o.paymentTxId === r.details.transactionId) out.set(r.targetId, { at: r.createdAt, transactionId: r.details.transactionId });
+  let cursor = null;
+  for (;;) {
+    const rows = await db.auditLog.findMany({
+      where: { action: EVIDENCE_ACTION, targetType: 'Order', createdAt: { lt: now } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: pageSize, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, targetId: true, createdAt: true, details: true },
+    });
+    const live = rows.filter((r) => r.details?.livemode === true);
+    const orders = new Map((await db.order.findMany({ where: { id: { in: [...new Set(live.map((r) => r.targetId))] } }, select: { id: true, paymentTxId: true } }))
+      .map((o) => [o.id, o]));
+    for (const r of live) {
+      const o = orders.get(r.targetId);
+      if (o && o.paymentTxId && o.paymentTxId === r.details.transactionId && !out.has(r.targetId)) out.set(r.targetId, { at: r.createdAt, transactionId: r.details.transactionId });
+    }
+    if (rows.length < pageSize) return out;
+    cursor = rows.at(-1).id;
   }
-  return out;
 }
