@@ -24,6 +24,7 @@ import { SLOTS, crowdReadiness, entriesBySlot, parseSlotSubject } from './crowd.
 import { effectiveReview } from './fraudReview.js';
 import { accountExclusion, dataPolicy, eventExclusion } from './dataPolicy.js';
 import { liveEvidence } from '../paymentEvidence.js';
+import { INTEGRITY_VERSION } from './snapshotIntegrity.js';
 
 export { accountExclusion, eventExclusion };
 const HOUR = 3600_000;
@@ -88,9 +89,12 @@ export function snapshotProblem(p, need = []) {
   const c = p.output?.context;
   // Exactness was checked when the snapshot was written (snapshotIntegrity.js); anything else is left out
   if (!c || c.exact === undefined) return 'snapshot integrity not verified (logged before the check existed)';
+  if (!(c.integrity?.version >= INTEGRITY_VERSION)) return 'snapshot integrity checked by an older, weaker check';
   if (c.exact !== true) {
     const why = String(c.integrity?.reason || '');
-    return why.startsWith('inputs changed') ? 'not exact: event inputs changed after the prediction moment' : `not exact: ${why.split(':')[0] || 'unknown'}`;
+    if (why.startsWith('inputs changed')) return 'not exact: event inputs changed after the prediction moment';
+    if (why.startsWith('typical-price inputs changed')) return 'not exact: typical-price inputs changed after the prediction moment (no point-in-time value)';
+    return `not exact: ${why.split(/[:(]/)[0].trim() || 'unknown'}`;
   }
   if (!need.length) return null;
   if (!c || need.some((k) => c[k] === undefined || c[k] === null)) return 'snapshot without prediction-time prices / capacity / start (logged before they were stored)';

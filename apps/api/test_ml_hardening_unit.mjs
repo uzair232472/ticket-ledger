@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const { avgTierPrice } = await import('./src/services/ml/features.js');
+const { refuseSyntheticInProduction } = await import('./src/services/mlService.js');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tiers = (...p) => p.map((price) => ({ price }));
 
@@ -74,4 +75,12 @@ test('checkout blocks only on the rules result; the model shadow call cannot cha
   const m = src('../ml-service/main.py');
   const fraud = m.slice(m.indexOf('def execute_fraud_score'), m.indexOf('def execute_demand_forecast'));
   assert.ok(!/predict_proba|fraud_pkg\[/.test(fraud), 'the /fraud/score decision never uses a trained model');
+});
+
+test('in production the API never uses a synthetic (or unlabelled) model answer', () => {
+  const prod = { NODE_ENV: 'production' };
+  assert.throws(() => refuseSyntheticInProduction({ prediction_source: 'synthetic-demo-model' }, prod), /only rule-based/);
+  assert.throws(() => refuseSyntheticInProduction({ projected_48h_sales: 5 }, prod), /unknown source/);
+  assert.deepEqual(refuseSyntheticInProduction({ prediction_source: 'rules', x: 1 }, prod), { prediction_source: 'rules', x: 1 });
+  assert.equal(refuseSyntheticInProduction({ prediction_source: 'synthetic-demo-model' }, { NODE_ENV: 'development' }).prediction_source, 'synthetic-demo-model', 'development demos allowed (labelled)');
 });

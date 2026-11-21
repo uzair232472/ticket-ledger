@@ -24,7 +24,11 @@ const jobs = await import('./src/services/ml/jobs.js');
 const { visitId } = await import('./src/services/ml/visits.js');
 const { recordPaymentEvidence, EVIDENCE_ACTION } = await import('./src/services/paymentEvidence.js');
 const { logPredictions } = await import('./src/services/ml/shadow.js');
-test.after(() => prisma.$disconnect());
+// Retire the fixture organizers afterwards (test domain): their events then never enter a later run's typical prices
+test.after(async () => {
+  for (const id of [ids.org].filter(Boolean)) await prisma.user.update({ where: { id }, data: { email: `retired-${id}@example.com` } }).catch(() => {});
+  await prisma.$disconnect();
+});
 
 const H = 3600_000;
 const D = 24 * H;
@@ -42,7 +46,14 @@ async function user(key, role = 'CUSTOMER', domain = dom) {
   ids[key] = u.id;
   return u;
 }
-const company = (owner) => prisma.company.create({ data: { userId: owner.id, companyName: `Fx ${tag} ${owner.name}`, ownerName: 'Org', phone: '0300', email: owner.email, city: 'Lahore', ntnCnic: '1', documentUrl: 'x', status: 'APPROVED' } });
+async function company(owner) {
+  const c = await prisma.company.create({ data: { userId: owner.id, companyName: `Fx ${tag} ${owner.name}`, ownerName: 'Org', phone: '0300', email: owner.email, city: 'Lahore', ntnCnic: '1', documentUrl: 'x', status: 'APPROVED' } });
+  // Simulated timeline: the account and company were last changed long before any prediction
+  const old = ago(400 * D).toISOString();
+  await prisma.$executeRaw`UPDATE "User" SET "updatedAt" = ${old}::timestamptz AT TIME ZONE 'UTC' WHERE id = ${owner.id}`;
+  await prisma.$executeRaw`UPDATE "Company" SET "updatedAt" = ${old}::timestamptz AT TIME ZONE 'UTC' WHERE id = ${c.id}`;
+  return c;
+}
 async function event(key, { companyId, open, start, gates = [], price = 1000 }) {
   const e = await prisma.event.create({
     data: {
@@ -82,9 +93,9 @@ const checkIn = async (ticket, ev, gateName, at) => {
 };
 const behave = (userId, eventId, action, at, metadata) => prisma.behaviorEvent.create({ data: { userId, eventId, action, sessionId: `fx-${tag}`, createdAt: at, metadata } });
 const FRAUD_FEATURES = { event_type: 'CRICKET_MATCH', city: 'Lahore', country: 'PK', payment_method: 'STRIPE', tickets_requested: 2, unit_price_rel: 1, checkout_duration_seconds: 40, clicks_per_minute: 20, rapid_seat_attempts: 0, time_on_seatmap_seconds: 30, device_switches: 0, account_age_days: 300, customer_prior_orders: 1, orders_last_24h: 0, failed_payments_30d: 0, prior_resale_listings: 0, hours_since_sales_open: 100 };
+/** The checkout's fraud prediction, logged by the real logger at the time of the order (in fixture order). */
+const fraudLog = (o, decision) => logPredictions('fraud', [{ subjectType: 'ORDER', subjectId: o.id, eventId: o.eventId, userId: o.userId, asOf: o.createdAt, rule: { score: decision === 'SUSPICIOUS' ? 60 : 10, decision }, features: FRAUD_FEATURES }]);
 async function fraudCase(o, { decision, cell, p, reviews }) {
-  // Logged by the real prediction logger (as at checkout), which also checks the snapshot's integrity
-  await logPredictions('fraud', [{ subjectType: 'ORDER', subjectId: o.id, eventId: o.eventId, userId: o.userId, asOf: o.createdAt, rule: { score: decision === 'SUSPICIOUS' ? 60 : 10, decision }, features: FRAUD_FEATURES }]);
   const s = await prisma.fraudSample.create({ data: { orderId: o.id, cell, selected: true, inclusionProbability: p, ruleDecision: decision, mlWouldFlag: false } });
   for (const r of reviews) await prisma.fraudReview.create({ data: { sampleId: s.id, orderId: o.id, reviewerId: 'rev', ...r } });
 }
@@ -111,6 +122,7 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   const A = await event('A', { companyId: co.id, open: ago(40 * D), start: ago(10 * D), gates: [600, 900] });
   await jobs.snapshotDemand({ now: plus(A.salesOpenAt, 10 * M) });
   const o2 = await order('o2', { userId: c2.id, ev: A, tier: A.vip, at: plus(A.salesOpenAt, 2 * H) });
+  await fraudLog(o2, 'NORMAL');
   // c2 browses A without buying
   const v2 = ago(38 * D);
   await behave(c2.id, A.id, 'event_view', v2);
@@ -121,6 +133,7 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   await behave(c1.id, A.id, 'seat_selected', plus(v1, 2 * M), { price: 1000 });
   await behave(c1.id, A.id, 'checkout_started', plus(v1, 3 * M));
   const o1 = await order('o1', { userId: c1.id, ev: A, tier: A.ga, n: 2, at: plus(v1, 4 * M) });
+  await fraudLog(o1, 'SUSPICIOUS');
   await behave(c1.id, A.id, 'checkout_started', plus(v1, 5 * M));
   await jobs.scoreVisits({ now: plus(v1, 40 * M) });
   // A test account browses A (snapshot logged, never exported)
@@ -128,6 +141,7 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   await behave(tst.id, A.id, 'event_view', vt);
   await jobs.scoreVisits({ now: plus(vt, 40 * M) });
   const o4 = await order('o4', { userId: c2.id, ev: A, tier: A.ga, at: ago(30 * D) });
+  await fraudLog(o4, 'NORMAL');
   // B: sold through MOCK (never real); D: a Stripe TEST-mode payment (livemode false)
   const B = await event('B', { companyId: co.id, open: ago(30 * D), start: ago(5 * D), gates: [600, null] });
   await jobs.snapshotDemand({ now: plus(B.salesOpenAt, 10 * M) });
@@ -135,8 +149,10 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   const Dv = await event('D', { companyId: co.id, open: ago(20 * D), start: ago(3 * D), gates: [600] });
   await jobs.snapshotDemand({ now: plus(Dv.salesOpenAt, 10 * M) });
   const oD = await order('oD', { userId: c2.id, ev: Dv, tier: Dv.ga, at: plus(Dv.salesOpenAt, H), livemode: false });
-  // V: c1 visits V, and V's price is changed during the visit, before the visit job reads the inputs
-  const V = await event('V', { companyId: co.id, open: ago(50 * D), start: ago(8 * D), gates: [600] });
+  await fraudLog(oD, 'NORMAL');
+  // V: c1 visits V, and V's price is changed during the visit, before the visit job reads the inputs.
+  // V is created after A's sales opened, so it is not behind A's typical price (which refers to that open).
+  const V = await event('V', { companyId: co.id, open: ago(38.5 * D), start: ago(8 * D), gates: [600] });
   const vv = ago(33 * D);
   await behave(c1.id, V.id, 'event_view', vv);
   await prisma.mlInputChange.create({ data: { eventId: V.id, source: 'TicketTier', changedAt: plus(vv, 60_000) } });
@@ -159,6 +175,7 @@ test('fixture world, with snapshots logged by the live jobs at the time they wou
   const C = await event('C', { companyId: co.id, open: ago(1 * D), start: plus(NOW, 20 * D), gates: [600] });
   await jobs.snapshotDemand({ now: plus(C.salesOpenAt, 10 * M) });
   const o5 = await order('o5', { userId: c2.id, ev: C, tier: C.ga, at: ago(20 * H) });
+  await fraudLog(o5, 'NORMAL');
   // Fraud: o1 blind CONFIRMED (p=1, after an exposed review); o5 blind LEGITIMATE (p=0.02); o2 exposed only;
   // o4 latest blind UNRESOLVED; oD (test-mode payment) blind CONFIRMED; one blocked checkout
   await fraudCase(o1, { decision: 'SUSPICIOUS', cell: 'RULE_ONLY', p: 1, reviews: [{ decision: 'LEGITIMATE', blind: false, createdAt: ago(30 * D) }, { decision: 'CONFIRMED_FRAUD', blind: true, createdAt: ago(29 * D) }] });

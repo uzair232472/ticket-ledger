@@ -62,10 +62,11 @@ export async function scoreVisits({ now = new Date(), lookbackHours = 48 } = {})
     const { price, minPrice } = visitPrice(f.visit, await getEvent(f.visit.eventId));
     const context = { ticket_price: price, min_price: minPrice, captured_at: now.toISOString() };
     // Reference moment for the integrity check: the visit's start (the prices the customer saw)
-    intent.push({ ...base, rule: { score: rule.score, decision: rule.decision, output: { orderIds } }, features, context, windowStart: f.visit.start });
+    // Reference moments: the visit's start (prices the customer saw) and its end (typical price as of then)
+    intent.push({ ...base, rule: { score: rule.score, decision: rule.decision, output: { orderIds } }, features, context, windowStart: f.visit.start, referenceAt: f.visit.end });
     if (features.checkout_started) {
       const { checkout_started: _c, ...af } = features;
-      abandonment.push({ ...base, rule: { score: 100 - rule.score, decision: null, output: { orderIds } }, features: af, context, windowStart: f.visit.start });
+      abandonment.push({ ...base, rule: { score: 100 - rule.score, decision: null, output: { orderIds } }, features: af, context, windowStart: f.visit.start, referenceAt: f.visit.end });
     }
   }
   return {
@@ -104,6 +105,7 @@ export async function scoreCrowd({ now = new Date() } = {}) {
           subjectType: 'GATE_SLOT', subjectId: slotSubject(r.gateId, r.minutes), eventId: e.id, asOf: now,
           rule: { score: r.baseline, decision: null, output: { basis: r.basis } }, features: r.features,
           context: { event_start: r.start.toISOString(), captured_at: now.toISOString() },
+          referenceAt: null, // crowd inputs have no price-relative features
         });
       }
     }

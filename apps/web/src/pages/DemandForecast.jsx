@@ -89,21 +89,9 @@ export default function DemandForecast() {
         setEventDetails(json.data);
         if (!customTiers) setTiers(json.data.tiers || []);
       } else {
-        // Fallback: the generic ML demand endpoint
-        const fallbackRes = await fetch(`${API_BASE}/ml/demand-forecast`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            eventType: 'CRICKET_MATCH',
-            city: 'Lahore',
-            marketingTier: 'HIGH',
-            venueCapacity: 27000,
-            avgTicketPrice: simulatedPrice || 3500,
-            isWeekend: 1,
-          }),
-        });
-        const fallbackJson = await fallbackRes.json();
-        if (fallbackJson.success) setForecast(fallbackJson.data);
+        // No stand-in forecast: a generic one built from made-up inputs would look like this event's
+        setForecast(null);
+        setError(json.message || 'The forecast for this event is not available right now.');
       }
     } catch (err) {
       console.error('Error fetching prelaunch forecast:', err);
@@ -186,6 +174,8 @@ export default function DemandForecast() {
   const warning = forecast?.pricing_warning;
   const warn = warning?.severity === 'amber';
   const status = eventDetails?.status;
+  const source = forecast?.prediction_source;
+  const synthetic = source === 'synthetic-demo-model';
 
   return (
     <div>
@@ -206,6 +196,21 @@ export default function DemandForecast() {
           )
         }
       />
+
+      {/* Where this estimate comes from: never presented as a validated real-world prediction */}
+      {forecast && (
+        <div
+          role="note"
+          className={`tl-df-card ${synthetic ? 'border-amber-300 bg-amber-50' : ''}`}
+          style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 16px' }}
+        >
+          {synthetic ? <AlertTriangle className="w-4 h-4 text-amber-600" aria-hidden="true" /> : <Info className="w-4 h-4 text-slate-500" aria-hidden="true" />}
+          <p style={{ margin: 0, fontSize: 13 }}>
+            <strong>{synthetic ? 'Demonstration model (synthetic data, not validated).' : source === 'rules' ? 'Rule-based estimate.' : 'Unverified estimate.'}</strong>{' '}
+            {forecast.prediction_notice || 'This is not a validated real-world prediction.'}
+          </p>
+        </div>
+      )}
 
       {/* Event picker + facts */}
       <div className="tl-df-card">

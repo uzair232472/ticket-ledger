@@ -29,8 +29,15 @@ from ml.schema import NULLABLE_FEATURES, SPECS
 # Legacy formula-trained models and their /train/* endpoints only run in development with
 # ML_ALLOW_SYNTHETIC=1. Otherwise the legacy endpoints answer with their built-in rules, so every
 # active decision in the app comes from rules. New models only run in shadow (/v2/shadow).
-ALLOW_SYNTHETIC = os.environ.get("ML_ALLOW_SYNTHETIC") == "1"
 ML_ENV = os.environ.get("ML_ENV", "development")
+# Never in production: a synthetic model must not answer customer- or organizer-facing requests there.
+ALLOW_SYNTHETIC = os.environ.get("ML_ALLOW_SYNTHETIC") == "1" and ML_ENV != "production"
+if os.environ.get("ML_ALLOW_SYNTHETIC") == "1" and ML_ENV == "production":
+    print("ML_ALLOW_SYNTHETIC=1 is ignored because ML_ENV=production: legacy synthetic models stay off.")
+# Every legacy answer says where it came from. Synthetic answers are demonstrations only.
+SYNTHETIC_NOTICE = ("Demonstration only: produced by a model trained on synthetic data. Not validated on real "
+                    "sales and not a real-world prediction.")
+RULES_NOTICE = "Rule-based estimate (no trained model)."
 SERVICE_TOKEN = os.environ.get("ML_SERVICE_TOKEN", "")
 
 app = FastAPI(
@@ -110,6 +117,9 @@ class FraudScoreResponse(BaseModel):
     action_recommended: str
     anomaly_factors: List[str]
     confidence: float
+    prediction_source: str = "rules"          # always the rules (no model decides checkout blocks)
+    validated: bool = False
+    notice: str = RULES_NOTICE
 
 class DemandForecastRequest(BaseModel):
     # Core features
@@ -134,6 +144,9 @@ class DemandForecastResponse(BaseModel):
     demand_tier: str
     demand_level: str
     pricing_recommendation: str
+    prediction_source: str = "rules"          # "rules" | "synthetic-demo-model"
+    validated: bool = False                    # never a validated real-world model
+    notice: str = RULES_NOTICE
 
 class IntentPredictRequest(BaseModel):
     # Core features
@@ -156,6 +169,9 @@ class IntentPredictResponse(BaseModel):
     intent_score: float
     intent_level: str
     suggested_action: str
+    prediction_source: str = "rules"          # "rules" | "synthetic-demo-model"
+    validated: bool = False
+    notice: str = RULES_NOTICE
 
 class TrainingResponse(BaseModel):
     success: bool
@@ -305,7 +321,10 @@ def execute_demand_forecast(req: DemandForecastRequest) -> DemandForecastRespons
         sellout_probability=sellout_ratio,
         demand_tier=tier,
         demand_level=demand_level,
-        pricing_recommendation=rec
+        pricing_recommendation=rec,
+        prediction_source="synthetic-demo-model" if demand_pkg is not None else "rules",
+        validated=False,
+        notice=SYNTHETIC_NOTICE if demand_pkg is not None else RULES_NOTICE,
     )
 
 def execute_intent_predict(req: IntentPredictRequest) -> IntentPredictResponse:
@@ -356,7 +375,10 @@ def execute_intent_predict(req: IntentPredictRequest) -> IntentPredictResponse:
         purchase_intent_score=score,
         intent_score=score,
         intent_level=level,
-        suggested_action=action
+        suggested_action=action,
+        prediction_source="synthetic-demo-model" if intent_pkg is not None else "rules",
+        validated=False,
+        notice=SYNTHETIC_NOTICE if intent_pkg is not None else RULES_NOTICE,
     )
 
 # -----------------

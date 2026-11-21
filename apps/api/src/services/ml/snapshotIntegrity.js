@@ -1,46 +1,90 @@
 /**
  * Is a prediction's snapshot exact? Database triggers log every change to an event's model inputs (event
- * details, tier prices and quantities, gates) in the same transaction as the change (MlInputChange).
+ * details, tier prices and quantities, gates) in the same transaction as the change (MlInputChange). Since
+ * migration 20261123120000_ml_input_changes_commit_time they run at COMMIT, so a change is logged at the
+ * moment it becomes visible, even when its transaction was long.
  *
- * The prediction logger calls checkSnapshots() AFTER the inputs were read and right before the row is
- * written. A change to that event since the prediction's reference moment (`windowStart`: the request time,
- * the start of a visit, the sales-open time) means the values read may not be the ones that held at that
- * moment, so the snapshot is marked exact: false and training leaves it out. A change committed after the
- * check cannot have affected values already read. CHANGE_MARGIN_MS covers a change whose transaction
- * started shortly before the window but committed inside it.
+ * The prediction logger reads the inputs FIRST, then, in one REPEATABLE READ transaction, calls
+ * checkSnapshots() and writes the rows (shadow.js). A snapshot is exact only if:
+ *   1. the commit-time change log is installed (otherwise nothing can be guaranteed);
+ *   2. the predicted event's inputs did not change since the prediction's reference moment (`windowStart`:
+ *      the request time, the start of a visit, the sales-open time);
+ *   3. nothing behind the typical price (`referenceAt`) changed since then: its events' prices or details,
+ *      or the organizer company / account that decides whether an event is real (the old values are not
+ *      recorded, so a point-in-time typical price cannot be rebuilt; the row is left out).
+ * Why this is safe under concurrency: a change that the reads could see was committed before the reads, so
+ * its log row (same transaction, written at commit) is visible to the later check; a change committed after
+ * the check cannot have affected values read before it. CHANGE_MARGIN_MS absorbs clock differences.
  *
- * If the check cannot run (e.g. the migration is not applied), every snapshot is marked not exact.
+ * If the check cannot run, every snapshot is marked not exact.
  */
 export const CHANGE_MARGIN_MS = 2 * 60_000;
+export const INTEGRITY_VERSION = 2;
+const ML_TRIGGERS = ['ml_event_input_change', 'ml_tier_input_insert_delete', 'ml_tier_input_update', 'ml_gate_input_insert_delete', 'ml_gate_input_update'];
+const REFERENCE_SOURCES = ['TicketTier', 'Event'];
 
-/** items: [{ eventId, windowStart: Date }] -> [{ exact, reason?, changes, sources }] in the same order. */
-export async function checkSnapshots(db, items) {
-  const relevant = items.filter((it) => it.eventId && it.windowStart);
+/** Are all the change-log triggers deferred to commit time? */
+export async function commitTimeLogInstalled(db) {
+  const rows = await db.$queryRaw`SELECT tgname, tgdeferrable, tginitdeferred FROM pg_trigger WHERE tgname = ANY(${ML_TRIGGERS}) AND NOT tgisinternal`;
+  return rows.length === ML_TRIGGERS.length && rows.every((r) => r.tgdeferrable && r.tginitdeferred);
+}
+
+/**
+ * items: [{ eventId, windowStart: Date, referenceAt?: Date|null }]; reference(at) -> { eventIds: Set, companyIds,
+ * ownerIds } behind the typical price at `at`. Returns [{ exact, reason?, ... }] in the same order.
+ */
+export async function checkSnapshots(db, items, { reference = null } = {}) {
   const checkedAt = new Date();
-  if (!relevant.length) return items.map(() => ({ exact: false, reason: 'no event or reference moment to check against', checked_at: checkedAt.toISOString(), changes: 0, sources: [] }));
-  const since = new Date(Math.min(...relevant.map((it) => it.windowStart.getTime())) - CHANGE_MARGIN_MS);
+  const base = { version: INTEGRITY_VERSION, checked_at: checkedAt.toISOString() };
+  const fail = (reason) => items.map(() => ({ ...base, exact: false, reason, changes: 0, sources: [] }));
+  if (!items.length) return [];
   let rows;
   try {
+    if (!(await commitTimeLogInstalled(db))) return fail('commit-time change log not installed (migration 20261123120000_ml_input_changes_commit_time)');
+    const starts = items.flatMap((it) => [it.windowStart, it.referenceAt]).filter(Boolean).map((d) => d.getTime());
+    if (!starts.length) return fail('no reference moment to check against');
     rows = await db.mlInputChange.findMany({
-      where: { eventId: { in: [...new Set(relevant.map((it) => it.eventId))] }, changedAt: { gt: since } },
+      where: { changedAt: { gt: new Date(Math.min(...starts) - CHANGE_MARGIN_MS) } },
       select: { eventId: true, source: true, changedAt: true },
     });
   } catch (e) {
-    return items.map(() => ({ exact: false, reason: `integrity check unavailable: ${e.message.split('\n')[0].slice(0, 120)}`, checked_at: checkedAt.toISOString(), changes: 0, sources: [] }));
+    return fail(`integrity check unavailable: ${e.message.split('\n')[0].slice(0, 120)}`);
   }
-  return items.map((it) => {
-    if (!it.eventId || !it.windowStart) return { exact: false, reason: 'no event or reference moment to check against', checked_at: checkedAt.toISOString(), changes: 0, sources: [] };
-    const from = it.windowStart.getTime() - CHANGE_MARGIN_MS;
-    const hits = rows.filter((r) => r.eventId === it.eventId && r.changedAt.getTime() > from);
-    return {
-      exact: hits.length === 0,
-      ...(hits.length ? { reason: `inputs changed after the prediction moment (${[...new Set(hits.map((h) => h.source))].join(', ')})` } : {}),
-      checked_at: checkedAt.toISOString(),
-      window_start: it.windowStart.toISOString(),
-      changes: hits.length,
-      sources: [...new Set(hits.map((h) => h.source))],
-    };
-  });
+  const out = [];
+  for (const it of items) {
+    if (!it.eventId || !it.windowStart) { out.push({ ...base, exact: false, reason: 'no event or reference moment to check against', changes: 0, sources: [] }); continue; }
+    const own = rows.filter((r) => r.eventId === it.eventId && r.changedAt.getTime() > it.windowStart.getTime() - CHANGE_MARGIN_MS);
+    let ref = [];
+    let accounts = 0;
+    if (it.referenceAt) {
+      if (!reference) { out.push({ ...base, exact: false, reason: 'typical-price inputs could not be checked', changes: 0, sources: [] }); continue; }
+      const r = await reference(it.referenceAt);
+      const since = new Date(it.referenceAt.getTime() - CHANGE_MARGIN_MS);
+      ref = rows.filter((x) => r.eventIds.has(x.eventId) && REFERENCE_SOURCES.includes(x.source) && x.changedAt > since);
+      // Whether an event counts as real depends on its organizer's company and account: any update since
+      // the reference moment (not logged with old values) means the classification then cannot be proven
+      try {
+        const [companies, owners] = await Promise.all([
+          r.companyIds.length ? db.company.count({ where: { id: { in: r.companyIds }, updatedAt: { gt: since } } }) : 0,
+          r.ownerIds.length ? db.user.count({ where: { id: { in: r.ownerIds }, updatedAt: { gt: since } } }) : 0,
+        ]);
+        accounts = companies + owners;
+      } catch (e) {
+        out.push({ ...base, exact: false, reason: `typical-price organizers could not be checked: ${e.message.split(String.fromCharCode(10))[0].slice(0, 80)}`, changes: 0, sources: [] });
+        continue;
+      }
+    }
+    const reasons = [];
+    if (own.length) reasons.push(`inputs changed after the prediction moment (${[...new Set(own.map((h) => h.source))].join(', ')})`);
+    if (ref.length) reasons.push(`typical-price inputs changed after the prediction moment (${new Set(ref.map((h) => h.eventId)).size} event(s))`);
+    if (accounts) reasons.push(`typical-price inputs changed after the prediction moment (${accounts} organizer company/account update(s))`);
+    out.push({
+      ...base, exact: reasons.length === 0, ...(reasons.length ? { reason: reasons.join('; ') } : {}),
+      window_start: it.windowStart.toISOString(), reference_at: it.referenceAt ? it.referenceAt.toISOString() : null,
+      changes: own.length, reference_changes: ref.length, reference_account_changes: accounts, sources: [...new Set(own.map((h) => h.source))],
+    });
+  }
+  return out;
 }
 
 /** Latest logged input change anywhere (for cache invalidation), or null. */

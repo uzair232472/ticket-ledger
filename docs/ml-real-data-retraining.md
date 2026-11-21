@@ -46,27 +46,40 @@ values. A row without a usable snapshot (none logged, logged before raw values w
 more than 2 hours after the prediction moment) is left out, and the reason is counted.
 
 **Only exact snapshots are used.** Some inputs are read a little after the prediction's reference moment:
-- **Request-path predictions** (checkout fraud, demand forecast views) are read on the next tick after the
-  response.
-- **Visits** are read 30 to 45 minutes after the visit ends, because a visit is only finished after 30 quiet
-  minutes. The reference moment is the visit's start, i.e. the prices the customer saw.
-- **Demand at sales open** is read within the hour after the open.
+- request-path predictions (checkout fraud, demand forecast views) are read on the next tick;
+- visits are read 30 to 45 minutes after the visit ends (a visit is only finished after 30 quiet minutes);
+  their reference moment is the visit's start, i.e. the prices the customer saw;
+- demand at sales open is read within the hour after the open.
 
-Database triggers (migration `20261122120000_ml_input_changes`) record every change to an event's inputs in
-the same transaction as the change: schedule, capacity, type, city, sales-open times, organizer,
-cancellation, tier prices and quantities, and tiers or gates added or removed. Ticket sales are not inputs.
-Right after the inputs are read, and before the prediction row is written, the logger checks that event's
-change log from the reference moment (minus 2 minutes, to cover a transaction that started just before it).
-- **Any change** → `context.exact = false`, with the changed sources. The exporter leaves the row out
-  ("not exact: event inputs changed after the prediction moment").
-- **No change** → `exact = true`. A change committed after the check cannot have affected values already
-  read. Changes after the prediction is stored never alter it.
-- **The check cannot run** (e.g. the migration is not applied) → every snapshot is marked not exact.
-- **Older snapshots** without the flag are never used.
+Database triggers record every change to an event's inputs: schedule, capacity, type, city, sales-open
+times, organizer, cancellation, tier prices and quantities, and tiers or gates added or removed. Ticket sales
+are not inputs. The triggers are deferred to **commit time**: a change is logged at the moment it becomes
+visible, even inside a long transaction (migrations `20261122120000_ml_input_changes` and
+`20261123120000_ml_input_changes_commit_time`).
 
-The typical-price reference is rebuilt as soon as any input change is logged, so it is never stale either.
-`test_ml_snapshot_integrity.mjs` covers price, quantity, tier, capacity, start, city, sales-open and gate
-changes before and immediately after a prediction.
+The prediction logger reads all inputs first. Then, in **one repeatable-read transaction**, it checks the
+change log and writes the row. A snapshot is `exact` only if:
+1. the commit-time change log is installed;
+2. the predicted event's inputs did not change since the reference moment (minus 2 minutes);
+3. nothing behind the **typical price** changed since the moment that price refers to: its events' prices or
+   details, or the organizer company or account (which decides whether an event counts as real).
+
+Point (3) is needed because old prices are not recorded, so a historical typical price cannot be rebuilt; the
+row is left out instead. That moment is the sales open for demand and attendance, the visit end for visits,
+and the request for fraud. The typical price also counts only events that existed at that moment: an event
+created later with a backdated sales-open date never counts. Crowd inputs have no price-relative features, so
+point (3) does not apply to them.
+
+Why this holds under concurrency: a change the reads could see was committed before them, and its log row
+was written in the same transaction at commit, so the later check sees it. A change committed after the check
+cannot have affected values already read.
+
+`test_ml_snapshot_concurrency.mjs` makes changes from a second database connection at each point: after the
+reads, after the check, uncommitted during the capture, and in a long transaction. It also covers the
+typical-price cases. Against the statement-time triggers alone, the long-transaction case fails and nothing is
+marked exact. `test_ml_snapshot_integrity.mjs` covers price, quantity, tier, capacity, start, city, sales-open
+and gate changes before and immediately after a prediction. Rows that are not exact are left out, never
+repaired, and each one carries its reason (`context.integrity`).
 
 | File | Row = | Snapshot logged by | Prediction time (`ts`) | Label |
 |---|---|---|---|---|
@@ -215,6 +228,23 @@ needs a business decision.
   needs a randomised hold-out group to measure the effect. It must not reuse the abandonment model, its
   data or its results.
 
+### Synthetic legacy endpoints (labelled, never in production)
+- `ML_ALLOW_SYNTHETIC` is not set in any environment file, start script or deployment configuration in the
+  repository, so it is off by default.
+- It is now **ignored when `ML_ENV=production`**: no synthetic model loads, and the legacy training endpoints
+  stay disabled. The flag only works in development.
+- Second safeguard, in case the ML service itself is misconfigured: an API running with
+  `NODE_ENV=production` discards any demand or intent answer that is not labelled `rules`, and uses its own
+  labelled rule-based estimate (`refuseSyntheticInProduction`, `mlService.js`).
+- Every legacy demand, intent and fraud answer says where it came from: `prediction_source` (`rules` or
+  `synthetic-demo-model`), `validated: false` (always), and a `notice`. The API passes these through, and
+  the demand forecast page labels each estimate as rule-based, demonstration (synthetic, not validated), or
+  unverified (unknown source).
+- The forecast page no longer shows a stand-in forecast built from made-up inputs (cricket, Lahore, 27,000
+  seats) when the event's forecast fails. It shows the error.
+- With the flag on in development, the legacy demand model file does not work with the current code
+  (`KeyError 'sales_pipeline'`), so that endpoint fails and the API uses its labelled rule-based estimate.
+
 ### No model makes decisions (verified)
 - Checkout blocks follow the ML service's `/fraud/score`. It now always answers with its rules (unchanged
   thresholds), even when a trained model is loaded: the legacy synthetic model used to set the score
@@ -250,8 +280,16 @@ capacities. Making the field required on new gates is a product decision and has
   after sales open. Organizers who edit prices early lose those rows rather than getting reconstructed ones.
   The check covers the predicted event's own inputs. The typical-price reference uses all real events'
   prices as they are at capture time.
-- **The integrity check needs migration `20261122120000_ml_input_changes`.** Without it, every new snapshot
-  is marked not exact, so nothing becomes trainable (safe, but no data accumulates).
+- **The integrity check needs both change-log migrations** (`20261122120000_ml_input_changes` and the
+  commit-time `20261123120000_ml_input_changes_commit_time`). Until both are applied, every new snapshot is
+  marked not exact, so nothing becomes trainable (safe, but no data accumulates).
+- **The typical-price rule is strict.** Any price or detail change to any real event behind the typical price,
+  after the moment it refers to, excludes the row. Demand forecasts viewed long after sales open, and
+  attendance snapshots (whose typical price refers to sales open), will often be excluded on a busy platform.
+  Recording old prices in the change log would allow a true point-in-time typical price. That needs a new
+  migration and has not been built.
+- **The reference-set check is conservative**: a change to a reference event within 2 minutes before the
+  prediction moment also excludes the row (clock margin).
 - **Fraud labels are human judgment** from a stratified sample. The weights correct for the sampling, not
   for reviewer error.
 - **The deployed-model comparison needs newer data** than the deployed model's training period.

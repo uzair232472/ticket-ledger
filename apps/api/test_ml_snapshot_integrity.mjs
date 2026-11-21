@@ -27,21 +27,29 @@ test.after(() => prisma.$disconnect());
 const tag = randomUUID().slice(0, 8);
 let company;
 let n = 0;
-async function freshEvent() {
+async function freshEvent({ open = new Date(Date.now() - 400 * 86_400_000) } = {}) {
   if (!company) {
-    const org = await prisma.user.create({ data: { email: `org-${tag}@fx${tag}.pk`, passwordHash: 'x', name: 'Org', role: 'ORGANIZER' } });
+    // A test-domain organizer: its events never enter any typical price (dataPolicy), so the price changes this
+    // file makes cannot affect other tests' typical-price checks
+    const org = await prisma.user.create({ data: { email: `org-${tag}@example.com`, passwordHash: 'x', name: 'Org', role: 'ORGANIZER' } });
     company = await prisma.company.create({ data: { userId: org.id, companyName: `Fx ${tag}`, ownerName: 'Org', phone: '0300', email: org.email, city: 'Lahore', ntnCnic: '1', documentUrl: 'x', status: 'APPROVED' } });
   }
   const start = new Date(Date.now() + 20 * 86_400_000);
   const e = await prisma.event.create({
     data: {
       companyId: company.id, name: `I${++n}-${tag}`, description: 'fixture', type: 'CRICKET_MATCH', status: 'PUBLISHED', city: 'Lahore', venue: 'Ground',
-      date: start, time: '19:00', startsAt: start, salesOpenAt: new Date(Date.now() - 86_400_000),
+      date: start, time: '19:00', startsAt: start, createdAt: new Date(open.getTime() - 86_400_000),
+      // Sales opened long ago, so the typical price refers to a quiet past (this file tests the event's OWN inputs;
+      // typical-price changes are covered by test_ml_snapshot_concurrency.mjs)
+      salesOpenAt: open,
       tiers: { create: [{ name: 'General', price: 1000, totalQuantity: 100, availableQuantity: 100 }, { name: 'VIP', price: 3000, totalQuantity: 20, availableQuantity: 20 }] },
       gates: { create: [{ name: 'G1', capacityPerHour: 600 }] },
     },
     include: { tiers: true, gates: true },
   });
+  // In a real timeline the event was created long before the prediction
+  await prisma.mlInputChange.updateMany({ where: { eventId: e.id }, data: { changedAt: new Date(Date.now() - 3600_000) } });
+  await prisma.event.update({ where: { id: e.id }, data: { description: 'fixture.' } });
   await new Promise((r) => setTimeout(r, 20));
   return e;
 }
@@ -56,12 +64,14 @@ async function predictAfter(change) {
   await change(e);
   const { features, context } = await demandSnapshot({ eventId: e.id, at: asOf });
   const subjectId = `${e.id}|t`;
-  await logPredictions('demand', [{ subjectType: 'EVENT_FORECAST', subjectId, eventId: e.id, asOf, rule: { score: 1 }, features, context }]);
+  // Own inputs only here (referenceAt: null); typical-price changes: test_ml_snapshot_concurrency.mjs (E)
+  await logPredictions('demand', [{ subjectType: 'EVENT_FORECAST', subjectId, eventId: e.id, asOf, referenceAt: null, rule: { score: 1 }, features, context }]);
   return (await stored(subjectId)).output.context;
 }
 
 test('changes right after a prediction is stored never alter it, and it stays exact', async () => {
-  const e = await freshEvent();
+  // Opens earlier than any event of an earlier run, so none of them is behind its typical price
+  const e = await freshEvent({ open: new Date(Date.UTC(1990, 0, 1) - Date.now() / 100) });
   await prisma.mlInputChange.updateMany({ where: { eventId: e.id }, data: { changedAt: new Date(Date.now() - 3600_000) } });
   const asOf = new Date();
   await recordShadow({ name: 'demand', subjectType: 'EVENT_FORECAST', subjectId: `${e.id}|now`, eventId: e.id, asOf, rule: { score: 1 }, buildFeatures: () => demandSnapshot({ eventId: e.id, at: asOf }) });

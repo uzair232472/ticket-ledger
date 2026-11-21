@@ -71,32 +71,53 @@ export const avgTierPrice = (tiers) => {
 
 // The country's typical price: median average tier price of REAL events whose sales opened before `at`
 // (test and internal organizers' events are left out: dataPolicy.js).
-let refCache = { at: 0, events: null };
-export const clearReferencePriceCache = () => { refCache = { at: 0, events: null }; };
+let refCache = { at: 0, events: null, lastChange: null };
+export const clearReferencePriceCache = () => { refCache = { at: 0, events: null, lastChange: null }; };
 async function eventsWithPrices() {
-  // Rebuilt hourly, and at once after any logged change to an event's prices (so a snapshot never uses a
-  // stale reference)
-  const changed = refCache.events ? await latestInputChange(prisma) : null;
-  if (!refCache.events || Date.now() - refCache.at > HOUR || (changed && changed.getTime() >= refCache.at)) {
+  // Rebuilt hourly, and at once when the change log has anything newer than what the cache was built from
+  // (database times compared with database times, so clock differences cannot keep a stale cache)
+  const latest = await latestInputChange(prisma);
+  const newer = latest && (!refCache.lastChange || latest.getTime() > refCache.lastChange.getTime());
+  if (!refCache.events || Date.now() - refCache.at > HOUR || newer) {
     const policy = dataPolicy();
     const rows = await prisma.event.findMany({
       where: { tiers: { some: {} } },
       select: {
         id: true, salesOpenAt: true, publishAt: true, approvedAt: true, createdAt: true, tiers: { select: { price: true } },
-        company: { select: { user: { select: { email: true } } } },
+        companyId: true, company: { select: { userId: true, user: { select: { email: true } } } },
       },
     });
     refCache = {
       at: Date.now(),
-      events: rows.filter((e) => !organizerExclusion(e, e.company?.user, policy)).map((e) => ({ id: e.id, open: salesOpenOf(e), avg: avgTierPrice(e.tiers) })),
+      lastChange: latest,
+      events: rows.filter((e) => !organizerExclusion(e, e.company?.user, policy)).map((e) => ({ id: e.id, open: salesOpenOf(e), created: e.createdAt, avg: avgTierPrice(e.tiers), companyId: e.companyId, ownerId: e.company?.userId })),
     };
   }
   return refCache.events;
 }
 
+/**
+ * The events the typical price at `at` is computed from: real events that EXISTED at `at` (created before it)
+ * and whose sales had opened by then. An event created later with a backdated sales-open date never counts.
+ * Their prices are read as they are now: the snapshot check (snapshotIntegrity.js) marks a snapshot not exact
+ * if any of these events' prices or details changed after `at`, because the old values are not recorded.
+ */
+const referenceSet = (events, at) => events.filter((e) => e.open < at && e.created < at);
+
 export async function referencePrice(at, ownAvgPrice) {
-  const prior = (await eventsWithPrices()).filter((e) => e.open < at).map((e) => e.avg);
+  const prior = referenceSet(await eventsWithPrices(), at).map((e) => e.avg);
   return prior.length ? median(prior) : ownAvgPrice; // very first event: its own price (relative price 1.0)
+}
+
+/** Ids of the events behind referencePrice(at). */
+export async function referenceEventIds(at) {
+  return new Set(referenceSet(await eventsWithPrices(), at).map((e) => e.id));
+}
+
+/** Everything the typical price at `at` depends on: its events, their organizers' companies and accounts. */
+export async function referenceInputs(at) {
+  const set = referenceSet(await eventsWithPrices(), at);
+  return { eventIds: new Set(set.map((e) => e.id)), companyIds: [...new Set(set.map((e) => e.companyId))], ownerIds: [...new Set(set.map((e) => e.ownerId).filter(Boolean))] };
 }
 
 const round = (x, d = 3) => Math.round(x * 10 ** d) / 10 ** d;
@@ -180,7 +201,8 @@ export async function demandSnapshot({ eventId, at }) {
   const open = salesOpenOf(event);
   const prices = event.tiers.map((t) => Number(t.price));
   const avg = avgTierPrice(event.tiers);
-  const ref = await referencePrice(open < at ? open : at, avg);
+  const refAt = open < at ? open : at;
+  const ref = await referencePrice(refAt, avg);
   const ls = localParts(start);
   const lo = localParts(open);
 
@@ -226,6 +248,7 @@ export async function demandSnapshot({ eventId, at }) {
     context: {
       min_price: Math.min(...prices), avg_price: avg, max_price: Math.max(...prices), event_start: start.toISOString(),
       sales_open: open.toISOString(), organizer_id: event.companyId, timezone: TIMEZONE,
+      reference_at: refAt.toISOString(), reference_price: ref,
     },
   };
 }
@@ -302,12 +325,13 @@ export async function attendanceSnapshot({ ticketId, at = null }) {
     select: { checkedInAt: true, event: { select: { date: true, time: true, startsAt: true, endsAt: true } } },
   });
   const open = salesOpenOf(t.event);
-  const refPrice = await referencePrice(open < when ? open : when, avgTierPrice(t.event.tiers));
+  const refAt = open < when ? open : when;
+  const refPrice = await referencePrice(refAt, avgTierPrice(t.event.tiers));
   const r = attendanceRow({
     ticket: { id: t.id, price: t.price, tierId: t.seat.tierId },
     order: { userId: t.order.userId, createdAt: t.order.createdAt, ticketCount: t.order._count.tickets },
     event: t.event, transfers: t.transferHistory,
     holderPast: past.map((p) => ({ eventEnd: endOf(p.event), checkedInAt: p.checkedInAt })), refPrice, at: when,
   });
-  return { features: r.features, context: { ticket_price: Number(t.price), event_start: startOf(t.event).toISOString(), holder_id: r.holderId } };
+  return { features: r.features, context: { ticket_price: Number(t.price), event_start: startOf(t.event).toISOString(), holder_id: r.holderId, reference_at: refAt.toISOString(), reference_price: refPrice } };
 }

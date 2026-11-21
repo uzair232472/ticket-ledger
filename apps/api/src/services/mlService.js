@@ -4,6 +4,17 @@ dotenv.config();
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 // A slow or hung ML service must never hold up a request: after this many ms the caller uses its rules
 export const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 300;
+
+/**
+ * In production the app never shows a synthetic model's answer, even if the ML service is misconfigured
+ * (ML_ALLOW_SYNTHETIC without ML_ENV=production): such an answer is discarded and the rules answer instead.
+ */
+export function refuseSyntheticInProduction(result, env = process.env) {
+  if (env.NODE_ENV === 'production' && result?.prediction_source !== 'rules') {
+    throw new Error(`ML service answered with "${result?.prediction_source || 'an unknown source'}"; only rule-based answers are used in production`);
+  }
+  return result;
+}
 const ML_TRAINING_TIMEOUT_MS = 60_000;
 
 /** POST to the ML service with the shared service token and a hard timeout. Throws on timeout / non-2xx. */
@@ -139,7 +150,7 @@ export const forecastEventDemand = async (eventParams = {}) => {
   };
 
   try {
-    return await mlPost('/forecast/demand', payload);
+    return refuseSyntheticInProduction(await mlPost('/forecast/demand', payload));
   } catch (error) {
     console.warn(`[ML Service] Warning: Python ML service unreachable for demand forecast. Using baseline ratio.`);
     const projectedSales = Math.floor(venueCapacity * 0.78);
@@ -151,6 +162,9 @@ export const forecastEventDemand = async (eventParams = {}) => {
       demand_level: 'HIGH',
       pricing_recommendation: `Estimated 78% uptake in ${city}. Optimize tier distribution for peak revenue.`,
       fallback: true,
+      prediction_source: 'rules',
+      validated: false,
+      notice: 'Rule-based estimate (no trained model).',
     };
   }
 };
@@ -188,7 +202,7 @@ export const scorePurchaseIntent = async (sessionParams = {}) => {
   };
 
   try {
-    return await mlPost('/intent/predict', payload);
+    return refuseSyntheticInProduction(await mlPost('/intent/predict', payload));
   } catch (error) {
     return {
       purchase_intent_score: checkoutStarted ? 85.0 : 45.0,
@@ -196,6 +210,9 @@ export const scorePurchaseIntent = async (sessionParams = {}) => {
       intent_level: checkoutStarted ? 'HIGH_INTENT' : 'MODERATE',
       suggested_action: checkoutStarted ? 'DISPATCH_SMS_REMINDER' : 'MONITOR_SESSION',
       fallback: true,
+      prediction_source: 'rules',
+      validated: false,
+      notice: 'Rule-based estimate (no trained model).',
     };
   }
 };

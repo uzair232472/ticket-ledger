@@ -845,6 +845,11 @@ export const getPreLaunchDemandForecast = async (req, res) => {
         suggested_window_reason: suggestedWindowReason,
         pricing_warning: pricingWarning,
         pricing_recommendation: forecastResult.pricing_recommendation,
+        // Where the forecast came from. Never a validated real-world model: rules, or (development only,
+        // ML_ALLOW_SYNTHETIC=1) a synthetic demonstration model. An unknown source is shown as unverified.
+        prediction_source: forecastResult.prediction_source || 'unknown',
+        validated: false,
+        prediction_notice: forecastResult.notice || 'Source of this estimate is unknown: treat it as unverified.',
         tiers: event.tiers,
       },
     });
