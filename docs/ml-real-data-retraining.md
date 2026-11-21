@@ -268,6 +268,23 @@ and now shown:
 In the dev database 2 of the 3 gates have no capacity (a past test event). Organizers have to enter real
 capacities. Making the field required on new gates is a product decision and has not been changed.
 
+## Regression testing
+
+`apps/api/scripts/test-per-file.sh` runs every API test file of a source tree, one at a time, against its own
+fresh database (restored from a backup, then `prisma migrate deploy`), with that tree's ML service, and writes
+one line per file (tests, pass, fail, connection-refused errors). Compare two trees, e.g. a commit checked out
+with `git worktree add` (copy the untracked `apps/ml-service/models/v0/` and `apps/api/.env` into it, and set
+`ML_PYTHON` to the main checkout's `.venv` Python) against the working tree:
+
+```
+bash apps/api/scripts/test-per-file.sh <tree> <label> <backup.dump> <ml port>
+```
+
+14 files are HTTP tests against a running API server on `localhost:5000` (with Redis, seeded logins and the
+ML service). The runner does not start that server: it runs background jobs with outside effects (recovery
+e-mails to the addresses in the data, blockchain mint jobs). Those files therefore cannot run here, and their
+tests are reported as failures with connection-refused errors. They are not passing tests.
+
 ## Remaining limitations
 - **No real verified data yet.** No provider runs with live keys, and JazzCash and EasyPaisa are simulations,
   so no order can qualify. Real training needs a live Stripe key (or real JazzCash / EasyPaisa integrations
@@ -281,8 +298,10 @@ capacities. Making the field required on new gates is a product decision and has
   The check covers the predicted event's own inputs. The typical-price reference uses all real events'
   prices as they are at capture time.
 - **The integrity check needs both change-log migrations** (`20261122120000_ml_input_changes` and the
-  commit-time `20261123120000_ml_input_changes_commit_time`). Until both are applied, every new snapshot is
-  marked not exact, so nothing becomes trainable (safe, but no data accumulates).
+  commit-time `20261123120000_ml_input_changes_commit_time`). Where they are missing, every new snapshot is
+  marked not exact, so nothing becomes trainable (safe, but no data accumulates). Status on 2026-11-21: both
+  are applied on the main development database (backed up, restore-verified, checksums matched, rehearsed;
+  business records unchanged) and on the verification database. They are not applied to production.
 - **The typical-price rule is strict.** Any price or detail change to any real event behind the typical price,
   after the moment it refers to, excludes the row. Demand forecasts viewed long after sales open, and
   attendance snapshots (whose typical price refers to sales open), will often be excluded on a busy platform.
