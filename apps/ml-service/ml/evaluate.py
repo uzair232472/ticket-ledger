@@ -9,6 +9,13 @@ Evaluates one model specification end to end:
   6. learning curve (10/25/50/100% of the training rows)
   7. decision: PASSED / REJECTED / NOT_ENOUGH_DATA
   8. if PASSED: refit on all rows with the same settings -> final artifact
+  9. comparison with the currently deployed model on test rows it was not trained on (recommendation only:
+     nothing is ever promoted or deployed automatically)
+
+Fraud labels exported from the database come from a stratified review sample (every flagged order, a small
+random share of the rest), so fraud rows carry `sample_weight` = 1 / inclusion probability and every fraud
+fit, threshold and rate is weighted by it. The fraud baseline is then the decision the rules actually made
+(`rule_flag`), not a re-computation.
 """
 
 import os
@@ -24,7 +31,7 @@ from sklearn.isotonic import IsotonicRegression
 
 from . import baselines, metrics
 from .gates import GATES
-from .models import COMPLEXITY, build, feature_frame, predict, target
+from .models import COMPLEXITY, WeightedCalibrated, build, feature_frame, predict, target
 from .schema import ModelSpec
 from .splits import assert_no_leakage, time_split
 
@@ -32,6 +39,17 @@ ARTIFACT_FORMAT = 1
 
 
 # ---------------------------------------------------------------------------------------------
+def weights(spec: ModelSpec, df: pd.DataFrame):
+    """Sampling weights (fraud from a db export only; attendance's sample_weight means something else)."""
+    if spec.name == "fraud" and "sample_weight" in df:
+        return df["sample_weight"].to_numpy(dtype=float)
+    return None
+
+
+def _sub(w, idx):
+    return None if w is None else w[idx]
+
+
 def load(spec: ModelSpec, data_dir: str) -> pd.DataFrame:
     df = pd.read_csv(os.path.join(data_dir, f"{spec.dataset}.csv"))
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
@@ -51,6 +69,10 @@ def baseline(spec: ModelSpec, df: pd.DataFrame) -> dict:
         return {"score": baselines.abandonment_rule(df)}
     if spec.name == "fraud":
         s, flag = baselines.fraud_rule(df)
+        if "rule_flag" in df and len(df) and df["rule_flag"].notna().all():
+            flag = df["rule_flag"].to_numpy() == 1          # what the app's rules actually decided
+            if "rule_score" in df and df["rule_score"].notna().all():
+                s = df["rule_score"].to_numpy(dtype=float)
         return {"score": s, "flag": flag}
     if spec.name == "demand":
         pred, lo, hi = baselines.demand_baseline(df)
@@ -93,8 +115,9 @@ def main_measure(spec, df, idx, out, base, ctx):
         f = GATES["top_fraction"]
         return metrics.top_share(y, out["p"][idx], f), metrics.top_share(y, base["score"][idx], f)
     if spec.name == "fraud":
-        m = metrics.flag_stats(y, out["p"][idx] >= ctx["threshold"])
-        b = metrics.flag_stats(y, base["flag"][idx])
+        w = _sub(weights(spec, df), idx)
+        m = metrics.flag_stats(y, out["p"][idx] >= ctx["threshold"], w)
+        b = metrics.flag_stats(y, base["flag"][idx], w)
         return m["precision"], b["precision"]
     if spec.name == "demand":
         return metrics.wape(y, out["pred"][idx]), metrics.wape(y, base["pred"][idx])
@@ -134,7 +157,9 @@ def bootstrap_improvement(spec, df, idx, out, base, ctx, seed=0):
 # ---------------------------------------------------------------------------------------------
 def _fit(spec, df, idx, seed=0, complexity=None):
     model = build(spec, seed=seed, complexity=complexity)
-    model.fit(feature_frame(df.iloc[idx], spec), target(df.iloc[idx], spec))
+    w = _sub(weights(spec, df), idx)
+    kw = {} if w is None else {"model__sample_weight": w}
+    model.fit(feature_frame(df.iloc[idx], spec), target(df.iloc[idx], spec), **kw)
     return model
 
 
@@ -144,12 +169,14 @@ def _select_complexity(spec, df, split, seed=0):
     the simplest level. The test period plays no part in this choice."""
     tr, va = split.train, split.val
     y_tr, y_va = df[spec.label].to_numpy()[tr], df[spec.label].to_numpy()[va]
+    w = weights(spec, df)
     rows = []
     for c in COMPLEXITY:
         model = _fit(spec, df, tr, seed=seed, complexity=c)
         p_tr, p_va = predict(model, df.iloc[tr], spec), predict(model, df.iloc[va], spec)
         if spec.kind == "binary":
-            score, gap_value = metrics.auc(y_va, p_va), metrics.auc(y_tr, p_tr) - metrics.auc(y_va, p_va)
+            a_va = metrics.auc(y_va, p_va, _sub(w, va))
+            score, gap_value = a_va, metrics.auc(y_tr, p_tr, _sub(w, tr)) - a_va
             ok = gap_value <= GATES["max_auc_gap"]
         else:
             err = metrics.wape if spec.name == "demand" else metrics.mae
@@ -190,12 +217,14 @@ def _prepare_context(spec, model, df, split):
     if spec.kind == "binary":
         raw_v = predict(model, df.iloc[v], spec)
         y_v = df[spec.label].to_numpy()[v]
-        ctx["calibrator"] = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0).fit(raw_v, y_v)
+        w_v = _sub(weights(spec, df), v)
+        ctx["calibrator"] = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0).fit(raw_v, y_v, sample_weight=w_v)
         p_v = ctx["calibrator"].predict(raw_v)
         if spec.name == "fraud":
             # Highest flag volume that keeps false flags among legitimate orders within the limit
-            legit = p_v[y_v == 0]
-            ctx["threshold"] = float(np.quantile(legit, 1 - GATES["max_false_flag_rate"])) + 1e-9
+            legit = y_v == 0
+            ctx["threshold"] = metrics.weighted_quantile(p_v[legit], 1 - GATES["max_false_flag_rate"],
+                                                         None if w_v is None else w_v[legit]) + 1e-9
         if spec.name == "attendance":
             # Threshold that balances catching no-shows and shows (best balanced accuracy)
             grid = np.unique(np.quantile(p_v, np.linspace(0.01, 0.99, 99)))
@@ -236,6 +265,7 @@ def _guards(spec, df, split, out, base, ctx, train_out):
     g = []
     test, train = split.test, split.train
     y_t = df[spec.label].to_numpy()[test]
+    w = weights(spec, df)
 
     def add(name, value, limit, passed):
         g.append({"name": name, "value": None if value is None else round(float(value), 4),
@@ -243,7 +273,7 @@ def _guards(spec, df, split, out, base, ctx, train_out):
 
     if spec.kind == "binary":
         y_tr = df[spec.label].to_numpy()[train]
-        gap = metrics.auc(y_tr, train_out["raw"]) - metrics.auc(y_t, out["raw"][test])
+        gap = metrics.auc(y_tr, train_out["raw"], _sub(w, train)) - metrics.auc(y_t, out["raw"][test], _sub(w, test))
         add("train AUC - test AUC (memorising)", gap, f"<= {GATES['max_auc_gap']}", gap <= GATES["max_auc_gap"])
         if spec.name != "fraud":
             e = metrics.ece(y_t, out["p"][test])
@@ -261,8 +291,8 @@ def _guards(spec, df, split, out, base, ctx, train_out):
         b = metrics.top_share(y_t[seg], base["score"][test][seg], f)
         add("first-time visitors: top-10% share vs rule", m - b, ">= 0 (not worse)", m >= b)
     if spec.name == "fraud":
-        m = metrics.flag_stats(y_t, out["p"][test] >= ctx["threshold"])
-        b = metrics.flag_stats(y_t, base["flag"][test])
+        m = metrics.flag_stats(y_t, out["p"][test] >= ctx["threshold"], _sub(w, test))
+        b = metrics.flag_stats(y_t, base["flag"][test], _sub(w, test))
         add("false flags among legitimate orders", m["false_flag_rate"], f"<= {GATES['max_false_flag_rate']}",
             m["false_flag_rate"] <= GATES["max_false_flag_rate"])
         add("share of frauds caught vs rules", m["recall"] - b["recall"], ">= 0 (not worse)", m["recall"] >= b["recall"])
@@ -315,6 +345,7 @@ def _learning_curve(spec, df, split, ctx_full, seed=0):
     rng = np.random.default_rng(seed)
     test = split.test
     y_t = df[spec.label].to_numpy()[test]
+    w_t = _sub(weights(spec, df), test)
     curve = []
     for frac in (0.10, 0.25, 0.50, 1.00):
         n = max(50, int(len(split.train) * frac))
@@ -322,7 +353,7 @@ def _learning_curve(spec, df, split, ctx_full, seed=0):
         model = _fit(spec, df, idx, seed=seed, complexity=ctx_full.get("complexity"))
         raw = predict(model, df.iloc[test], spec)
         if spec.kind == "binary":
-            value, name = metrics.auc(y_t, raw), "test AUC (higher is better)"
+            value, name = metrics.auc(y_t, raw, w_t), "test AUC (higher is better)"
         elif spec.name == "demand":
             value, name = metrics.wape(y_t, raw), "test weighted % error (lower is better)"
         else:
@@ -338,7 +369,55 @@ def _learning_curve(spec, df, split, ctx_full, seed=0):
 
 
 # ---------------------------------------------------------------------------------------------
-def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True, shadow_decision=None):
+def _deployed_comparison(spec, df, split, out, ctx, deployed, seed=0):
+    """The candidate vs the currently deployed model, on test rows newer than everything the deployed model
+    was trained on (otherwise it would be judged on rows it has seen). deployed: {artifact, sha256, file}."""
+    if deployed is None:
+        return {"status": "NO_DEPLOYED_MODEL"}
+    art = deployed["artifact"]
+    if art is None:
+        return {"status": "DEPLOYED_ARTIFACT_NOT_FOUND", "sha256": deployed["sha256"],
+                "reason": "the app's deployed model file is not available to compare with"}
+    info = {"sha256": deployed["sha256"], "file": deployed.get("file"), "source": art.get("data_source"),
+            "trained_to": art.get("trained_to")}
+    want = {"categorical": list(spec.cat), "numeric": list(spec.num)}
+    if art.get("features") != want:
+        return {**info, "status": "NOT_COMPARABLE", "reason": "the deployed model uses different inputs"}
+    trained_to = pd.Timestamp(art["trained_to"])
+    if trained_to.tzinfo is None:
+        trained_to = trained_to.tz_localize("UTC")
+    idx = split.test[(df["ts"].iloc[split.test] > trained_to).to_numpy()]
+    missing, sizes = _enough_data(spec, df, idx) if len(idx) else ({"rows": "0 newer than its training data"}, {})
+    if missing:
+        return {**info, "status": "NOT_ENOUGH_DATA", "rows": int(len(idx)),
+                "reasons": [f"test rows newer than the deployed model's training data: {k} {v}" for k, v in missing.items()]}
+    p = predict(art["model"], df, spec)
+    th = art.get("thresholds", {}).get("threshold")
+    dep = {"score": p, "pred": p, "flag": (p >= th) if th is not None else np.zeros(len(p), dtype=bool)}
+    m, d = main_measure(spec, df, idx, out, dep, ctx)
+    lo, hi = bootstrap_improvement(spec, df, idx, out, dep, ctx, seed=seed)
+    better = lo > 0
+    return {**info, "status": "COMPARED", "rows": int(len(idx)), "test_size": sizes,
+            "candidate": round(m, 4), "deployed": round(d, 4),
+            "improvement": round((m - d) if HIGHER_IS_BETTER[spec.name] else (d - m), 4),
+            "improvement_95ci": [round(lo, 4), round(hi, 4)], "candidate_clearly_better": bool(better)}
+
+
+def recommendation(report):
+    """Human-facing recommendation. Never acted on automatically."""
+    dep = report.get("deployed_model", {})
+    if report.get("status") != "PASSED":
+        return "KEEP_CURRENT: the candidate did not pass the evaluation gates"
+    if report.get("data", {}).get("source") != "db-export":
+        return "KEEP_CURRENT: trained on synthetic data"
+    if dep.get("status") == "COMPARED" and not dep.get("candidate_clearly_better"):
+        return "KEEP_CURRENT: not clearly better than the deployed model"
+    if dep.get("status") in ("NOT_ENOUGH_DATA", "NOT_COMPARABLE", "DEPLOYED_ARTIFACT_NOT_FOUND"):
+        return f"REVIEW: passed the gates; deployed-model comparison {dep['status'].lower().replace('_', ' ')}"
+    return "PROMOTION_CANDIDATE: passed the gates; needs a live shadow check and admin approval"
+
+
+def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True, shadow_decision=None, deployed=None):
     t0 = time.time()
     df = load(spec, data_dir)
     base = baseline(spec, df)
@@ -377,16 +456,19 @@ def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True,
                         "improvement_95ci": [round(lo, 4), round(hi, 4)]}
 
     y_t = df[spec.label].to_numpy()[split.test]
+    w_t = _sub(weights(spec, df), split.test)
     extra = {}
     if spec.kind == "binary":
-        extra["test_auc"] = round(metrics.auc(y_t, out["p"][split.test]), 4)
+        extra["test_auc"] = round(metrics.auc(y_t, out["p"][split.test], w_t), 4)
         extra["test_brier"] = round(metrics.brier(y_t, out["p"][split.test]), 4)
         if "score" in base:
-            extra["baseline_auc"] = round(metrics.auc(y_t, base["score"][split.test]), 4)
+            extra["baseline_auc"] = round(metrics.auc(y_t, base["score"][split.test], w_t), 4)
     if spec.name == "fraud":
         extra["threshold"] = round(ctx["threshold"], 4)
-        extra["model_flags"] = {k: round(v, 4) for k, v in metrics.flag_stats(y_t, out["p"][split.test] >= ctx["threshold"]).items()}
-        extra["rule_flags"] = {k: round(v, 4) for k, v in metrics.flag_stats(y_t, base["flag"][split.test]).items()}
+        extra["sampling_weighted"] = w_t is not None
+        extra["baseline_is_logged_rule_decision"] = bool("rule_flag" in df and df["rule_flag"].notna().all())
+        extra["model_flags"] = {k: round(v, 4) for k, v in metrics.flag_stats(y_t, out["p"][split.test] >= ctx["threshold"], w_t).items()}
+        extra["rule_flags"] = {k: round(v, 4) for k, v in metrics.flag_stats(y_t, base["flag"][split.test], w_t).items()}
     if spec.name == "demand":
         extra["model_mae_tickets"] = round(metrics.mae(y_t, out["pred"][split.test]), 1)
         extra["baseline_mae_tickets"] = round(metrics.mae(y_t, base["pred"][split.test]), 1)
@@ -409,6 +491,7 @@ def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True,
     reasons += [f"guard failed: {g['name']} = {g['value']} (needs {g['limit']})" for g in report["guards"] if not g["passed"]]
     report["status"] = "PASSED" if not reasons else "REJECTED"
     report["reasons"] = reasons
+    report["deployed_model"] = _deployed_comparison(spec, df, split, out, ctx, deployed, seed=seed)
 
     artifact = None
     if final and report["status"] == "PASSED":
@@ -428,7 +511,13 @@ def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True,
 def _final_artifact(spec, df, ctx, report, manifest, seed):
     """Same settings, all rows (the newest months matter most for what comes next)."""
     X, y = feature_frame(df, spec), target(df, spec)
-    if spec.kind == "binary":
+    w = weights(spec, df)
+    if spec.kind == "binary" and w is not None:
+        # Weighted fit on all rows + the calibration fitted (weighted) on the validation period
+        est = build(spec, seed=seed, complexity=ctx["complexity"]).fit(X, y, model__sample_weight=w)
+        model = WeightedCalibrated(est, ctx["calibrator"])
+        calibration = "isotonic on the validation period, sampling-weighted"
+    elif spec.kind == "binary":
         model = CalibratedClassifierCV(build(spec, seed=seed, complexity=ctx["complexity"]), method="isotonic", cv=5)
         model.fit(X, y)
         calibration = "isotonic, 5-fold (CalibratedClassifierCV)"

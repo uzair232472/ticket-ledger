@@ -5,7 +5,11 @@ python scripts/validate_datasets.py          # runs automatically before trainin
 python -m ml.train --allow-synthetic         # v0: all six models on data/ (synthetic)
 python -m ml.train --data <export dir>       # production: data exported from the database
 python -m pytest tests -q                    # pipeline tests
+python scripts/auto_retrain.py --data <export dir>   # real data: candidates only, never promoted
 ```
+
+Real-data retraining (export, verified labels, sufficiency, comparison with the deployed model) is described in
+`docs/ml-real-data-retraining.md`.
 
 Reports are written to `reports/v0/` (`README.md` summary, plus a `.md` and `.json` per model).
 Artifacts of PASSED models go to `models/v0/<model>.joblib`, which is git-ignored and rebuilt by the

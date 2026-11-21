@@ -66,3 +66,8 @@ apps/api/.keys/
 # User uploads (company documents, avatars, event media) stay on the server
 apps/api/uploads/
 apps/api/private_uploads/
+
+# ML training exports and candidates built from the client's database (never commit client data)
+apps/ml-service/exports/
+apps/ml-service/models/candidates/
+apps/ml-service/reports/candidates/

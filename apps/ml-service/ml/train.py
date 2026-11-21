@@ -3,6 +3,11 @@ Train and evaluate models; write reports and (for models that pass) final artifa
 
     python -m ml.train --allow-synthetic                    # v0: all models on data/
     python -m ml.train --models intent,fraud --data DIR     # some models, another export
+    python -m ml.train --data EXPORT --deployed models/v0   # + compare with the deployed (shadow) models
+
+Candidates are compared with the model the app currently runs (listed in the export's manifest
+`deployed_models`, found in --deployed by SHA-256). The result is a recommendation in the report; nothing
+here registers, promotes or deploys a model.
 
 Production exports carry source "db-export". Synthetic data ("synthetic-v0") is refused unless
 --allow-synthetic is given, so a synthetic-trained model can never be produced by accident in
@@ -17,7 +22,7 @@ import subprocess
 import sys
 import time
 
-from .evaluate import evaluate, save_artifact
+from .evaluate import evaluate, recommendation, save_artifact
 from .schema import SPECS
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +51,8 @@ def markdown(report):
     lines = [f"# {r['title']} (`{r['model']}`)", "", f"**Status: {r['status']}**", ""]
     if r.get("reasons"):
         lines += ["Reasons:"] + [f"- {x}" for x in r["reasons"]] + [""]
+    if r["status"] == "NOT_ENOUGH_DATA" and r.get("recommendation"):
+        lines += [f"Recommendation: {r['recommendation']}", ""]
     d = r["data"]
     s = r["split"]
     lines += [f"Data: `{d['dataset']}`, {d['rows']:,} rows, {d['from'][:10]} to {d['to'][:10]}, source `{d['source']}`.",
@@ -83,6 +90,18 @@ def markdown(report):
                       f"| False flags among legitimate orders | {mf['false_flag_rate']} | {rf['false_flag_rate']} | limit <= {r['gates']['max_false_flag_rate']} |",
                       f"| Recall: frauds caught | {mf['recall']} | {rf['recall']} | tracked capability |",
                       f"| Share of orders flagged | {mf['flag_rate']} | {rf['flag_rate']} | reviewer workload |", ""]
+        dep = r.get("deployed_model") or {}
+        if dep.get("status") == "COMPARED":
+            lines += ["## Compared with the deployed model",
+                      f"Deployed `{dep['sha256'][:12]}` (trained on `{dep.get('source')}` data up to {str(dep.get('trained_to'))[:10]}), "
+                      f"on the {dep['rows']:,} test rows newer than its training data:", "",
+                      "| | Value |", "|---|---|", f"| Candidate | {_fmt(dep['candidate'])} |", f"| Deployed model | {_fmt(dep['deployed'])} |",
+                      f"| Improvement | {_fmt(dep['improvement'])} (95% interval {dep['improvement_95ci'][0]} to {dep['improvement_95ci'][1]}) |", ""]
+        elif dep:
+            lines += ["## Compared with the deployed model", f"{dep['status']}" + (f": {'; '.join(dep.get('reasons', []))}" if dep.get("reasons") else "")
+                      + (f" ({dep['reason']})" if dep.get("reason") else ""), ""]
+        if r.get("recommendation"):
+            lines += ["## Recommendation (not acted on automatically)", r["recommendation"], ""]
         if r.get("shadow_decision"):
             sd = r["shadow_decision"]
             lines += ["## Decision", f"{sd['decision']} ({sd['date']})", "",
@@ -144,6 +163,7 @@ def write_registry(artifact_dir, reports, manifest):
             "version": os.path.basename(os.path.normpath(artifact_dir)), "source": art["data_source"],
             "evaluation_status": r["status"], "may_serve_decisions": bool(art["may_serve_decisions"]),
             "shadow_decision": r.get("shadow_decision"), "sklearn": art["versions"]["sklearn"],
+            "recommendation": r.get("recommendation"), "deployed_comparison": r.get("deployed_model"),
             "trained_rows": art["trained_rows"], "created_at": art["created_at"],
             "features": art["features"],      # exact inputs; the API's feature builders are tested against this
             "evaluation": {"main_measure": r["main_measure"], "higher_is_better": r["higher_is_better"],
@@ -154,6 +174,27 @@ def write_registry(artifact_dir, reports, manifest):
                    "models": models}, f, indent=2)
 
 
+def deployed_artifact(name, manifest, deployed_dir):
+    """The artifact the app currently runs for `name` (manifest.deployed_models[name].sha256, exported from the
+    app's model registry), loaded from deployed_dir after checking its SHA-256. None when nothing is deployed."""
+    entry = (manifest.get("deployed_models") or {}).get(name)
+    if not entry or not deployed_dir:
+        return None
+    import joblib
+    reg_path = os.path.join(deployed_dir, "registry.json")
+    files = []
+    if os.path.exists(reg_path):
+        with open(reg_path) as f:
+            files = [m["file"] for m in json.load(f)["models"] if m["sha256"] == entry["sha256"]]
+    files += [f"{name}.joblib"]
+    for fn in files:
+        path = os.path.join(deployed_dir, fn)
+        if os.path.exists(path) and _sha256(path) == entry["sha256"]:
+            return {"artifact": joblib.load(path), "sha256": entry["sha256"], "file": fn}
+    print(f"   deployed {name} model {entry['sha256'][:12]} not found in {deployed_dir}: no comparison")
+    return {"artifact": None, "sha256": entry["sha256"], "file": None}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--models", default="all")
@@ -161,6 +202,8 @@ def main(argv=None):
     ap.add_argument("--reports", default=os.path.join(BASE_DIR, "reports", "v0"))
     ap.add_argument("--artifacts", default=os.path.join(BASE_DIR, "models", "v0"))
     ap.add_argument("--allow-synthetic", action="store_true")
+    ap.add_argument("--deployed", default=None, help="directory holding the deployed artifacts + registry.json")
+    ap.add_argument("--allow-test-fixture", action="store_true", help="tests only: accept an export marked test_fixture")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
 
@@ -169,8 +212,14 @@ def main(argv=None):
     if manifest.get("source") != "db-export" and not args.allow_synthetic:
         print(f"Refusing to train on '{manifest.get('source')}' data without --allow-synthetic.")
         return 2
-    check = subprocess.run([sys.executable, os.path.join(BASE_DIR, "scripts", "validate_datasets.py"), "--data", args.data],
-                           capture_output=True, text=True)
+    if manifest.get("source") == "db-export" and args.allow_synthetic:
+        print("Refusing: --allow-synthetic cannot be combined with a database export (real and synthetic data stay separate).")
+        return 2
+    if manifest.get("test_fixture") and not args.allow_test_fixture:
+        print("Refusing: this export is a test fixture.")
+        return 2
+    check = subprocess.run([sys.executable, os.path.join(BASE_DIR, "scripts", "validate_datasets.py"), "--data", args.data]
+                           + (["--allow-test-fixture"] if args.allow_test_fixture else []), capture_output=True, text=True)
     if check.returncode != 0:
         print(check.stdout[-3000:])
         print("Dataset validation failed: not training.")
@@ -184,7 +233,9 @@ def main(argv=None):
     for name in names:
         spec = SPECS[name]
         print(f"\n== {spec.title}")
-        report, artifact = evaluate(spec, args.data, manifest, seed=args.seed, shadow_decision=SHADOW_DECISIONS.get(name))
+        report, artifact = evaluate(spec, args.data, manifest, seed=args.seed, shadow_decision=SHADOW_DECISIONS.get(name) if manifest.get("source") != "db-export" else None,
+                                    deployed=deployed_artifact(name, manifest, args.deployed))
+        report["recommendation"] = recommendation(report) if report["status"] != "NOT_ENOUGH_DATA" else             "KEEP_CURRENT: not enough verified data to judge a candidate"
         if artifact is not None:
             path = os.path.join(args.artifacts, f"{name}.joblib")
             save_artifact(artifact, path)
@@ -202,9 +253,10 @@ def main(argv=None):
         for reason in report.get("reasons", []):
             print(f"   - {reason}")
         reports.append(report)
-    if args.models == "all":
+    if args.models == "all" and manifest.get("source") != "db-export":
         with open(os.path.join(args.reports, "README.md"), "w", encoding="utf-8") as f:
             f.write(summary(reports, manifest))
+    if os.path.isdir(args.artifacts):
         write_registry(args.artifacts, reports, manifest)
     print(f"\nDone in {time.time() - t0:.0f} s. Reports: {args.reports}")
     return 0

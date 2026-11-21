@@ -23,11 +23,11 @@ def top_share(y, score, frac=0.10):
     return float(pos / k)
 
 
-def auc(y, score):
+def auc(y, score, w=None):
     y = np.asarray(y)
     if len(np.unique(y)) < 2:
         return float("nan")
-    return float(roc_auc_score(y, score))
+    return float(roc_auc_score(y, score, sample_weight=w))
 
 
 def ece(y, p, bins=10):
@@ -71,11 +71,26 @@ def coverage(y, lo, hi):
     return float(np.mean((y >= np.asarray(lo)) & (y <= np.asarray(hi))))
 
 
-def flag_stats(y, flagged):
-    """Precision of flags (share confirmed as fraud), false-flag rate among legitimate orders, recall."""
+def flag_stats(y, flagged, w=None):
+    """Precision of flags (share confirmed as fraud), false-flag rate among legitimate orders, recall.
+
+    w: sampling weights (1 / inclusion probability of each reviewed order). Real fraud labels come from a
+    stratified review sample, so unweighted rates would describe the sample, not all orders."""
     y = np.asarray(y).astype(int)
     f = np.asarray(flagged).astype(bool)
-    precision = float(y[f].mean()) if f.any() else 0.0
-    false_flag_rate = float(f[y == 0].mean()) if (y == 0).any() else 0.0
-    recall = float(f[y == 1].mean()) if (y == 1).any() else 0.0
-    return {"precision": precision, "false_flag_rate": false_flag_rate, "recall": recall, "flag_rate": float(f.mean())}
+    w = np.ones(len(y)) if w is None else np.asarray(w, dtype=float)
+    def rate(num_mask, den_mask):
+        den = w[den_mask].sum()
+        return float(w[num_mask & den_mask].sum() / den) if den > 0 else 0.0
+    return {"precision": rate(y == 1, f), "false_flag_rate": rate(f, y == 0), "recall": rate(f, y == 1),
+            "flag_rate": rate(f, np.ones(len(y), dtype=bool))}
+
+
+def weighted_quantile(x, q, w=None):
+    x = np.asarray(x, dtype=float)
+    if w is None:
+        return float(np.quantile(x, q))
+    w = np.asarray(w, dtype=float)
+    order = np.argsort(x, kind="stable")
+    cw = np.cumsum(w[order])
+    return float(x[order][min(len(x) - 1, int(np.searchsorted(cw, q * cw[-1])))])

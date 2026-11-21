@@ -95,6 +95,21 @@ def build(spec: ModelSpec, seed=0, complexity=None) -> Pipeline:
     ])
 
 
+class WeightedCalibrated:
+    """A fitted pipeline + an isotonic calibrator, behaving like a calibrated classifier (predict_proba).
+    Used when rows carry sampling weights (fraud from reviewed samples), where CalibratedClassifierCV would
+    drop the weights from the inner fit."""
+
+    def __init__(self, estimator, calibrator):
+        self.estimator = estimator
+        self.calibrator = calibrator
+        self.classes_ = np.array([0, 1])
+
+    def predict_proba(self, X):
+        p = self.calibrator.predict(self.estimator.predict_proba(X)[:, 1])
+        return np.column_stack([1 - p, p])
+
+
 def target(df: pd.DataFrame, spec: ModelSpec) -> np.ndarray:
     """What the model learns. Demand learns the sell-through share (sales / capacity) so a model trained
     on 30,000-seat stadiums still makes sense for a 300-seat theatre; predictions are scaled back."""
