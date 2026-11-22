@@ -3,6 +3,8 @@ import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StudioSelect, StatCard, Panel, Badge, ScoreBar } from '../components/dash/Studio';
+import { DemandInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
+import { whatIfPrice } from '../lib/mlInsights';
 import {
   Users,
   MapPin,
@@ -40,6 +42,7 @@ export default function DemandForecast() {
 
   const [eventDetails, setEventDetails] = useState(null);
   const [tiers, setTiers] = useState([]);
+  const [savedTiers, setSavedTiers] = useState([]); // the event's stored prices (the what-if compares against them)
   const [forecast, setForecast] = useState(null);
   const [recalculating, setRecalculating] = useState(false);
   const [savingPrices, setSavingPrices] = useState(false);
@@ -87,7 +90,7 @@ export default function DemandForecast() {
       if (res.ok && json.success) {
         setForecast(json.data);
         setEventDetails(json.data);
-        if (!customTiers) setTiers(json.data.tiers || []);
+        if (!customTiers) { setTiers(json.data.tiers || []); setSavedTiers(json.data.tiers || []); }
       } else {
         // No stand-in forecast: a generic one built from made-up inputs would look like this event's
         setForecast(null);
@@ -125,6 +128,7 @@ export default function DemandForecast() {
       });
       const json = await res.json();
       if (res.ok && json.success) {
+        setSavedTiers(tiers);
         setSuccessMessage('Ticket prices saved.');
         setTimeout(() => setSuccessMessage(null), 4000);
       } else {
@@ -176,13 +180,15 @@ export default function DemandForecast() {
   const status = eventDetails?.status;
   const source = forecast?.prediction_source;
   const synthetic = source === 'synthetic-demo-model';
+  // Step 6: the experimental model's what-if uses the edited average price; it is never saved or applied
+  const experimentPrice = whatIfPrice(savedTiers, tiers);
 
   return (
     <div>
       <StudioHead
         crumbs={['Insights', 'Pre-launch']}
         title="Demand forecast"
-        intro="Predicted first-48-hour sales, expected revenue and the best launch window. Adjust tier prices and watch the forecast before you publish."
+        intro="A rule-based estimate of first-48-hour sales and revenue, with rule-of-thumb notes on launch time and prices. Editing a price only previews the estimate: nothing changes until you save."
         controls={
           // New-event setup came from step 3 (tickets & pricing); otherwise back to the event's dashboard
           setup && selectedEventId ? (
@@ -251,9 +257,9 @@ export default function DemandForecast() {
 
       <h2 className="tl-df-section">Forecast overview</h2>
       <div className="tl-sc-grid tl-sc-grid--3">
-        <StatCard icon={BarChart3} iconSide="right" tone="ink" label="Predicted 48-hour sales" value={sales48 != null ? sales48.toLocaleString() : '—'} unit="tickets">
+        <StatCard icon={BarChart3} iconSide="right" tone="ink" label="Estimated 48-hour sales (rule)" value={sales48 != null ? sales48.toLocaleString() : '—'} unit="tickets">
           <div className="tl-sc-meter">
-            <div><span>Sellout probability</span><strong>{sellout}%</strong></div>
+            <div><span>Share of capacity (fixed rule)</span><strong>{sellout}%</strong></div>
             <ScoreBar value={sellout} />
           </div>
         </StatCard>
@@ -263,16 +269,16 @@ export default function DemandForecast() {
           tone="green"
           label="Expected gross revenue"
           value={`PKR ${revenue.toLocaleString()}`}
-          note={`Based on average tier pricing of PKR ${forecast?.avgTicketPrice?.toLocaleString() || '—'}`}
+          note={`Rule estimate × average tier price of PKR ${forecast?.avgTicketPrice?.toLocaleString() || '—'}`}
         />
         <StatCard
           icon={Gauge}
           iconSide="right"
           tone="ink"
-          label="Projected demand level"
+          label="Demand level (rule)"
           value={demand}
-          extra={<Badge tone="green" icon={BadgeCheck}>Verified ML</Badge>}
-          note="Velocity category predicted by the Random Forest demand classifier"
+          extra={<Badge tone="grey" icon={BadgeCheck}>Rule</Badge>}
+          note="Category from the fixed rule, not from a model or this event's data"
         />
       </div>
 
@@ -280,7 +286,7 @@ export default function DemandForecast() {
         <Panel icon={SlidersHorizontal} title="Pricing workspace">
           <p className="tl-df-sub">Adjust pricing before publishing</p>
           <p className="tl-pn-sub" style={{ marginTop: 0, marginBottom: 16 }}>
-            Adjust tier prices to preview demand and revenue. Forecasts and revenue projections update live.
+            Adjust tier prices to preview the rule estimate. Nothing is saved until you press a save button.
           </p>
           <div className="tl-tiers-adj">
             {tiers.length === 0 ? (
@@ -325,7 +331,7 @@ export default function DemandForecast() {
             )}
           </div>
           <div className="tl-df-foot">
-            <p><Info className="w-4 h-4" aria-hidden="true" />Drag the sliders or type new prices for each ticket tier. Forecasts and revenue projections update live.</p>
+            <p><Info className="w-4 h-4" aria-hidden="true" />Drag the sliders or type new prices for each ticket tier. The estimate updates; prices change only when you save.</p>
             <div>
               <button type="button" className="tl-st-btn tl-st-btn--light" onClick={handleSavePrices} disabled={savingPrices || tiers.length === 0}>
                 {savingPrices ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Check className="w-4 h-4" />} Save prices only
@@ -341,31 +347,31 @@ export default function DemandForecast() {
         <div className="tl-df-side">
           <section className="tl-pn tl-pn--mint">
             <p className="tl-df-kicker"><Clock className="w-4 h-4" aria-hidden="true" /> Suggested publish time window</p>
-            <p className="tl-df-time">{forecast?.suggested_publish_time || 'Thursday at 6:30 PM PKT'}</p>
-            <p className="tl-df-text">
-              {forecast?.suggested_window_reason ||
-                'Ticket uptake for sports accelerates about 48 hours before match day as fans settle weekend plans.'}
-            </p>
+            <p className="tl-df-time">{forecast?.suggested_publish_time || '—'}</p>
+            <p className="tl-df-text">{forecast?.suggested_window_reason || 'No suggestion available.'}</p>
             <div className="tl-df-tip">
               <Lightbulb className="w-4 h-4" aria-hidden="true" />
-              <span>Publishing during peak traffic windows increases organic conversions by up to 34%.</span>
+              <span>A rule of thumb, not a measured result. You choose when to publish.</span>
             </div>
           </section>
 
           <section className={`tl-pn ${warn ? 'tl-pn--warn' : 'tl-pn--mint'}`}>
-            <p className="tl-df-kicker"><AlertTriangle className="w-4 h-4" aria-hidden="true" /> {warning?.title || 'Optimized pricing alignment'}</p>
+            <p className="tl-df-kicker"><AlertTriangle className="w-4 h-4" aria-hidden="true" /> {warning?.title || 'Price note'}</p>
             <p className="tl-df-text">
-              {warning?.message || 'The pricing structure is in line with regional benchmarks for ticketing in Pakistan.'}
+              {warning?.message || 'No price note.'}
             </p>
             {(warning?.recommendation || forecast?.pricing_recommendation) && (
               <div className="tl-df-advice">
-                <strong>Recommended action</strong>
+                <strong>Rule-of-thumb note</strong>
                 {warning?.recommendation || forecast?.pricing_recommendation}
               </div>
             )}
           </section>
         </div>
       </div>
+
+      {/* Step 6: experimental (shadow) demand model, display-only; its what-if is never saved or applied */}
+      <InsightBoundary><div style={{ marginTop: 16 }}><DemandInsightPanel eventId={selectedEventId} price={experimentPrice} /></div></InsightBoundary>
     </div>
   );
 }

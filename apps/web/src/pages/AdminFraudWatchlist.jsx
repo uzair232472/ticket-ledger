@@ -70,7 +70,7 @@ export default function AdminFraudWatchlist() {
       const res = await confirmedFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ reason: 'Flagged on Super Admin AI Bot & Fraud Defense Watchlist' }),
+        body: JSON.stringify({ reason: 'Frozen by a super admin from the fraud watchlist (rule-based checks)' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Action failed');
@@ -115,7 +115,7 @@ export default function AdminFraudWatchlist() {
       </div>
 
       <div className="tl-ap-stats">
-        <ApStat icon={Activity} tone="green" label="Sessions evaluated" value={stats.totalEvaluated} pill="Real-time ML telemetry" pillIcon={Activity} />
+        <ApStat icon={Activity} tone="green" label="Sessions evaluated" value={stats.totalEvaluated} pill="Rule-based checks" pillIcon={Activity} />
         <ApStat icon={Bot} tone="rose" label="Critical scalper bots" value={stats.criticalBots} pill="Rapid seat sniping" pillIcon={Bot} />
         <ApStat icon={AlertTriangle} tone="amber" label="Suspicious sessions" value={stats.suspicious} pill="Elevated risk score" pillIcon={AlertTriangle} />
       </div>

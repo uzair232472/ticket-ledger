@@ -1,0 +1,39 @@
+/*
+ * Step 6 AI display layer. Experimental (shadow) values are always visually secondary: a dashed, muted box
+ * under the rule figures, labelled "Experimental: not used for any decision". Uses the studio tokens.
+ */
+.tl-ml-x { margin-top: 16px; border: 1px dashed var(--st-line, #e2e8e1); border-radius: 10px; background: #fafbf9; color: var(--st-muted, #5b6b61); }
+.tl-ml-x > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-size: 13px; list-style: none; }
+.tl-ml-x > summary::-webkit-details-marker { display: none; }
+.tl-ml-x > summary:focus-visible { outline: 2px solid var(--st-green, #15803d); outline-offset: 2px; border-radius: 10px; }
+.tl-ml-x-body { padding: 0 14px 14px; font-size: 13px; }
+.tl-ml-x-body p { margin: 6px 0; }
+.tl-ml-x-line { color: var(--st-faint, #8a978f); font-size: 12px; }
+.tl-ml-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: #eef1ed; color: #46524a; font: 600 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; text-transform: uppercase; }
+.tl-ml-tag--rule { background: var(--st-mint, #eef7ef); color: var(--st-green, #15803d); }
+.tl-ml-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 8px; }
+.tl-ml-fig { padding: 10px 12px; border: 1px solid var(--st-line-soft, #edf1ec); border-radius: 8px; background: #fff; }
+.tl-ml-fig dt { font-size: 11px; color: var(--st-faint, #8a978f); text-transform: uppercase; letter-spacing: 0.04em; }
+.tl-ml-fig dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; color: var(--st-ink, #0b1a10); font-variant-numeric: tabular-nums; }
+.tl-ml-x .tl-ml-fig dd { color: #46524a; font-weight: 600; }
+.tl-ml-eval { margin-top: 10px; padding: 8px 12px; border-left: 3px solid var(--st-line, #e2e8e1); font-size: 12px; color: var(--st-muted, #5b6b61); }
+.tl-ml-bands { display: grid; gap: 4px; margin-top: 6px; }
+.tl-ml-band { display: grid; grid-template-columns: 110px 1fr 48px; align-items: center; gap: 8px; font-size: 12px; }
+.tl-ml-band i { display: block; height: 8px; border-radius: 4px; background: #c9d3cc; }
+.tl-ml-band b { text-align: right; font-variant-numeric: tabular-nums; }
+.tl-ml-warn { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: var(--st-amber-bg, #fffbeb); border: 1px solid var(--st-amber-line, #fde68a); color: #78350f; font-size: 13px; margin-bottom: 8px; }
+.tl-ml-warn--error { background: var(--st-rose-bg, #fff1f2); border-color: var(--st-rose-line, #fecdd3); color: #881337; }
+.tl-ml-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tl-ml-table th, .tl-ml-table td { padding: 8px 10px; border-bottom: 1px solid var(--st-line-soft, #edf1ec); text-align: left; vertical-align: top; }
+.tl-ml-table th { font-size: 11px; color: var(--st-faint, #8a978f); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.tl-ml-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tl-ml-scroll { overflow-x: auto; }
+.tl-ml-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.tl-ml-gates { display: grid; gap: 16px; }
+.tl-rec { margin: 32px 0; }
+.tl-rec h2 { font-size: 20px; font-weight: 800; margin: 0 0 12px; }
+.tl-rec-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+@media (max-width: 520px) {
+  .tl-ml-band { grid-template-columns: 90px 1fr 40px; }
+  .tl-ml-models { grid-template-columns: 1fr; }
+}

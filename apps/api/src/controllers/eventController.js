@@ -10,7 +10,7 @@ import { eventWhereFor, requestContext } from '../services/orgAccess.js';
 import { applySeatAvailability } from '../services/venueService.js';
 import { isPromotionActive, promotionStartedAt } from '../services/promotionWindow.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
-import mlService from '../services/mlService.js';
+import { prelaunchRuleInputs, ruleDemandForecast } from '../services/demandRules.js';
 import { CategoryError, categoryColumns, listCategories, addCustomCategory } from '../services/categoryService.js';
 import { ScheduleError, RELEASED_STATUSES, resolveSchedule, assertVenueFree, findScheduleConflicts, occupiedInterval, toPktParts, parseTimeOfDay, venueOf } from '../services/eventScheduleService.js';
 
@@ -718,8 +718,9 @@ export const updateEventStatus = async (req, res) => {
 };
 
 /**
- * MODULE 17: Pre-Launch AI Demand Forecast & Pricing Optimizer
- * Evaluates predicted 48h sales, expected revenue, demand tier, suggested launch time, and pricing warnings
+ * MODULE 17: Pre-launch demand estimate & pricing notes (RULES, Step 6)
+ * A fixed-rule estimate of 48h sales and revenue, a rule-of-thumb launch time and price notes. No model and no
+ * historical analysis is involved, and the text says so. Nothing here changes prices or publishes the event.
  */
 export const getPreLaunchDemandForecast = async (req, res) => {
   try {
@@ -746,47 +747,24 @@ export const getPreLaunchDemandForecast = async (req, res) => {
       });
     }
 
-    // 1. Calculate Capacity & Pricing
-    const totalTierQty = event.tiers.reduce((acc, t) => acc + t.totalQuantity, 0);
-    const capacity = simulatedCapacity ? Number(simulatedCapacity) : Math.max(totalTierQty, 15000);
+    // 1-2. Capacity, price and day (services/demandRules.js: the same inputs as before, shared with /api/ml/insights)
+    const { capacity, avgPrice, params: ruleParams } = prelaunchRuleInputs(event, { simulatedPrice, simulatedCapacity, simulatedMarketingTier });
 
-    const actualAvgPrice = event.tiers.length > 0
-      ? event.tiers.reduce((acc, t) => acc + Number(t.price), 0) / event.tiers.length
-      : 2500;
-    const avgPrice = simulatedPrice ? Number(simulatedPrice) : actualAvgPrice;
-
-    // 2. Day of Week & Weekend Check
-    const eventDate = new Date(event.date);
-    const dayIndex = eventDate.getDay();
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayOfWeek = days[dayIndex] || 'Saturday';
-    const isWeekend = [0, 5, 6].includes(dayIndex) ? 1 : 0;
-
-    // 3. Call ML Inference Engine
-    const forecastResult = await mlService.forecastEventDemand({
-      eventType: event.type,
-      city: event.city,
-      marketingTier: simulatedMarketingTier || 'HIGH',
-      venueCapacity: capacity,
-      avgTicketPrice: avgPrice,
-      ticketPrices: avgPrice,
-      isWeekend,
-      dayOfWeek,
-      publishHour: 18,
-    });
+    // 3. Rule-based estimate, evaluated in the API (no ML call; the shadow model's view is in /api/ml/insights)
+    const forecastResult = ruleDemandForecast(ruleParams);
 
     // 4. Calculate Suggested Publish Time
     let suggestedPublishTime = '';
     let suggestedWindowReason = '';
     if (event.type.includes('CRICKET') || event.type.includes('FOOTBALL')) {
       suggestedPublishTime = 'Thursday at 6:30 PM PKT';
-      suggestedWindowReason = 'Historical sports telemetry indicates ticket purchasing peaks 48 hours prior to match day between 6:00 PM and 9:00 PM.';
+      suggestedWindowReason = 'Rule of thumb for sports events (not based on TicketLedger data): evening releases a few days before match day.';
     } else if (event.type.includes('MUSIC')) {
       suggestedPublishTime = 'Friday at 7:00 PM PKT';
-      suggestedWindowReason = 'Concert audience engagement surges on Friday evenings as weekend plans materialize.';
+      suggestedWindowReason = 'Rule of thumb for concerts (not based on TicketLedger data): Friday evenings, as weekend plans are made.';
     } else {
       suggestedPublishTime = 'Wednesday at 5:00 PM PKT';
-      suggestedWindowReason = 'Mid-week evening releases generate steady multi-day organic viral momentum.';
+      suggestedWindowReason = 'Rule of thumb (not based on TicketLedger data): a mid-week evening release gives a few days of attention before the weekend.';
     }
 
     // 5. Intelligent Pricing Warnings & Recommendations
@@ -801,25 +779,25 @@ export const getPreLaunchDemandForecast = async (req, res) => {
       pricingWarning = {
         level: 'HIGH_PRICE_WARNING',
         severity: 'amber',
-        title: 'High Pricing Alert',
-        message: `Average tier price of PKR ${Math.round(avgPrice).toLocaleString()} is ${excessPercent}% above historical averages for ${event.city}. Our Gradient Boosting demand model predicts a ~18% deceleration in 48-hour velocity.`,
-        recommendation: 'Consider lowering base General Enclosure tier by PKR 500-1,000 to stimulate rapid early-bird sellout.',
+        title: 'Above the category benchmark',
+        message: `Average tier price of PKR ${Math.round(avgPrice).toLocaleString()} is ${excessPercent}% above the fixed rule-of-thumb benchmark for this category (PKR ${benchmarkPrice.toLocaleString()}). Prices well above it may slow early sales. This is a fixed rule, not a forecast.`,
+        recommendation: 'You may want to review the lowest tier price. Any change is your decision; nothing is changed automatically.',
       };
     } else if (avgPrice < benchmarkPrice * 0.70 && forecastResult.sellout_probability >= 0.65) {
       pricingWarning = {
         level: 'UNDERPRICED_WARNING',
         severity: 'cyan',
-        title: 'Revenue Left on Table',
-        message: `High demand projected (${forecastResult.demand_tier}). Your average price of PKR ${Math.round(avgPrice).toLocaleString()} is well below market tolerance.`,
-        recommendation: 'You can safely increase premium Pavilion/VIP tiers by 15-20% without impacting volume, maximizing total gross gate revenue.',
+        title: 'Below the category benchmark',
+        message: `Your average price of PKR ${Math.round(avgPrice).toLocaleString()} is well below the fixed rule-of-thumb benchmark for this category (PKR ${benchmarkPrice.toLocaleString()}).`,
+        recommendation: 'There may be room to raise premium tiers. Check real sales after launch; nothing is changed automatically.',
       };
     } else {
       pricingWarning = {
         level: 'OPTIMAL_PRICE',
         severity: 'emerald',
-        title: 'Optimized Pricing Alignment',
-        message: `Current average price of PKR ${Math.round(avgPrice).toLocaleString()} aligns squarely with historical demand and purchasing power in ${event.city}.`,
-        recommendation: 'Pricing structure is optimal for 48-hour launch velocity.',
+        title: 'Within the category benchmark',
+        message: `Current average price of PKR ${Math.round(avgPrice).toLocaleString()} is within the fixed rule-of-thumb range for this category (benchmark PKR ${benchmarkPrice.toLocaleString()}).`,
+        recommendation: 'No price note from the rules.',
       };
     }
 
@@ -828,7 +806,10 @@ export const getPreLaunchDemandForecast = async (req, res) => {
     if (!simulatedPrice && !simulatedCapacity && !simulatedMarketingTier) {
       const asOf = new Date();
       recordShadow({
-        name: 'demand', subjectType: 'EVENT_FORECAST', subjectId: `${event.id}|${asOf.toISOString().slice(0, 10)}`, // one per event per day, eventId: event.id, userId: req.user?.id ?? null, asOf,
+        // One per event per day. Step 6 fix: eventId, userId and asOf used to sit inside this comment, so every
+        // EVENT_FORECAST snapshot failed to write ("asOf is missing") and was silently dropped.
+        name: 'demand', subjectType: 'EVENT_FORECAST', subjectId: `${event.id}|${asOf.toISOString().slice(0, 10)}`,
+        eventId: event.id, userId: req.user?.id ?? null, asOf,
         rule: {
           score: forecastResult.projected_48h_sales, decision: forecastResult.demand_tier,
           output: { sellout_probability: forecastResult.sellout_probability, capacity_used: capacity, fallback: Boolean(forecastResult.fallback) },

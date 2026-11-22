@@ -36,7 +36,8 @@ import NotificationBell from './components/NotificationBell';
 import HoldBar from './components/HoldBar';
 import PixelLoader from './components/events/PixelLoader';
 import SplashScreen from './components/motion/SplashScreen';
-import BehaviorProfile from './pages/BehaviorProfile';
+import BehaviourReport from './pages/BehaviourReport';
+import AiMonitor from './pages/AiMonitor';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
@@ -166,10 +167,12 @@ function RouteLoader() {
 
 // Features still in development show the "Coming soon" page (same theme as the 404 page) instead of
 // their real page. The real pages and routes stay wired below: set the flag to false to bring one back.
+// Step 6: the three AI pages are back, rebuilt to show rule figures first and the experimental (shadow)
+// model only as labelled, aggregated, display-only information.
 const COMING_SOON = {
-  demandForecast: true,
-  purchaseIntent: true,
-  behaviorAnalysis: true,
+  demandForecast: false,
+  purchaseIntent: false,
+  behaviorAnalysis: false,
 };
 const soon = (flag, feature, page) => (COMING_SOON[flag] ? <ComingSoon feature={feature} /> : <DashShell>{page}</DashShell>);
 
@@ -274,7 +277,8 @@ export default function App() {
               <Route path="/admin/fraud-review" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudReview /></ProtectedRoute></DashShell>} />
               <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
-              <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviorProfile />)}</ProtectedRoute>} />
+              <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviourReport />)}</ProtectedRoute>} />
+              <Route path="/admin/ai-monitor" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AiMonitor /></ProtectedRoute></DashShell>} />
               <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
               <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
               <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />

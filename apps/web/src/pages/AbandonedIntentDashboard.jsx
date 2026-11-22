@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StatCard, Panel, Badge, Avatar } from '../components/dash/Studio';
+import { AbandonmentInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
 import { useDialog } from '../components/ui/DialogProvider';
 import api from '../utils/api';
 import { can } from '../lib/permissions';
@@ -291,7 +292,7 @@ export default function AbandonedIntentDashboard() {
           label="Avg intent score"
           value={summary.avgIntentScore ?? 0}
           unit="/100"
-          note="Based on clickstream, seat locks and checkout speed"
+          note="Fixed rule: event views, seat choice and checkout steps (no AI model)"
         />
         <StatCard
           icon={AlertTriangle}
@@ -301,6 +302,9 @@ export default function AbandonedIntentDashboard() {
           note="Most common friction point across abandoned sessions"
         />
       </div>
+
+      {/* Step 6: per-event totals; the experimental model is display-only and changes no reminder */}
+      {selectedEventId && <InsightBoundary><div style={{ marginBottom: 20 }}><AbandonmentInsightPanel eventId={selectedEventId} /></div></InsightBoundary>}
 
       {/* Automatic reminders (organization members who contact attendees) */}
       {user?.role !== 'SUPER_ADMIN' && can(user, 'attendee.contact') && <div style={{ marginBottom: 20 }}><AutoRecovery /></div>}

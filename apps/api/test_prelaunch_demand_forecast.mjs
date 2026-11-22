@@ -79,7 +79,10 @@ test('MODULE 17 - Pre-Launch Demand Forecast & Pricing Adjustment Tests', async 
     const data = await res.json();
     assert.equal(res.status, 200);
     assert.equal(data.data.pricing_warning.level, 'HIGH_PRICE_WARNING');
-    assert.ok(data.data.pricing_warning.message.includes('above historical averages'));
+    assert.ok(data.data.pricing_warning.message.includes('above the fixed rule-of-thumb benchmark'));
+    assert.doesNotMatch(data.data.pricing_warning.message, /model|historical/i, 'a fixed rule must not claim a model or history');
+    assert.equal(data.data.prediction_source, 'rules');
+    assert.equal(data.data.validated, false);
   });
 
   await t.test('5. Pricing warning triggers UNDERPRICED_WARNING when demand is high and price is low', async () => {

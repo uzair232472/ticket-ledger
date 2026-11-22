@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StudioSelect, StatCard, Panel, Badge, Avatar, Pager, ScoreBar } from '../components/dash/Studio';
+import { InsightBoundary, IntentInsightPanel } from '../components/ml/InsightPanels';
 import {
   Users,
   BarChart3,
@@ -233,6 +234,9 @@ export default function PurchaseIntentAnalytics() {
             />
           </div>
 
+          {/* Step 6: totals from the background visit scoring; the experimental model is display-only */}
+          <InsightBoundary><div style={{ marginTop: 16 }}><IntentInsightPanel eventId={selectedEventId} /></div></InsightBoundary>
+
           <div className="tl-pi-row">
             <Panel
               icon={BarChart3}
@@ -300,7 +304,7 @@ export default function PurchaseIntentAnalytics() {
             icon={User}
             title="Users likely to buy"
             badge={`${likely.length} qualified`}
-            sub="Engaged attendees predicted by the scikit-learn model with high purchase probability"
+            sub="Engaged attendees with a high score from the fixed intent rule (event views, seat choice, checkout). No AI model is used."
             action={
               <button
                 type="button"
@@ -395,7 +399,7 @@ export default function PurchaseIntentAnalytics() {
                       <th>Attendee</th>
                       <th>Abandonment stage</th>
                       <th>Purchase intent</th>
-                      <th>AI recovery strategy</th>
+                      <th>Suggested follow-up (rules)</th>
                       <th className="is-right">Recovery action</th>
                     </tr>
                   </thead>

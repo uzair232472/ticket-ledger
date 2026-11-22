@@ -12,7 +12,7 @@ import { notifyAdmins } from '../services/notificationService.js';
 
 // Each ticket with its payment, entry and NFT states (separate facts; services/ticketStatus.js)
 const withStates = (order) => order && { ...order, tickets: (order.tickets || []).map((t) => ({ ...t, states: ticketStates(t, order) })) };
-import mlService from '../services/mlService.js';
+import { evaluateCheckoutBotRules } from '../services/security/checkoutBotRules.js';
 import { recordShadow } from '../services/ml/shadow.js';
 import { recordPaymentEvidence } from '../services/paymentEvidence.js';
 import { checkoutSnapshot, fraudFeatures } from '../services/ml/features.js';
@@ -237,7 +237,7 @@ export const initiateBooking = async (req, res) => {
       }
     }
 
-    // AI Scalper Bot Pre-Checkout Detection (rules decide; the fraud model only runs in shadow, below)
+    // Scalper-bot pre-checkout security rules (the rules decide; the fraud model only runs in shadow, below)
     let fraudRule = null;
     const fraudShadow = (subjectType, subjectId) => fraudRule && recordShadow({
       name: 'fraud', subjectType, subjectId, eventId, userId, asOf: now,
@@ -248,10 +248,8 @@ export const initiateBooking = async (req, res) => {
       buildFeatures: () => fraudFeatures({ userId, eventId, seatIds, telemetry: validated.telemetry, paymentMethod, at: now }),
     });
     if (validated.telemetry) {
-      const fraudEvaluation = await mlService.checkFraudRisk({
-        ...validated.telemetry,
-        ticketsRequested: seatIds.length,
-      });
+      // Evaluated in the API (no ML service call on the checkout path): the same rules with the ML service up or down
+      const fraudEvaluation = evaluateCheckoutBotRules(validated.telemetry);
 
       // Log behavioral telemetry
       await prisma.behaviorEvent.create({
@@ -269,7 +267,7 @@ export const initiateBooking = async (req, res) => {
 
       fraudRule = fraudEvaluation;
 
-      // If Critical Bot detected -> BLOCK transaction
+      // The security RULES classified the attempt as a critical bot -> block it (unchanged rule; no model involved)
       if (fraudEvaluation.risk_level === 'CRITICAL_BOT') {
         fraudShadow('CHECKOUT_ATTEMPT', randomUUID());
         await prisma.auditLog.create({
@@ -287,8 +285,9 @@ export const initiateBooking = async (req, res) => {
 
         return res.status(403).json({
           success: false,
-          blockedByAI: true,
-          message: 'Anti-Scalping Security Alert: Transaction flagged and blocked by TicketLedger AI bot detection engine.',
+          blockedByRules: true,
+          blockedByAI: true, // deprecated (Step 6): kept for one release for older clients; the block comes from rules
+          message: 'Anti-Scalping Security Alert: this checkout was stopped by our automated security checks. If this is a mistake, please wait a moment and try again, or contact support.',
           data: {
             fraudScore: fraudEvaluation.fraud_score,
             riskLevel: fraudEvaluation.risk_level,

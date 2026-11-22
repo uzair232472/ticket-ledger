@@ -4,6 +4,7 @@ import { connectSocket } from '../lib/socket';
 import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X, GitCompareArrows, Archive, Wifi, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
+import { AttendanceInsightPanel, CrowdInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
 
 /*
  * Gate management for supervisors (gate.supervise): live load per gate, the gates themselves (type, ticket
@@ -120,6 +121,15 @@ export default function GateManagement() {
       {data && (
         <>
           {tab === 'live' && <Live data={data} eventId={eventId} onTab={setTab} />}
+          {/* Step 6: rule estimates (with the experimental model muted beside them). Admission never uses them. */}
+          {tab === 'live' && (
+            <InsightBoundary>
+              <div className="space-y-6" style={{ marginTop: 24 }}>
+                <AttendanceInsightPanel eventId={eventId} />
+                <CrowdInsightPanel eventId={eventId} />
+              </div>
+            </InsightBoundary>
+          )}
           {tab === 'gates' && <Gates data={data} eventId={eventId} run={run} />}
           {tab === 'staff' && <Staff data={data} eventId={eventId} run={run} />}
           {tab === 'devices' && <Devices eventId={eventId} flash={flash} />}

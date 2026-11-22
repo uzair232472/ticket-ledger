@@ -368,10 +368,15 @@ export async function attachOutcomes({ now = new Date() } = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Last run of the background jobs in THIS process (read by the AI monitor; each API server keeps its own)
+export const jobStatus = { processStartedAt: new Date(), lastStartedAt: null, lastFinishedAt: null, lastResult: null, failedSteps: [], runs: 0 };
+
 export async function runMlJobs({ now = new Date() } = {}) {
   const result = {};
+  const failed = [];
+  jobStatus.lastStartedAt = new Date();
   const step = async (name, fn) => {
-    try { result[name] = await fn(); } catch (e) { result[name] = { error: e.message }; console.error(`[ML jobs] ${name} failed:`, e.message); }
+    try { result[name] = await fn(); } catch (e) { result[name] = { error: e.message }; failed.push(name); console.error(`[ML jobs] ${name} failed:`, e.message); }
   };
   // Snapshots (and, when ML_SHADOW_ENABLED, shadow scores) - never decisions
   if (snapshotsEnabled()) {
@@ -383,5 +388,6 @@ export async function runMlJobs({ now = new Date() } = {}) {
   }
   await step('fraudSampling', () => sampleFraudOrders({ now }));
   await step('outcomes', () => attachOutcomes({ now }));
+  Object.assign(jobStatus, { lastFinishedAt: new Date(), lastResult: result, failedSteps: failed, runs: jobStatus.runs + 1 });
   return result;
 }

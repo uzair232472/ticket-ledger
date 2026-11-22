@@ -413,7 +413,7 @@ export default function Profile() {
     ['my-data', 'My data', UserRound],
     ['security', 'Security', ShieldCheck],
     ['notifications', 'Notifications', Bell],
-    ['intent', 'AI Intent & Telemetry', BarChart3],
+    ['intent', 'Activity & interests', BarChart3],
     ['preferred-website', 'Preferred Website', Globe],
     ['api-keys', 'API keys', KeyRound],
     ['privacy', 'Privacy', FileText],
@@ -424,7 +424,7 @@ export default function Profile() {
       case 'my-data': return 'My data';
       case 'security': return 'Security';
       case 'notifications': return 'Notifications';
-      case 'intent': return 'AI Intent & Telemetry';
+      case 'intent': return 'Activity & interests';
       case 'preferred-website': return 'Preferred Website';
       case 'api-keys': return 'API keys';
       case 'privacy': return 'Privacy';
@@ -1013,9 +1013,9 @@ export default function Profile() {
           {activeTab === 'intent' && (
             <div className="space-y-6 max-w-3xl">
               <div>
-                <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">AI Intent & Telemetry</h1>
+                <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Activity & interests</h1>
                 <p className="text-xs text-slate-500 mt-1">
-                  Machine learning telemetry continuously computes your purchase readiness, preferred event genres, and session engagement.
+                  A summary of your own activity on TicketLedger: the event types you interact with and how far you got towards booking. Worked out by simple fixed rules, not by an AI model, and never used to make decisions about you.
                 </p>
               </div>
 
@@ -1027,7 +1027,7 @@ export default function Profile() {
                     </span>
                     <div>
                       <h3 className="font-extrabold text-[#212b36] text-base">Client Telemetry & Affinity Metrics</h3>
-                      <span className="text-[10px] font-bold text-[#008459]">Module 13 ML Inference</span>
+                      <span className="text-[10px] font-bold text-[#008459]">Rule-based summary</span>
                     </div>
                   </div>
 
@@ -1343,7 +1343,7 @@ export default function Profile() {
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                   <div className="font-bold text-slate-900">Telemetry Ingestion & Anti-Bot Screening</div>
                   <p className="text-slate-500 text-[11px]">
-                    Clickstream frequency and checkout speed are evaluated by our local scikit-learn ML engine to protect Pakistani sporting fans against bulk bot scalping.
+                    Checkout speed and click patterns are checked by automated security rules to protect fans against bulk bot scalping. No AI model makes this decision.
                   </p>
                 </div>
               </div>

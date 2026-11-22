@@ -11,6 +11,7 @@ import EventTile from '../components/events/EventTile';
 import { ALL_CATEGORIES, categoryName } from '../components/home/homeData';
 import '../components/home/home.css';
 import '../components/events/events.css';
+import RecommendedEvents from '../components/ml/RecommendedEvents';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -383,6 +384,8 @@ export default function Events() {
               <p className="tl-ex-progress">Showing {shown.length} of {sorted.length}</p>
             </div>
           )}
+          {/* Step 6: shown only when ML_REC_DISPLAY is on (renders nothing otherwise) */}
+          <RecommendedEvents surface="home" title="You might like" />
         </main>
 
         <SiteFooter onCategories={focusCategories} />

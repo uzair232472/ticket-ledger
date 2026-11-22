@@ -1,4 +1,7 @@
 import dotenv from 'dotenv';
+import { evaluateCheckoutBotRules } from './security/checkoutBotRules.js';
+import { ruleDemandForecast } from './demandRules.js';
+
 dotenv.config();
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
@@ -34,10 +37,22 @@ export async function mlPost(path, body, { timeoutMs = ML_TIMEOUT_MS } = {}) {
   return res.json();
 }
 
+/** GET from the ML service (health / metrics probes for the AI monitor). Throws on timeout / non-2xx. */
+export async function mlGet(path, { timeoutMs = 1500 } = {}) {
+  const res = await fetch(`${ML_SERVICE_URL}${path}`, {
+    headers: { 'X-ML-Token': process.env.ML_SERVICE_TOKEN || '' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw Object.assign(new Error(`ML service returned status ${res.status}`), { status: res.status });
+  return res.json();
+}
+
 /**
- * 1. AI Anti-Scalping & Bot Detection Evaluator (Module 15: POST /fraud/score)
+ * 1. Scalper-bot security rules via the ML service (legacy POST /fraud/score, SUPER_ADMIN diagnostics only).
+ * Checkout evaluates the same rules in the API (services/security/checkoutBotRules.js).
  */
-export const checkFraudRisk = async (telemetry = {}) => {
+/** The legacy /fraud/score request body built from checkout telemetry (exported for the rule parity test). */
+export function fraudPayload(telemetry = {}) {
   const {
     checkoutDurationSeconds = 25.0,
     clicksPerMinute = 30.0,
@@ -67,42 +82,17 @@ export const checkFraudRisk = async (telemetry = {}) => {
     ...(ipCityMismatch !== undefined && { ip_city_mismatch: Number(ipCityMismatch) }),
     ...(resaleAttempts !== undefined && { resale_attempts: Number(resaleAttempts) }),
   };
+  return payload;
+}
 
+export const checkFraudRisk = async (telemetry = {}) => {
+  const payload = fraudPayload(telemetry);
   try {
     return await mlPost('/fraud/score', payload);
   } catch (error) {
     console.warn(`[ML Service] fraud check unavailable (${error.name === 'TimeoutError' ? 'timeout' : error.message}); using the built-in rules.`);
-
-    const isBotSpeed = Number(checkoutDurationSeconds) < 2.5;
-    const isHighClick = Number(clicksPerMinute) > 150;
-    const isSniping = Number(rapidSeatAttempts) >= 6;
-
-    let score = 10.0;
-    const anomalies = [];
-    if (isBotSpeed) {
-      score += 55.0;
-      anomalies.push(`Sub-second checkout speed (${checkoutDurationSeconds}s)`);
-    }
-    if (isHighClick) {
-      score += 25.0;
-      anomalies.push(`Inhuman click rate (${clicksPerMinute} cpm)`);
-    }
-    if (isSniping) {
-      score += 20.0;
-      anomalies.push(`Rapid seat lock sniping (${rapidSeatAttempts} attempts)`);
-    }
-
-    const isBot = score >= 65.0;
-    return {
-      fraud_score: Math.min(score, 100.0),
-      classification: score >= 75.0 ? 'HIGH_RISK_BOT' : score >= 45.0 ? 'SUSPICIOUS' : 'NORMAL',
-      is_bot: isBot,
-      risk_level: score >= 75.0 ? 'CRITICAL_BOT' : score >= 45.0 ? 'SUSPICIOUS' : 'LOW',
-      action_recommended: score >= 75.0 ? 'BLOCK_TRANSACTION' : score >= 45.0 ? 'REQUIRE_CAPTCHA' : 'ALLOW',
-      anomaly_factors: anomalies,
-      confidence: 0.85,
-      fallback: true,
-    };
+    // The same security rules the ML service applies (Step 6: one copy, identical with the service up or down)
+    return { ...evaluateCheckoutBotRules(telemetry), fallback: true };
   }
 };
 
@@ -152,20 +142,8 @@ export const forecastEventDemand = async (eventParams = {}) => {
   try {
     return refuseSyntheticInProduction(await mlPost('/forecast/demand', payload));
   } catch (error) {
-    console.warn(`[ML Service] Warning: Python ML service unreachable for demand forecast. Using baseline ratio.`);
-    const projectedSales = Math.floor(venueCapacity * 0.78);
-    return {
-      projected_48h_sales: projectedSales,
-      projected_revenue_pkr: projectedSales * avgTicketPrice,
-      sellout_probability: 0.78,
-      demand_tier: 'HIGH',
-      demand_level: 'HIGH',
-      pricing_recommendation: `Estimated 78% uptake in ${city}. Optimize tier distribution for peak revenue.`,
-      fallback: true,
-      prediction_source: 'rules',
-      validated: false,
-      notice: 'Rule-based estimate (no trained model).',
-    };
+    console.warn('[ML Service] demand forecast unavailable; using the built-in rule.');
+    return { ...ruleDemandForecast(eventParams), fallback: true };
   }
 };
 

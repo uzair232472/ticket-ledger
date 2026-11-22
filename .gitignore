@@ -29,9 +29,17 @@ __pycache__/
 env/
 venv/
 .venv/
+.venv*/
 ENV/
 *.h5
 *.joblib
+# Step 6 (Option 1): only the five approved v0 SHADOW artifacts are tracked, so every machine has the exact files
+# whose fingerprints are in apps/ml-service/models/v0/registry.json. Every other .joblib / .pkl stays ignored.
+!apps/ml-service/models/v0/intent.joblib
+!apps/ml-service/models/v0/abandonment.joblib
+!apps/ml-service/models/v0/fraud.joblib
+!apps/ml-service/models/v0/demand.joblib
+!apps/ml-service/models/v0/crowd.joblib
 *.pkl
 
 # Hardhat / Blockchain

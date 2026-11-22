@@ -691,7 +691,12 @@ async function exportRecommendations(db, ctx, now, sink) {
   for await (const page of pages(db.behaviorEvent, { where: { action: 'recommendation_impression', createdAt: { lt: now } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { userId: true, createdAt: true, metadata: true } })) {
     const listIds = [...new Set(page.map((l) => l.metadata?.listId).filter(Boolean))];
     const clickAt = new Map(); // listId|eventId -> earliest click
+    const rendered = new Set(); // Step 6: lists the page reported as on screen
     for (const part of chunks(listIds, CHUNK)) {
+      const shown = await db.$queryRawUnsafe(
+        `SELECT DISTINCT metadata->>'listId' AS list_id FROM "BehaviorEvent"
+         WHERE action = 'recommendation_rendered' AND "createdAt" < ($1::timestamptz AT TIME ZONE 'UTC') AND metadata->>'listId' = ANY($2::text[])`, now.toISOString(), part);
+      for (const r of shown) rendered.add(r.list_id);
       const rows = await db.$queryRawUnsafe(
         `SELECT metadata->>'listId' AS list_id, "eventId" AS event_id, to_char(min("createdAt"), ${ISO_SQL}) AS at
          FROM "BehaviorEvent" WHERE action = 'recommendation_click' AND "createdAt" < ($1::timestamptz AT TIME ZONE 'UTC') AND metadata->>'listId' = ANY($2::text[])
@@ -702,6 +707,8 @@ async function exportRecommendations(db, ctx, now, sink) {
     const ordersOf = groupBy(await findIn(db.order, 'userId', users, { where: { createdAt: { lt: now } }, select: { id: true, userId: true, eventId: true, status: true, createdAt: true } }), (o) => o.userId);
     for (const l of page) {
       const m = l.metadata || {};
+      // Step 6: a list served with render tracking counts only if it was actually on screen
+      if (m.renderTracked && !rendered.has(m.listId)) { t.skip('served but never shown on screen', (m.items || []).length || 1); continue; }
       if (!l.userId) { t.skip('anonymous visitor never linked to an account (cannot be shown to be genuine)', (m.items || []).length || 1); continue; }
       if (!firstVariant.has(l.userId)) firstVariant.set(l.userId, m.variant);
       const why = accountClass(ctx, l.userId);

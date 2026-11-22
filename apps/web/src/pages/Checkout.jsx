@@ -490,7 +490,7 @@ function CheckoutContent() {
         setCodeError(msg);
         setProblem({ tone: 'error', kind: 'validation', text: `${msg} Remove the code or try another to continue.` });
       } else if (stage === 'initiate') {
-        if (err.response?.data?.blockedByAI) {
+        if (err.response?.data?.blockedByRules || err.response?.data?.blockedByAI) {
           const anomalies = err.response?.data?.data?.anomalyFactors?.join(' • ') || '';
           setProblem({ tone: 'error', kind: 'blocked', text: `🚨 ${msg} ${anomalies ? `(Signals: ${anomalies})` : ''}` });
         }

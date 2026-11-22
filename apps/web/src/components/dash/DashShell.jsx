@@ -31,6 +31,7 @@ const CONSOLES = {
       { to: '/admin/purchase-intent', label: 'Purchase intent' },
       { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
       { to: '/admin/behavior-profile', label: 'Behavior' },
+      { to: '/admin/ai-monitor', label: 'AI monitor' },
       { to: '/admin/payouts', label: 'Payouts', adminPermission: 'admin.finance' },
       { to: '/support/desk', label: 'Support desk', adminPermission: 'admin.support' },
       { to: '/organizer/gates', label: 'Gates' },
@@ -92,7 +93,7 @@ function consoleFor(user) {
 const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.

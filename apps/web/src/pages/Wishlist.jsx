@@ -8,6 +8,7 @@ import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
 import '../components/home/home.css';
 import '../components/events/events.css';
+import RecommendedEvents from '../components/ml/RecommendedEvents';
 
 const SORTS = [
   { value: 'saved', label: 'Recently saved' },
@@ -120,6 +121,8 @@ export default function Wishlist() {
               ))}
             </div>
           )}
+          {/* Step 6: shown only when ML_REC_DISPLAY is on (renders nothing otherwise) */}
+          <RecommendedEvents surface="wishlist" title="You might also like" />
         </main>
         <SiteFooter />
       </div>

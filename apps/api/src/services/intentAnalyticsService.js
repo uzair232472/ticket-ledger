@@ -1,7 +1,6 @@
 import { canAccessEvent, eventWhereFor, memberContext } from './orgAccess.js';
 import { LEFT_CHECKOUT_ACTIONS } from './checkoutOutcome.js';
 import prisma from '../config/prisma.js';
-import mlService from './mlService.js';
 import { dispatchNotification, NOTIFICATION_TYPES } from './notificationService.js';
 import { createRecoveryCode, normalizeCode, MAX_PERCENT } from './discountService.js';
 
@@ -226,7 +225,7 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
   for (const [identifier, profile] of userSessionMap.entries()) {
     const hasBought = profile.tickets > 0 || profile.payments > 0;
 
-    // Use ML intent calculation
+    // Rule-based intent score (fixed points per signal; no model). Step 6: labelled score_source 'rules'.
     let intentScore = 40.0;
     if (profile.views >= 3) intentScore += 15.0;
     if (profile.seatSelections >= 1) intentScore += 20.0;
@@ -294,9 +293,10 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
 
   const avgIntentScore = scoredProspectCount > 0 
     ? Math.round(totalIntentScoreSum / scoredProspectCount) 
-    : 65;
+    : 0; // no prospects: no score (was a made-up 65)
 
   return {
+    score_source: 'rules',
     eventId: event.id,
     eventName: event.name,
     eventType: event.type,
@@ -492,6 +492,7 @@ export const getAbandonedIntentDashboard = async ({
 
   if (accessibleEventIds.length === 0) {
     return {
+      score_source: 'rules',
       summary: {
         totalAbandonedUsers: 0,
         recoverableRevenuePkr: 0,
@@ -630,7 +631,7 @@ export const getAbandonedIntentDashboard = async ({
     if (explicitReason === 'payment_hesitation' || explicitReason === 'payment_failure') {
       likelyReason = 'PAYMENT_FRICTION';
       reasonDetail = 'Friction during payment gateway interaction.';
-      recommendedAction = 'OFFER_JAZZCASH_EASYPAISA_DIRECT';
+      recommendedAction = 'OFFER_PAYMENT_HELP'; // JazzCash / EasyPaisa are disabled (R0); suggest help with payment
     } else if (cartValue >= 7000) {
       likelyReason = 'HIGH_TICKET_PRICE';
       reasonDetail = 'Cart total exceeded price sensitivity threshold for this venue.';
@@ -710,6 +711,7 @@ export const getAbandonedIntentDashboard = async ({
   const registeredDropouts = abandonedList.filter((a) => a.user.isRegistered).length;
 
   return {
+    score_source: 'rules',
     summary: {
       totalAbandonedUsers: totalCount,
       recoverableRevenuePkr: totalRevenuePkr,

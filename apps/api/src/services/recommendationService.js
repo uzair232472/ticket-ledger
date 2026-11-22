@@ -12,7 +12,11 @@
  * Every list served is logged (behaviour event recommendation_impression: list id, variant, positions,
  * popularity ranks) and a click is only accepted for an event that was in that list for that visitor.
  * Purchases are attributed later from verified orders (export, attribution window). Nothing here changes
- * prices, availability, checkout or any decision. Not shown in the app yet (exposure is a Step 6 decision).
+ * prices, availability, checkout or any decision.
+ *
+ * Step 6: shown in the app only when ML_REC_DISPLAY is on (off by default), identically for both groups. A list
+ * served from Step 6 on is marked `renderTracked`; it counts as an impression only once the page reports it was
+ * actually on screen (POST .../rendered, recordRendered below); the exporter leaves out lists never shown.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import prisma from '../config/prisma.js';
@@ -107,21 +111,42 @@ export async function recommend({ userId = null, sessionId = null, surface = 'ho
   await db.behaviorEvent.create({
     data: {
       userId, sessionId: sessionId || `user:${userId}`, action: 'recommendation_impression', eventId: null,
-      metadata: { experiment: EXPERIMENT, listId, variant, assignedBy, basis, surface, items, candidates: pool.length },
+      metadata: { experiment: EXPERIMENT, listId, variant, assignedBy, basis, surface, items, candidates: pool.length, renderTracked: true },
     },
   });
   return { listId, variant, basis, experimental: true, events: items.map(({ eventId, position }) => ({ eventId, position })) };
 }
 
-/** Records a click, only for an event that was in that list, shown to the same visitor. */
-export async function recordClick({ listId, eventId, userId = null, sessionId = null, db = prisma }) {
+/** The served list, only for the visitor it was served to (else 404). */
+async function servedList(db, listId, userId, sessionId) {
   const imp = await db.behaviorEvent.findFirst({
     where: { action: 'recommendation_impression', metadata: { path: ['listId'], equals: listId } },
     select: { userId: true, sessionId: true, metadata: true, createdAt: true },
   });
   const sameVisitor = imp && ((userId && imp.userId === userId) || (sessionId && imp.sessionId === sessionId));
-  const item = imp?.metadata?.items?.find((it) => it.eventId === eventId);
-  if (!imp || !sameVisitor || !item) throw Object.assign(new Error('Recommendation not found'), { status: 404 });
+  if (!imp || !sameVisitor) throw Object.assign(new Error('Recommendation not found'), { status: 404 });
+  return imp;
+}
+
+/**
+ * The page reports the list was on screen (at least half visible for a second). Recorded once per list: a repeat
+ * report changes nothing. Returns { recorded, alreadyRecorded }.
+ */
+export async function recordRendered({ listId, userId = null, sessionId = null, db = prisma }) {
+  const imp = await servedList(db, listId, userId, sessionId);
+  const seen = await db.behaviorEvent.findFirst({ where: { action: 'recommendation_rendered', metadata: { path: ['listId'], equals: listId } }, select: { id: true } });
+  if (seen) return { recorded: false, alreadyRecorded: true };
+  await db.behaviorEvent.create({
+    data: { userId: userId || imp.userId, sessionId: sessionId || imp.sessionId, action: 'recommendation_rendered', eventId: null, metadata: { experiment: EXPERIMENT, listId, variant: imp.metadata.variant, surface: imp.metadata.surface } },
+  });
+  return { recorded: true, alreadyRecorded: false };
+}
+
+/** Records a click, only for an event that was in that list, shown to the same visitor. */
+export async function recordClick({ listId, eventId, userId = null, sessionId = null, db = prisma }) {
+  const imp = await servedList(db, listId, userId, sessionId);
+  const item = imp.metadata?.items?.find((it) => it.eventId === eventId);
+  if (!item) throw Object.assign(new Error('Recommendation not found'), { status: 404 });
   await db.behaviorEvent.create({
     data: { userId: userId || imp.userId, sessionId: sessionId || imp.sessionId, action: 'recommendation_click', eventId, metadata: { experiment: EXPERIMENT, listId, variant: imp.metadata.variant, position: item.position } },
   });

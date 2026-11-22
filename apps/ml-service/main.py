@@ -622,6 +622,95 @@ def shadow_predict(name: str, req: ShadowRequest):
     return {"model": name, "sha256": req.sha256, "role": "SHADOW", "may_serve_decisions": False, "predictions": preds}
 
 
+# -----------------
+# v2: health and metrics for the API's AI monitor (Step 6). No predictions, no decisions.
+# -----------------
+_metrics_lock = threading.Lock()
+_metrics = {"started_at": datetime.utcnow().isoformat() + "Z", "routes": {}}
+_fingerprint_cache = {}  # path -> (mtime, size, sha256)
+
+
+def _route_key(path):
+    if path.startswith("/v2/shadow/"):
+        return "/v2/shadow/" + path.rsplit("/", 1)[-1]
+    if path in ("/fraud/score", "/predict/fraud", "/forecast/demand", "/predict/demand", "/intent/predict", "/predict/intent"):
+        return path
+    return None
+
+
+@app.middleware("http")
+async def count_requests(request: Request, call_next):
+    key = _route_key(request.url.path)
+    if key is None:
+        return await call_next(request)
+    t0 = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        ms = (time.perf_counter() - t0) * 1000.0
+        with _metrics_lock:
+            m = _metrics["routes"].setdefault(key, {"requests": 0, "status_2xx": 0, "status_4xx": 0, "status_5xx": 0, "latencies_ms": []})
+            m["requests"] += 1
+            m["status_2xx" if status < 400 else "status_4xx" if status < 500 else "status_5xx"] += 1
+            m["latencies_ms"].append(round(ms, 2))
+            if len(m["latencies_ms"]) > 1000:
+                del m["latencies_ms"][:-1000]   # keep the last 1000 for percentiles
+
+
+def _percentile(xs, q):
+    if not xs:
+        return None
+    ys = sorted(xs)
+    return ys[min(len(ys) - 1, int(round(q * (len(ys) - 1))))]
+
+
+def _fingerprint(path):
+    st = os.stat(path)
+    hit = _fingerprint_cache.get(path)
+    if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
+        return hit[2]
+    digest = _file_sha256(path)
+    _fingerprint_cache[path] = (st.st_mtime, st.st_size, digest)
+    return digest
+
+
+@app.get("/v2/health")
+def v2_health():
+    """Registry and artifact checks for each shadow model: file present, fingerprint matches, scikit-learn
+    major.minor matches. Every model is shadow-only (may_serve_decisions false)."""
+    models = []
+    for name, entry in _registry().items():
+        path = os.path.join(ARTIFACT_DIR, entry["file"])
+        problem = None
+        if not os.path.exists(path):
+            problem = "artifact file missing"
+        elif _fingerprint(path) != entry["sha256"]:
+            problem = "artifact fingerprint does not match registry"
+        elif str(entry.get("sklearn", "")).split(".")[:2] != sklearn.__version__.split(".")[:2]:
+            problem = f"built with scikit-learn {entry.get('sklearn')}, service runs {sklearn.__version__}"
+        models.append({
+            "name": name, "version": entry.get("version"), "sha256": entry["sha256"], "source": entry.get("source"),
+            "evaluation_status": entry.get("evaluation_status"), "fingerprint_ok": problem is None, "problem": problem,
+            "may_serve_decisions": False,
+        })
+    return {"status": "ok", "ml_env": ML_ENV, "sklearn": sklearn.__version__, "artifact_dir_set": bool(os.environ.get("ML_ARTIFACT_DIR")),
+            "legacy_synthetic_models_loaded": any(p is not None for p in (fraud_pkg, demand_pkg, intent_pkg)),
+            "models": models, "may_serve_decisions": False}
+
+
+@app.get("/v2/metrics")
+def v2_metrics():
+    """In-memory request counters since the service started (shadow and legacy scoring routes)."""
+    with _metrics_lock:
+        routes = {k: {"requests": v["requests"], "status_2xx": v["status_2xx"], "status_4xx": v["status_4xx"], "status_5xx": v["status_5xx"],
+                      "p50_ms": _percentile(v["latencies_ms"], 0.5), "p95_ms": _percentile(v["latencies_ms"], 0.95)}
+                  for k, v in _metrics["routes"].items()}
+        return {"started_at": _metrics["started_at"], "routes": routes}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)

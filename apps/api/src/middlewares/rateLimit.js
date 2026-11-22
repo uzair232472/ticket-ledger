@@ -86,3 +86,40 @@ export const gatePackRateLimiter = rateLimit({
   keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
   handler: tooManyRequests,
 });
+
+// Step 6: legacy ML scoring endpoints (/api/ml/fraud/score, /intent/predict, /forecast/demand and aliases).
+// SUPER_ADMIN only; 30 per minute per admin in production. `makeMlLegacyRateLimiter` exists so tests can check
+// the limit itself (the exported limiter, like the others, is skipped in automated test runs).
+export const ML_LEGACY_LIMIT = () => (process.env.NODE_ENV === 'production' ? 30 : 120);
+export const makeMlLegacyRateLimiter = ({ limit = ML_LEGACY_LIMIT(), windowMs = 60 * 1000, skip = isTestRun } = {}) => rateLimit({
+  windowMs,
+  limit,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
+export const mlLegacyRateLimiter = makeMlLegacyRateLimiter();
+
+// Step 6: read-only AI insight / monitor endpoints (staff dashboards): 120 per minute per user in production
+export const mlInsightsRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 120 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
+
+// Step 6: recommendation "rendered" / click beacons (public): 120 per minute per visitor in production
+export const recBeaconRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 120 : 2000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});

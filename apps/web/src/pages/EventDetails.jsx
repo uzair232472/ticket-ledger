@@ -22,6 +22,7 @@ import markUrl from '../assets/ticketledger-mark.svg';
 import '../components/home/home.css';
 import '../components/events/events.css';
 import '../components/event-detail/detail.css';
+import RecommendedEvents from '../components/ml/RecommendedEvents';
 
 gsap.registerPlugin(ScrollTrigger, CustomEase);
 // The reference's "verticalEase" (same curve as its Explore transitions)
@@ -591,6 +592,8 @@ function EventDetailsPage({ id }) {
                   </div>
                 </section>
               )}
+              {/* Step 6: shown only when ML_REC_DISPLAY is on (renders nothing otherwise) */}
+              <RecommendedEvents surface="event" excludeEventId={id} title="You might also like" />
             </>
           )}
         </main>

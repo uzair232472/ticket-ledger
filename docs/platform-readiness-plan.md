@@ -17,7 +17,7 @@ phase; rules keep making every decision.
 > | R0.1–R0.3 | Done: fail-closed Stripe, disabled wallets and test checkout, startup check, idempotency, metadata |
 > | R0.4 | Done: the 153 server tests were run in the sandbox. 110 pass, the same as before R0; the 43 earlier failures are listed in ml-step5 §13 |
 > | R0.5 | Done: `ML_GENUINE_FROM`. The staff/invited-tester lists use the existing `ML_EXPORT_EXCLUDE_USERS` and internal domains |
-> | R0.6 | Group stability done; impressions-on-render belongs with display (Step 6) |
+> | R0.6 | Group stability done; impressions counted on render implemented in Step 6 (display built, `ML_REC_DISPLAY` off) |
 > | R0.7 | Done; migration `20261124120000` applied to the main development database (2026-11-22: verified backup, rehearsal, business data unchanged) |
 > | R0.8 | Reviewed: docs/email-readiness.md. **E1–E3 must be completed before the real-user beta (R4)**; E4–E7 are also needed for it |
 | Closure | 43 server-test failures reconciled entry by entry (docs/server-test-failures.md: 27 obsolete + 6 testnet + 10 module tests); cross-organizer pricing fixed |

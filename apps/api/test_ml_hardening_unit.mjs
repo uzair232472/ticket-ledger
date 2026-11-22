@@ -61,7 +61,8 @@ test('payments, tickets, refunds and gate admission never read model output or t
 
 test('the shadow log and model registry are only written/read by the ML modules (never by a decision path)', () => {
   const readers = walk('src').filter((f) => /mlPrediction\.|mlModel\.|"MlPrediction"|"MlModel"/.test(src(f))).map((f) => f.split(path.sep).join('/')).sort();
-  assert.deepEqual(readers, ['src/services/ml/export.js', 'src/services/ml/fraudReview.js', 'src/services/ml/jobs.js', 'src/services/ml/shadow.js']);
+  // Step 6 adds the read-only insight layer (insights.js, monitor.js; test_ml_step6_unit.mjs checks they never write)
+  assert.deepEqual(readers, ['src/services/ml/export.js', 'src/services/ml/fraudReview.js', 'src/services/ml/insights.js', 'src/services/ml/jobs.js', 'src/services/ml/monitor.js', 'src/services/ml/shadow.js']);
   // The only consumer of a shadow decision is the blind-review SAMPLING (which orders humans review)
   assert.ok(!/WOULD_FLAG/.test(src('src/controllers/bookingController.js')));
 });
@@ -70,7 +71,9 @@ test('checkout blocks only on the rules result; the model shadow call cannot cha
   const b = src('src/controllers/bookingController.js');
   // The block decision reads the rules evaluation; recordShadow returns nothing the decision could use
   assert.match(b, /if \(fraudEvaluation\.risk_level === 'CRITICAL_BOT'\)/);
-  assert.match(b, /const fraudEvaluation = await mlService\.checkFraudRisk\(/);
+  // Step 6: the rules are evaluated in the API; checkout makes no ML service call at all
+  assert.match(b, /const fraudEvaluation = evaluateCheckoutBotRules\(validated\.telemetry\);/);
+  assert.ok(!/mlService|mlPost/.test(b), 'checkout never calls the ML service');
   assert.ok(!/await recordShadow|=\s*recordShadow|fraudShadow\([^)]*\)\s*\./.test(b));
   const m = src('../ml-service/main.py');
   const fraud = m.slice(m.indexOf('def execute_fraud_score'), m.indexOf('def execute_demand_forecast'));

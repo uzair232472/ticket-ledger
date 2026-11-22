@@ -1,0 +1,247 @@
+{
+  "data_source": "synthetic-v0",
+  "data_generator": "2.1.0",
+  "models": [
+    {
+      "name": "intent",
+      "title": "Purchase intent",
+      "file": "intent.joblib",
+      "sha256": "5b1f3f56d07e89ec252d40d040be73e730b6f7b4a82736ca6b25969fe49d3d85",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "PASSED",
+      "may_serve_decisions": false,
+      "shadow_decision": null,
+      "sklearn": "1.6.1",
+      "trained_rows": 100000,
+      "created_at": "2026-11-20T07:51:58.955053+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country"
+        ],
+        "numeric": [
+          "event_views",
+          "seat_selections",
+          "checkout_started",
+          "session_duration_seconds",
+          "ticket_price_rel",
+          "tier_count",
+          "hours_since_sales_open",
+          "days_until_event",
+          "customer_prior_sessions",
+          "customer_prior_purchases",
+          "prior_sessions_this_event",
+          "account_age_days"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "share of actual buyers among the top 10% scored visitors",
+        "higher_is_better": true,
+        "model": 0.8272,
+        "baseline": 0.7921,
+        "improvement": 0.0351,
+        "improvement_95ci": [
+          0.0204,
+          0.0518
+        ],
+        "reasons": []
+      }
+    },
+    {
+      "name": "abandonment",
+      "title": "Abandoned checkout",
+      "file": "abandonment.joblib",
+      "sha256": "3e30d171b25bfed29de9e0b2dbbfc6d30c98c0e99caa75755920b5db830cfc42",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "PASSED",
+      "may_serve_decisions": false,
+      "shadow_decision": null,
+      "sklearn": "1.6.1",
+      "trained_rows": 19318,
+      "created_at": "2026-11-20T07:52:04.841186+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country"
+        ],
+        "numeric": [
+          "event_views",
+          "seat_selections",
+          "session_duration_seconds",
+          "ticket_price_rel",
+          "tier_count",
+          "hours_since_sales_open",
+          "days_until_event",
+          "customer_prior_sessions",
+          "customer_prior_purchases",
+          "prior_sessions_this_event",
+          "account_age_days"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "share of actual abandons among the top 10% scored checkouts",
+        "higher_is_better": true,
+        "model": 0.5156,
+        "baseline": 0.3468,
+        "improvement": 0.1687,
+        "improvement_95ci": [
+          0.1225,
+          0.2179
+        ],
+        "reasons": []
+      }
+    },
+    {
+      "name": "fraud",
+      "title": "Fraud (flag for review)",
+      "file": "fraud.joblib",
+      "sha256": "6ac94abf87021214e981b1789f3f20e32536fd2301483f9d8e7578a45c8b30af",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "REJECTED",
+      "may_serve_decisions": false,
+      "shadow_decision": {
+        "date": "2026-11-20",
+        "decision": "Option 1: the existing rules stay the active decision-making system; the v0 fraud model runs in shadow only. The precision benchmark is not changed to let a synthetic-trained model pass.",
+        "keep": "improved fraud recall and bot-detection capability (incl. human-speed bots) - tracked, not used",
+        "record": "every shadow prediction, compared against verified fraud and verified legitimate outcomes",
+        "re_evaluate": "on real client data once enough reviewed cases exist (minimums in ml/gates.py)",
+        "measures": "precision (main), false-flag rate among legitimate orders (separate limit, <= 1%), recall (tracked) - reported separately, never combined"
+      },
+      "sklearn": "1.6.1",
+      "trained_rows": 50000,
+      "created_at": "2026-11-20T07:52:29.446355+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country",
+          "payment_method"
+        ],
+        "numeric": [
+          "tickets_requested",
+          "unit_price_rel",
+          "checkout_duration_seconds",
+          "clicks_per_minute",
+          "rapid_seat_attempts",
+          "time_on_seatmap_seconds",
+          "device_switches",
+          "account_age_days",
+          "customer_prior_orders",
+          "orders_last_24h",
+          "failed_payments_30d",
+          "prior_resale_listings",
+          "hours_since_sales_open"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "share of flagged orders that are fraud (precision)",
+        "higher_is_better": true,
+        "model": 0.8929,
+        "baseline": 0.9938,
+        "improvement": -0.1009,
+        "improvement_95ci": [
+          -0.1422,
+          -0.0662
+        ],
+        "reasons": [
+          "not clearly better than the baseline: 95% interval of the improvement is [-0.1422, -0.0662]"
+        ]
+      }
+    },
+    {
+      "name": "demand",
+      "title": "Demand forecast (48-hour sales)",
+      "file": "demand.joblib",
+      "sha256": "68db22d6fa39d7753d4351c646b920b3a22e8a783716fd0a26f30383bc386617",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "PASSED",
+      "may_serve_decisions": false,
+      "shadow_decision": null,
+      "sklearn": "1.6.1",
+      "trained_rows": 5000,
+      "created_at": "2026-11-20T07:52:33.782574+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country",
+          "day_of_week"
+        ],
+        "numeric": [
+          "venue_capacity",
+          "tier_count",
+          "min_price_rel",
+          "avg_price_rel",
+          "max_price_rel",
+          "start_hour",
+          "sales_open_hour",
+          "lead_days",
+          "start_month",
+          "organizer_past_events",
+          "organizer_past_sell_through_48h"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "weighted % error of 48-hour sales",
+        "higher_is_better": false,
+        "model": 0.3546,
+        "baseline": 0.4119,
+        "improvement": 0.0573,
+        "improvement_95ci": [
+          0.0329,
+          0.0816
+        ],
+        "reasons": []
+      }
+    },
+    {
+      "name": "crowd",
+      "title": "Crowd flow (scans per gate per 5 min)",
+      "file": "crowd.joblib",
+      "sha256": "19c67dfbcd5cfd0af480263540d4324f552eba15b224d407c59405bac3ffb0f8",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "PASSED",
+      "may_serve_decisions": false,
+      "shadow_decision": null,
+      "sklearn": "1.6.1",
+      "trained_rows": 92100,
+      "created_at": "2026-11-20T07:53:06.614048+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country",
+          "day_of_week"
+        ],
+        "numeric": [
+          "minutes_from_start",
+          "start_hour",
+          "tickets_sold",
+          "gate_count",
+          "gate_capacity_per_hour",
+          "gate_capacity_share",
+          "baseline_scans"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "average error in scans per gate per 5 minutes",
+        "higher_is_better": false,
+        "model": 17.8339,
+        "baseline": 21.5511,
+        "improvement": 3.7171,
+        "improvement_95ci": [
+          2.6222,
+          4.9639
+        ],
+        "reasons": []
+      }
+    }
+  ]
+}
