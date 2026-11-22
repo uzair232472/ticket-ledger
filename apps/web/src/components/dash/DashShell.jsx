@@ -12,6 +12,7 @@ import '../home/home.css';
 import '../events/events.css';
 import './dash.css';
 import './studio.css';
+import { insightPath } from '../../lib/insightPaths';
 
 // Console areas per role (same routes and role rules as App.jsx)
 const CONSOLES = {
@@ -48,9 +49,9 @@ const CONSOLES = {
       { to: '/organizer/team', label: 'Team', permission: ['staff.view', 'audit.view'] },
       { to: '/organizer/organization', label: 'Organization', permission: ORG_PAGE_PERMISSIONS },
       { to: '/organizer/discounts', label: 'Discount codes', permission: 'discount.manage' },
-      { to: '/admin/purchase-intent', label: 'Purchase intent', permission: 'attendee.view' },
-      { to: '/admin/demand-forecast', label: 'Demand forecast', permission: 'event.pricing' },
-      { to: '/admin/abandoned-intents', label: 'Abandoned intents', permission: 'attendee.view' },
+      { to: '/organizer/purchase-intent', label: 'Purchase intent', permission: 'attendee.view' },
+      { to: '/organizer/demand-forecast', label: 'Demand forecast', permission: 'event.pricing' },
+      { to: '/organizer/abandoned-intents', label: 'Abandoned intents', permission: 'attendee.view' },
       { to: '/organizer/gates', label: 'Gates', permission: 'gate.supervise' },
       { to: '/organizer/support', label: 'Support requests', permission: 'support.respond' },
       { to: '/organizer/checkout-settings', label: 'Checkout settings', permission: ['finance.view', 'event.edit'] },
@@ -90,10 +91,11 @@ function consoleFor(user) {
 }
 
 // Paths that open the same screen as a console link (aliases in App.jsx)
-const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
+// Neutral addresses of the shared insight pages, highlighted as the admin or organizer menu item
+const aliasesFor = (role) => ({ '/demand-forecast': insightPath(role, 'demand'), '/analytics/intent': insightPath(role, 'intent') });
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor', '/organizer/purchase-intent', '/organizer/demand-forecast', '/organizer/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
@@ -135,7 +137,7 @@ export default function DashShell({ children }) {
   const pageRef = useRef(null);
   const console_ = consoleFor(user);
   const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
-  const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
+  const current = Object.entries(aliasesFor(user?.role)).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
   const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit|manage)))\/?$/.test(pathname);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Link, useNavigate, useLocation, useNavigationType, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { insightPath } from './lib/insightPaths';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -176,6 +177,15 @@ const COMING_SOON = {
 };
 const soon = (flag, feature, page) => (COMING_SOON[flag] ? <ComingSoon feature={feature} /> : <DashShell>{page}</DashShell>);
 
+// The insight pages are shared by super admins (/admin/...) and organizers (/organizer/...). An organizer who opens
+// an old /admin/... address (bookmark, old link) is sent to the organizer address of the same page.
+function AdminInsightRoute({ page, children }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (user && user.role !== 'SUPER_ADMIN') return <Navigate replace to={`${insightPath(user.role, page)}${location.search}`} />;
+  return children;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -275,14 +285,17 @@ export default function App() {
               <Route path="/admin/payouts" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminPayouts /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-watchlist" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudWatchlist /></ProtectedRoute></DashShell>} />
               <Route path="/admin/fraud-review" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFraudReview /></ProtectedRoute></DashShell>} />
-              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
+              <Route path="/admin/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}><AdminInsightRoute page="demand">{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</AdminInsightRoute></ProtectedRoute>} />
+              <Route path="/organizer/demand-forecast" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviourReport />)}</ProtectedRoute>} />
               <Route path="/admin/ai-monitor" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AiMonitor /></ProtectedRoute></DashShell>} />
-              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
+              <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}><AdminInsightRoute page="intent">{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</AdminInsightRoute></ProtectedRoute>} />
+              <Route path="/organizer/purchase-intent" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
               <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
               <Route path="/analytics/intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
-              <Route path="/admin/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}><AbandonedIntentDashboard /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}><AdminInsightRoute page="abandoned"><AbandonedIntentDashboard /></AdminInsightRoute></ProtectedRoute></DashShell>} />
+              <Route path="/organizer/abandoned-intents" element={<DashShell><ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'attendee.view'}><AbandonedIntentDashboard /></ProtectedRoute></DashShell>} />
 
               {/* Safe catch-all fallback */}
               <Route path="*" element={<NotFound />} />

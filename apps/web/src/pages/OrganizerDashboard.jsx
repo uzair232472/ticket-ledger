@@ -3,6 +3,7 @@ import { Settings2 } from 'lucide-react';
 import { connectSocket } from '../lib/socket';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { insightPath } from '../lib/insightPaths';
 import StaffManager from '../components/StaffManager';
 import { can } from '../lib/permissions';
 import { DashHead, DashCard, Kpi, Chip, Tile, Notice, DashState } from '../components/dash/DashShell';
@@ -419,13 +420,13 @@ export default function OrganizerDashboard() {
               <span className="tl-dash-panel-tag"><TrendingUp className="w-3.5 h-3.5" aria-hidden="true" /> Insights</span>
               <h2 className="tl-dash-panel-title">What to look at next</h2>
               <div className="tl-dash-tiles">
-                <Tile num={1} icon={ShoppingCart} title="Purchase intent" value={(modulesPreview.intentViewers || 0).toLocaleString()} to={`/admin/purchase-intent${eventQuery}`}>
+                <Tile num={1} icon={ShoppingCart} title="Purchase intent" value={(modulesPreview.intentViewers || 0).toLocaleString()} to={`${insightPath(user?.role, 'intent')}${eventQuery}`}>
                   People showed intent to buy tickets but didn't complete checkout.
                 </Tile>
-                <Tile num={2} icon={TrendingUp} title="Demand forecast" to={`/admin/demand-forecast${eventQuery}`}>
+                <Tile num={2} icon={TrendingUp} title="Demand forecast" to={`${insightPath(user?.role, 'demand')}${eventQuery}`}>
                   Predicted ticket demand based on recent page views and conversion patterns.
                 </Tile>
-                <Tile num={3} icon={UserX} title="Abandoned checkouts" value={modulesPreview.abandonedCarts || 0} to={`/admin/abandoned-intents${eventQuery}`}>
+                <Tile num={3} icon={UserX} title="Abandoned checkouts" value={modulesPreview.abandonedCarts || 0} to={`${insightPath(user?.role, 'abandoned')}${eventQuery}`}>
                   Users added tickets to their cart but didn't complete the purchase.
                 </Tile>
               </div>
@@ -543,7 +544,7 @@ export default function OrganizerDashboard() {
                   <span>
                     <strong>{fraudFeed.length} {fraudFeed.length === 1 ? 'alert' : 'alerts'}</strong>
                     {highRisk ? `, ${highRisk} high risk` : ''}. Latest: {fraudFeed[0].userName}, {fraudFeed[0].reason.toLowerCase()}.{' '}
-                    <Link to={`/admin/purchase-intent${eventQuery}`}>Review</Link>
+                    <Link to={`${insightPath(user?.role, 'intent')}${eventQuery}`}>Review</Link>
                   </span>
                 </div>
               )}

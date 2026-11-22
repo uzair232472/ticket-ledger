@@ -203,13 +203,18 @@ export default function Profile() {
     }
   }, []);
 
+  // The activity summary describes the signed-in person's own browsing, so only customers have it
+  const isCustomer = authUser?.role === 'CUSTOMER';
   useEffect(() => {
     if (token) {
       loadProfile();
       loadHistory();
-      loadBehaviorProfile();
+      if (isCustomer) loadBehaviorProfile();
     }
-  }, [token]);
+  }, [token, isCustomer]);
+  useEffect(() => {
+    if (!isCustomer && activeTab === 'intent') setActiveTab('overview');
+  }, [isCustomer, activeTab]);
 
   // Handle Avatar selection
   const handleAvatarFile = async (file) => {
@@ -413,11 +418,11 @@ export default function Profile() {
     ['my-data', 'My data', UserRound],
     ['security', 'Security', ShieldCheck],
     ['notifications', 'Notifications', Bell],
-    ['intent', 'Activity & interests', BarChart3],
+    isCustomer && ['intent', 'Activity & interests', BarChart3],
     ['preferred-website', 'Preferred Website', Globe],
     ['api-keys', 'API keys', KeyRound],
     ['privacy', 'Privacy', FileText],
-  ];
+  ].filter(Boolean);
 
   const getBreadcrumbLabel = () => {
     switch (activeTab) {
@@ -1010,7 +1015,7 @@ export default function Profile() {
           {/* ========================================================================= */}
           {/* TAB: AI INTENT & TELEMETRY                                                */}
           {/* ========================================================================= */}
-          {activeTab === 'intent' && (
+          {activeTab === 'intent' && isCustomer && (
             <div className="space-y-6 max-w-3xl">
               <div>
                 <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Activity & interests</h1>
@@ -1026,7 +1031,7 @@ export default function Profile() {
                       <Activity className="w-4 h-4" />
                     </span>
                     <div>
-                      <h3 className="font-extrabold text-[#212b36] text-base">Client Telemetry & Affinity Metrics</h3>
+                      <h3 className="font-extrabold text-[#212b36] text-base">Your activity summary</h3>
                       <span className="text-[10px] font-bold text-[#008459]">Rule-based summary</span>
                     </div>
                   </div>
@@ -1037,7 +1042,7 @@ export default function Profile() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${loadingBehavior ? 'animate-spin text-[#008459]' : ''}`} />
-                    <span>Refresh Telemetry</span>
+                    <span>Refresh</span>
                   </button>
                 </div>
 
