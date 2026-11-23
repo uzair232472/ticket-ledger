@@ -114,6 +114,8 @@ export async function cancelEvent({ event, actor, reason }) {
       await tx.order.updateMany({ where: { id: { in: open.map((o) => o.id) }, status: 'PENDING' }, data: { status: 'FAILED' } });
       await recordCheckoutEnd(tx, open, 'EVENT_CANCELLED');
       await tx.seat.updateMany({ where: { eventId: event.id, status: 'LOCKED' }, data: { status: 'AVAILABLE' } });
+      // Resale listings can no longer sell: closed (the tickets are refunded to whoever paid)
+      await tx.resaleListing.updateMany({ where: { ticket: { eventId: event.id }, status: { in: ['ACTIVE', 'PAUSED'] } }, data: { status: 'CANCELLED' } });
       return { refunds: await createRefunds(tx, tickets, 'EVENT_CANCELLED') };
     },
     { timeout: 60000 },

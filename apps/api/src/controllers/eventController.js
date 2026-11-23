@@ -1304,14 +1304,15 @@ export const deleteEvent = async (req, res) => {
     }
 
     const [sold, paying] = await Promise.all([
-      prisma.order.count({ where: { eventId: event.id, status: 'SUCCESSFUL' } }),
+      // Any order where money moved (paid, partly or fully refunded) is a record that must be kept
+      prisma.order.count({ where: { eventId: event.id, status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED', 'REFUNDED'] } } }),
       prisma.order.count({ where: { eventId: event.id, status: 'PENDING' } }),
     ]);
     if (sold || paying) {
       return res.status(409).json({
         success: false,
         message: sold
-          ? `This event has ${sold} paid order${sold === 1 ? '' : 's'}, so it can’t be deleted. Cancel the event instead, so ticket holders keep their records.`
+          ? `This event has ${sold} paid or refunded order${sold === 1 ? '' : 's'}, so it can’t be deleted. Cancel the event instead: ticket holders are refunded and keep their records.`
           : 'A customer is paying for tickets to this event right now. Try again in a few minutes, or cancel the event instead.',
       });
     }
