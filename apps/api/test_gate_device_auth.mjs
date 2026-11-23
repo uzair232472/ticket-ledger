@@ -65,7 +65,7 @@ test('Gate device authentication and socket access', async (t) => {
     companies.push(company.id);
     await prisma.user.updateMany({ where: { id: { in: [owner.id, gate.id] } }, data: { companyId: company.id } });
     await prisma.organizationMember.createMany({ data: [{ companyId: company.id, userId: owner.id, role: 'OWNER' }, { companyId: company.id, userId: gate.id, role: 'GATE_STAFF' }] });
-    const event = await prisma.event.create({ data: { companyId: company.id, name: `Device Event ${n} ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 86400000), time: '19:00', city: 'Lahore', venue: 'Hall' } });
+    const event = await prisma.event.create({ data: { companyId: company.id, name: `Device Event ${n} ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 3600000), startsAt: new Date(Date.now() + 3600000), endsAt: new Date(Date.now() + 4 * 3600000), time: '19:00' /* event day: gates are open (eventTiming.js) */, city: 'Lahore', venue: 'Hall' } });
     await prisma.staffEventAssignment.create({ data: { staffId: gate.id, eventId: event.id, assignedById: owner.id } });
     return { owner, gate, company, event };
   };

@@ -175,6 +175,14 @@ export async function evaluateOffline(pack, raw, gate, { direction = 'ENTRY', ga
   const view = { id: ticket.id, type: ticket.type, seat: ticket.seat, holder: ticket.holder };
   if (version !== ticket.qrVersion) return { result: 'RED', reason: 'Old QR: this ticket was transferred', ticket: view };
   if (ticket.status === 'CANCELLED') return { result: 'RED', reason: 'Ticket refunded / cancelled', ticket: view };
+  // Event timing (same rule as the server, services/eventTiming.js): no entry after the end or before gates open
+  const win = pack.entryWindow;
+  if (direction !== 'EXIT' && win) {
+    const t = Date.now();
+    const fmt = (iso) => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    if (win.ended || t >= Date.parse(win.end)) return { result: 'RED', reason: `Event ended (${fmt(win.end)}): this ticket has expired`, ticket: view };
+    if (t < Date.parse(win.gatesOpen)) return { result: 'RED', reason: `Too early: gates open ${fmt(win.gatesOpen)}`, ticket: view };
+  }
 
   const now = new Date().toISOString();
   const local = await usedLocally(eventId, ticket.id);

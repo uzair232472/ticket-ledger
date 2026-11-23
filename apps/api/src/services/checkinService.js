@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { entryRefusal, eventTiming } from './eventTiming.js';
 import { getIO } from '../config/socket.js';
 import { verifyPass, normaliseManualCode, looksLikeManualCode, ensureManualCodes, getPublicKey } from './qrPassService.js';
 import { announceConflicts, classifyConflict, conflictReason, recordConflict } from './scanConflictService.js';
@@ -34,7 +35,7 @@ export class GateError extends Error {
 }
 
 const ticketInclude = {
-  event: { select: { id: true, name: true, status: true, reentryPolicy: true, maxReentries: true } },
+  event: { select: { id: true, name: true, status: true, reentryPolicy: true, maxReentries: true, date: true, time: true, startsAt: true, endsAt: true } },
   order: { select: { status: true } },
   seat: { select: { section: true, row: true, seatNumber: true, kind: true, tierId: true, tier: { select: { name: true } } } },
   user: { select: { name: true } },
@@ -76,7 +77,7 @@ export function reentriesLeft(event, entryCount) {
  * { result: 'GREEN'|'YELLOW'|'RED', reason, ticket?, firstScan?, reentry? }.
  * opts: { direction = 'ENTRY', gate: EventGate row (or null), gateNames: names of gates admitting this ticket }
  */
-export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null, gates = [] } = {}, db = prisma) {
+export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null, gates = [], at = new Date() } = {}, db = prisma) {
   const text = String(raw || '').trim();
   let ticket = null;
   let qrVersion = null;
@@ -107,6 +108,12 @@ export async function evaluate(raw, eventId, { direction = 'ENTRY', gate = null,
   // 6. Refunded / cancelled / moved
   if (ticket.status === 'CANCELLED') return { result: 'RED', code: 'CANCELLED', reason: 'Ticket refunded / cancelled', ticket };
   if (ticket.status === 'TRANSFERRED' || ticket.status === 'RESOLD') return { result: 'RED', code: 'TRANSFERRED', reason: 'Old QR: this ticket was transferred', ticket };
+  // 6b. Event timing: no entry after the event ended or before the gates open (exits are always recorded).
+  // `at` is when the ticket was scanned (an offline scan uploaded later is judged at its scan time).
+  if (direction !== 'EXIT') {
+    const refusal = entryRefusal(ticket.event, at);
+    if (refusal) return { result: 'RED', ...refusal, ticket };
+  }
 
   const first = ticket.checkedInAt && { at: ticket.checkedInAt, gate: ticket.gate, by: ticket.checkedInBy?.name };
 
@@ -357,7 +364,7 @@ async function replay(row, extra = {}) {
  */
 export async function scan({ code, eventId, staffId, gate, gateId, direction = 'ENTRY', deviceId, deviceRecordId = null, clientScanId = null, supervisor = false, scannedAt = new Date() }) {
   const g = await resolveGate({ eventId, gateId, gate, direction, staffId, supervisor });
-  const opts = { direction, gate: g.row, gates: g.gates };
+  const opts = { direction, gate: g.row, gates: g.gates, at: scannedAt };
   const out = await onceForScan(deviceRecordId, clientScanId, async (tx) => {
     let verdict = await evaluate(code, eventId, opts, tx);
     if (verdict.result === 'GREEN') verdict = await admit(verdict, { code, eventId, staffId, gate: g.gate, gateId: g.gateId, direction, at: new Date(), opts }, tx);
@@ -407,7 +414,7 @@ export async function syncOffline({ scans, eventId, staffId, deviceId, deviceRec
       // The gate as configured now; a gate removed since the scan is kept by name only
       const row = allGates.find((g) => g.id === s.gateId) || allGates.find((g) => g.name === s.gate) || null;
       const gate = row?.name || s.gate || null;
-      const opts = { direction, gate: row, gates: allGates };
+      const opts = { direction, gate: row, gates: allGates, at: scannedAt };
       const out = await onceForScan(deviceRecordId, clientScanId, async (tx) => {
         let verdict = await evaluate(s.code, eventId, opts, tx);
         let conflict = false;
@@ -460,7 +467,8 @@ export async function syncOffline({ scans, eventId, staffId, deviceId, deviceRec
 
 /** Offline pack: public key, gates, re-entry policy and every paid ticket of the event with what the scanner needs. */
 export async function eventPack(eventId, { staffId = null } = {}) {
-  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, companyId: true, name: true, date: true, time: true, venue: true, city: true, reentryPolicy: true, maxReentries: true } });
+  const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, companyId: true, name: true, status: true, date: true, time: true, startsAt: true, endsAt: true, venue: true, city: true, reentryPolicy: true, maxReentries: true } });
+  const timing = eventTiming(event);
   const tickets = await prisma.ticket.findMany({
     where: { eventId, order: { status: 'SUCCESSFUL' } },
     select: {
@@ -485,6 +493,8 @@ export async function eventPack(eventId, { staffId = null } = {}) {
   const STATUS = { ACTIVE: 'VALID', SCANNED: 'USED', CANCELLED: 'CANCELLED', TRANSFERRED: 'CANCELLED', RESOLD: 'CANCELLED' };
   return {
     event,
+    // Entry allowed from gatesOpen until end (the offline scanner applies the same rule as the server)
+    entryWindow: { gatesOpen: timing.gatesOpen.toISOString(), start: timing.start.toISOString(), end: timing.end.toISOString(), ended: timing.ended },
     publicKey: getPublicKey(),
     generatedAt: new Date().toISOString(),
     gates: gates.map((g) => ({ id: g.id, name: g.name, type: g.type, allowedTierIds: g.allowedTierIds, active: g.active })),

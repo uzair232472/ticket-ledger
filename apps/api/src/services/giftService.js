@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import prisma from '../config/prisma.js';
+import { eventTiming, moveRefusal, TIMING_SELECT } from './eventTiming.js';
 import { sha256 } from './tokenService.js';
 import { sendEmailNotification } from './emailService.js';
 
@@ -21,7 +22,6 @@ export class GiftError extends Error {
 }
 
 const FRONTEND = () => (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
-const startOf = (e) => e.startsAt || e.date;
 
 /** Moves one ticket to `recipient` (inside a transaction). */
 async function moveTicket(tx, ticket, recipient, fromUserId) {
@@ -35,8 +35,10 @@ async function moveTicket(tx, ticket, recipient, fromUserId) {
 }
 
 async function claimInTx(tx, gift, recipient) {
-  const ticket = await tx.ticket.findUnique({ where: { id: gift.ticketId } });
+  const ticket = await tx.ticket.findUnique({ where: { id: gift.ticketId }, include: { event: { select: TIMING_SELECT } } });
   if (!ticket || ticket.userId !== gift.senderId || ticket.status !== 'ACTIVE') throw new GiftError(409, 'This ticket can no longer be given (it was used, refunded or moved).');
+  // A gift sent before the event can be claimed until it ends (e.g. a group member at the gate), never after
+  if (ticket.event.status === 'CANCELLED' || eventTiming(ticket.event).ended) throw new GiftError(410, `${ticket.event.name} has ended or was cancelled, so this ticket can no longer be claimed.`);
   await moveTicket(tx, ticket, recipient, gift.senderId);
   await tx.ticketGift.update({ where: { id: gift.id }, data: { status: 'CLAIMED', claimedById: recipient.id, claimedAt: new Date() } });
 }
@@ -50,12 +52,13 @@ export async function sendGifts(user, { ticketIds, recipients, email, name, mess
   if (!plan.length) throw new GiftError(400, 'Choose at least one ticket.');
   const ids = [...new Set(plan.map((p) => p.ticketId))];
   if (ids.length !== plan.length) throw new GiftError(400, 'Each ticket can go to one person only.');
-  const tickets = await prisma.ticket.findMany({ where: { id: { in: ids } }, include: { order: { select: { status: true, userId: true } }, event: { select: { id: true, name: true, startsAt: true, date: true, status: true } }, seat: { include: { tier: true } } } });
+  const tickets = await prisma.ticket.findMany({ where: { id: { in: ids } }, include: { order: { select: { status: true, userId: true } }, event: { select: { id: true, name: true, startsAt: true, endsAt: true, date: true, time: true, status: true } }, seat: { include: { tier: true } } } });
   if (tickets.length !== ids.length) throw new GiftError(404, 'Ticket not found.');
   for (const t of tickets) {
     if (t.userId !== user.id) throw new GiftError(403, 'You can only send tickets you hold.');
     if (t.status !== 'ACTIVE' || !['SUCCESSFUL', 'PARTIALLY_REFUNDED'].includes(t.order.status)) throw new GiftError(409, 'Only paid, unused tickets can be sent.');
-    if (['CANCELLED', 'COMPLETED'].includes(t.event.status) || new Date(startOf(t.event)) < new Date()) throw new GiftError(409, `${t.event.name} has already started or ended.`);
+    const timing = moveRefusal(t.event, 'sent');
+    if (timing) throw new GiftError(409, timing);
   }
   const pending = await prisma.ticketGift.findFirst({ where: { ticketId: { in: ids }, status: 'PENDING' }, select: { id: true } });
   if (pending) throw new GiftError(409, 'One of these tickets is already waiting to be claimed. Cancel that gift first.');

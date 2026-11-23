@@ -63,7 +63,7 @@ test('Scanner scan store ↔ /api/checkin/sync contract', async (t) => {
   company = await prisma.company.create({ data: { userId: owner.id, companyName: `Contract Org ${run}`, ownerName: owner.name, phone: '+923001112223', email: owner.email, city: 'Lahore', ntnCnic: '1234567-8', documentUrl: '/x.pdf', status: 'APPROVED' } });
   await prisma.user.updateMany({ where: { id: { in: [owner.id, staff.id] } }, data: { companyId: company.id } });
   await prisma.organizationMember.createMany({ data: [{ companyId: company.id, userId: owner.id, role: 'OWNER' }, { companyId: company.id, userId: staff.id, role: 'GATE_STAFF' }] });
-  event = await prisma.event.create({ data: { companyId: company.id, name: `Contract Event ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 86400000), time: '19:00', city: 'Lahore', venue: 'Hall' } });
+  event = await prisma.event.create({ data: { companyId: company.id, name: `Contract Event ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 3600000), startsAt: new Date(Date.now() + 3600000), endsAt: new Date(Date.now() + 4 * 3600000), time: '19:00' /* event day: gates are open (eventTiming.js) */, city: 'Lahore', venue: 'Hall' } });
   await prisma.staffEventAssignment.create({ data: { staffId: staff.id, eventId: event.id, assignedById: owner.id } });
   const tier = await prisma.ticketTier.create({ data: { eventId: event.id, name: 'Standard', price: 1000, totalQuantity: 250, availableQuantity: 0 } });
   const order = await prisma.order.create({ data: { userId: customer.id, eventId: event.id, totalAmount: 1000, status: 'SUCCESSFUL' } });

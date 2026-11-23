@@ -38,7 +38,9 @@ export default function NftTicketCard({ ticket: t, onList, onCancelListing, onRe
   };
 
   const listing = t.activeResaleListing;
-  const canList = t.status === 'ACTIVE' && !listing;
+  // The server decides (states.actions): only a valid ticket of an event that has not started can be listed
+  const blocked = t.states?.actions && !t.states.actions.canResell ? t.states.actions.reason : null;
+  const canList = t.status === 'ACTIVE' && !listing && !blocked;
 
   return (
     <article className="tl-nft" data-reveal aria-label={`NFT ticket for ${event.name}`}>
@@ -126,7 +128,7 @@ export default function NftTicketCard({ ticket: t, onList, onCancelListing, onRe
               <Tag className="w-5 h-5" aria-hidden="true" /> List for resale
             </button>
           ) : (
-            <span className="tl-nft-state">{t.status?.toLowerCase()}</span>
+            <span className="tl-nft-state">{blocked || t.states?.entry?.label || t.status?.toLowerCase()}</span>
           )}
         </div>
       </div>

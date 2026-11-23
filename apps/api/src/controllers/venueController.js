@@ -79,7 +79,7 @@ export const createHold = async (req, res) => {
     const body = holdSchema.parse(req.body);
     const { eventId } = req.params;
     // Outside the event's sales window nobody can hold seats
-    const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { salesOpenAt: true, salesCloseAt: true } });
+    const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { salesOpenAt: true, salesCloseAt: true, status: true, date: true, time: true, startsAt: true, endsAt: true } });
     if (ev) {
       try {
         assertOnSale(ev);

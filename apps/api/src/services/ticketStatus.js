@@ -1,3 +1,4 @@
+import { eventTiming, moveRefusal } from './eventTiming.js';
 /*
  * The separate facts about a ticket. They are independent and must never stand in for one another:
  *
@@ -28,9 +29,14 @@ export function paymentState(order) {
   return { status, paid: PAID.includes(status), label };
 }
 
-export function entryState(ticket, order) {
+export function entryState(ticket, order, event = ticket.event || order?.event, now = new Date()) {
   const paid = ['SUCCESSFUL', 'PARTIALLY_REFUNDED'].includes(order?.status);
   if (!paid) return { status: 'NOT_PAID', valid: false, label: 'Not valid (not paid)' };
+  // An unused ticket of an event that has ended (or was cancelled) is expired, whatever its stored status
+  if (ticket.status === 'ACTIVE' && event?.status === 'CANCELLED') return { status: 'CANCELLED', valid: false, label: 'Event cancelled' };
+  if (ticket.status === 'ACTIVE' && event && (event.startsAt || event.date) && eventTiming(event, now).ended) {
+    return { status: 'EXPIRED', valid: false, label: 'Event ended: ticket expired' };
+  }
   const status = {
     ACTIVE: 'VALID',
     SCANNED: 'USED',
@@ -70,8 +76,14 @@ export function nftState(ticket) {
 }
 
 /** All three, for API responses: { payment, entry, nft }. `order` needs `status`. */
-export const ticketStates = (ticket, order = ticket.order) => ({
-  payment: paymentState(order),
-  entry: entryState(ticket, order),
-  nft: nftState(ticket),
-});
+export const ticketStates = (ticket, order = ticket.order, event = ticket.event || order?.event) => {
+  const entry = entryState(ticket, order, event);
+  // What the holder may still do with it: only a valid ticket of an event that has not started can be moved
+  const moveBlock = entry.status !== 'VALID' ? entry.label : event && (event.startsAt || event.date) ? moveRefusal(event, 'transferred') : null;
+  return {
+    payment: paymentState(order),
+    entry,
+    nft: nftState(ticket),
+    actions: { canTransfer: !moveBlock, canResell: !moveBlock, reason: moveBlock || null },
+  };
+};

@@ -19,6 +19,7 @@ import { runAutoRecovery } from './services/recoveryService.js';
 import { runPayouts } from './services/payoutService.js';
 import { runScheduledBroadcasts } from './services/broadcastService.js';
 import { applyPhases, runScheduledPublishing } from './services/eventToolsService.js';
+import { completeEndedEvents } from './services/eventTiming.js';
 import { runMlJobs } from './services/ml/jobs.js';
 
 const PORT = process.env.PORT || 5000;
@@ -102,7 +103,12 @@ async function startServer() {
   setInterval(recovery, 15 * 60 * 1000).unref();
 
   // Every 5 minutes: ticket sale phases (early bird → regular…) and events whose scheduled publication has come
-  const eventJobs = () => Promise.all([applyPhases().catch((e) => console.error('[Sale phases] failed:', e.message)), runScheduledPublishing().catch((e) => console.error('[Scheduled publishing] failed:', e.message))]);
+  // …and events whose end has passed: marked COMPLETED, their open resale listings closed (services/eventTiming.js)
+  const eventJobs = () => Promise.all([
+    applyPhases().catch((e) => console.error('[Sale phases] failed:', e.message)),
+    runScheduledPublishing().catch((e) => console.error('[Scheduled publishing] failed:', e.message)),
+    completeEndedEvents().then((r) => r.completed && console.log('[Event end] completed', JSON.stringify(r))).catch((e) => console.error('[Event end] failed:', e.message)),
+  ]);
   setTimeout(eventJobs, 45 * 1000).unref();
   setInterval(eventJobs, 5 * 60 * 1000).unref();
 

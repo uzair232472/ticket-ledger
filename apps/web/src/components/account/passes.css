@@ -83,7 +83,9 @@
 }
 
 .tl-pass-status.is-resold,
-.tl-pass-status.is-transferred {
+.tl-pass-status.is-transferred,
+.tl-pass-status.is-expired,
+.tl-pass-status.is-cancelled {
   border-color: rgba(248, 113, 113, 0.5);
   background: rgba(248, 113, 113, 0.1);
   color: #fca5a5;

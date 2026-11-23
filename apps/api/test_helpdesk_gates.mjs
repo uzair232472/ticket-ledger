@@ -53,7 +53,7 @@ test('Helpdesk and gate management', async (t) => {
   await prisma.user.update({ where: { id: owner.id }, data: { companyId: company.id } });
   await prisma.user.update({ where: { id: gateUser.id }, data: { companyId: company.id } });
   await prisma.organizationMember.createMany({ data: [{ companyId: company.id, userId: owner.id, role: 'OWNER' }, { companyId: company.id, userId: gateUser.id, role: 'GATE_STAFF' }] });
-  const event = await prisma.event.create({ data: { companyId: company.id, name: `Gate Event ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 86400000), time: '19:00', city: 'Lahore', venue: 'Hall' } });
+  const event = await prisma.event.create({ data: { companyId: company.id, name: `Gate Event ${run}`, description: 'test', type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: new Date(Date.now() + 3600000), startsAt: new Date(Date.now() + 3600000), endsAt: new Date(Date.now() + 4 * 3600000), time: '19:00' /* event day: gates are open (eventTiming.js) */, city: 'Lahore', venue: 'Hall' } });
   await prisma.staffEventAssignment.create({ data: { staffId: gateUser.id, eventId: event.id, assignedById: owner.id } });
   const vip = await prisma.ticketTier.create({ data: { eventId: event.id, name: 'VIP', price: 5000, totalQuantity: 5, availableQuantity: 0 } });
   const std = await prisma.ticketTier.create({ data: { eventId: event.id, name: 'Standard', price: 1000, totalQuantity: 5, availableQuantity: 0 } });

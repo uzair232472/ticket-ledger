@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import { eventTiming } from './eventTiming.js';
 import { AccessError } from './orgAccess.js';
 import { orgAudit } from './orgService.js';
 import { assertVenueFree, resolveSchedule, toPktParts, ScheduleError, venueOf } from './eventScheduleService.js';
@@ -219,6 +220,12 @@ export async function updateSettings(req, ctx, eventId, input) {
 export function assertOnSale(event, now = new Date()) {
   if (event.salesOpenAt && now < new Date(event.salesOpenAt)) throw Object.assign(new Error(`Ticket sales open ${new Date(event.salesOpenAt).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Karachi' })}.`), { status: 409, code: 'SALES_NOT_OPEN' });
   if (event.salesCloseAt && now >= new Date(event.salesCloseAt)) throw Object.assign(new Error('Ticket sales for this event have closed.'), { status: 409, code: 'SALES_CLOSED' });
+  // Without a sales-close time, sales close when the event starts; with one, never later than the event's end
+  if (event.startsAt || event.date) {
+    const t = eventTiming(event, now);
+    if (t.ended) throw Object.assign(new Error('This event has ended, so tickets are no longer on sale.'), { status: 409, code: 'SALES_CLOSED' });
+    if (!event.salesCloseAt && t.started) throw Object.assign(new Error('This event has already started, so ticket sales have closed.'), { status: 409, code: 'SALES_CLOSED' });
+  }
 }
 
 /** Tickets that still fit under the event's capacity (Infinity without a limit). */
