@@ -145,21 +145,36 @@ Legend: **Rule** = what the app uses. **Model** = the experimental shadow model 
 
 ### F. Demand forecast: "how many tickets in the first 48 hours?"
 
-- **Rule:** a **fixed assumption**: 78% of capacity sells in the first 48 hours, for every event. The page labels
-  it as a rule.
-  - Revenue is that number × the average tier price.
-  - "Share of capacity" is that 78%.
-  - The demand level comes from the same rule.
-  - The publish-time suggestion and the price notes are rules of thumb (fixed category benchmarks), not measured.
+- **Rule (prelaunch-rule-v2, `apps/api/src/services/demandRules.js` `prelaunchEstimate`):** reads this event and
+  lists every factor on the page under **Why this estimate**:
+  - a category starting share (e.g. music concert 55% of capacity in 48 hours);
+  - × a price factor: the quantity-weighted average price against the category benchmark (1.2 well below ... 0.5 far
+    above);
+  - × day: 1.1 for a Friday–Sunday event, 0.9 on a weekday;
+  - × lead time: 0.8 under 7 days between sales opening and the event, 0.85 over 60 days, else 1.
+  - Capacity is the real ticket count (capacity limit, else the tiers' total). There is no 15,000 floor.
+  - Revenue: every tier sells the same share of its own tickets (VIP and cheap seats are not averaged equally).
+  - Demand level from the share: 60%+ very high, 45%+ high, 30%+ moderate, else low.
+  - Publish time: a category rule of thumb, "as soon as possible" when the event is under 14 days away, and "already
+    on sale" for a live event.
+  - The legacy `ruleDemandForecast` (fixed 78%) is kept only because it mirrors the ML service's `/forecast/demand`
+    rule branch.
+- **Real sales:** for a live event, **Estimate vs real sales** shows tickets sold in the first 48 hours after sales
+  opened, in total, and revenue so far (paid, not cancelled tickets).
 - **Model:** v0 demand model. It predicts first-48-hour sales with a range (low–high), from the event type, city,
   capacity, prices compared with similar events, timing and organizer history.
-- **Where:** **Demand forecast** page. The rule cards come first; then the **Experimental demand model** panel.
-  - Latest logged model forecast with its range.
-  - When you move a price slider (admin): a **what-if** at the edited average price, marked "not saved, not
-    applied".
-  - Prices change **only** when you press Save; publishing is your button too.
-- **Demonstrate:** as admin, open Demand forecast for an event and drag a tier price. The rule estimate updates,
-  and the what-if line appears in the experimental panel. The ML service must be running for the what-if.
+- **Where:** **Demand forecast** page. The rule cards come first; then the **Experimental demand model** panel
+  (admins).
+  - **Model reading now**: one live call at the saved prices, next to the rule estimate (not saved, not applied).
+    It no longer depends on a logged row existing, so the panel is never empty while the ML service is up.
+  - **What moves the model's number**: the same event with prices −20% / +20% and on the other kind of day.
+  - The last logged prediction, when there is one.
+  - When you move a price slider: a **what-if** at the edited prices, marked "not saved, not applied".
+  - Prices change **only** when you press Save. For a live event with tickets already sold in a changed tier, the
+    page asks you to confirm first (buyers keep what they paid).
+- **Demonstrate:** as admin, open Demand forecast for an event. Show **Why this estimate**, then the model reading and
+  "what moves it". Drag a tier price: the cards and the what-if update together. The ML service must be running for
+  the model figures.
 
 ### G. Attendance: "how many ticket holders will actually come?"
 
@@ -191,6 +206,27 @@ Legend: **Rule** = what the app uses. **Model** = the experimental shadow model 
   2. Open the Live tab: the rule chart appears straight away.
   3. The model line follows after the next background job.
 
+#### Gate load plan: "which gate will be busiest, and where do we send people?"
+
+Gates → Live tab → **Gate load plan** (gate supervisors). Rules only, no model; admission never changes.
+
+- **Inputs:** live tickets per ticket type, seating section and row; the show rate (as Attendance); the arrival
+  curve of past events (its busiest hour = "peak share"); each active entry gate's capacity per hour and the
+  ticket types it accepts. A gate without a capacity is never guessed: the plan asks for it.
+- **As things are:** people spread evenly over the gates their ticket type may use. Each gate shows people,
+  arrivals in the peak hour, load % and the queue that builds (minutes) when it is over capacity.
+- **With the plan:** the split of sections over gates that makes the fullest gate as empty as possible (binary
+  search + max flow, `apps/api/src/services/gateLoadPlan.js`). A section that has to be split is split by seat
+  rows ("Section North rows A–Q: Gate A"). A ticket type is only ever sent to a gate that accepts it.
+- **Still to do:** what balancing cannot fix: "only gate for VIP: allow VIP at Gate D", "Gate A still needs about
+  550 more entries per hour: open lanes / add staff", "no gate accepts Kids".
+- **Send gate advice:** each ticket holder not yet inside gets an in-app message and email with the gate for
+  their section and rows (asks to confirm first; logged as GATE_PLAN_NOTIFIED).
+- **On the day** (90 minutes before the start to 4 hours after): **Right now: divert arrivals** shows each gate's
+  real entries in the last 15 minutes as a rate per hour, and for an overloaded gate names the quietest gate that
+  accepts all its ticket types ("Gate A is at 130%: direct about 600 people an hour to Gate C"). Refreshes every
+  minute.
+
 ---
 
 ## 4. The AI monitor (admin → AI monitor), card by card
@@ -201,7 +237,9 @@ Legend: **Rule** = what the app uses. **Model** = the experimental shadow model 
 | **ML service** | Reachable or not, the scikit-learn version and mode. If unavailable, the rules keep working | Reachable when the ML service window is running |
 | **Background jobs** | When the 15-minute job last finished on this server and how many times it has run | "Not run yet" for about 3 minutes after the backend starts |
 | **Switches** | Shadow on/off, snapshots, organizer insights, recommendations shown/hidden | Shadow on, recommendations hidden |
-| **Model cards** (A, B, C, F, G, H) | Version, data source and fingerprint; **status SHADOW**; rows logged (rules vs shadow, total and last 24 h); shadow results (scored, skipped, failed, with reasons); the ML service's file check; the evaluation line | Synthetic v0, SHADOW, "No real outcomes logged yet". Attendance, checkout-start abandonment and hourly demand show "Rules only" |
+| **Model cards** (A, B, C, F, G, H) | Version, data source and fingerprint; **status SHADOW**; rows logged (rules vs shadow, total and last 24 h); shadow results (scored, skipped, failed, with reasons); the ML service's file check; the evaluation line | Synthetic v0, SHADOW, "No real outcomes logged yet". All eight features have a model (generator 2.2.0) |
+| **Tested offline: AI vs rule** | The model's main measure next to the current rule's, on the newest 15% of the training history, with Passed / Rejected and the reason. Synthetic data only | Passed: intent, both abandonment models, demand, attendance, crowd. Rejected but kept in shadow: fraud (false flags 1.27% > 1%), hourly demand (memorising guard) |
+| **When it runs** | What makes the model log a row; explains a card that shows 0 | — |
 | **Evaluation line** | Logged real outcomes against the minimum needed before a fair test (for example "12 of 100 positives"). **No accuracy number is ever shown**: models are tested offline on genuine data only | "No real outcomes logged yet" |
 | **E. Recommendations** | Lists served, seen on screen and clicks, per group (control / personalised) | Zeros while the display is off |
 | **D. Customer behaviour** | Genuine-use start date, and a link to the behaviour page | "not set (no genuine customers yet)" |

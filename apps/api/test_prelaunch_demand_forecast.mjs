@@ -47,14 +47,16 @@ test('MODULE 17 - Pre-Launch Demand Forecast & Pricing Adjustment Tests', async 
 
     // 1. Predicted first 48-hour sales
     assert.ok(typeof f.predicted_48h_sales === 'number');
-    assert.ok(f.predicted_48h_sales > 0);
 
     // 2. Expected revenue
     assert.ok(typeof f.expected_revenue_pkr === 'number');
     assert.ok(f.expected_revenue_pkr > 0);
 
     // 3. Demand level
-    assert.ok(['LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH', 'VIRAL'].includes(f.demand_level));
+    assert.ok(['LOW', 'MODERATE', 'HIGH', 'VERY_HIGH'].includes(f.demand_level));
+    assert.ok(f.predicted_48h_sales <= f.venueCapacity, 'never more than the event has');
+    assert.ok(Array.isArray(f.factors) && f.factors.length === 4);
+    assert.ok(f.actuals && typeof f.actuals.sold_total === 'number');
 
     // 4. Suggested publish time
     assert.ok(f.suggested_publish_time);

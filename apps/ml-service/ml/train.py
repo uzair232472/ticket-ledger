@@ -39,6 +39,16 @@ SHADOW_DECISIONS = {
         "measures": "precision (main), false-flag rate among legitimate orders (separate limit, <= 1%), "
                     "recall (tracked) - reported separately, never combined",
     },
+    "demand_hourly": {
+        "date": "2026-11-23",
+        "decision": "Kept in shadow only. On synthetic 2.2.0 data it is far more accurate than the rule (19% vs 67% "
+                    "weighted error) but fails the memorising guard (train/test error 0.64, needs >= 0.70), so it is "
+                    "REJECTED and never serves decisions. The guard is not changed.",
+        "keep": "next-24-hour sales forecasts for events on sale - tracked, not used",
+        "record": "every hourly shadow prediction, compared with the real next-24-hour sales",
+        "re_evaluate": "on real exports once 30+ events are in the test period (ml/gates.py)",
+        "measures": "weighted % error of next-24-hour sales (main), memorising guard",
+    },
 }
 
 

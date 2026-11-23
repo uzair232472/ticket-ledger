@@ -32,6 +32,8 @@ router.put('/manage/events/:id/policy', supervisors, c.setPolicy);
 router.put('/manage/events/:id/staff/:staffId/gates', supervisors, c.setStaffGates);
 router.get('/manage/events/:id/devices', supervisors, c.devices);
 router.get('/manage/events/:id/operations', supervisors, c.operations);
+router.get('/manage/events/:id/gate-plan', supervisors, c.gatePlan);
+router.post('/manage/events/:id/gate-plan/notify', supervisors, c.notifyGates);
 router.get('/manage/events/:id/devices/:deviceId', supervisors, c.deviceDetails);
 router.post('/manage/events/:id/devices/:deviceId/actions', supervisors, c.deviceAction);
 router.get('/manage/events/:id/quarantine', supervisors, c.quarantineList);

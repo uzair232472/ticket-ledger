@@ -24,7 +24,7 @@ from scripts.train_intent_model import train_intent
 from scripts.train_fraud_model import train_fraud
 from scripts.train_demand_model import train_demand
 from ml.models import predict as ml_predict
-from ml.schema import NULLABLE_FEATURES, SPECS
+from ml.schema import ALL_SPECS, NULLABLE_FEATURES, SPECS
 
 # Legacy formula-trained models and their /train/* endpoints only run in development with
 # ML_ALLOW_SYNTHETIC=1. Otherwise the legacy endpoints answer with their built-in rules, so every
@@ -583,11 +583,11 @@ def list_shadow_models():
 
 @app.post("/v2/shadow/{name}")
 def shadow_predict(name: str, req: ShadowRequest):
-    if name not in SPECS:
+    if name not in ALL_SPECS:   # v0 models and the Step 5 ones (checkout_abandonment, demand_hourly)
         raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
     if not req.rows or len(req.rows) > MAX_SHADOW_ROWS:
         raise HTTPException(status_code=422, detail=f"send 1 to {MAX_SHADOW_ROWS} rows")
-    spec = SPECS[name]
+    spec = ALL_SPECS[name]
     artifact = _load_artifact(name, req.sha256)
     needed = list(artifact["features"]["categorical"]) + list(artifact["features"]["numeric"])
     if name == "demand":
@@ -616,6 +616,8 @@ def shadow_predict(name: str, req: ShadowRequest):
             q = th["conformal_q"]
             share = v / cap if cap > 0 else 0.0
             item = {"sales_48h": round(v, 1), "low": round(max(0.0, share - q) * cap, 1), "high": round(min(1.0, share + q) * cap, 1)}
+        elif name == "demand_hourly":
+            item = {"sales_next_24h": round(v, 1)}
         else:
             item = {"scans": round(v, 2)}
         preds.append(item)

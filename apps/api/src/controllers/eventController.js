@@ -10,7 +10,7 @@ import { eventWhereFor, requestContext } from '../services/orgAccess.js';
 import { applySeatAvailability } from '../services/venueService.js';
 import { isPromotionActive, promotionStartedAt } from '../services/promotionWindow.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
-import { prelaunchRuleInputs, ruleDemandForecast } from '../services/demandRules.js';
+import { prelaunchEstimate, priceNote, publishSuggestion, tiersWithPrices } from '../services/demandRules.js';
 import { CategoryError, categoryColumns, listCategories, addCustomCategory } from '../services/categoryService.js';
 import { ScheduleError, RELEASED_STATUSES, resolveSchedule, assertVenueFree, findScheduleConflicts, occupiedInterval, toPktParts, parseTimeOfDay, venueOf } from '../services/eventScheduleService.js';
 
@@ -722,10 +722,55 @@ export const updateEventStatus = async (req, res) => {
  * A fixed-rule estimate of 48h sales and revenue, a rule-of-thumb launch time and price notes. No model and no
  * historical analysis is involved, and the text says so. Nothing here changes prices or publishes the event.
  */
+/** `tierPrices` query: "tierId:price,tierId:price" (what-if prices, never saved). Null when absent or empty. */
+function parseTierPrices(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const out = {};
+  for (const part of raw.split(',').slice(0, 50)) {
+    const [tid, p] = part.split(':');
+    const n = Number(p);
+    if (tid && Number.isFinite(n) && n > 0 && n <= 1_000_000) out[tid.trim()] = n;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+const PAID = ['SUCCESSFUL', 'PARTIALLY_REFUNDED'];
+const HOURS_48 = 48 * 3600_000;
+/**
+ * Real sales of an event: tickets sold so far (paid, not cancelled), per tier, and in the first 48 hours after
+ * sales opened. `window_complete` is false while those 48 hours are still running.
+ */
+async function salesActuals(event, now = new Date()) {
+  const opened = event.salesOpenAt || event.publishAt || event.approvedAt || null;
+  const sold = await prisma.ticket.findMany({
+    where: { eventId: event.id, status: { not: 'CANCELLED' }, order: { status: { in: PAID } } },
+    select: { price: true, createdAt: true, seat: { select: { tierId: true } } },
+  });
+  const byTier = {};
+  let revenue = 0;
+  let first48 = 0;
+  for (const t of sold) {
+    byTier[t.seat.tierId] = (byTier[t.seat.tierId] || 0) + 1;
+    revenue += Number(t.price);
+    if (opened && t.createdAt >= opened && t.createdAt < new Date(opened.getTime() + HOURS_48)) first48 += 1;
+  }
+  const onSale = Boolean(opened) && ['PUBLISHED', 'PAUSED', 'COMPLETED'].includes(event.status) && opened <= now;
+  return {
+    on_sale: onSale,
+    sales_opened_at: opened,
+    sold_total: sold.length,
+    revenue_so_far_pkr: Math.round(revenue),
+    sold_first_48h: onSale ? first48 : null,
+    window_complete: onSale ? now.getTime() >= opened.getTime() + HOURS_48 : false,
+    by_tier: byTier,
+  };
+}
+
 export const getPreLaunchDemandForecast = async (req, res) => {
   try {
     const { id } = req.params;
-    const { simulatedPrice, simulatedCapacity, simulatedMarketingTier } = req.query;
+    const { simulatedPrice } = req.query;
+    const prices = parseTierPrices(req.query.tierPrices);
 
     const event = await prisma.event.findUnique({
       where: { id },
@@ -747,63 +792,27 @@ export const getPreLaunchDemandForecast = async (req, res) => {
       });
     }
 
-    // 1-2. Capacity, price and day (services/demandRules.js: the same inputs as before, shared with /api/ml/insights)
-    const { capacity, avgPrice, params: ruleParams } = prelaunchRuleInputs(event, { simulatedPrice, simulatedCapacity, simulatedMarketingTier });
+    // 1-3. Rule estimate for THIS event (services/demandRules.js prelaunchEstimate): real capacity, weighted
+    // prices against the category benchmark, day and lead time. A what-if only changes prices, never saves them.
+    const whatIf = Boolean(prices || Number(simulatedPrice) > 0);
+    const tiers = tiersWithPrices(event.tiers, { prices, scalePrice: simulatedPrice });
+    const forecastResult = prelaunchEstimate(event, { tiers });
+    const capacity = forecastResult.capacity;
+    const avgPrice = forecastResult.avg_price;
 
-    // 3. Rule-based estimate, evaluated in the API (no ML call; the shadow model's view is in /api/ml/insights)
-    const forecastResult = ruleDemandForecast(ruleParams);
+    // 4. Publish window (rule of thumb; "already on sale" for a live event)
+    const publish = publishSuggestion(event);
 
-    // 4. Calculate Suggested Publish Time
-    let suggestedPublishTime = '';
-    let suggestedWindowReason = '';
-    if (event.type.includes('CRICKET') || event.type.includes('FOOTBALL')) {
-      suggestedPublishTime = 'Thursday at 6:30 PM PKT';
-      suggestedWindowReason = 'Rule of thumb for sports events (not based on TicketLedger data): evening releases a few days before match day.';
-    } else if (event.type.includes('MUSIC')) {
-      suggestedPublishTime = 'Friday at 7:00 PM PKT';
-      suggestedWindowReason = 'Rule of thumb for concerts (not based on TicketLedger data): Friday evenings, as weekend plans are made.';
-    } else {
-      suggestedPublishTime = 'Wednesday at 5:00 PM PKT';
-      suggestedWindowReason = 'Rule of thumb (not based on TicketLedger data): a mid-week evening release gives a few days of attention before the weekend.';
-    }
+    // 5. Price note against the category benchmark
+    const pricingWarning = priceNote({ avgPrice, benchmark: forecastResult.benchmark_price, share: forecastResult.sellout_probability });
 
-    // 5. Intelligent Pricing Warnings & Recommendations
-    let benchmarkPrice = 2500;
-    if (event.type.includes('CRICKET')) benchmarkPrice = 3000;
-    else if (event.type.includes('MUSIC')) benchmarkPrice = 4000;
-    else if (event.type.includes('KABADDI')) benchmarkPrice = 1500;
-
-    let pricingWarning = {};
-    if (avgPrice > benchmarkPrice * 1.35) {
-      const excessPercent = Math.round(((avgPrice - benchmarkPrice) / benchmarkPrice) * 100);
-      pricingWarning = {
-        level: 'HIGH_PRICE_WARNING',
-        severity: 'amber',
-        title: 'Above the category benchmark',
-        message: `Average tier price of PKR ${Math.round(avgPrice).toLocaleString()} is ${excessPercent}% above the fixed rule-of-thumb benchmark for this category (PKR ${benchmarkPrice.toLocaleString()}). Prices well above it may slow early sales. This is a fixed rule, not a forecast.`,
-        recommendation: 'You may want to review the lowest tier price. Any change is your decision; nothing is changed automatically.',
-      };
-    } else if (avgPrice < benchmarkPrice * 0.70 && forecastResult.sellout_probability >= 0.65) {
-      pricingWarning = {
-        level: 'UNDERPRICED_WARNING',
-        severity: 'cyan',
-        title: 'Below the category benchmark',
-        message: `Your average price of PKR ${Math.round(avgPrice).toLocaleString()} is well below the fixed rule-of-thumb benchmark for this category (PKR ${benchmarkPrice.toLocaleString()}).`,
-        recommendation: 'There may be room to raise premium tiers. Check real sales after launch; nothing is changed automatically.',
-      };
-    } else {
-      pricingWarning = {
-        level: 'OPTIMAL_PRICE',
-        severity: 'emerald',
-        title: 'Within the category benchmark',
-        message: `Current average price of PKR ${Math.round(avgPrice).toLocaleString()} is within the fixed rule-of-thumb range for this category (benchmark PKR ${benchmarkPrice.toLocaleString()}).`,
-        recommendation: 'No price note from the rules.',
-      };
-    }
+    // 6. Real sales so far (live events): the estimate next to what actually happened
+    const actuals = await salesActuals(event);
 
     // Shadow log (real forecasts only, not "what if" simulations): what the page showed, and what the
-    // demand model would say. Runs after the response; never changes the forecast.
-    if (!simulatedPrice && !simulatedCapacity && !simulatedMarketingTier) {
+    // demand model would say. Runs after the response; never changes the forecast. An event with no ticket
+    // tiers has nothing to forecast, so nothing is logged (it used to log a "missing input" skip).
+    if (!whatIf && event.tiers.length > 0) {
       const asOf = new Date();
       recordShadow({
         // One per event per day. Step 6 fix: eventId, userId and asOf used to sit inside this comment, so every
@@ -812,7 +821,7 @@ export const getPreLaunchDemandForecast = async (req, res) => {
         eventId: event.id, userId: req.user?.id ?? null, asOf,
         rule: {
           score: forecastResult.projected_48h_sales, decision: forecastResult.demand_tier,
-          output: { sellout_probability: forecastResult.sellout_probability, capacity_used: capacity, fallback: Boolean(forecastResult.fallback) },
+          output: { sellout_probability: forecastResult.sellout_probability, capacity_used: capacity, rule_version: forecastResult.rule_version, fallback: false },
         },
         buildFeatures: () => demandSnapshot({ eventId: event.id, at: asOf }),
       });
@@ -833,19 +842,25 @@ export const getPreLaunchDemandForecast = async (req, res) => {
         avgTicketPrice: Math.round(avgPrice),
         predicted_48h_sales: forecastResult.projected_48h_sales,
         expected_revenue_pkr: forecastResult.projected_revenue_pkr,
-        demand_level: forecastResult.demand_level || forecastResult.demand_tier,
+        demand_level: forecastResult.demand_level,
         demand_tier: forecastResult.demand_tier,
         sellout_probability: forecastResult.sellout_probability,
-        suggested_publish_time: suggestedPublishTime,
-        suggested_window_reason: suggestedWindowReason,
+        benchmark_price: forecastResult.benchmark_price,
+        factors: forecastResult.factors,
+        formula: forecastResult.formula,
+        rule_version: forecastResult.rule_version,
+        what_if: whatIf,
+        suggested_publish_time: publish.time,
+        suggested_window_reason: publish.reason,
+        already_published: publish.already_published,
         pricing_warning: pricingWarning,
-        pricing_recommendation: forecastResult.pricing_recommendation,
-        // Where the forecast came from. Never a validated real-world model: rules, or (development only,
-        // ML_ALLOW_SYNTHETIC=1) a synthetic demonstration model. An unknown source is shown as unverified.
-        prediction_source: forecastResult.prediction_source || 'unknown',
+        pricing_recommendation: pricingWarning.recommendation,
+        prediction_source: forecastResult.prediction_source,
         validated: false,
-        prediction_notice: forecastResult.notice || 'Source of this estimate is unknown: treat it as unverified.',
-        tiers: event.tiers,
+        prediction_notice: forecastResult.notice,
+        actuals,
+        // Saved prices (the what-if prices are never stored); each tier with how many tickets it has sold
+        tiers: event.tiers.map((t) => ({ ...t, sold: actuals.by_tier[t.id] || 0 })),
       },
     });
   } catch (error) {

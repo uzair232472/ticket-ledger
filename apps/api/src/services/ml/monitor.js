@@ -13,14 +13,14 @@ import { MINIMUMS, REC_MIN_IMPRESSIONS, evaluationBlock, modelBlock, outcomeCoun
 import { jobStatus } from './jobs.js';
 
 export const MONITORED = [
-  { name: 'intent', feature: 'A', title: 'Purchase intent', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives } },
-  { name: 'abandonment', feature: 'B', title: 'Abandoned checkout (visits)', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives } },
-  { name: 'checkout_abandonment', feature: 'B', title: 'Abandoned checkout (checkout start)', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives } },
-  { name: 'fraud', feature: 'C', title: 'Fraud', min: { positives: MINIMUMS.min_test_frauds, negatives: MINIMUMS.min_test_negatives } },
-  { name: 'demand', feature: 'F', title: 'Demand (first 48 h)', min: { events: MINIMUMS.min_test_events_demand } },
-  { name: 'demand_hourly', feature: 'F', title: 'Demand (hourly, next 24 h)', min: { events: MINIMUMS.min_test_events_demand_hourly } },
-  { name: 'attendance', feature: 'G', title: 'Attendance (no-show)', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives, events: MINIMUMS.min_test_events_attendance } },
-  { name: 'crowd', feature: 'H', title: 'Crowd flow', min: { events: MINIMUMS.min_test_events_crowd } },
+  { name: 'intent', feature: 'A', title: 'Purchase intent', when: 'Each signed-in visit, after it ends (30 minutes idle); the job looks back 48 hours.', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives } },
+  { name: 'abandonment', feature: 'B', title: 'Abandoned checkout (visits)', when: 'Each finished signed-in visit that reached checkout.', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives } },
+  { name: 'checkout_abandonment', feature: 'B', title: 'Abandoned checkout (checkout start)', when: 'Each checkout, the moment it starts.', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives } },
+  { name: 'fraud', feature: 'C', title: 'Fraud', when: 'Each checkout attempt that sends browser telemetry. Nothing logged means no checkout since then.', min: { positives: MINIMUMS.min_test_frauds, negatives: MINIMUMS.min_test_negatives } },
+  { name: 'demand', feature: 'F', title: 'Demand (first 48 h)', when: 'When the Demand forecast page is opened (once per event per day) and when sales open.', min: { events: MINIMUMS.min_test_events_demand } },
+  { name: 'demand_hourly', feature: 'F', title: 'Demand (hourly, next 24 h)', when: 'Every hour for each event on sale.', min: { events: MINIMUMS.min_test_events_demand_hourly } },
+  { name: 'attendance', feature: 'G', title: 'Attendance (no-show)', when: 'Each ticket, 24 hours before its event starts.', min: { positives: MINIMUMS.min_test_positives, negatives: MINIMUMS.min_test_negatives, events: MINIMUMS.min_test_events_attendance } },
+  { name: 'crowd', feature: 'H', title: 'Crowd flow', when: 'Each gate of an event from 26 hours before the start, when its gates have a capacity per hour.', min: { events: MINIMUMS.min_test_events_crowd } },
 ];
 
 export const WARN = { shadowErrorShare: 0.05, jobsStaleMs: 45 * 60_000, firstRunGraceMs: 20 * 60_000 };
@@ -129,6 +129,17 @@ export async function monitorSnapshot() {
     return {
       ...m,
       registered: { ...block, registered_at: model?.registeredAt ?? null },
+      // The offline test the model went through before it was registered: model vs the current rule, same data
+      offline_result: model?.evaluation && typeof model.evaluation === 'object' && model.evaluation.main_measure ? {
+        measure: model.evaluation.main_measure,
+        higher_is_better: model.evaluation.higher_is_better !== false,
+        model: model.evaluation.model,
+        rule: model.evaluation.baseline,
+        improvement: model.evaluation.improvement,
+        improvement_95ci: model.evaluation.improvement_95ci || null,
+        reasons: model.evaluation.reasons || [],
+        status: model.evaluationStatus,
+      } : null,
       artifact_in_ml_service: artifact,
       rows: {
         rules: rules ? { total: rules.total, last_24h: rules.last_24h, last_at: rules.last_at } : { total: 0, last_24h: 0, last_at: null },

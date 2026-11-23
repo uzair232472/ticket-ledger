@@ -10,6 +10,17 @@ produce from the client's database:
     event_demand.csv         one row per event at sales open (48-hour demand)
     attendance_no_show.csv   one row per ticket, 24 h before the event (attendance)
     crowd_flow.csv           one row per gate per 5-minute slot (crowd flow)
+    checkout_abandonment.csv one row per started checkout (checkout-start abandonment)     [2.2.0]
+    demand_hourly.csv        one row per event per sampled hour on sale (next-24-hour sales) [2.2.0]
+
+Version 2.2.0 adds, on a SEPARATE random stream (seed + 1000) so that behavior_sequences, event_demand and
+crowd_flow stay byte-identical to 2.1.0:
+  * harder fraud in fraud_purchases: card-testing / account-takeover buyers at normal human speed,
+    detectable only from account and payment history (the speed rules cannot see them);
+  * a larger attendance_no_show (3x the events; every crowd_flow event is kept) so the test period is
+    large enough to judge the model;
+  * checkout_abandonment.csv and demand_hourly.csv, shaped exactly like the database export (pseudonymous
+    ids, feature_source "snapshot").
 
 Rules this generator follows:
   * Every feature column is something the app can compute from its own tables at prediction time
@@ -39,7 +50,7 @@ from math import erf
 import numpy as np
 import pandas as pd
 
-GENERATOR_VERSION = "2.1.0"
+GENERATOR_VERSION = "2.2.0"
 SOURCE_TAG = "synthetic-v0"
 
 # Global-ready columns. The platform launches in Pakistan, so v0 data is Pakistan-only, but every row
@@ -511,12 +522,18 @@ class World:
     # ===========================================================================================
     # 4. Tickets -> attendance_no_show.csv  (and the per-event show rates used by crowd flow)
     # ===========================================================================================
-    def attendance(self, n_target, per_event=50):
-        rng = self.rng
+    def attendance(self, n_target, per_event=50, rng=None, must_include=None):
+        rng = self.rng if rng is None else rng
         ev, cu = self.ev, self.cu
         eligible = np.nonzero((ev["finished"] & (ev["sold_total"] >= per_event)).to_numpy())[0]
         n_events = min(len(eligible), int(np.ceil(n_target / per_event)))
-        chosen = np.sort(rng.choice(eligible, size=n_events, replace=False))
+        if must_include is None:
+            chosen = np.sort(rng.choice(eligible, size=n_events, replace=False))
+        else:   # 2.2.0: a larger sample that keeps every event the crowd data already uses
+            must = np.asarray(must_include)
+            others = np.setdiff1d(eligible, must)
+            extra = rng.choice(others, size=max(0, min(len(others), n_events - len(must))), replace=False)
+            chosen = np.sort(np.concatenate([must, extra]))
         self.attendance_events = chosen
         rows = []
         shocks = rng.normal(0, 0.35, size=len(ev))                 # hidden: weather, traffic, strikes on the day
@@ -634,6 +651,135 @@ class World:
         return df[cols]
 
 
+    # ===========================================================================================
+    # 2.2.0 additions (separate random stream: the 2.1.0 files above are unchanged)
+    # ===========================================================================================
+    def harder_fraud(self, fp, rng, share=0.03):
+        """Card-testing / account-takeover fraud at human speed: telemetry copied from real-looking legitimate
+        checkouts, so speed rules cannot see it. What gives it away is recorded history: a brand-new or long-
+        dormant account, several orders inside a day, failed payments, many seats of the dearer tiers."""
+        legit = fp[(fp["is_fraud"] == 0) & (pd.to_datetime(fp["ts"]) < pd.Timestamp(END, tz="UTC") - pd.Timedelta(days=1))]
+        n = int(len(fp) * share)
+        per_acct = rng.choice([2, 3, 4, 5], size=n // 3 + 1, p=[0.25, 0.35, 0.25, 0.15])
+        acct = np.repeat(np.arange(len(per_acct)), per_acct)[:n]
+        k = np.concatenate([np.arange(c) for c in per_acct])[:n]                  # order number within the account
+        # One hot event per account: a takeover / scalper account buys the same event several times within hours
+        acct_base = legit.sample(n=len(per_acct), random_state=int(rng.integers(1 << 31)), replace=True).reset_index(drop=True)
+        base = acct_base.iloc[acct].reset_index(drop=True)
+        tele = legit.sample(n=n, random_state=int(rng.integers(1 << 31)), replace=True).reset_index(drop=True)
+        gap_h = np.where(k == 0, 0.0, rng.uniform(0.3, 5.0, n))
+        offs = pd.Series(gap_h).groupby(acct).cumsum().to_numpy()
+        base_t = pd.to_datetime(base["ts"]).dt.tz_localize(None)                     # naive UTC throughout
+        ts = base_t + pd.to_timedelta(offs, unit="h")
+        # Never after 2 hours before the event starts (as for every other order), then minute precision as iso()
+        ev_start = self.ev.set_index("event_id")["start"]
+        latest = pd.to_datetime(iso(ev_start.reindex(base["event_id"]).to_numpy() - 2 * HOUR), utc=True).tz_localize(None)
+        ts = pd.Series(np.minimum(ts.to_numpy(), latest.to_numpy())).dt.floor("min")
+        ts = pd.Series(np.maximum(ts.to_numpy(), base_t.dt.floor("min").to_numpy()))   # never before the copied order
+        df = base.copy()
+        shift_h = (ts - base_t).dt.total_seconds().to_numpy() / HOUR
+        df["ts"] = ts.dt.strftime("%Y-%m-%dT%H:%MZ")
+        df["hours_since_sales_open"] = np.round(np.maximum(0, base["hours_since_sales_open"].to_numpy() + shift_h), 2)
+        for c in ["checkout_duration_seconds", "clicks_per_minute", "rapid_seat_attempts", "time_on_seatmap_seconds"]:
+            df[c] = tele[c].to_numpy()
+        dormant = rng.random(len(per_acct)) < 0.3
+        age0 = np.where(dormant, rng.uniform(120, 700, len(per_acct)), rng.uniform(0.01, 1.5, len(per_acct)))[acct]
+        since_first = (ts - ts.groupby(acct).transform("min")).dt.total_seconds().to_numpy() / DAY
+        df["account_age_days"] = np.round(age0 + since_first, 2)
+        df["customer_id"] = [f"B{90000 + a:05d}" for a in acct]
+        df["customer_prior_orders"] = k
+        df["orders_last_24h"] = k                                                   # all of an account's orders fall within a day
+        df["tickets_requested"] = rng.choice([2, 4, 6, 8, 10], size=n, p=[0.15, 0.25, 0.25, 0.2, 0.15])
+        df["unit_price_rel"] = np.round(base["unit_price_rel"].to_numpy() * rng.uniform(1.0, 1.8, n), 3)
+        df["total_amount"] = (df["tickets_requested"] * df["unit_price_rel"] * (base["total_amount"] / base["tickets_requested"] / base["unit_price_rel"]).to_numpy()).round(-1).astype(int)
+        df["failed_payments_30d"] = rng.poisson(np.where(k == 0, 1.0, 2.5), n)
+        df["device_switches"] = rng.choice([0, 1, 2, 3], size=n, p=[0.35, 0.35, 0.2, 0.1])
+        df["prior_resale_listings"] = rng.poisson(0.1, n)
+        df["payment_method"] = rng.choice(PAYMENT_METHODS, size=n, p=[0.15, 0.15, 0.70])   # mostly card payments
+        df["is_fraud"] = (rng.random(n) >= 0.02).astype(int)                       # reviewers miss ~2%, as above
+        out = pd.concat([fp, df[fp.columns]], ignore_index=True)
+        out = out.sort_values("ts", kind="stable").reset_index(drop=True)
+        out["order_id"] = [f"O{i + 1:07d}" for i in range(len(out))]
+        return out
+
+    @staticmethod
+    def _pseudo(kind, values):
+        return [kind + hashlib.sha256(f"synthetic:{kind}:{v}".encode()).hexdigest()[:16] for v in values]
+
+    def checkout_abandonment(self, bs, rng):
+        """Every started checkout of behavior_sequences, as the checkout export shapes it (one row at checkout
+        start). Customer history counts only checkouts whose outcome was known (24 h) before this one."""
+        c = bs[bs["checkout_started"] == 1].copy().sort_values("ts", kind="stable").reset_index(drop=True)
+        t = pd.to_datetime(c["ts"])
+        known = c[["customer_id"]].copy()
+        known["_known"] = t + pd.Timedelta(days=1)
+        known["_ab"] = c["checkout_abandoned"].to_numpy()
+        expired = np.zeros(len(c), dtype=int)
+        for cust, idx in c.groupby("customer_id").groups.items():
+            idx = np.asarray(idx)
+            if len(idx) < 2:
+                continue
+            kt, ab = known["_known"].to_numpy()[idx], known["_ab"].to_numpy()[idx]
+            for j, i in enumerate(idx):
+                expired[i] = int(((kt[:j] <= t.to_numpy()[i]) & (ab[:j] == 1)).sum())
+        n = len(c)
+        out = pd.DataFrame({
+            "order_id": self._pseudo("O", c["session_id"]), "customer_id": self._pseudo("C", c["customer_id"]),
+            "event_id": self._pseudo("E", c["event_id"]), "ts": c["ts"], "event_type": c["event_type"], "city": c["city"],
+            "country": c["country"], "payment_method": rng.choice(PAYMENT_METHODS, size=n, p=[0.42, 0.33, 0.25]),
+            "tickets_requested": rng.choice([1, 2, 3, 4, 5, 6], size=n, p=[0.30, 0.38, 0.14, 0.11, 0.04, 0.03]),
+            "unit_price_rel": c["ticket_price_rel"], "hours_since_sales_open": c["hours_since_sales_open"],
+            "days_until_event": c["days_until_event"], "account_age_days": c["account_age_days"],
+            "customer_prior_orders": c["customer_prior_purchases"].to_numpy() + expired,
+            "customer_prior_purchases": c["customer_prior_purchases"], "customer_prior_expired_checkouts": expired,
+            "first_time": (c["customer_prior_purchases"] == 0).astype(int),
+            "visit_event_views": c["event_views"], "visit_seat_selections": c["seat_selections"],
+            "abandoned": c["checkout_abandoned"].astype(int), "feature_source": "snapshot",
+        })
+        return out
+
+    def demand_hourly(self, dm, rng, snapshots=12):
+        """Hourly sales of each event while on sale: the first 48 h sell sales_48h (front-loaded), the rest of
+        sold_total follows, rising again in the last days. Up to `snapshots` random hours per event; the label is
+        what sold in the next 24 h; the rule logged with each snapshot is "the last 24 hours' pace continues"."""
+        ev = self.ev.set_index("event_id")
+        rows = []
+        for r in dm.itertuples(index=False):
+            e = ev.loc[r.event_id]
+            open_t, start = float(e["sales_open"]), float(e["start"])
+            end_t = min(start - DAY, self.span - DAY)
+            hours = int((end_t - open_t) // HOUR)
+            if hours < 72:
+                continue
+            h = np.arange(hours)
+            tau = rng.uniform(6, 20)
+            w48 = np.exp(-h[:48] / tau)
+            days_left = (start - (open_t + h[48:] * HOUR)) / DAY
+            wrest = (0.3 + 2.0 * np.exp(-days_left / 3.0)) * np.where((h[48:] % 24 >= 2) & (h[48:] % 24 <= 7), 0.15, 1.0)
+            sales = np.concatenate([rng.multinomial(int(e["sales_48h"]), w48 / w48.sum()),
+                                    rng.multinomial(int(max(0, e["sold_total"] - e["sales_48h"])), wrest / wrest.sum())])
+            cum = np.concatenate([[0], np.cumsum(sales)])
+            pick = np.sort(rng.choice(np.arange(1, hours - 24), size=min(snapshots, hours - 25), replace=False))
+            for p in pick:
+                sold = int(cum[p])
+                last24 = int(cum[p] - cum[max(0, p - 24)])
+                rows.append((r.event_id, r.organizer_id, open_t + p * HOUR, r.event_type, r.city, r.country, r.day_of_week,
+                             r.venue_capacity, r.tier_count, r.min_price_rel, r.avg_price_rel, r.max_price_rel, r.start_hour,
+                             r.start_month, r.organizer_past_events, r.organizer_past_sell_through_48h, float(p),
+                             round((start - open_t - p * HOUR) / DAY, 2), sold, last24, round(sold / r.venue_capacity, 4),
+                             last24, int(cum[p + 24] - cum[p])))
+        cols = ["event_id", "organizer_id", "_t", "event_type", "city", "country", "day_of_week", "venue_capacity", "tier_count",
+                "min_price_rel", "avg_price_rel", "max_price_rel", "start_hour", "start_month", "organizer_past_events",
+                "organizer_past_sell_through_48h", "hours_since_sales_open", "days_until_event", "sold_so_far", "sold_last_24h",
+                "sell_through_so_far", "rule_next_24h", "sales_next_24h"]
+        df = pd.DataFrame(rows, columns=cols).sort_values(["_t", "event_id"], kind="stable").reset_index(drop=True)
+        df["ts"] = iso(df["_t"])
+        df["event_id"] = self._pseudo("E", df["event_id"])
+        df["organizer_id"] = self._pseudo("G", df["organizer_id"])
+        df["feature_source"] = "snapshot"
+        return df[["event_id", "organizer_id", "ts"] + cols[3:] + ["feature_source"]]
+
+
 # ---------------------------------------------------------------------------------------------
 LABELS = {
     "behavior_sequences": ["purchased_7d", "checkout_abandoned"],
@@ -641,6 +787,8 @@ LABELS = {
     "event_demand": ["sales_48h"],
     "attendance_no_show": ["checked_in"],
     "crowd_flow": ["scans"],
+    "checkout_abandonment": ["abandoned"],
+    "demand_hourly": ["sales_next_24h"],
 }
 
 
@@ -671,6 +819,12 @@ def main():
     datasets["event_demand"] = world.demand()
     datasets["attendance_no_show"] = world.attendance(int(50_000 * s))
     datasets["crowd_flow"] = world.crowd()
+    # 2.2.0: everything below uses its own random stream, so the files above are unchanged
+    rng2 = np.random.default_rng(args.seed + 1000)
+    datasets["fraud_purchases"] = world.harder_fraud(datasets["fraud_purchases"], rng2)
+    datasets["attendance_no_show"] = world.attendance(int(150_000 * s), rng=rng2, must_include=world.attendance_events)
+    datasets["checkout_abandonment"] = world.checkout_abandonment(datasets["behavior_sequences"], rng2)
+    datasets["demand_hourly"] = world.demand_hourly(datasets["event_demand"], rng2)
 
     manifest = {
         "source": SOURCE_TAG,
@@ -689,7 +843,7 @@ def main():
         labels = {}
         for lab in LABELS[name]:
             col = df[lab]
-            if name in ("event_demand", "crowd_flow"):
+            if name in ("event_demand", "crowd_flow", "demand_hourly"):
                 labels[lab] = {"mean": round(float(col.mean()), 3), "total": int(col.sum())}
             else:
                 valid = col[col >= 0]

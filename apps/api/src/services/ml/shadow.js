@@ -46,7 +46,7 @@ async function shadowModel(name) {
 export const clearShadowModelCache = () => modelCache.clear();
 
 /** Main value of a shadow prediction, for the `score` column. */
-const scoreOf = (p) => p.probability ?? p.sales_48h ?? p.scans ?? null;
+const scoreOf = (p) => p.probability ?? p.sales_48h ?? p.sales_next_24h ?? p.scans ?? null;
 
 /**
  * Logs RULES (+ SHADOW when a shadow model is registered) rows for many subjects, with one ML call per

@@ -28,21 +28,21 @@
   },
   "data": {
     "dataset": "fraud_purchases.csv",
-    "rows": 50000,
+    "rows": 51500,
     "source": "synthetic-v0",
-    "sha256": "f4fcdc28cdb79af9ee76b59621f71e8311bfde0611f2d9ae91ad804757a5f939",
+    "sha256": "365780303caf838a8e3c8c4eac558ec901764b916bca5375cbc14c8c7ce37730",
     "from": "2023-01-01T11:07:00+00:00",
     "to": "2025-12-31T17:25:00+00:00"
   },
   "split": {
-    "train_rows": 30717,
-    "val_rows": 6279,
-    "test_rows": 7500,
-    "val_start": "2025-02-20T23:18:54+00:00",
-    "test_start": "2025-08-03T13:25:18+00:00",
-    "purged_train_rows": 707,
-    "purged_val_rows": 541,
-    "holdout_groups": 1473
+    "train_rows": 31872,
+    "val_rows": 6358,
+    "test_rows": 7725,
+    "val_start": "2025-02-19T11:56:18+00:00",
+    "test_start": "2025-08-02T17:45:45+00:00",
+    "purged_train_rows": 785,
+    "purged_val_rows": 561,
+    "holdout_groups": 1518
   },
   "leakage_checks": "passed",
   "gates": {
@@ -54,6 +54,7 @@
     "min_test_events_demand": 100,
     "min_test_events_attendance": 30,
     "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
     "max_calibration_error": 0.05,
     "max_false_flag_rate": 0.01,
     "min_range_coverage": 0.75,
@@ -65,57 +66,59 @@
   "main_measure": "share of flagged orders that are fraud (precision)",
   "higher_is_better": true,
   "test_size": {
-    "frauds": 293
+    "frauds": 476
   },
   "complexity_selection": {
     "measure": "validation AUC",
     "levels": [
       {
         "level": "flexible",
-        "validation_score": 0.9746,
-        "train_vs_validation": 0.0236,
+        "validation_score": 0.9802,
+        "train_vs_validation": 0.0163,
         "not_memorising": true
       },
       {
         "level": "moderate",
-        "validation_score": 0.9783,
-        "train_vs_validation": 0.0162,
+        "validation_score": 0.9818,
+        "train_vs_validation": 0.0114,
         "not_memorising": true
       },
       {
         "level": "simple",
-        "validation_score": 0.9784,
-        "train_vs_validation": 0.0132,
+        "validation_score": 0.9797,
+        "train_vs_validation": 0.0082,
         "not_memorising": true
       }
     ],
-    "chosen": "simple"
+    "chosen": "moderate"
   },
   "result": {
-    "model": 0.8929,
+    "model": 0.8063,
     "baseline": 0.9938,
-    "improvement": -0.1009,
+    "improvement": -0.1874,
     "improvement_95ci": [
-      -0.1422,
-      -0.0662
+      -0.224,
+      -0.1486
     ]
   },
   "details": {
-    "test_auc": 0.9748,
-    "test_brier": 0.0127,
-    "baseline_auc": 0.7934,
-    "threshold": 0.2394,
+    "test_auc": 0.9775,
+    "test_brier": 0.0162,
+    "baseline_auc": 0.6806,
+    "threshold": 0.1727,
+    "sampling_weighted": false,
+    "baseline_is_logged_rule_decision": false,
     "model_flags": {
-      "precision": 0.8929,
-      "false_flag_rate": 0.0033,
-      "recall": 0.6826,
-      "flag_rate": 0.0299
+      "precision": 0.8063,
+      "false_flag_rate": 0.0127,
+      "recall": 0.8046,
+      "flag_rate": 0.0615
     },
     "rule_flags": {
       "precision": 0.9938,
       "false_flag_rate": 0.0001,
-      "recall": 0.5427,
-      "flag_rate": 0.0213
+      "recall": 0.334,
+      "flag_rate": 0.0207
     }
   },
   "guards": [
@@ -127,13 +130,13 @@
     },
     {
       "name": "false flags among legitimate orders",
-      "value": 0.0033,
+      "value": 0.0127,
       "limit": "<= 0.01",
-      "passed": true
+      "passed": false
     },
     {
       "name": "share of frauds caught vs rules",
-      "value": 0.1399,
+      "value": 0.4706,
       "limit": ">= 0 (not worse)",
       "passed": true
     }
@@ -141,27 +144,37 @@
   "segments": {
     "customers_known": {
       "rows": 4930,
-      "model": 0.9457,
-      "baseline": 0.9931
+      "model": 0.867,
+      "baseline": 0.9934
     },
     "customers_unseen": {
-      "rows": 2570,
-      "model": 0.65,
+      "rows": 2795,
+      "model": 0.7549,
       "baseline": 1.0
     },
     "events_known": {
-      "rows": 304,
+      "rows": 324,
       "note": "too few cases to measure"
     },
     "events_unseen": {
-      "rows": 7196,
-      "model": 0.8929,
+      "rows": 7401,
+      "model": 0.8065,
       "baseline": 0.9938
     },
     "human_speed": {
-      "rows": 7327,
-      "model": 0.549,
+      "rows": 7552,
+      "model": 0.6987,
       "baseline": 0.0
+    },
+    "first_time_customers": {
+      "rows": 1684,
+      "model": 0.5315,
+      "baseline": 0.0
+    },
+    "returning_customers": {
+      "rows": 6041,
+      "model": 0.8901,
+      "baseline": 0.9938
     }
   },
   "learning_curve": {
@@ -169,23 +182,23 @@
     "points": [
       {
         "train_fraction": 0.1,
-        "train_rows": 3071,
-        "value": 0.9312
+        "train_rows": 3187,
+        "value": 0.9472
       },
       {
         "train_fraction": 0.25,
-        "train_rows": 7679,
-        "value": 0.9564
+        "train_rows": 7968,
+        "value": 0.9686
       },
       {
         "train_fraction": 0.5,
-        "train_rows": 15358,
-        "value": 0.973
+        "train_rows": 15936,
+        "value": 0.9766
       },
       {
         "train_fraction": 1.0,
-        "train_rows": 30717,
-        "value": 0.9765
+        "train_rows": 31872,
+        "value": 0.9782
       }
     ],
     "still_improving": false,
@@ -193,8 +206,12 @@
   },
   "status": "REJECTED",
   "reasons": [
-    "not clearly better than the baseline: 95% interval of the improvement is [-0.1422, -0.0662]"
+    "not clearly better than the baseline: 95% interval of the improvement is [-0.2240, -0.1486]",
+    "guard failed: false flags among legitimate orders = 0.0127 (needs <= 0.01)"
   ],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
   "shadow_decision": {
     "date": "2026-11-20",
     "decision": "Option 1: the existing rules stay the active decision-making system; the v0 fraud model runs in shadow only. The precision benchmark is not changed to let a synthetic-trained model pass.",
@@ -205,10 +222,11 @@
   },
   "final_model": {
     "calibration": "isotonic, 5-fold (CalibratedClassifierCV)",
-    "trained_rows": 50000,
+    "trained_rows": 51500,
     "trained_from": "2023-01-01T11:07:00+00:00",
     "trained_to": "2025-12-31T17:25:00+00:00"
   },
-  "duration_seconds": 24.3,
-  "artifact": "models/v0/fraud.joblib"
+  "duration_seconds": 26.9,
+  "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
+  "artifact": "C:/Users/Qasim/AppData/Local/Temp/claude/d9edbd5b55e766ef/7cf8cc8a-eaaf-4bdf-937a-e40ceba83431/scratchpad/art22\\fraud.joblib"
 }

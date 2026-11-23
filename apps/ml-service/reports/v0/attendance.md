@@ -1,62 +1,66 @@
 # Attendance (no-show) (`attendance`)
 
-**Status: REJECTED**
+**Status: PASSED**
 
-Reasons:
-- not clearly better than the baseline: 95% interval of the improvement is [-31.9056, 123.0016]
-
-Data: `attendance_no_show.csv`, 50,000 rows, 2023-01-23 to 2025-12-29, source `synthetic-v0`.
-Split by time: train 31,408 / validation 6,611 / test 7,500 rows (test from 2025-08-15); 200 rows purged at the cuts; 1,491 groups held out entirely. Leakage checks: passed.
+Data: `attendance_no_show.csv`, 150,000 rows, 2023-01-10 to 2025-12-29, source `synthetic-v0`.
+Split by time: train 94,552 / validation 20,016 / test 22,500 rows (test from 2025-07-30); 550 rows purged at the cuts; 1,795 groups held out entirely. Leakage checks: passed.
 
 ## Main measure
 average error in people attending per event (lower is better), newest 15% of the data:
 
 | | Value |
 |---|---|
-| Model | 393.3550 |
-| Baseline (current rule / strategy baseline) | 432.7696 |
-| Improvement | 39.4146 (95% interval -31.9056 to 123.0016) |
+| Model | 428.3900 |
+| Baseline (current rule / strategy baseline) | 478.5691 |
+| Improvement | 50.1792 (95% interval 11.5599 to 86.6236) |
 
 ## Model complexity (chosen on the validation period only)
 | Level | validation AUC | Train vs validation | Not memorising |
 |---|---|---|---|
-| flexible | 0.6297 | 0.1104 | no |
-| moderate | 0.6323 | 0.059 | no |
-| simple (chosen) | 0.6379 | 0.0372 | yes |
+| flexible | 0.6755 | 0.0325 | yes |
+| moderate | 0.677 | 0.0117 | yes |
+| simple (chosen) | 0.6777 | 0.0066 | yes |
 
 ## Must not get worse
 | Check | Value | Limit | |
 |---|---|---|---|
-| train AUC - test AUC (memorising) | 0.0351 | <= 0.05 | pass |
-| calibration error (ECE) | 0.0200 | <= 0.05 | pass |
-| per-ticket balanced accuracy vs baseline (0.5) | 0.6084 | >= 0.5 (not worse) | pass |
+| train AUC - test AUC (memorising) | 0.0005 | <= 0.05 | pass |
+| calibration error (ECE) | 0.0069 | <= 0.05 | pass |
+| per-ticket balanced accuracy vs baseline (0.5) | 0.6363 | >= 0.5 (not worse) | pass |
 
 ## Known vs unseen customers / events, segments
 | Group | Rows | Model | Baseline |
 |---|---|---|---|
-| customers_known | 4,850 | 328.7770 | 2413.9402 |
-| customers_unseen | 2,650 | 209.2200 | 4404.0150 |
-| first_time_attendees | 1,694 | 168.5725 | 5258.1215 |
+| customers_known | 17,264 | 355.8413 | 1660.6101 |
+| customers_unseen | 5,236 | 177.6430 | 5160.5132 |
+| first_time_attendees | 2,106 | 99.4435 | 6093.1094 |
+| returning_attendees | 20,394 | 396.7822 | 787.1622 |
 
 ## Learning curve (test AUC (higher is better))
 | Share of training data | Rows | Value |
 |---|---|---|
-| 10% | 3,140 | 0.5886 |
-| 25% | 7,852 | 0.623 |
-| 50% | 15,704 | 0.6273 |
-| 100% | 31,408 | 0.64 |
+| 10% | 9,455 | 0.6658 |
+| 25% | 23,638 | 0.6742 |
+| 50% | 47,276 | 0.6768 |
+| 100% | 94,552 | 0.6838 |
 
 Reading: more data would likely still help.
+
+## Compared with the deployed model
+NO_DEPLOYED_MODEL
+
+## Recommendation (not acted on automatically)
+KEEP_CURRENT: trained on synthetic data
 
 ## Details
 ```json
 {
-  "test_auc": 0.638,
-  "test_brier": 0.1298,
-  "current_fixed_rule_error": 638.7,
-  "no_show_threshold": 0.8507,
-  "average_event_attendance": 6781.1
+  "test_auc": 0.6835,
+  "test_brier": 0.1228,
+  "current_fixed_rule_error": 673.9,
+  "no_show_threshold": 0.8574,
+  "average_event_attendance": 6685.4
 }
 ```
 
-_Duration 7.5 s._
+_Duration 42.9 s._

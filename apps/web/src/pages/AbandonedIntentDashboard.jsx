@@ -75,14 +75,18 @@ function AutoRecovery() {
   );
 }
 
+// Recorded = the app logged this reason; steps = only the steps reached are known (no reason was logged)
 const REASONS = {
-  PAYMENT_FRICTION: { tone: 'rose', label: 'Payment friction' },
-  HIGH_TICKET_PRICE: { tone: 'amber', label: 'Price sensitivity' },
-  SEAT_LOCK_TIMEOUT: { tone: 'blue', label: 'Seat lock expired (10m)' },
-  COMPARISON_SHOPPING: { tone: 'blue', label: 'Comparison shopping (4+ views)' },
+  PAYMENT_FAILED: { tone: 'rose', label: 'Payment failed' },
+  REMOVED_TICKETS: { tone: 'amber', label: 'Removed tickets' },
+  HOLD_EXPIRED: { tone: 'blue', label: 'Seat hold ran out' },
+  LEFT_AT_CHECKOUT: { tone: 'grey', label: 'Left at checkout' },
+  LEFT_AFTER_SEAT: { tone: 'grey', label: 'Left after choosing a seat' },
 };
-const reasonOf = (r) => REASONS[r] || { tone: 'grey', label: 'Browser hesitation' };
-const intentOf = (score) => (score >= 75 ? { tone: 'green', text: 'High intent' } : score >= 50 ? { tone: 'amber', text: 'Moderate' } : { tone: 'grey', text: 'Low intent' });
+const reasonOf = (r) => REASONS[r] || { tone: 'grey', label: 'Not recorded' };
+const intentOf = (score) => (score >= 75 ? { tone: 'green', text: 'High intent' } : score >= 55 ? { tone: 'amber', text: 'Moderate' } : { tone: 'grey', text: 'Low intent' });
+const CART_SOURCE = { recorded: 'from checkout', seat_price: 'seat price', cheapest_tier: 'estimate: cheapest tier', unknown: 'unknown' };
+const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 /** View → seat → checkout → abandoned, with the furthest step reached highlighted. */
 function Journey({ item }) {
@@ -284,7 +288,7 @@ export default function AbandonedIntentDashboard() {
           tone="green"
           label="Recoverable revenue"
           value={`PKR ${(summary.recoverableRevenuePkr ?? 0).toLocaleString()}`}
-          note="Total cart value left in abandoned checkouts"
+          note="Sum of the carts left: the checkout amount when recorded, else the held seat's price"
         />
         <StatCard
           icon={TrendingUp}
@@ -292,14 +296,14 @@ export default function AbandonedIntentDashboard() {
           label="Avg intent score"
           value={summary.avgIntentScore ?? 0}
           unit="/100"
-          note="Fixed rule: event views, seat choice and checkout steps (no AI model)"
+          note="Same rule as Purchase intent: 40 + 15 (3+ views) + 20 (seat) + 25 (checkout) − 10 (left). No AI model"
         />
         <StatCard
           icon={AlertTriangle}
           tone="amber"
           label="Top dropout reason"
-          value={<span style={{ fontSize: 'clamp(18px, 1.5vw, 22px)', letterSpacing: '-0.01em' }}>{summary.topReason ? summary.topReason.replace(/_/g, ' ') : 'None detected'}</span>}
-          note="Most common friction point across abandoned sessions"
+          value={<span style={{ fontSize: 'clamp(18px, 1.5vw, 22px)', letterSpacing: '-0.01em' }}>{summary.topReason ? reasonOf(summary.topReason).label : 'None'}</span>}
+          note="Most common reason among the people listed below"
         />
       </div>
 
@@ -368,11 +372,7 @@ export default function AbandonedIntentDashboard() {
                   aria-label="Abandonment reason"
                 >
                   <option value="ALL">All abandonment reasons</option>
-                  <option value="PAYMENT_FRICTION">Payment friction</option>
-                  <option value="HIGH_TICKET_PRICE">High ticket price</option>
-                  <option value="SEAT_LOCK_TIMEOUT">Seat lock timeout</option>
-                  <option value="COMPARISON_SHOPPING">Comparison shopping</option>
-                  <option value="BROWSER_HESITATION">Browser hesitation</option>
+                  {Object.entries(REASONS).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
                 </select>
               </label>
               <label className="tl-ss tl-ss--sm">
@@ -382,9 +382,8 @@ export default function AbandonedIntentDashboard() {
                   aria-label="Minimum intent score"
                 >
                   <option value="">Any intent score</option>
-                  <option value="50">Score ≥ 50 (moderate+)</option>
-                  <option value="70">Score ≥ 70 (high intent)</option>
-                  <option value="80">Score ≥ 80 (very high)</option>
+                  <option value="55">Score ≥ 55 (moderate+)</option>
+                  <option value="75">Score ≥ 75 (high intent)</option>
                 </select>
               </label>
             </div>
@@ -433,13 +432,13 @@ export default function AbandonedIntentDashboard() {
                       <td className="tl-ab-event">
                         <strong>{item.event.name}</strong>
                         <span><MapPin className="w-3 h-3" aria-hidden="true" />{item.event.venue || item.event.city}</span>
-                        <em>Cart: PKR {item.cartValue.toLocaleString()}</em>
+                        <em>Cart: PKR {item.cartValue.toLocaleString()} <small>({CART_SOURCE[item.cartValueSource] || 'unknown'})</small></em>
                       </td>
                       <td>
                         <Journey item={item} />
                         <div className="tl-last">
                           <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                          Last: <b>{item.lastAction}</b> · {new Date(item.lastActionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          Last: <b>{item.lastAction.replace(/_/g, ' ')}</b> · {when(item.lastActionTime)}
                         </div>
                       </td>
                       <td className="is-center">
@@ -449,7 +448,8 @@ export default function AbandonedIntentDashboard() {
                         </span>
                       </td>
                       <td className="tl-reason">
-                        <Badge tone={reason.tone}>{reason.label}</Badge>
+                        <Badge tone={reason.tone}>{reason.label}</Badge>{' '}
+                        <small className="tl-reason-src">{item.reasonSource === 'recorded' ? 'recorded by the app' : 'from the steps only'}</small>
                         <p>{item.reasonDetail}</p>
                         <em><Zap className="w-3.5 h-3.5" aria-hidden="true" />Suggest: {item.recommendedAction.replace(/_/g, ' ').toLowerCase()}</em>
                       </td>
@@ -483,9 +483,11 @@ export default function AbandonedIntentDashboard() {
         <Info className="w-4 h-4" aria-hidden="true" />
         <p>
           <strong>How recovery works.</strong> TicketLedger records signals such as event views, seat picks, seat locks,
-          checkout starts and checkout drop-offs. When someone locks a seat or starts checkout but doesn't pay, those
-          signals are combined into a likely reason and an intent score. You can then send them an in-app and email
-          reminder with a single-use coupon.
+          checkout starts and checkout drop-offs. Anyone who chose a seat or started checkout and has not bought that
+          event is listed. The reason is shown as <b>recorded by the app</b> when it was logged (payment failed, tickets
+          removed, seat hold ran out); otherwise only the steps they reached are known. The score is a fixed rule, not an
+          AI model. The experimental AI view (admins, per event) sits in the box above the list and never sends anything.
+          Accounts used by the test scripts also appear here.
         </p>
       </div>
     </div>

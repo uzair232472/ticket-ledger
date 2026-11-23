@@ -3,60 +3,69 @@
 **Status: REJECTED**
 
 Reasons:
-- not clearly better than the baseline: 95% interval of the improvement is [-0.1422, -0.0662]
+- not clearly better than the baseline: 95% interval of the improvement is [-0.2240, -0.1486]
+- guard failed: false flags among legitimate orders = 0.0127 (needs <= 0.01)
 
-Data: `fraud_purchases.csv`, 50,000 rows, 2023-01-01 to 2025-12-31, source `synthetic-v0`.
-Split by time: train 30,717 / validation 6,279 / test 7,500 rows (test from 2025-08-03); 1,248 rows purged at the cuts; 1,473 groups held out entirely. Leakage checks: passed.
+Data: `fraud_purchases.csv`, 51,500 rows, 2023-01-01 to 2025-12-31, source `synthetic-v0`.
+Split by time: train 31,872 / validation 6,358 / test 7,725 rows (test from 2025-08-02); 1,346 rows purged at the cuts; 1,518 groups held out entirely. Leakage checks: passed.
 
 ## Main measure
 share of flagged orders that are fraud (precision) (higher is better), newest 15% of the data:
 
 | | Value |
 |---|---|
-| Model | 0.8929 |
+| Model | 0.8063 |
 | Baseline (current rule / strategy baseline) | 0.9938 |
-| Improvement | -0.1009 (95% interval -0.1422 to -0.0662) |
+| Improvement | -0.1874 (95% interval -0.224 to -0.1486) |
 
 ## Model complexity (chosen on the validation period only)
 | Level | validation AUC | Train vs validation | Not memorising |
 |---|---|---|---|
-| flexible | 0.9746 | 0.0236 | yes |
-| moderate | 0.9783 | 0.0162 | yes |
-| simple (chosen) | 0.9784 | 0.0132 | yes |
+| flexible | 0.9802 | 0.0163 | yes |
+| moderate (chosen) | 0.9818 | 0.0114 | yes |
+| simple | 0.9797 | 0.0082 | yes |
 
 ## Must not get worse
 | Check | Value | Limit | |
 |---|---|---|---|
 | train AUC - test AUC (memorising) | 0.0150 | <= 0.05 | pass |
-| false flags among legitimate orders | 0.0033 | <= 0.01 | pass |
-| share of frauds caught vs rules | 0.1399 | >= 0 (not worse) | pass |
+| false flags among legitimate orders | 0.0127 | <= 0.01 | FAIL |
+| share of frauds caught vs rules | 0.4706 | >= 0 (not worse) | pass |
 
 ## Known vs unseen customers / events, segments
 | Group | Rows | Model | Baseline |
 |---|---|---|---|
-| customers_known | 4,930 | 0.9457 | 0.9931 |
-| customers_unseen | 2,570 | 0.6500 | 1.0000 |
-| events_known | 304 | - | too few cases to measure |
-| events_unseen | 7,196 | 0.8929 | 0.9938 |
-| human_speed | 7,327 | 0.5490 | 0.0000 |
+| customers_known | 4,930 | 0.8670 | 0.9934 |
+| customers_unseen | 2,795 | 0.7549 | 1.0000 |
+| events_known | 324 | - | too few cases to measure |
+| events_unseen | 7,401 | 0.8065 | 0.9938 |
+| human_speed | 7,552 | 0.6987 | 0.0000 |
+| first_time_customers | 1,684 | 0.5315 | 0.0000 |
+| returning_customers | 6,041 | 0.8901 | 0.9938 |
 
 ## Learning curve (test AUC (higher is better))
 | Share of training data | Rows | Value |
 |---|---|---|
-| 10% | 3,071 | 0.9312 |
-| 25% | 7,679 | 0.9564 |
-| 50% | 15,358 | 0.973 |
-| 100% | 30,717 | 0.9765 |
+| 10% | 3,187 | 0.9472 |
+| 25% | 7,968 | 0.9686 |
+| 50% | 15,936 | 0.9766 |
+| 100% | 31,872 | 0.9782 |
 
 Reading: score has levelled off: more data of the same kind adds little.
 
 ## Separate measures (not combined)
 | Measure | Model (shadow) | Current rules | Role |
 |---|---|---|---|
-| Precision: flags confirmed as fraud | 0.8929 | 0.9938 | main measure |
-| False flags among legitimate orders | 0.0033 | 0.0001 | limit <= 0.01 |
-| Recall: frauds caught | 0.6826 | 0.5427 | tracked capability |
-| Share of orders flagged | 0.0299 | 0.0213 | reviewer workload |
+| Precision: flags confirmed as fraud | 0.8063 | 0.9938 | main measure |
+| False flags among legitimate orders | 0.0127 | 0.0001 | limit <= 0.01 |
+| Recall: frauds caught | 0.8046 | 0.334 | tracked capability |
+| Share of orders flagged | 0.0615 | 0.0207 | reviewer workload |
+
+## Compared with the deployed model
+NO_DEPLOYED_MODEL
+
+## Recommendation (not acted on automatically)
+KEEP_CURRENT: the candidate did not pass the evaluation gates
 
 ## Decision
 Option 1: the existing rules stay the active decision-making system; the v0 fraud model runs in shadow only. The precision benchmark is not changed to let a synthetic-trained model pass. (2026-11-20)
@@ -69,26 +78,28 @@ Option 1: the existing rules stay the active decision-making system; the v0 frau
 ## Details
 ```json
 {
-  "test_auc": 0.9748,
-  "test_brier": 0.0127,
-  "baseline_auc": 0.7934,
-  "threshold": 0.2394,
+  "test_auc": 0.9775,
+  "test_brier": 0.0162,
+  "baseline_auc": 0.6806,
+  "threshold": 0.1727,
+  "sampling_weighted": false,
+  "baseline_is_logged_rule_decision": false,
   "model_flags": {
-    "precision": 0.8929,
-    "false_flag_rate": 0.0033,
-    "recall": 0.6826,
-    "flag_rate": 0.0299
+    "precision": 0.8063,
+    "false_flag_rate": 0.0127,
+    "recall": 0.8046,
+    "flag_rate": 0.0615
   },
   "rule_flags": {
     "precision": 0.9938,
     "false_flag_rate": 0.0001,
-    "recall": 0.5427,
-    "flag_rate": 0.0213
+    "recall": 0.334,
+    "flag_rate": 0.0207
   }
 }
 ```
 
 ## Final model
-Refitted with the same settings on all 50,000 rows (2023-01-01 to 2025-12-31). Calibration: isotonic, 5-fold (CalibratedClassifierCV). It starts in shadow mode: it must also beat the rules on live data before an admin can promote it.
+Refitted with the same settings on all 51,500 rows (2023-01-01 to 2025-12-31). Calibration: isotonic, 5-fold (CalibratedClassifierCV). It starts in shadow mode: it must also beat the rules on live data before an admin can promote it.
 
-_Duration 24.3 s._
+_Duration 26.9 s._

@@ -40,6 +40,9 @@ ENV/
 !apps/ml-service/models/v0/fraud.joblib
 !apps/ml-service/models/v0/demand.joblib
 !apps/ml-service/models/v0/crowd.joblib
+!apps/ml-service/models/v0/attendance.joblib
+!apps/ml-service/models/v0/checkout_abandonment.joblib
+!apps/ml-service/models/v0/demand_hourly.joblib
 *.pkl
 
 # Hardhat / Blockchain

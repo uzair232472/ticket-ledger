@@ -79,14 +79,14 @@ def test_legacy_endpoints_answer_with_rules(monkeypatch):
 
 def _rows(name, n=5):
     from ml import evaluate as ev
-    from ml.schema import SPECS
-    spec = SPECS[name]
+    from ml.schema import ALL_SPECS
+    spec = ALL_SPECS[name]
     df = ev.load(spec, os.path.join(BASE, "data")).tail(n)
     cols = list(spec.cat) + list(spec.num) + (["venue_capacity"] if name == "demand" else [])
     return json.loads(df[sorted(set(cols))].to_json(orient="records"))
 
 
-@pytest.mark.parametrize("name", ["intent", "abandonment", "fraud", "demand", "crowd"])
+@pytest.mark.parametrize("name", ["intent", "abandonment", "checkout_abandonment", "fraud", "demand", "demand_hourly", "attendance", "crowd"])
 def test_shadow_predictions(monkeypatch, registry, name):
     c, _ = _client(monkeypatch)
     r = c.post(f"/v2/shadow/{name}", headers=H, json={"sha256": registry[name]["sha256"], "rows": _rows(name)})
@@ -95,8 +95,10 @@ def test_shadow_predictions(monkeypatch, registry, name):
     assert body["role"] == "SHADOW" and body["may_serve_decisions"] is False
     p = body["predictions"]
     assert len(p) == 5
-    if name in ("intent", "abandonment", "fraud"):
+    if name in ("intent", "abandonment", "checkout_abandonment", "fraud", "attendance"):
         assert all(0 <= x["probability"] <= 1 for x in p)
+    if name == "demand_hourly":
+        assert all(x["sales_next_24h"] >= 0 for x in p)
     if name == "fraud":
         assert all(isinstance(x["would_flag"], bool) for x in p)
     if name == "demand":

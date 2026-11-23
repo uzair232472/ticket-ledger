@@ -1,6 +1,6 @@
 {
   "data_source": "synthetic-v0",
-  "data_generator": "2.1.0",
+  "data_generator": "2.2.0",
   "models": [
     {
       "name": "intent",
@@ -96,10 +96,61 @@
       }
     },
     {
+      "name": "checkout_abandonment",
+      "title": "Abandoned checkout (checkout-based)",
+      "file": "checkout_abandonment.joblib",
+      "sha256": "5642e2102ffbb65f4e7910c04fe10c8f9c7957811fe039927237abbfe993357a",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "PASSED",
+      "may_serve_decisions": false,
+      "shadow_decision": null,
+      "sklearn": "1.6.1",
+      "recommendation": "KEEP_CURRENT: trained on synthetic data",
+      "deployed_comparison": {
+        "status": "NO_DEPLOYED_MODEL"
+      },
+      "trained_rows": 19318,
+      "created_at": "2026-11-23T07:01:21.030123+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country",
+          "payment_method"
+        ],
+        "numeric": [
+          "tickets_requested",
+          "unit_price_rel",
+          "hours_since_sales_open",
+          "days_until_event",
+          "account_age_days",
+          "customer_prior_orders",
+          "customer_prior_purchases",
+          "customer_prior_expired_checkouts",
+          "first_time",
+          "visit_event_views",
+          "visit_seat_selections"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "share of actual abandons among the top 10% scored checkouts",
+        "higher_is_better": true,
+        "model": 0.5075,
+        "baseline": 0.3468,
+        "improvement": 0.1606,
+        "improvement_95ci": [
+          0.1078,
+          0.2061
+        ],
+        "reasons": []
+      }
+    },
+    {
       "name": "fraud",
       "title": "Fraud (flag for review)",
       "file": "fraud.joblib",
-      "sha256": "6ac94abf87021214e981b1789f3f20e32536fd2301483f9d8e7578a45c8b30af",
+      "sha256": "64280eaa9f22201fe45cc8778884bd0e08aba6583fd9a49a93fcacd89b5d708e",
       "version": "v0",
       "source": "synthetic-v0",
       "evaluation_status": "REJECTED",
@@ -113,8 +164,12 @@
         "measures": "precision (main), false-flag rate among legitimate orders (separate limit, <= 1%), recall (tracked) - reported separately, never combined"
       },
       "sklearn": "1.6.1",
-      "trained_rows": 50000,
-      "created_at": "2026-11-20T07:52:29.446355+00:00",
+      "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
+      "deployed_comparison": {
+        "status": "NO_DEPLOYED_MODEL"
+      },
+      "trained_rows": 51500,
+      "created_at": "2026-11-23T07:00:33.449998+00:00",
       "features": {
         "categorical": [
           "event_type",
@@ -141,15 +196,16 @@
       "evaluation": {
         "main_measure": "share of flagged orders that are fraud (precision)",
         "higher_is_better": true,
-        "model": 0.8929,
+        "model": 0.8063,
         "baseline": 0.9938,
-        "improvement": -0.1009,
+        "improvement": -0.1874,
         "improvement_95ci": [
-          -0.1422,
-          -0.0662
+          -0.224,
+          -0.1486
         ],
         "reasons": [
-          "not clearly better than the baseline: 95% interval of the improvement is [-0.1422, -0.0662]"
+          "not clearly better than the baseline: 95% interval of the improvement is [-0.2240, -0.1486]",
+          "guard failed: false flags among legitimate orders = 0.0127 (needs <= 0.01)"
         ]
       }
     },
@@ -196,6 +252,119 @@
         "improvement_95ci": [
           0.0329,
           0.0816
+        ],
+        "reasons": []
+      }
+    },
+    {
+      "name": "demand_hourly",
+      "title": "Demand after publication (next 24 h)",
+      "file": "demand_hourly.joblib",
+      "sha256": "41769019da898d35570cf465062f2be993af19b4c810fcc09ae4696821823115",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "REJECTED",
+      "may_serve_decisions": false,
+      "shadow_decision": {
+        "date": "2026-11-23",
+        "decision": "Kept in shadow only. On synthetic 2.2.0 data it is far more accurate than the rule (19% vs 67% weighted error) but fails the memorising guard (train/test error 0.64, needs >= 0.70), so it is REJECTED and never serves decisions. The guard is not changed.",
+        "keep": "next-24-hour sales forecasts for events on sale - tracked, not used",
+        "record": "every hourly shadow prediction, compared with the real next-24-hour sales",
+        "re_evaluate": "on real exports once 30+ events are in the test period (ml/gates.py)",
+        "measures": "weighted % error of next-24-hour sales (main), memorising guard"
+      },
+      "sklearn": "1.6.1",
+      "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
+      "deployed_comparison": {
+        "status": "NO_DEPLOYED_MODEL"
+      },
+      "trained_rows": 60000,
+      "created_at": "2026-11-23T07:02:43.090464+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country",
+          "day_of_week"
+        ],
+        "numeric": [
+          "venue_capacity",
+          "tier_count",
+          "min_price_rel",
+          "avg_price_rel",
+          "max_price_rel",
+          "start_hour",
+          "start_month",
+          "organizer_past_events",
+          "organizer_past_sell_through_48h",
+          "hours_since_sales_open",
+          "days_until_event",
+          "sold_so_far",
+          "sold_last_24h",
+          "sell_through_so_far"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "weighted % error of next-24-hour sales (zero sales handled)",
+        "higher_is_better": false,
+        "model": 0.189,
+        "baseline": 0.6731,
+        "improvement": 0.4842,
+        "improvement_95ci": [
+          0.4347,
+          0.5342
+        ],
+        "reasons": [
+          "guard failed: train error / test error (memorising) = 0.6384 (needs >= 0.7)"
+        ]
+      }
+    },
+    {
+      "name": "attendance",
+      "title": "Attendance (no-show)",
+      "file": "attendance.joblib",
+      "sha256": "ecbffe07b529a50bf73a94a7297ee7aac6582c118f6d7f898cf160d65858e197",
+      "version": "v0",
+      "source": "synthetic-v0",
+      "evaluation_status": "PASSED",
+      "may_serve_decisions": false,
+      "shadow_decision": null,
+      "sklearn": "1.6.1",
+      "recommendation": "KEEP_CURRENT: trained on synthetic data",
+      "deployed_comparison": {
+        "status": "NO_DEPLOYED_MODEL"
+      },
+      "trained_rows": 150000,
+      "created_at": "2026-11-23T07:01:16.724882+00:00",
+      "features": {
+        "categorical": [
+          "event_type",
+          "city",
+          "country",
+          "day_of_week"
+        ],
+        "numeric": [
+          "start_hour",
+          "tier_rank",
+          "ticket_price_rel",
+          "tickets_in_order",
+          "days_before_event_purchased",
+          "is_transferred",
+          "is_resold",
+          "customer_prior_tickets",
+          "customer_prior_attended",
+          "customer_prior_no_shows"
+        ]
+      },
+      "evaluation": {
+        "main_measure": "average error in people attending per event",
+        "higher_is_better": false,
+        "model": 428.39,
+        "baseline": 478.5691,
+        "improvement": 50.1792,
+        "improvement_95ci": [
+          11.5599,
+          86.6236
         ],
         "reasons": []
       }

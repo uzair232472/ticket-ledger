@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { requireAuth, optionalAuth, orgGuard } from '../middlewares/auth.js';
+import { requireAuth, optionalAuth, orgGuard, requireRole } from '../middlewares/auth.js';
 import {
   recordClientEvent,
   getMyBehaviorProfile,
   getUserBehaviorProfileById,
   linkSessionToUser,
+  getBehaviourReport,
+  getCustomerTimeline,
 } from '../controllers/behaviorController.js';
 
 const router = Router();
@@ -20,5 +22,9 @@ router.get('/profile', requireAuth, getMyBehaviorProfile);
 
 // 4. Admin / Organizer inspection of any user's profile
 router.get('/user/:userId', ...orgGuard('attendee.view'), getUserBehaviorProfileById);
+
+// 5. Super admin behaviour report (by event and by customer) and one customer's timeline
+router.get('/report', requireAuth, requireRole('SUPER_ADMIN'), getBehaviourReport);
+router.get('/report/customers/:userId', requireAuth, requireRole('SUPER_ADMIN'), getCustomerTimeline);
 
 export default router;

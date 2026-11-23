@@ -215,22 +215,34 @@ export default function PurchaseIntentAnalytics() {
       ) : (
         <>
           <div className="tl-sc-grid">
-            <StatCard icon={Users} tone="ink" label="Event watchers" value={(summary.totalWatchers || 0).toLocaleString()} note="Unique attendees viewing this event" />
+            <StatCard
+              icon={Users}
+              tone="ink"
+              label="Event watchers"
+              value={(summary.totalWatchers || 0).toLocaleString()}
+              note={`People who opened the event page: ${summary.signedInWatchers ?? 0} signed in, ${summary.guestWatchers ?? 0} guest sessions`}
+            />
             <StatCard
               icon={BarChart3}
               tone="green"
-              label="High intent prospects"
+              label="Likely to buy (not bought yet)"
               value={summary.usersLikelyToBuyCount || 0}
               unit={`(Avg: ${summary.avgIntentScore || 0}/100)`}
-              note="Attendees with high purchase intent (≥ 60)"
+              note={`Score 55+: ${summary.highIntentCount ?? 0} high (75+), ${summary.moderateIntentCount ?? 0} moderate (55–74). Buyers are not counted.`}
             />
-            <StatCard icon={ShoppingCart} tone="amber" label="Abandoned carts" value={summary.abandonedUsersCount || 0} note="Seat/checkout drop-offs ripe for recovery" />
+            <StatCard
+              icon={ShoppingCart}
+              tone="amber"
+              label="Abandoned checkouts"
+              value={summary.abandonedCheckouts ?? 0}
+              note={`Checkouts started but not paid, by ${summary.abandonedCheckoutPeople ?? 0} ${summary.abandonedCheckoutPeople === 1 ? 'person' : 'people'}. Still to recover (not bought later): ${summary.abandonedUsersCount || 0}`}
+            />
             <StatCard
               icon={Filter}
               tone="blue"
               label="Funnel conversion"
               value={`${summary.overallConversionRate || 0}%`}
-              note={`${summary.ticketsIssuedCount || 0} ${summary.ticketsIssuedCount === 1 ? 'ticket' : 'tickets'} issued from views`}
+              note={`${summary.buyersCount ?? summary.ticketsIssuedCount ?? 0} of ${summary.totalWatchers || 0} watchers bought tickets`}
             />
           </div>
 
@@ -241,7 +253,7 @@ export default function PurchaseIntentAnalytics() {
             <Panel
               icon={BarChart3}
               title="Event conversion funnel"
-              sub="Live tracking from initial page view to verified NFT ticket issuance"
+              sub="Counts PEOPLE, not attempts: each person is counted once at the furthest step they reached. A person who abandoned a checkout and paid later counts as paid."
               action={<span className="tl-total-pill">Total pipeline volume: <strong>{summary.totalWatchers || 0}</strong></span>}
             >
               <div className="tl-funnel">
@@ -259,19 +271,26 @@ export default function PurchaseIntentAnalytics() {
                 ))}
                 {funnel.length === 0 && <p className="tl-empty-row">No funnel activity yet.</p>}
               </div>
+              {(summary.abandonedCheckouts || 0) > 0 && (
+                <p className="tl-pn-sub" style={{ marginTop: 12 }}>
+                  Attempts: {summary.abandonedCheckouts} checkout{summary.abandonedCheckouts === 1 ? ' was' : 's were'} started and not paid
+                  (by {summary.abandonedCheckoutPeople} {summary.abandonedCheckoutPeople === 1 ? 'person' : 'people'}).
+                  {(summary.abandonedUsersCount || 0) === 0 ? ' All of them bought later, so nobody needs a recovery reminder.' : ''}
+                </p>
+              )}
             </Panel>
 
             <Panel
               tone="mint"
               icon={ShoppingCart}
               title="Cart recovery summary"
-              sub={`${abandoned.length} ${abandoned.length === 1 ? 'attendee' : 'attendees'} dropped off during purchase`}
+              sub={`${abandoned.length} ${abandoned.length === 1 ? 'person' : 'people'} chose seats or started checkout and have not bought yet`}
             >
               <div className="tl-recovery">
                 <div className="tl-recovery-item is-lead">
                   <span className="tl-recovery-icon"><ShoppingCart className="w-5 h-5" /></span>
                   <span className="tl-recovery-num">{summary.abandonedUsersCount || abandoned.length}</span>
-                  <span className="tl-recovery-text"><strong>Abandoned carts</strong><span>Seat/checkout drop-offs ripe for recovery</span></span>
+                  <span className="tl-recovery-text"><strong>People to recover</strong><span>Left at seat choice or checkout and never bought</span></span>
                 </div>
                 <div className="tl-recovery-item">
                   <span className="tl-recovery-icon"><Armchair className="w-5 h-5" /></span>
@@ -304,7 +323,7 @@ export default function PurchaseIntentAnalytics() {
             icon={User}
             title="Users likely to buy"
             badge={`${likely.length} qualified`}
-            sub="Engaged attendees with a high score from the fixed intent rule (event views, seat choice, checkout). No AI model is used."
+            sub={`People who have NOT bought yet with a rule score of 55+ (40 base, +15 for 3+ views, +20 seat chosen, +25 checkout started, −10 left a checkout). ${summary.buyersCount || 0} ${summary.buyersCount === 1 ? 'buyer is' : 'buyers are'} left out. No AI model is used.`}
             action={
               <button
                 type="button"
@@ -358,7 +377,7 @@ export default function PurchaseIntentAnalytics() {
                               <div className="tl-telemetry">
                                 <span>Views: <b>{p.views}</b></span>
                                 <span>Seats selected: <b>{p.seatSelections}</b></span>
-                                <span>Checkouts: <b>{p.checkoutStarts}</b></span>
+                                <span>Checkouts: <b>{p.checkoutStarts}</b>{p.abandonedCheckouts > 0 && <> (left <b>{p.abandonedCheckouts}</b>)</>}</span>
                               </div>
                             </td>
                             <td>
@@ -390,7 +409,11 @@ export default function PurchaseIntentAnalytics() {
             sub="Attendees who selected seats or reached checkout but left without completing payment"
           >
             {abandoned.length === 0 ? (
-              <p className="tl-empty-row">No abandoned checkouts recorded for this event.</p>
+              <p className="tl-empty-row">
+                {(summary.abandonedCheckouts || 0) > 0
+                  ? `Nobody to recover: the ${summary.abandonedCheckoutPeople} ${summary.abandonedCheckoutPeople === 1 ? 'person' : 'people'} who left ${summary.abandonedCheckouts} checkout${summary.abandonedCheckouts === 1 ? '' : 's'} bought tickets later.`
+                  : 'No abandoned checkouts recorded for this event.'}
+              </p>
             ) : (
               <div className="tl-stb-wrap">
                 <table className="tl-stb">

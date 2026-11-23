@@ -1,6 +1,6 @@
 # Training datasets (v0, synthetic)
 
-These five files train the **starter (v0) models**. They come from a simulated three-year history of the
+These seven files train the **starter (v0) models** (generator 2.2.0; see the note under the table). They come from a simulated three-year history of the
 platform (`scripts/generate_synthetic_data.py`), shaped exactly like the data the app will export from the
 client's database. Production models are retrained on that real data; these files are never used for that.
 
@@ -39,6 +39,14 @@ available at `ts`, so nothing from the future leaks in. The last column(s) are t
 | `event_demand.csv` | 5,000 | an event at sales open | `sales_48h` (tickets sold in the first 48 h) | Demand forecast |
 | `attendance_no_show.csv` | 50,000 | a ticket, 24 h before the event | `checked_in` | Attendance |
 | `crowd_flow.csv` | ~92,000 | one gate in one 5-minute slot (90 min before to 60 min after start) | `scans` | Crowd flow |
+| `checkout_abandonment.csv` | 19,318 | a started checkout (export shape: pseudonymous ids, `feature_source` snapshot) | `abandoned` | Abandoned checkout (checkout start) |
+| `demand_hourly.csv` | 60,000 | one event at a sampled hour while on sale (up to 12 per event) | `sales_next_24h` | Demand after publication (next 24 h) |
+
+Generator 2.2.0 uses a second random stream (seed + 1000) for everything it added, so `behavior_sequences`,
+`event_demand` and `crowd_flow` are byte-identical to 2.1.0. It added 1,500 human-speed fraud checkouts
+(card testing / account takeover: new or long-dormant accounts, several orders for one event within a day, failed
+payments, many dearer seats, mostly card payments), grew `attendance_no_show` to 150,000 tickets over 3,000 events
+(every `crowd_flow` event kept), and the two files above.
 
 ### Global-ready columns (Pakistan-only values for now)
 The platform launches in Pakistan and will add other countries later. Every file is already shaped for

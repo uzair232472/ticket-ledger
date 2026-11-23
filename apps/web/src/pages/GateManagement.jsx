@@ -5,6 +5,7 @@ import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBar
 import api from '../utils/api';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
 import { AttendanceInsightPanel, CrowdInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
+import GateLoadPlan from '../components/gates/GateLoadPlan';
 
 /*
  * Gate management for supervisors (gate.supervise): live load per gate, the gates themselves (type, ticket
@@ -121,6 +122,7 @@ export default function GateManagement() {
       {data && (
         <>
           {tab === 'live' && <Live data={data} eventId={eventId} onTab={setTab} />}
+          {tab === 'live' && <GateLoadPlan eventId={eventId} onTab={setTab} />}
           {/* Step 6: rule estimates (with the experimental model muted beside them). Admission never uses them. */}
           {tab === 'live' && (
             <InsightBoundary>

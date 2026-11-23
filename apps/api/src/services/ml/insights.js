@@ -13,11 +13,11 @@
  *
  * Aggregates only: no answer contains an individual customer's score, prediction or identity.
  * Model values come from rows already logged by the shadow jobs; the only live model call is the demand
- * what-if (one row, 300 ms, never stored, never applied).
+ * reading (a few rows in one call, never stored, never applied).
  */
 import prisma from '../../config/prisma.js';
 import { mlPost } from '../mlService.js';
-import { prelaunchRuleInputs, ruleDemandForecast } from '../demandRules.js';
+import { prelaunchEstimate, tiersWithPrices } from '../demandRules.js';
 import { demandSnapshot, LIVE_TICKET, MissingInput, endOf, startOf } from './features.js';
 import { showRate } from './attendanceBaseline.js';
 import { SLOTS, crowdReadiness, crowdRows, parseSlotSubject } from './crowd.js';
@@ -36,7 +36,7 @@ export const MINIMUMS = {
 // Display threshold for recommendation counts (apps/ml-service/ml/insights.py REC_MIN)
 export const REC_MIN_IMPRESSIONS = 1000;
 
-const WHAT_IF_TIMEOUT_MS = 300;
+const WHAT_IF_TIMEOUT_MS = Number(process.env.ML_WHAT_IF_TIMEOUT_MS) || 1500;
 const EVALUATION_NOTE = 'Counts of logged outcomes only. They include internal and test activity. Accuracy is never computed in the app: models are evaluated offline on genuine-customer exports once the minimums are met.';
 
 export function envelope(feature, { rules, experimental, evaluation, notes = [] }) {
@@ -287,8 +287,7 @@ async function eventForDemand(db, eventId) {
 export async function demandInsight(eventId, { whatIf = null, db = prisma, post = mlPost } = {}) {
   const event = await eventForDemand(db, eventId);
   if (!event) throw Object.assign(new Error('Event not found'), { status: 404 });
-  const { params } = prelaunchRuleInputs(event, whatIf ? { simulatedPrice: whatIf.price, simulatedCapacity: whatIf.capacity } : {});
-  const rule = ruleDemandForecast(params);
+  const rule = prelaunchEstimate(event, { tiers: whatIf?.price ? tiersWithPrices(event.tiers, { scalePrice: whatIf.price }) : event.tiers });
   const [logged, hourly] = await Promise.all([
     db.mlPrediction.findMany({ where: { modelName: 'demand', eventId, subjectType: { in: ['EVENT_FORECAST', 'EVENT_AT_SALES_OPEN'] } }, select: { role: true, subjectType: true, score: true, output: true, asOf: true, outcomeLabel: true, outcomeAt: true }, orderBy: { asOf: 'desc' } }),
     db.mlPrediction.findFirst({ where: { modelName: 'demand_hourly', role: 'RULES', eventId }, select: { score: true, asOf: true }, orderBy: { asOf: 'desc' } }),
@@ -297,27 +296,89 @@ export async function demandInsight(eventId, { whatIf = null, db = prisma, post 
   const experimental = modelBlock('demand', model);
   if (model) {
     const latest = logged.find((r) => r.role === 'SHADOW');
+    const latestOk = latest && !latest.output?.error && !latest.output?.skipped
+      ? { sales_48h: latest.output.sales_48h, low: latest.output.low, high: latest.output.high, as_of: latest.asOf, moment: latest.subjectType }
+      : null;
+    // A live reading of the model for the saved prices (never stored, never applied), with what moves it.
+    // Shown even when no logged prediction exists yet (first visit, or the day's logged call failed).
+    const live = await demandLive(event, model, whatIf, post);
     experimental.value = {
-      latest_logged: latest && !latest.output?.error && !latest.output?.skipped
-        ? { sales_48h: latest.output.sales_48h, low: latest.output.low, high: latest.output.high, as_of: latest.asOf, moment: latest.subjectType }
-        : null,
+      latest_logged: latestOk,
       logged: shadowRowStats(logged.filter((r) => r.role === 'SHADOW')),
-      what_if: null,
+      current: live.current,
+      sensitivity: live.sensitivity,
+      what_if: live.what_if,
     };
-    if (!latest) experimental.unavailable_reason = 'NO_SHADOW_PREDICTIONS_YET';
-    else if (!experimental.value.latest_logged) experimental.unavailable_reason = latest.output?.error ? 'SHADOW_CALL_FAILED' : 'INPUTS_MISSING';
-    if (whatIf) experimental.value.what_if = await demandWhatIf(event, model, whatIf, post);
+    if (!latestOk && !live.current) {
+      experimental.unavailable_reason = live.unavailable_reason
+        || (!latest ? 'NO_SHADOW_PREDICTIONS_YET' : latest.output?.error ? 'SHADOW_CALL_FAILED' : 'INPUTS_MISSING');
+    }
   }
   return envelope('demand', {
     rules: {
       projected_48h_sales: rule.projected_48h_sales, sellout_probability: rule.sellout_probability, demand_tier: rule.demand_tier,
-      notice: rule.notice, what_if: Boolean(whatIf),
+      capacity: rule.capacity, notice: rule.notice, what_if: Boolean(whatIf),
       latest_hourly_pace: hourly ? { sold_last_24h: hourly.score, as_of: hourly.asOf } : null,
     },
     experimental,
     evaluation: evaluationBlock(await outcomeCounts('demand', db), { events: MINIMUMS.min_test_events_demand }),
-    notes: ['A what-if is calculated on request only: it is not saved, and it never changes prices or publishes the event.'],
+    notes: ['The model is called live on request only: its answers here are not saved, and they never change prices or publish the event.'],
   });
+}
+
+const PRICE_COLS = ['min_price_rel', 'avg_price_rel', 'max_price_rel'];
+const scalePrices = (f, k) => { const g = { ...f }; for (const c of PRICE_COLS) g[c] = Math.round(f[c] * k * 10000) / 10000; return g; };
+
+/**
+ * One live shadow call (several rows in one request): the model at the saved inputs, the same with prices
+ * -20% / +20% and on the other kind of day (what moves its number), and the organizer's what-if when given.
+ * Nothing is stored or applied.
+ */
+export async function demandLive(event, model, whatIf, post = mlPost) {
+  let snap;
+  try {
+    snap = await demandSnapshot({ eventId: event.id, at: new Date() });
+  } catch (e) {
+    const reason = e instanceof MissingInput ? `INPUTS_MISSING: ${e.message}` : 'INPUTS_ERROR';
+    return { current: null, sensitivity: null, what_if: whatIf ? { unavailable_reason: reason } : null, unavailable_reason: reason };
+  }
+  const f = snap.features;
+  const weekend = ['Friday', 'Saturday', 'Sunday'].includes(f.day_of_week);
+  const rows = [
+    { key: 'current', f },
+    { key: 'price_down', f: scalePrices(f, 0.8), label: 'Prices 20% lower' },
+    { key: 'price_up', f: scalePrices(f, 1.2), label: 'Prices 20% higher' },
+    { key: 'day', f: { ...f, day_of_week: weekend ? 'Wednesday' : 'Saturday' }, label: weekend ? 'On a weekday (Wednesday)' : 'On a weekend (Saturday)' },
+  ];
+  let changed = [];
+  if (whatIf) {
+    let w = f;
+    if (whatIf.price > 0 && snap.context.avg_price > 0) { w = scalePrices(w, whatIf.price / snap.context.avg_price); changed.push('price'); }
+    if (whatIf.capacity > 0) { w = { ...w, venue_capacity: Math.trunc(whatIf.capacity) }; changed.push('capacity'); }
+    rows.push({ key: 'what_if', f: w });
+  }
+  try {
+    const r = await post(`/v2/shadow/${model.name}`, { sha256: model.sha256, rows: rows.map((x) => x.f) }, { timeoutMs: WHAT_IF_TIMEOUT_MS });
+    const preds = r.predictions || [];
+    if (r.may_serve_decisions !== false || preds.length !== rows.length) {
+      return { current: null, sensitivity: null, what_if: whatIf ? { unavailable_reason: 'UNEXPECTED_RESPONSE' } : null, unavailable_reason: 'UNEXPECTED_RESPONSE' };
+    }
+    const at = (key) => preds[rows.findIndex((x) => x.key === key)];
+    const cur = at('current');
+    const current = { sales_48h: cur.sales_48h, low: cur.low, high: cur.high, capacity: f.venue_capacity, stored: false, applied: false };
+    const sensitivity = rows.filter((x) => x.label).map((x) => {
+      const p = at(x.key);
+      return { key: x.key, label: x.label, sales_48h: p.sales_48h, change: Math.round((p.sales_48h - cur.sales_48h) * 10) / 10 };
+    });
+    const wp = whatIf ? at('what_if') : null;
+    return {
+      current, sensitivity,
+      what_if: wp ? { sales_48h: wp.sales_48h, low: wp.low, high: wp.high, inputs_changed: changed, stored: false, applied: false } : null,
+    };
+  } catch (e) {
+    const reason = e.name === 'TimeoutError' ? 'TIMEOUT' : e.status === 409 ? 'ARTIFACT_MISMATCH' : 'ML_SERVICE_UNAVAILABLE';
+    return { current: null, sensitivity: null, what_if: whatIf ? { unavailable_reason: reason } : null, unavailable_reason: reason };
+  }
 }
 
 /** One live shadow call with the organizer's what-if price / capacity. Never stored, never applied. */
@@ -332,7 +393,7 @@ export async function demandWhatIf(event, model, whatIf, post = mlPost) {
   const changed = [];
   if (whatIf.price > 0 && snap.context.avg_price > 0) {
     const k = whatIf.price / snap.context.avg_price;
-    for (const c of ['min_price_rel', 'avg_price_rel', 'max_price_rel']) f[c] = Math.round(f[c] * k * 10000) / 10000;
+    for (const c of PRICE_COLS) f[c] = Math.round(f[c] * k * 10000) / 10000;
     changed.push('price');
   }
   if (whatIf.capacity > 0) { f.venue_capacity = Math.trunc(whatIf.capacity); changed.push('capacity'); }

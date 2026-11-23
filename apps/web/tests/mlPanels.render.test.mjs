@@ -79,6 +79,15 @@ test('demand what-if: says it is not saved and not applied; failures labelled', 
   assert.match(timeout, /did not answer in time/);
 });
 
+test('demand live reading: model number next to the rule, and what moves it', () => {
+  const html = render('DemandInsightPanel', { data: { decision_source: 'rules', rules: { projected_48h_sales: 19, latest_hourly_pace: null }, evaluation, experimental: exp({ latest_logged: null, logged: {}, current: { sales_48h: 14.7, low: 5.8, high: 23.6, stored: false, applied: false }, sensitivity: [{ key: 'price_up', label: 'Prices 20% higher', sales_48h: 13.7, change: -1 }], what_if: null }, { model: 'demand' }) } });
+  assert.match(html, /live call, not saved, not applied/);
+  assert.match(html, /14\.7/);
+  assert.match(html, /Rule estimate/);
+  assert.match(html, /Prices 20% higher/);
+  assert.match(html, /-1 tickets/);
+});
+
 test('crowd panel: missing gate capacity explained; never suggests admission changes', () => {
   const html = render('CrowdInsightPanel', { data: { decision_source: 'rules', rules: { readiness: { ready: false, reason: 'GATE_CAPACITY_MISSING', missingCapacity: ['Gate A'] }, gates: [] }, experimental: exp(null, { model: 'crowd', unavailable_reason: 'NO_SHADOW_PREDICTIONS_YET' }), evaluation } });
   assert.match(html, /set a capacity per hour on Gate A/);

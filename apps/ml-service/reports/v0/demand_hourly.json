@@ -1,0 +1,190 @@
+{
+  "model": "demand_hourly",
+  "title": "Demand after publication (next 24 h)",
+  "label": "sales_next_24h",
+  "kind": "count",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "day_of_week"
+    ],
+    "numeric": [
+      "venue_capacity",
+      "tier_count",
+      "min_price_rel",
+      "avg_price_rel",
+      "max_price_rel",
+      "start_hour",
+      "start_month",
+      "organizer_past_events",
+      "organizer_past_sell_through_48h",
+      "hours_since_sales_open",
+      "days_until_event",
+      "sold_so_far",
+      "sold_last_24h",
+      "sell_through_so_far"
+    ]
+  },
+  "data": {
+    "dataset": "demand_hourly.csv",
+    "rows": 60000,
+    "source": "synthetic-v0",
+    "sha256": "fde1c73ff1bba6906e315bb26bba4a9b8ff3e89569638b0dbcc534f945b0e89b",
+    "from": "2023-01-01T19:00:00+00:00",
+    "to": "2025-12-29T17:00:00+00:00"
+  },
+  "split": {
+    "train_rows": 37128,
+    "val_rows": 6804,
+    "test_rows": 9000,
+    "val_start": "2025-02-17T23:54:00+00:00",
+    "test_start": "2025-07-17T22:27:00+00:00",
+    "purged_train_rows": 1428,
+    "purged_val_rows": 1608,
+    "holdout_groups": 15
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "weighted % error of next-24-hour sales (zero sales handled)",
+  "higher_is_better": false,
+  "test_size": {
+    "events": 750
+  },
+  "complexity_selection": {
+    "measure": "validation error",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.1706,
+        "train_vs_validation": 0.6552,
+        "not_memorising": false
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.1675,
+        "train_vs_validation": 0.7204,
+        "not_memorising": true
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.1999,
+        "train_vs_validation": 0.9073,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "moderate"
+  },
+  "result": {
+    "model": 0.189,
+    "baseline": 0.6731,
+    "improvement": 0.4842,
+    "improvement_95ci": [
+      0.4347,
+      0.5342
+    ]
+  },
+  "details": {
+    "zero_sales_note": null,
+    "test_hours_with_zero_sales": 25
+  },
+  "guards": [
+    {
+      "name": "train error / test error (memorising)",
+      "value": 0.6384,
+      "limit": ">= 0.7",
+      "passed": false
+    }
+  ],
+  "segments": {
+    "organizers_known": {
+      "rows": 8340,
+      "model": 0.1905,
+      "baseline": 0.6739
+    },
+    "organizers_unseen": {
+      "rows": 660,
+      "model": 0.1684,
+      "baseline": 0.6635
+    },
+    "first_day_on_sale": {
+      "rows": 450,
+      "model": 0.3379,
+      "baseline": 1.0771
+    },
+    "last_week_before_event": {
+      "rows": 2012,
+      "model": 0.1016,
+      "baseline": 0.3154
+    }
+  },
+  "learning_curve": {
+    "measure": "test weighted % error (lower is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 3712,
+        "value": 0.3355
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 9282,
+        "value": 0.2254
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 18564,
+        "value": 0.1971
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 37128,
+        "value": 0.189
+      }
+    ],
+    "still_improving": true,
+    "note": "more data would likely still help"
+  },
+  "status": "REJECTED",
+  "reasons": [
+    "guard failed: train error / test error (memorising) = 0.6384 (needs >= 0.7)"
+  ],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "shadow_decision": {
+    "date": "2026-11-23",
+    "decision": "Kept in shadow only. On synthetic 2.2.0 data it is far more accurate than the rule (19% vs 67% weighted error) but fails the memorising guard (train/test error 0.64, needs >= 0.70), so it is REJECTED and never serves decisions. The guard is not changed.",
+    "keep": "next-24-hour sales forecasts for events on sale - tracked, not used",
+    "record": "every hourly shadow prediction, compared with the real next-24-hour sales",
+    "re_evaluate": "on real exports once 30+ events are in the test period (ml/gates.py)",
+    "measures": "weighted % error of next-24-hour sales (main), memorising guard"
+  },
+  "final_model": {
+    "calibration": null,
+    "trained_rows": 60000,
+    "trained_from": "2023-01-01T19:00:00+00:00",
+    "trained_to": "2025-12-29T17:00:00+00:00"
+  },
+  "duration_seconds": 19.2,
+  "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
+  "artifact": "C:/Users/Qasim/AppData/Local/Temp/claude/d9edbd5b55e766ef/7cf8cc8a-eaaf-4bdf-937a-e40ceba83431/scratchpad/art22h\\demand_hourly.joblib"
+}

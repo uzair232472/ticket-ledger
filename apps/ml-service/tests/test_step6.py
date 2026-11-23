@@ -69,8 +69,8 @@ def test_v2_metrics_count_shadow_and_legacy_calls(monkeypatch, registry):
 
 @pytest.mark.parametrize("name", sorted(ALL_SPECS))
 def test_every_model_name_is_shadow_only_or_refused(monkeypatch, registry, name):
-    """A registered model answers with may_serve_decisions false; a name with no artifact (attendance and the
-    Step 5 models) is refused with a clear reason, never answered by a stand-in."""
+    """A registered model answers with may_serve_decisions false; a name with no artifact is refused with a
+    clear reason, never answered by a stand-in."""
     c, _ = _client(monkeypatch)
     if name in registry:
         r = c.post(f"/v2/shadow/{name}", headers=H, json={"sha256": registry[name]["sha256"], "rows": _rows(name, 2)})
@@ -86,4 +86,4 @@ def test_registry_never_allows_decisions(registry):
     for name, m in registry.items():
         assert m["may_serve_decisions"] is False, name
         assert m["source"].startswith("synthetic"), name
-        assert name in SPECS
+        assert name in ALL_SPECS

@@ -37,6 +37,22 @@ export const offerText = (dc) => {
 };
 
 /**
+ * The one intent rule both pages use (Purchase intent and Abandoned checkouts): 40 base, +15 for 3+ views,
+ * +20 seat chosen, +25 checkout started, −10 left a checkout, 95 once bought; kept within 10..99.
+ * HIGH = 75+, MODERATE = 55+, else LOW.
+ */
+export function intentRuleScore({ views = 0, seatChosen = false, checkoutStarted = false, leftCheckout = false, bought = false }) {
+  let score = 40;
+  if (views >= 3) score += 15;
+  if (seatChosen) score += 20;
+  if (checkoutStarted) score += 25;
+  if (leftCheckout) score -= 10;
+  if (bought) score = 95;
+  score = Math.min(99, Math.max(10, score));
+  return { score, level: score >= 75 ? 'HIGH' : score >= 55 ? 'MODERATE' : 'LOW' };
+}
+
+/**
  * Service to aggregate purchase intent analytics, conversion funnels, and attendee engagement for an event
  */
 export const getEventIntentAnalytics = async (eventId, requesterUser) => {
@@ -158,19 +174,23 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
     }
   }
 
-  // Cross-reference completed orders for this event
+  // Completed orders are the truth for who paid: a signed-in person's payments and tickets come from their
+  // orders (the payment_completed / ticket_purchased events are the same purchases, so they are not added again)
+  const paidByUser = new Map();
   for (const ord of orders) {
-    if (ord.status === 'SUCCESSFUL') {
-      paymentCompleters.add(ord.userId);
-      if (ord.tickets && ord.tickets.length > 0) {
-        ticketHolders.add(ord.userId);
-      }
-      if (userSessionMap.has(ord.userId)) {
-        const u = userSessionMap.get(ord.userId);
-        u.payments += 1;
-        u.tickets += (ord.tickets?.length || 1);
-      }
-    }
+    if (ord.status !== 'SUCCESSFUL' && ord.status !== 'PARTIALLY_REFUNDED') continue;
+    paymentCompleters.add(ord.userId);
+    if (ord.tickets && ord.tickets.length > 0) ticketHolders.add(ord.userId);
+    const p = paidByUser.get(ord.userId) || { orders: 0, tickets: 0 };
+    p.orders += 1;
+    p.tickets += ord.tickets?.length || 0;
+    paidByUser.set(ord.userId, p);
+  }
+  for (const u of userSessionMap.values()) {
+    if (!u.userId) continue;
+    const p = paidByUser.get(u.userId);
+    u.payments = p?.orders || 0;
+    u.tickets = p?.tickets || 0;
   }
 
   // If synthetic/low event behavior count in early stage, ensure baseline realism
@@ -221,21 +241,31 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
   const abandonedUsers = [];
   let totalIntentScoreSum = 0;
   let scoredProspectCount = 0;
+  let highIntentCount = 0;
+  let buyersCount = 0;
+  let abandonedCheckouts = 0; // checkout attempts that did not end in a payment (also by people who bought later)
+  let abandonedCheckoutPeople = 0;
+  let signedInWatchers = 0;
 
   for (const [identifier, profile] of userSessionMap.entries()) {
     const hasBought = profile.tickets > 0 || profile.payments > 0;
+    // Every checkout start that did not end in a paid order counts as one abandoned checkout
+    const leftCheckouts = Math.max(profile.checkoutAbandons, profile.checkoutStarts - profile.payments, 0);
+    abandonedCheckouts += leftCheckouts;
+    if (leftCheckouts > 0) abandonedCheckoutPeople += 1;
+    if (hasBought) buyersCount += 1;
+    if (profile.userId) signedInWatchers += 1;
 
     // Rule-based intent score (fixed points per signal; no model). Step 6: labelled score_source 'rules'.
-    let intentScore = 40.0;
-    if (profile.views >= 3) intentScore += 15.0;
-    if (profile.seatSelections >= 1) intentScore += 20.0;
-    if (profile.checkoutStarts >= 1) intentScore += 25.0;
-    if (profile.checkoutAbandons >= 1) intentScore -= 10.0;
-    if (hasBought) intentScore = 95.0;
-
-    intentScore = Math.min(99.0, Math.max(10.0, intentScore));
-    totalIntentScoreSum += intentScore;
-    scoredProspectCount += 1;
+    const { score: intentScore } = intentRuleScore({
+      views: profile.views, seatChosen: profile.seatSelections >= 1, checkoutStarted: profile.checkoutStarts >= 1,
+      leftCheckout: profile.checkoutAbandons >= 1, bought: hasBought,
+    });
+    // The average describes people who have NOT bought yet (buyers are fixed at 95 and would inflate it)
+    if (!hasBought) {
+      totalIntentScoreSum += intentScore;
+      scoredProspectCount += 1;
+    }
 
     let intentLevel = 'LOW';
     let recommendedAction = 'PASSIVE_RETENTION';
@@ -259,6 +289,8 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
       views: profile.views,
       seatSelections: profile.seatSelections,
       checkoutStarts: profile.checkoutStarts,
+      abandonedCheckouts: leftCheckouts,
+      ordersPaid: profile.payments,
       hasPurchased: hasBought,
       intentScore: Math.round(intentScore),
       intentLevel,
@@ -266,13 +298,14 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
       lastActive: profile.lastActive,
     };
 
-    // Classify into Users Likely to Buy
-    if (intentScore >= 55.0) {
+    // Users likely to buy: people who have NOT bought yet with a score of 55+ (reminding a buyer makes no sense)
+    if (intentScore >= 55.0 && !hasBought) {
       usersLikelyToBuy.push(prospectData);
+      if (intentLevel === 'HIGH') highIntentCount += 1;
     }
 
-    // Classify into Abandoned Users
-    if (profile.checkoutAbandons > 0 || (profile.checkoutStarts > 0 && !hasBought) || (profile.seatSelections > 0 && !hasBought)) {
+    // To recover: people who chose seats or started checkout and have NOT bought
+    if (!hasBought && (profile.checkoutAbandons > 0 || profile.checkoutStarts > 0 || profile.seatSelections > 0)) {
       abandonedUsers.push({
         ...prospectData,
         abandonmentStage: profile.checkoutStarts > 0 
@@ -305,11 +338,18 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
     eventDate: event.date,
     companyName: event.company.companyName,
     summary: {
-      totalWatchers: viewedCount,
+      totalWatchers: viewers.size,
+      signedInWatchers,
+      guestWatchers: Math.max(0, userSessionMap.size - signedInWatchers),
       usersLikelyToBuyCount: usersLikelyToBuy.length,
+      highIntentCount,
+      moderateIntentCount: usersLikelyToBuy.length - highIntentCount,
+      buyersCount,
       abandonedUsersCount: abandonedUsers.length,
+      abandonedCheckouts,
+      abandonedCheckoutPeople,
       ticketsIssuedCount: ticketIssuedCount,
-      overallConversionRate: Math.min(100, Math.round((ticketIssuedCount / viewedCount) * 100)),
+      overallConversionRate: viewers.size ? Math.min(100, Math.round((ticketIssuedCount / viewers.size) * 100)) : 0,
       avgIntentScore,
     },
     funnel,
@@ -442,6 +482,47 @@ export const sendBatchAttendeeReminders = async ({
 };
 
 /**
+ * Cart value from what was recorded: the newest checkout amount (cartValue / totalAmount), else the newest
+ * held seat's price, else the event's cheapest tier (an estimate, labelled as such). Never a made-up figure.
+ */
+function cartValueOf(item, event) {
+  const newest = [...item.allActions].sort((x, y) => y.time - x.time);
+  for (const a of newest) {
+    const v = Number(a.metadata?.cartValue ?? a.metadata?.totalAmount);
+    if (v > 0) return { cartValue: v, cartValueSource: 'recorded' };
+  }
+  for (const a of newest) {
+    const v = Number(a.metadata?.price);
+    if ((a.action === 'seat_locked' || a.action === 'seat_selected') && v > 0) return { cartValue: v, cartValueSource: 'seat_price' };
+  }
+  const prices = (event?.tiers || []).map((t) => Number(t.price)).filter((x) => x > 0);
+  return { cartValue: prices.length ? Math.min(...prices) : 0, cartValueSource: prices.length ? 'cheapest_tier' : 'unknown' };
+}
+
+/**
+ * Why the person left: a RECORDED reason when the app logged one (payment failed, removed tickets, seat hold ran
+ * out), otherwise only what the steps show (labelled as not recorded). No reason is invented.
+ */
+function abandonReason(item) {
+  const acts = item.allActions;
+  const reasons = new Set(acts.map((a) => a.metadata?.reason).filter(Boolean));
+  const did = (name) => acts.some((a) => a.action === name);
+  if (did('payment_failed') || reasons.has('payment_failure') || reasons.has('payment_hesitation')) {
+    return { likelyReason: 'PAYMENT_FAILED', reasonSource: 'recorded', reasonDetail: 'A payment attempt failed or was not completed at the payment step.', recommendedAction: 'OFFER_PAYMENT_HELP' };
+  }
+  if (did('checkout_cancelled') || reasons.has('user_discarded_tickets') || reasons.has('CUSTOMER_CANCELLED')) {
+    return { likelyReason: 'REMOVED_TICKETS', reasonSource: 'recorded', reasonDetail: 'They removed the tickets from their cart themselves.', recommendedAction: 'SEND_REMINDER_WITH_DISCOUNT' };
+  }
+  if (did('checkout_expired') || did('seat_hold_released') || reasons.has('seat_hold_released') || reasons.has('HOLD_EXPIRED')) {
+    return { likelyReason: 'HOLD_EXPIRED', reasonSource: 'recorded', reasonDetail: 'The 10-minute seat hold ran out before they paid.', recommendedAction: 'SEND_REMINDER' };
+  }
+  if (item.startedCheckout) {
+    return { likelyReason: 'LEFT_AT_CHECKOUT', reasonSource: 'steps', reasonDetail: 'Opened checkout and left without paying. No reason was recorded.', recommendedAction: 'SEND_REMINDER' };
+  }
+  return { likelyReason: 'LEFT_AFTER_SEAT', reasonSource: 'steps', reasonDetail: 'Chose a seat but never opened checkout. No reason was recorded.', recommendedAction: 'SEND_REMINDER' };
+}
+
+/**
  * MODULE 18: Global Abandoned Intent Dashboard
  * Evaluates attendees who:
  * - viewed event,
@@ -524,7 +605,7 @@ export const getAbandonedIntentDashboard = async ({
   const orders = await prisma.order.findMany({
     where: {
       eventId: { in: accessibleEventIds },
-      status: 'SUCCESSFUL',
+      status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED'] },
     },
     select: { userId: true, eventId: true },
   });
@@ -538,7 +619,7 @@ export const getAbandonedIntentDashboard = async ({
   const tickets = await prisma.ticket.findMany({
     where: {
       eventId: { in: accessibleEventIds },
-      status: 'ACTIVE',
+      status: { in: ['ACTIVE', 'SCANNED'] },
     },
     select: { userId: true, eventId: true },
   });
@@ -604,51 +685,14 @@ export const getAbandonedIntentDashboard = async ({
     const isAbandoned = item.abandonedCheckout || item.startedCheckout || item.selectedSeat;
     if (!isAbandoned) continue;
 
-    // Calculate Purchase Intent Score
-    let score = 45;
-    if (item.views >= 2) score += 10;
-    if (item.selectedSeat) score += 15;
-    if (item.startedCheckout) score += 20;
-    if (item.abandonedCheckout) score -= 10;
-    score = Math.min(95, Math.max(15, score));
-
+    // Same intent rule as the Purchase intent page
+    const { score, level } = intentRuleScore({
+      views: item.views, seatChosen: item.selectedSeat, checkoutStarted: item.startedCheckout, leftCheckout: item.abandonedCheckout,
+    });
     if (minScore && score < Number(minScore)) continue;
 
-    // Calculate approximate cart value
-    const basePrice = item.event?.tiers?.length > 0 
-      ? Number(item.event.tiers[0].price) 
-      : 2500;
-    const cartValue = item.latestMetadata?.cartValue 
-      ? Number(item.latestMetadata.cartValue) 
-      : basePrice * 2;
-
-    // Infer Likely Reason
-    let likelyReason = 'PAYMENT_HESITATION';
-    let reasonDetail = 'Attendee hesitated during final payment confirmation.';
-    let recommendedAction = 'SEND_10_PERCENT_DISCOUNT';
-
-    const explicitReason = item.latestMetadata?.reason;
-    if (explicitReason === 'payment_hesitation' || explicitReason === 'payment_failure') {
-      likelyReason = 'PAYMENT_FRICTION';
-      reasonDetail = 'Friction during payment gateway interaction.';
-      recommendedAction = 'OFFER_PAYMENT_HELP'; // JazzCash / EasyPaisa are disabled (R0); suggest help with payment
-    } else if (cartValue >= 7000) {
-      likelyReason = 'HIGH_TICKET_PRICE';
-      reasonDetail = 'Cart total exceeded price sensitivity threshold for this venue.';
-      recommendedAction = 'OFFER_FLEXIBLE_INSTALLMENT_OR_DISCOUNT';
-    } else if (item.selectedSeat && !item.startedCheckout) {
-      likelyReason = 'SEAT_LOCK_TIMEOUT';
-      reasonDetail = '10-minute Redis seat lock expired before proceeding to checkout.';
-      recommendedAction = 'HOLD_SEATS_EXTRA_15_MINUTES';
-    } else if (item.views >= 4) {
-      likelyReason = 'COMPARISON_SHOPPING';
-      reasonDetail = 'Multiple view cycles indicate comparison across dates or tier enclosures.';
-      recommendedAction = 'SEND_LIMITED_INVENTORY_ALERT';
-    } else {
-      likelyReason = 'BROWSER_HESITATION';
-      reasonDetail = 'Attendee closed session prior to completing checkout.';
-      recommendedAction = 'DISPATCH_EVENT_REMINDER';
-    }
+    const { cartValue, cartValueSource } = cartValueOf(item, eventMap.get(item.eventId));
+    const { likelyReason, reasonDetail, recommendedAction, reasonSource } = abandonReason(item);
 
     if (reason && reason !== 'ALL' && likelyReason !== reason) {
       continue;
@@ -680,10 +724,12 @@ export const getAbandonedIntentDashboard = async ({
       lastAction: item.lastAction,
       lastActionTime: item.lastActionTime,
       intentScore: Math.round(score),
-      intentLevel: score >= 70 ? 'HIGH' : score >= 45 ? 'MODERATE' : 'LOW',
+      intentLevel: level,
       cartValue,
+      cartValueSource,
       likelyReason,
       reasonDetail,
+      reasonSource,
       recommendedAction,
       hasViewed: item.views > 0,
       hasSelectedSeat: item.selectedSeat,
@@ -698,8 +744,8 @@ export const getAbandonedIntentDashboard = async ({
   const totalCount = abandonedList.length;
   const avgIntent = totalCount > 0 ? Math.round(totalScoreSum / totalCount) : 0;
 
-  // Determine top reason
-  let topReason = 'PAYMENT_HESITATION';
+  // Determine top reason (none when nobody is listed)
+  let topReason = null;
   let topReasonMax = 0;
   for (const [r, count] of Object.entries(reasonCounts)) {
     if (count > topReasonMax) {

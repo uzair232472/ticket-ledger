@@ -16,6 +16,37 @@ import '../components/ml/ml.css';
 const when = (d) => (d ? new Date(d).toLocaleString() : '—');
 const FEATURE_NAMES = { A: 'Purchase intent', B: 'Abandoned checkout', C: 'Fraud', D: 'Customer behaviour', E: 'Recommendations', F: 'Demand', G: 'Attendance', H: 'Crowd flow' };
 
+// Offline measures are shares (0..1) or counts; shares are shown as percentages
+const isShare = (measure) => /share|precision|%|rate/i.test(measure || '');
+const fmtMeasure = (v, measure) => (v == null ? '—' : isShare(measure) ? `${(Number(v) * 100).toFixed(1)}%` : Number(v).toFixed(1));
+
+/** The offline test: the model against the current rule on the newest 15% of the training history. */
+function OfflineResult({ r }) {
+  if (!r) return null;
+  const aiBetter = r.higher_is_better ? r.model > r.rule : r.model < r.rule;
+  const passed = r.status === 'PASSED';
+  const [lo, hi] = r.improvement_95ci || [];
+  return (
+    <div className={`tl-ml-vs ${passed ? 'is-pass' : 'is-fail'}`}>
+      <p className="tl-ml-vs-head">
+        <b>Tested offline: AI vs rule</b>
+        <Badge tone={passed ? 'green' : 'rose'}>{passed ? 'Passed' : 'Rejected'}</Badge>
+      </p>
+      <p className="tl-ml-vs-measure">{r.measure} ({r.higher_is_better ? 'higher' : 'lower'} is better)</p>
+      <div className="tl-ml-vs-grid">
+        <div className={aiBetter ? 'win' : ''}><span>AI model</span><strong>{fmtMeasure(r.model, r.measure)}</strong></div>
+        <div className={!aiBetter ? 'win' : ''}><span>Current rule</span><strong>{fmtMeasure(r.rule, r.measure)}</strong></div>
+      </div>
+      <p className="tl-ml-vs-note">
+        {passed
+          ? `The AI is better, and stays better in 95% of re-tests (improvement ${fmtMeasure(lo, r.measure)} to ${fmtMeasure(hi, r.measure)}).`
+          : (r.reasons[0] ? `Not good enough: ${r.reasons[0].replace(/^not clearly better than the baseline: /, 'not reliably better than the rule; ')}.` : 'Did not pass every check.')}
+        {' '}On synthetic data; real-data accuracy comes later.
+      </p>
+    </div>
+  );
+}
+
 function ModelCard({ m }) {
   const reg = m.registered;
   const sh = m.rows.shadow;
@@ -35,6 +66,8 @@ function ModelCard({ m }) {
           Shadow: {num(sh.predicted)} scored, {num(sh.skipped)} skipped, {num(sh.errors)} failed ({num(sh.errors_24h)} in 24 h). Offline check: {reg.offline_evaluation}. Never serves decisions.
         </p>
       )}
+      <OfflineResult r={m.offline_result} />
+      {m.when && <p className="tl-pn-sub" style={{ marginTop: 8 }}><b>When it runs:</b> {m.when}</p>}
       {m.artifact_in_ml_service && <p className="tl-pn-sub">ML service artifact: {m.artifact_in_ml_service.fingerprint_ok ? 'fingerprint verified' : m.artifact_in_ml_service.problem}</p>}
       {m.rows.reasons.length > 0 && (
         <ul className="tl-pn-sub" style={{ margin: '6px 0 0', paddingLeft: 18 }}>
@@ -100,7 +133,13 @@ export default function AiMonitor() {
 
           <h2 className="tl-df-section">Recommendations and customer behaviour</h2>
           <div className="tl-ml-models">
-            <Panel icon={Sparkles} title={`E. ${FEATURE_NAMES.E}`} sub="Rule-based ranking with a control group. Both groups see the same layout." action={<Badge tone={data.flags.recommendations ? 'green' : 'grey'}>{data.flags.recommendations ? 'Shown' : 'Hidden (ML_REC_DISPLAY off)'}</Badge>}>
+            <Panel icon={Sparkles} title={`E. ${FEATURE_NAMES.E}`} sub="Rule-based ranking with a control group. Both groups see the same layout." action={<Badge tone={data.flags.recommendations ? 'green' : 'amber'}>{data.flags.recommendations ? 'Shown' : 'Switched off'}</Badge>}>
+              {!data.flags.recommendations && (
+                <p className="tl-ml-warn" role="note" style={{ marginTop: 0 }}>
+                  Switched off: customers do not see recommendation rows, so every count below stays 0. Turn on with
+                  ML_REC_DISPLAY=true in the API settings to start the experiment.
+                </p>
+              )}
               <div className="tl-ml-scroll">
                 <table className="tl-ml-table">
                   <thead><tr><th scope="col">Group</th><th scope="col" className="num">Lists served</th><th scope="col" className="num">Seen on screen</th><th scope="col" className="num">Clicks</th></tr></thead>

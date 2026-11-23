@@ -25,10 +25,10 @@ const mlDir = path.join(here, '../ml-service');
 const python = [path.join(mlDir, '.venv/Scripts/python.exe'), path.join(mlDir, '.venv/bin/python')].find((p) => fs.existsSync(p));
 
 const { evaluateCheckoutBotRules } = await import('./src/services/security/checkoutBotRules.js');
-const { ruleDemandForecast, prelaunchRuleInputs } = await import('./src/services/demandRules.js');
+const { ruleDemandForecast, prelaunchRuleInputs, prelaunchEstimate, tiersWithPrices, publishSuggestion, priceNote } = await import('./src/services/demandRules.js');
 const { fraudPayload } = await import('./src/services/mlService.js');
 const { mlFlags, publicMlFlags } = await import('./src/config/mlFlags.js');
-const { MINIMUMS, evaluationBlock, modelBlock, envelope, shadowRowStats, probabilityBands, demandWhatIf } = await import('./src/services/ml/insights.js');
+const { MINIMUMS, evaluationBlock, modelBlock, envelope, shadowRowStats, probabilityBands, demandWhatIf, demandLive } = await import('./src/services/ml/insights.js');
 const { forViewer } = await import('./src/controllers/mlInsightsController.js');
 const { makeMlLegacyRateLimiter } = await import('./src/middlewares/rateLimit.js');
 const prisma = (await import('./src/config/prisma.js')).default;
@@ -110,6 +110,45 @@ test('pre-launch rule inputs are the page\'s previous inline computation', () =>
   assert.equal(params.isWeekend, 1); // 2026-12-05 is a Saturday
   const sim = prelaunchRuleInputs(ev, { simulatedPrice: '2500', simulatedCapacity: '20000', simulatedMarketingTier: 'LOW' });
   assert.deepEqual([sim.capacity, sim.avgPrice, sim.params.marketingTier], [20000, 2500, 'LOW']);
+});
+
+test('pre-launch page rule v2: real capacity, event-dependent demand level, weighted revenue, listed factors', () => {
+  const now = new Date('2026-11-01T00:00:00Z');
+  const tiers = [{ id: 's', price: 3000, totalQuantity: 19 }, { id: 'g', price: 6000, totalQuantity: 19 }, { id: 'p', price: 12000, totalQuantity: 19 }];
+  const ev = { type: 'MUSIC_CONCERT', city: 'Lahore', date: '2026-12-25', time: '19:00', status: 'DRAFT', tiers };
+  const r = prelaunchEstimate(ev, { now });
+  assert.equal(r.capacity, 57, 'no 15,000 floor: the real ticket count');
+  assert.ok(r.projected_48h_sales <= 57);
+  assert.equal(r.avg_price, 7000);
+  // revenue = each tier sells the same share of its own quantity
+  const each = Math.floor(19 * r.sellout_probability);
+  assert.equal(r.projected_revenue_pkr, each * 3000 + each * 6000 + each * 12000);
+  assert.deepEqual(r.factors.map((f) => f.key), ['category', 'price', 'day', 'lead']);
+  assert.equal(r.prediction_source, 'rules');
+
+  // The demand level follows the event: cheap weekend cricket vs. very expensive weekday conference
+  const cheap = prelaunchEstimate({ type: 'CRICKET_MATCH', date: '2026-12-26', time: '14:00', tiers: [{ id: 'a', price: 1500, totalQuantity: 1000 }] }, { now });
+  const dear = prelaunchEstimate({ type: 'CONFERENCE', date: '2026-12-23', time: '10:00', tiers: [{ id: 'a', price: 20000, totalQuantity: 1000 }] }, { now });
+  assert.equal(cheap.demand_level, 'VERY_HIGH');
+  assert.equal(dear.demand_level, 'LOW');
+  assert.ok(cheap.projected_48h_sales > dear.projected_48h_sales);
+
+  // A higher price never raises the estimate
+  const up = prelaunchEstimate(ev, { now, tiers: tiersWithPrices(tiers, { prices: { s: 9000, g: 15000, p: 25000 } }) });
+  assert.ok(up.sellout_probability <= r.sellout_probability);
+  assert.equal(tiers[0].price, 3000, 'what-if prices never change the stored tiers');
+  // capacityLimit caps the tiers' total
+  assert.equal(prelaunchEstimate({ ...ev, capacityLimit: 40 }, { now }).capacity, 40);
+});
+
+test('pre-launch page: live events are not told when to publish; price notes use the weighted price', () => {
+  const live = publishSuggestion({ type: 'MUSIC_CONCERT', status: 'PUBLISHED', date: '2026-12-25', publishAt: new Date('2026-11-01T10:00:00Z') });
+  assert.equal(live.already_published, true);
+  assert.equal(live.time, 'Already on sale');
+  const soon = publishSuggestion({ type: 'MUSIC_CONCERT', status: 'DRAFT', date: '2026-11-05' }, { now: new Date('2026-11-01T00:00:00Z') });
+  assert.equal(soon.time, 'As soon as possible');
+  assert.equal(priceNote({ avgPrice: 7000, benchmark: 4000, share: 0.4 }).level, 'HIGH_PRICE_WARNING');
+  assert.equal(priceNote({ avgPrice: 4000, benchmark: 4000, share: 0.4 }).level, 'OPTIMAL_PRICE');
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -217,7 +256,7 @@ test('legacy ML endpoints: the per-admin rate limit answers 429 past the limit',
   assert.deepEqual(codes, [200, 200, 429]);
 });
 
-test('demand what-if: one call with a 300 ms timeout, never stored or applied; failures are labelled', async () => {
+test('demand what-if: one call with a short timeout, never stored or applied; failures are labelled', async () => {
   const calls = [];
   const model = { name: 'demand', sha256: 'b'.repeat(64) };
   // demandSnapshot needs the database: a missing event gives a labelled INPUTS_MISSING, not an exception
@@ -225,7 +264,11 @@ test('demand what-if: one call with a 300 ms timeout, never stored or applied; f
   assert.match(missing.unavailable_reason, /^INPUTS_MISSING/);
   assert.equal(calls.length, 0);
   const ins = src('src/services/ml/insights.js');
-  assert.match(ins, /const WHAT_IF_TIMEOUT_MS = 300;/);
+  assert.match(ins, /const WHAT_IF_TIMEOUT_MS = Number\(process\.env\.ML_WHAT_IF_TIMEOUT_MS\) \|\| 1500;/);
+  const live = await demandLive({ id: '00000000-0000-0000-0000-000000000000' }, model, null, async () => { calls.push(1); });
+  assert.match(live.unavailable_reason, /^INPUTS_MISSING/);
+  assert.equal(live.current, null);
+  assert.equal(calls.length, 0);
   assert.match(ins, /stored: false, applied: false/);
 });
 

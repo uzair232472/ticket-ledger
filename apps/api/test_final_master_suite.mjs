@@ -230,7 +230,7 @@ test('MODULE 20 - TicketLedger Final Master Verification Suite (All 20 Modules)'
 
     const omer = data.data.abandonedUsers.find((u) => u.user.email === 'omer.abandoned@gmail.com');
     assert.ok(omer, 'Omer Farooq must appear as an abandoned prospect');
-    assert.equal(omer.likelyReason, 'PAYMENT_FRICTION');
+    assert.equal(omer.likelyReason, 'PAYMENT_FAILED');
     assert.equal(omer.cartValue, 7500);
 
     // Test 1-Click Reminder

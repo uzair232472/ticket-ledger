@@ -104,6 +104,11 @@ export function IntentInsightPanel({ eventId, data: given }) {
     <Panel icon={TrendingUp} title="Visit scoring summary" sub="Totals only. No individual customer's score is shown here." action={<RuleTag />}>
       <Figures items={[['Visits scored', num(r.visits_scored)], ['High (rule)', num(r.by_level?.HIGH)], ['Moderate (rule)', num(r.by_level?.MODERATE)], ['Low (rule)', num(r.by_level?.LOW)]]} />
       <p className="tl-pn-sub" style={{ marginTop: 8 }}>Rule: {r.rule}.</p>
+      <p className="tl-pn-sub" style={{ marginTop: 4 }}>
+        Different source from the cards above: this box counts single VISITS (one sitting, ended after 30 minutes idle) by
+        signed-in people, scored by a background job every 15 minutes, which looks back 48 hours. Older activity and
+        guests are not scored here{!r.visits_scored ? ', which is why it can show 0 while the funnel shows people' : ''}.
+      </p>
       <ExperimentalBlock experimental={data.experimental} evaluation={data.evaluation}>
         <Figures items={[...shadowFigures(v), ['Average probability', pct(v?.mean_probability)], v?.same_direction_as_rule && ['Points the same way as the rule', pct(v.same_direction_as_rule.share)]]} />
         <Bands bands={v?.probability_bands} label="Model purchase probability" />
@@ -147,7 +152,23 @@ export function DemandInsightPanel({ eventId, price, data: given }) {
     <Panel icon={LineIcon} title="Experimental demand model" sub="Shown next to the rule estimate for comparison only. It never changes prices or publishes anything." action={<ExperimentalTag />}>
       {data.rules.latest_hourly_pace && <p className="tl-pn-sub" style={{ marginTop: 0 }}>Sold in the last 24 hours (logged {new Date(data.rules.latest_hourly_pace.as_of).toLocaleString()}): <b>{num(data.rules.latest_hourly_pace.sold_last_24h)}</b></p>}
       <ExperimentalBlock experimental={data.experimental} evaluation={data.evaluation} open>
-        {v?.latest_logged && <Figures items={[['Model: first 48 h', num(v.latest_logged.sales_48h)], ['Range low', num(v.latest_logged.low)], ['Range high', num(v.latest_logged.high)]]} />}
+        {v?.current && (
+          <>
+            <p>Model reading now, at the saved prices (live call, not saved, not applied):</p>
+            <Figures items={[['Model: first 48 h', num(v.current.sales_48h)], ['Range low', num(v.current.low)], ['Range high', num(v.current.high)], ['Rule estimate', num(data.rules.projected_48h_sales)]]} />
+          </>
+        )}
+        {v?.sensitivity?.length > 0 && (
+          <>
+            <p style={{ marginTop: 10 }}>What moves the model&apos;s number (same event, one input changed):</p>
+            <ul className="tl-ml-sens">
+              {v.sensitivity.map((s) => (
+                <li key={s.key}><span>{s.label}</span><b className={s.change > 0 ? 'up' : s.change < 0 ? 'down' : ''}>{s.change > 0 ? '+' : ''}{num(s.change)} tickets</b></li>
+              ))}
+            </ul>
+          </>
+        )}
+        {v?.latest_logged && <><p style={{ marginTop: 10 }}>Last logged prediction ({new Date(v.latest_logged.as_of).toLocaleDateString()}):</p><Figures items={[['Model: first 48 h', num(v.latest_logged.sales_48h)], ['Range low', num(v.latest_logged.low)], ['Range high', num(v.latest_logged.high)]]} /></>}
         {w && (w.unavailable_reason
           ? <p>What-if: {reasonText(w.unavailable_reason)}</p>
           : <><p>What-if at your edited average price (not saved, not applied):</p><Figures items={[['Model: first 48 h', num(w.sales_48h)], ['Range low', num(w.low)], ['Range high', num(w.high)]]} /></>)}

@@ -25,21 +25,21 @@
   },
   "data": {
     "dataset": "attendance_no_show.csv",
-    "rows": 50000,
+    "rows": 150000,
     "source": "synthetic-v0",
-    "sha256": "5746167a46c53121be9dc042d7d58128da43363d745d6d442c7479e757aa8774",
-    "from": "2023-01-23T15:00:00+00:00",
-    "to": "2025-12-29T10:00:00+00:00"
+    "sha256": "f29f55c61b1a3314b2b63ba53640815fe6d94a1849c739eabc6bb0f0ad695e11",
+    "from": "2023-01-10T09:00:00+00:00",
+    "to": "2025-12-29T16:00:00+00:00"
   },
   "split": {
-    "train_rows": 31408,
-    "val_rows": 6611,
-    "test_rows": 7500,
-    "val_start": "2025-04-04T22:11:59.999999744+00:00",
-    "test_start": "2025-08-15T15:54:00.000000256+00:00",
-    "purged_train_rows": 100,
-    "purged_val_rows": 100,
-    "holdout_groups": 1491
+    "train_rows": 94552,
+    "val_rows": 20016,
+    "test_rows": 22500,
+    "val_start": "2025-03-07T20:59:59.999999232+00:00",
+    "test_start": "2025-07-30T17:41:59.999999744+00:00",
+    "purged_train_rows": 250,
+    "purged_val_rows": 300,
+    "holdout_groups": 1795
   },
   "leakage_checks": "passed",
   "gates": {
@@ -51,6 +51,7 @@
     "min_test_events_demand": 100,
     "min_test_events_attendance": 30,
     "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
     "max_calibration_error": 0.05,
     "max_false_flag_rate": 0.01,
     "min_range_coverage": 0.75,
@@ -62,85 +63,90 @@
   "main_measure": "average error in people attending per event",
   "higher_is_better": false,
   "test_size": {
-    "positives (rare outcome)": 1181,
-    "other outcome": 6319,
-    "events": 150
+    "positives (rare outcome)": 3485,
+    "other outcome": 19015,
+    "events": 450
   },
   "complexity_selection": {
     "measure": "validation AUC",
     "levels": [
       {
         "level": "flexible",
-        "validation_score": 0.6297,
-        "train_vs_validation": 0.1104,
-        "not_memorising": false
+        "validation_score": 0.6755,
+        "train_vs_validation": 0.0325,
+        "not_memorising": true
       },
       {
         "level": "moderate",
-        "validation_score": 0.6323,
-        "train_vs_validation": 0.059,
-        "not_memorising": false
+        "validation_score": 0.677,
+        "train_vs_validation": 0.0117,
+        "not_memorising": true
       },
       {
         "level": "simple",
-        "validation_score": 0.6379,
-        "train_vs_validation": 0.0372,
+        "validation_score": 0.6777,
+        "train_vs_validation": 0.0066,
         "not_memorising": true
       }
     ],
     "chosen": "simple"
   },
   "result": {
-    "model": 393.355,
-    "baseline": 432.7696,
-    "improvement": 39.4146,
+    "model": 428.39,
+    "baseline": 478.5691,
+    "improvement": 50.1792,
     "improvement_95ci": [
-      -31.9056,
-      123.0016
+      11.5599,
+      86.6236
     ]
   },
   "details": {
-    "test_auc": 0.638,
-    "test_brier": 0.1298,
-    "current_fixed_rule_error": 638.7,
-    "no_show_threshold": 0.8507,
-    "average_event_attendance": 6781.1
+    "test_auc": 0.6835,
+    "test_brier": 0.1228,
+    "current_fixed_rule_error": 673.9,
+    "no_show_threshold": 0.8574,
+    "average_event_attendance": 6685.4
   },
   "guards": [
     {
       "name": "train AUC - test AUC (memorising)",
-      "value": 0.0351,
+      "value": 0.0005,
       "limit": "<= 0.05",
       "passed": true
     },
     {
       "name": "calibration error (ECE)",
-      "value": 0.02,
+      "value": 0.0069,
       "limit": "<= 0.05",
       "passed": true
     },
     {
       "name": "per-ticket balanced accuracy vs baseline (0.5)",
-      "value": 0.6084,
+      "value": 0.6363,
       "limit": ">= 0.5 (not worse)",
       "passed": true
     }
   ],
   "segments": {
     "customers_known": {
-      "rows": 4850,
-      "model": 328.777,
-      "baseline": 2413.9402
+      "rows": 17264,
+      "model": 355.8413,
+      "baseline": 1660.6101
     },
     "customers_unseen": {
-      "rows": 2650,
-      "model": 209.22,
-      "baseline": 4404.015
+      "rows": 5236,
+      "model": 177.643,
+      "baseline": 5160.5132
     },
     "first_time_attendees": {
-      "rows": 1694,
-      "model": 168.5725,
-      "baseline": 5258.1215
+      "rows": 2106,
+      "model": 99.4435,
+      "baseline": 6093.1094
+    },
+    "returning_attendees": {
+      "rows": 20394,
+      "model": 396.7822,
+      "baseline": 787.1622
     }
   },
   "learning_curve": {
@@ -148,31 +154,34 @@
     "points": [
       {
         "train_fraction": 0.1,
-        "train_rows": 3140,
-        "value": 0.5886
+        "train_rows": 9455,
+        "value": 0.6658
       },
       {
         "train_fraction": 0.25,
-        "train_rows": 7852,
-        "value": 0.623
+        "train_rows": 23638,
+        "value": 0.6742
       },
       {
         "train_fraction": 0.5,
-        "train_rows": 15704,
-        "value": 0.6273
+        "train_rows": 47276,
+        "value": 0.6768
       },
       {
         "train_fraction": 1.0,
-        "train_rows": 31408,
-        "value": 0.64
+        "train_rows": 94552,
+        "value": 0.6838
       }
     ],
     "still_improving": true,
     "note": "more data would likely still help"
   },
-  "status": "REJECTED",
-  "reasons": [
-    "not clearly better than the baseline: 95% interval of the improvement is [-31.9056, 123.0016]"
-  ],
-  "duration_seconds": 7.5
+  "status": "PASSED",
+  "reasons": [],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "duration_seconds": 42.9,
+  "recommendation": "KEEP_CURRENT: trained on synthetic data",
+  "artifact": "C:/Users/Qasim/AppData/Local/Temp/claude/d9edbd5b55e766ef/7cf8cc8a-eaaf-4bdf-937a-e40ceba83431/scratchpad/art22\\attendance.joblib"
 }

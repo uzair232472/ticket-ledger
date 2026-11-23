@@ -2,6 +2,7 @@ import prisma from '../config/prisma.js';
 import { recordProfileView } from '../services/ml/fraudReview.js';
 import { getScopedEventIds } from '../services/accessService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
+import { behaviourReport, customerTimeline } from '../services/behaviourReport.js';
 
 /**
  * 1. Track a behavioral event from client or background
@@ -117,4 +118,29 @@ export default {
   getMyBehaviorProfile,
   getUserBehaviorProfileById,
   linkSessionToUser,
+};
+
+/**
+ * 5. Super admin behaviour report: what happened, on which event, by which customer (counts only, no model)
+ */
+export const getBehaviourReport = async (req, res) => {
+  try {
+    const { days, eventId, scope } = req.query;
+    const data = await behaviourReport({ days, eventId: typeof eventId === 'string' && eventId ? eventId : null, scope });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('[BehaviorController] getBehaviourReport error:', error);
+    return res.status(error.status || 500).json({ success: false, message: error.message });
+  }
+};
+
+/** 6. One customer's timeline (super admin) */
+export const getCustomerTimeline = async (req, res) => {
+  try {
+    const { eventId, limit } = req.query;
+    const data = await customerTimeline({ userId: req.params.userId, eventId: typeof eventId === 'string' && eventId ? eventId : null, limit });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(error.status || 500).json({ success: false, message: error.message });
+  }
 };
