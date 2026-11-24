@@ -366,7 +366,11 @@ export async function autoProvisionVenueLayout(eventId) {
 export async function getAvailability(eventId, userId) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { id: true, name: true, venue: true, city: true, date: true, time: true, status: true, type: true, bannerUrl: true, cardImageUrl: true, tiers: { select: { id: true, name: true, price: true } } },
+    select: {
+      id: true, name: true, venue: true, city: true, date: true, time: true, status: true, type: true, bannerUrl: true, cardImageUrl: true, tiers: { select: { id: true, name: true, price: true } },
+      // Entry gates (name + the ticket types each accepts; empty = all), shown on the 3D seat card
+      gates: { where: { active: true, type: { not: 'EXIT' } }, select: { name: true, allowedTierIds: true }, orderBy: { sortOrder: 'asc' } },
+    },
   });
   if (!event) throw new VenueError(404, 'Event not found');
   const layout = await prisma.venueLayout.findFirst({ where: { eventId, status: 'PUBLISHED' }, orderBy: { version: 'desc' } });

@@ -5,14 +5,14 @@ import {
   LayoutTemplate, Minus, MousePointer2, PenTool, Plus, Redo2, RefreshCw, Save, Send, Square, Table2, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
 import api from '../utils/api';
-import { TEMPLATES, assignTiers, buildTemplate, layoutInventory, newSectionId, round, validateLayout } from '@venue-core';
+import { TEMPLATES, TEAM_NAME_MAX, applySightScreens, assignTiers, buildTemplate, layoutInventory, newSectionId, round, sightScreenCount, sightScreenSeats, validateLayout, view3dOf } from '@venue-core';
 import VenueMap from '../components/venue/VenueMap';
 import VenueBooking from '../components/venue/VenueBooking';
 import { previewAdapter } from '../components/venue/adapters';
 import EditorOverlay from '../components/venue/editor/EditorOverlay';
 import SectionInspector from '../components/venue/editor/SectionInspector';
 import MiniPlan from '../components/venue/editor/MiniPlan';
-import { ConfirmDialog, NumberField, SelectField, TextField } from '../components/venue/editor/fields';
+import { ColorField, ConfirmDialog, NumberField, Segmented, SelectField, TextField } from '../components/venue/editor/fields';
 import { formatPkr, generated, tierPalette } from '../components/venue/venueTheme';
 import { ACCEPT_ATTR, readImageSize } from '../utils/eventImageSpecs';
 import '../components/venue/venue.css';
@@ -966,6 +966,37 @@ export default function VenueEditor() {
                     </>
                   )}
                 </section>
+                {layout.feature?.kind === 'cricket' && (() => {
+                  const v3 = view3dOf(layout);
+                  // Typed text is kept as typed (spaces included); the 3D view trims it when drawing
+                  const setV3 = (patch, key) => update({ ...layout, view3d: { ...v3, teamName: layout.view3d?.teamName ?? '', ...patch } }, key);
+                  const screened = sightScreenCount(layout);
+                  const possible = Object.values(sightScreenSeats(layout)).reduce((n, l) => n + l.length, 0);
+                  const roofs = layout.sections.filter((s) => s.view3d?.roof).length;
+                  return (
+                    <section className="space-y-2.5 pt-3 border-t border-slate-100">
+                      <h3 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">3D stadium</h3>
+                      <p className="text-[11px] text-slate-500">How the ground looks in the customers’ 3D view. Roofs are set per stand: select a stand and turn on “Roof over this stand”{roofs ? ` (${roofs} now)` : ''}.</p>
+                      <TextField label="Team name on the roof" value={layout.view3d?.teamName ?? ''} maxLength={TEAM_NAME_MAX} placeholder="e.g. Lahore Qalandars" onChange={(teamName) => setV3({ teamName }, 'v3-team')} hint={!roofs && v3.teamName ? 'Add a roof to a stand to show it.' : undefined} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <ColorField label="Team colour" value={v3.teamColors[0]} onChange={(c) => setV3({ teamColors: [c, v3.teamColors[1]] }, 'v3-c1')} />
+                        <ColorField label="Second colour" value={v3.teamColors[1]} onChange={(c) => setV3({ teamColors: [v3.teamColors[0], c] }, 'v3-c2')} />
+                      </div>
+                      <Segmented label="Seat colours" value={v3.seatColors} onChange={(seatColors) => setV3({ seatColors })} options={[{ value: 'tiers', label: 'By ticket type' }, { value: 'team', label: 'Team colours' }]} />
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                        <p className="text-[11px] text-slate-600">
+                          <strong className="text-slate-800">Sight screens.</strong>{' '}
+                          {screened ? `${screened} seats behind the sight screens are blocked (not sold), so batters can see the ball.` : `${possible} seats in the front rows behind the sight screens can be blocked so they are not sold.`}
+                        </p>
+                        {screened ? (
+                          <button type="button" className="tl-vm-btn" onClick={() => update(applySightScreens(layout, false))}>Unblock sight-screen seats</button>
+                        ) : (
+                          <button type="button" className="tl-vm-btn" disabled={!possible} onClick={() => update(applySightScreens(layout, true))}>Block seats behind the sight screens</button>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })()}
                 <section className="space-y-2.5 pt-3 border-t border-slate-100">
                   <h3 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Uploaded plan</h3>
                   {layout.background ? (

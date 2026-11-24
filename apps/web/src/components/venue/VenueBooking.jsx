@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { ArrowLeft, List, Minus, Plus, RefreshCw, Users } from 'lucide-react';
@@ -9,6 +9,26 @@ import SeatPopover from './SeatPopover';
 import { getEventVisual } from '../../utils/eventMedia';
 import { SEAT_STATES, formatPkr, generated, geometryBox, reducedMotion, tierPalette } from './venueTheme';
 import './venue.css';
+import './venue3d.css';
+
+// The 3D stadium (Three.js) only downloads when someone opens it
+const Venue3D = lazy(() => import('./Venue3D'));
+const VIEW_KEY = 'tl-venue-view';
+// Checked once per page load, and the test context is released at once: browsers keep only a few 3D contexts
+// alive and drop the oldest, so creating one per render would cost the stadium its own context
+let webglSupport = null;
+const canWebGL = () => {
+  if (webglSupport !== null) return webglSupport;
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    webglSupport = Boolean(gl);
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch {
+    webglSupport = false;
+  }
+  return webglSupport;
+};
 import '../booking/booking.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -162,7 +182,12 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     if (secondsLeft === 0) load();
   }, [secondsLeft, load]);
 
-  const layout = data?.layout?.data || null;
+  // Keep the same plan object until the published version changes: every refresh (holds, live updates) returns a
+  // fresh copy, and a new object would make the 3D stadium rebuild and the 2D map regenerate every seat
+  const layoutRef = useRef({ key: null, data: null });
+  const layoutKey = data?.layout ? `${data.layout.id}:${data.layout.version}` : null;
+  if (layoutKey !== layoutRef.current.key) layoutRef.current = { key: layoutKey, data: data?.layout?.data || null };
+  const layout = layoutRef.current.data;
   // The map area takes the drawn plan's own proportions (plus the camera's fit padding), so the whole
   // venue fills the available width instead of shrinking into a fixed, shallow box
   const planRatio = useMemo(() => {
@@ -265,9 +290,11 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
       await fn();
       await load();
       if (okText) say(okText, 'ok');
+      return true;
     } catch (e) {
       say(e.message, 'error');
       await load();
+      return false;
     } finally {
       setPending((p) => {
         const n = new Set(p);
@@ -491,6 +518,60 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     navigate(`/events/${eventId}/checkout`, { state: { eventId, from: 'seats' } });
   };
 
+  // ---------- 3D stadium view (cricket grounds for now) ----------
+  const has3d = Boolean(layout?.feature?.kind === 'cricket' && canWebGL());
+  const [view3d, setView3d] = useState(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) !== '2d';
+    } catch {
+      return true;
+    }
+  });
+  const show3d = has3d && view3d;
+  const chooseView = (want3d) => {
+    setView3d(want3d);
+    try {
+      localStorage.setItem(VIEW_KEY, want3d ? '3d' : '2d');
+    } catch {
+      // not remembered: fine
+    }
+    setPop(null);
+    setTip(null);
+    // Back on the 2D plan: frame the section that was open in 3D
+    if (!want3d && focusId) requestAnimationFrame(() => mapRef.current?.fitSection(focusId, { duration: 0 }));
+  };
+  // State of any seat on the ground (the 2D map only needs the open section's)
+  const stateOf = useCallback(
+    (key, seat) => {
+      if (pending.has(key)) return 'pending';
+      if (mineByKey.has(key)) return 'mine';
+      const u = data?.unavailable?.[key];
+      if (u) return CODE[u];
+      return seat?.blocked ? 'blocked' : 'available';
+    },
+    [data, mineByKey, pending]
+  );
+  const open3dSection = (s) => {
+    // Standing zones and tables keep their 2D controls (quantity picker, whole tables)
+    if ((s.booking || 'seats') !== 'seats') {
+      chooseView(false);
+      requestAnimationFrame(() => openSection(s));
+      return;
+    }
+    setFocusId(s.id);
+    setTip(null);
+    setAnnounce(`${s.name} opened.`);
+  };
+  const select3dSeat = async (key, label) => {
+    if (requireLogin({ body: { key }, label })) return false;
+    if (mine.length + 1 > MAX_TICKETS) {
+      say(`You can hold at most ${MAX_TICKETS} tickets at a time.`, 'warn');
+      return false;
+    }
+    return run(key, () => adapter.hold({ key }), `${label} reserved for you for 10 minutes.`);
+  };
+  const remove3dSeat = (key) => run(key, () => adapter.release([key]), 'Seat removed from My tickets.');
+
   if (loadError && !data) {
     return (
       <div className="tl-bk-panel tl-bk-empty" role="alert">
@@ -516,6 +597,12 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     <div className="tl-vb">
       {/* Only the My tickets button sits above the plan, right-aligned in the normal page flow */}
       <div className="tl-vb-top">
+        {has3d && (
+          <div className="tl-v3-switch" role="group" aria-label="Map view">
+            <button type="button" aria-pressed={show3d} onClick={() => chooseView(true)}>3D stadium</button>
+            <button type="button" aria-pressed={!show3d} onClick={() => chooseView(false)}>2D plan</button>
+          </div>
+        )}
         <div className="tl-vb-mine-wrap">
           <MyTicketsButton count={mine.length} open={ticketsOpen} onToggle={() => setTicketsOpen((o) => !o)} secondsLeft={secondsLeft} controls="tl-vb-panel" />
           {ticketsOpen && (
@@ -538,7 +625,7 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
         </div>
       </div>
 
-      {!focused && tierList.length > 0 && (
+      {!show3d && !focused && tierList.length > 0 && (
         <ul className="tl-vb-tiers" aria-label="Price categories">
           {tierList.map((t) => (
             <li key={t.id}>
@@ -549,6 +636,30 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
       )}
       {tableStates && <p className="tl-vb-hint-line"><Users className="w-3.5 h-3.5" aria-hidden="true" /> Tables are sold whole: choose a table to see its {tablesOf(focused).seatsPerTable} seats and price.</p>}
 
+      {show3d && (
+        <div className="tl-v3-stage">
+          <Suspense fallback={<div className="tl-vb-skeleton" aria-busy="true" aria-label="Loading the 3D stadium" />}>
+            <Venue3D
+              layout={layout}
+              tiers={tiers}
+              event={data.event}
+              focusId={focusId}
+              stateOf={stateOf}
+              sectionInfo={sectionInfo}
+              mineCount={mine.length}
+              maxTickets={MAX_TICKETS}
+              secondsLeft={secondsLeft}
+              busy={pending.size > 0}
+              onOpenSection={open3dSection}
+              onBackToVenue={backToVenue}
+              onSelectSeat={select3dSeat}
+              onRemoveSeat={remove3dSeat}
+              onGetTickets={getTickets}
+            />
+          </Suspense>
+        </div>
+      )}
+      {!show3d && (
       <div className={`tl-vb-stage${pop ? ' has-pop' : ''}`} style={{ aspectRatio: planRatio }}>
         <VenueMap
           ref={mapRef}
@@ -624,10 +735,11 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
           />
         )}
       </div>
+      )}
 
       {notice && <p className={`tl-bk-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : undefined}>{notice.text}</p>}
       <div className="tl-vb-foot">
-        <SeatLegend />
+        {!show3d && <SeatLegend />}
         <button type="button" className="tl-bk-link" onClick={() => setListOpen((o) => !o)} aria-expanded={listOpen}>
           <List className="w-3.5 h-3.5" aria-hidden="true" /> {listOpen ? 'Hide section list' : 'Browse sections as a list'}
         </button>

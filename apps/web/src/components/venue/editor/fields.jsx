@@ -106,3 +106,32 @@ export function ConfirmDialog({ title, body, confirmLabel, cancelLabel = 'Cancel
     </div>
   );
 }
+
+/** Colour picker with its hex value next to it. */
+export function ColorField({ label, value, onChange, hint }) {
+  const id = useId();
+  return (
+    <Field label={label} hint={hint} id={id}>
+      <div className="flex items-center gap-2">
+        <input id={id} type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-10 rounded-lg border border-slate-200 bg-white p-0.5 cursor-pointer" />
+        <span className="font-mono text-[11px] text-slate-600">{value}</span>
+      </div>
+    </Field>
+  );
+}
+
+/** On/off switch with a label and optional hint. */
+export function ToggleField({ label, checked, onChange, hint }) {
+  const id = useId();
+  return (
+    <div className="flex items-start gap-2.5">
+      <button id={id} type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`mt-0.5 relative h-5 w-9 shrink-0 rounded-full transition ${checked ? 'bg-[#16a34a]' : 'bg-slate-300'}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+      </button>
+      <label htmlFor={id} className="cursor-pointer">
+        <span className="block text-[11px] font-semibold text-slate-700">{label}</span>
+        {hint && <span className="block text-[10px] text-slate-400 mt-0.5">{hint}</span>}
+      </label>
+    </div>
+  );
+}

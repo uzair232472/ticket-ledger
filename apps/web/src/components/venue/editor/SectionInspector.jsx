@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Ban, Copy, Lock, Plus, Trash2, Wand2 } from 'lucide-react';
 import { DEFAULT_GA, DEFAULT_ROWS, DEFAULT_TABLES, LIMITS, fitRows, maxRows, maxSeatsInRow, rowLabel, seatCountForRow } from '@venue-core';
-import { NumberField, Segmented, SelectField, TextField } from './fields';
+import { NumberField, Segmented, SelectField, TextField, ToggleField } from './fields';
 import { formatPkr, generated } from '../venueTheme';
 
 const Stat = ({ label, value, strong }) => (
@@ -90,6 +90,21 @@ export default function SectionInspector({ section, tiers, onChange, onDelete, o
           ]}
         />
       </div>
+
+      <ToggleField
+        label="Roof over this stand (3D view)"
+        checked={Boolean(section.view3d?.roof)}
+        onChange={(roof) => set({ view3d: { ...(section.view3d || {}), roof } })}
+        hint="Shown in the 3D stadium. The team name, if set, appears on the roof."
+      />
+      {section.booking === 'seats' && (
+        <ToggleField
+          label="Hospitality boxes (3D view)"
+          checked={Boolean(section.view3d?.hospitality)}
+          onChange={(hospitality) => set({ view3d: { ...(section.view3d || {}), hospitality } })}
+          hint="Shown as glass-fronted boxes with leather seats, and offered to other customers as an upgrade. Seats and prices stay as set here."
+        />
+      )}
 
       <div>
         <SelectField label="Pricing tier" value={section.tierId || ''} onChange={(v) => set({ tierId: v || null })} options={tierOptions} hint={!section.tierId ? 'Required before publishing.' : undefined} />
