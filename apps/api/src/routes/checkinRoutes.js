@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { orgGuard, requireAuth } from '../middlewares/auth.js';
 import * as c from '../controllers/checkinController.js';
-import { deviceEnrollRateLimiter, gateDeviceRateLimiter, gatePackRateLimiter, gateSyncRateLimiter } from '../middlewares/rateLimit.js';
+import { deviceEnrollRateLimiter, gateDeviceRateLimiter, gateNotifyRateLimiter, gatePackRateLimiter, gatePlanRateLimiter, gateSyncRateLimiter } from '../middlewares/rateLimit.js';
 
 // Gate check-in. Event access (assigned gate staff, owning organizer, Super Admin) is checked per request.
 const router = Router();
@@ -32,8 +32,9 @@ router.put('/manage/events/:id/policy', supervisors, c.setPolicy);
 router.put('/manage/events/:id/staff/:staffId/gates', supervisors, c.setStaffGates);
 router.get('/manage/events/:id/devices', supervisors, c.devices);
 router.get('/manage/events/:id/operations', supervisors, c.operations);
-router.get('/manage/events/:id/gate-plan', supervisors, c.gatePlan);
-router.post('/manage/events/:id/gate-plan/notify', supervisors, c.notifyGates);
+router.get('/manage/events/:id/gate-plan', supervisors, gatePlanRateLimiter, c.gatePlan);
+router.post('/manage/events/:id/gate-plan/notify', supervisors, gateNotifyRateLimiter, c.notifyGates);
+router.get('/manage/events/:id/gate-plan/notify', supervisors, gatePlanRateLimiter, c.notifyGatesStatus);
 router.get('/manage/events/:id/devices/:deviceId', supervisors, c.deviceDetails);
 router.post('/manage/events/:id/devices/:deviceId/actions', supervisors, c.deviceAction);
 router.get('/manage/events/:id/quarantine', supervisors, c.quarantineList);

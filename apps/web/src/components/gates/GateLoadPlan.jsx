@@ -48,6 +48,12 @@ function GateTable({ title, rows, note }) {
   );
 }
 
+// Result line for a finished gate advice run (sent in the background, services/gateAdviceJob.js)
+const runText = (r) => {
+  if (r.status === 'FAILED') return { tone: 'bad', text: r.error || 'The gate advice could not be sent.' };
+  const extra = [r.failed ? `${n(r.failed)} failed` : '', r.skipped ? `${n(r.skipped)} already had this advice` : ''].filter(Boolean).join(', ');
+  return { tone: r.failed ? 'warn' : 'good', text: `Gate advice sent to ${n(r.sent)} ticket holder${r.sent === 1 ? '' : 's'}${extra ? ` (${extra})` : ''}.` };
+};
 export default function GateLoadPlan({ eventId, onTab }) {
   const [plan, setPlan] = useState(null);
   const [error, setError] = useState('');
@@ -76,11 +82,23 @@ export default function GateLoadPlan({ eventId, onTab }) {
     return () => clearInterval(t);
   }, [plan?.live, load]);
 
+  const watch = useCallback(async () => {
+    for (let i = 0; i < 150; i += 1) {
+      await new Promise((ok) => { setTimeout(ok, 2000); });
+      try {
+        const r = (await api.get(`/checkin/manage/events/${eventId}/gate-plan/notify`)).data.data;
+        if (r && (r.status === 'DONE' || r.status === 'FAILED')) return setSent(runText(r));
+      } catch { /* keep waiting */ }
+    }
+    return setSent({ tone: 'warn', text: 'Still sending. Refresh the page later to see the result.' });
+  }, [eventId]);
   const notify = async () => {
     setSending(true);
     try {
       const r = await api.post(`/checkin/manage/events/${eventId}/gate-plan/notify`);
       setSent({ tone: 'good', text: r.data.message });
+      setConfirm(false);
+      await watch();
     } catch (e) {
       setSent({ tone: 'bad', text: e.response?.data?.message || 'The gate advice could not be sent.' });
     } finally {

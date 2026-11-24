@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, optionalAuth, orgGuard, requireRole } from '../middlewares/auth.js';
+import { behaviourReportRateLimiter } from '../middlewares/rateLimit.js';
 import {
   recordClientEvent,
   getMyBehaviorProfile,
@@ -24,7 +25,7 @@ router.get('/profile', requireAuth, getMyBehaviorProfile);
 router.get('/user/:userId', ...orgGuard('attendee.view'), getUserBehaviorProfileById);
 
 // 5. Super admin behaviour report (by event and by customer) and one customer's timeline
-router.get('/report', requireAuth, requireRole('SUPER_ADMIN'), getBehaviourReport);
-router.get('/report/customers/:userId', requireAuth, requireRole('SUPER_ADMIN'), getCustomerTimeline);
+router.get('/report', requireAuth, requireRole('SUPER_ADMIN'), behaviourReportRateLimiter, getBehaviourReport);
+router.get('/report/customers/:userId', requireAuth, requireRole('SUPER_ADMIN'), behaviourReportRateLimiter, getCustomerTimeline);
 
 export default router;

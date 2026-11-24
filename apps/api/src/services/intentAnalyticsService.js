@@ -1,5 +1,6 @@
 import { canAccessEvent, eventWhereFor, memberContext } from './orgAccess.js';
 import { LEFT_CHECKOUT_ACTIONS } from './checkoutOutcome.js';
+import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import { dispatchNotification, NOTIFICATION_TYPES } from './notificationService.js';
 import { createRecoveryCode, normalizeCode, MAX_PERCENT } from './discountService.js';
@@ -80,27 +81,28 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
     throw error;
   }
 
-  // 3. Fetch all behavior events recorded for this event
-  const rawBehaviorEvents = await prisma.behaviorEvent.findMany({
-    where: { eventId },
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, phone: true, city: true },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  // Also fetch orders for this event to verify completed payments and tickets
-  const orders = await prisma.order.findMany({
-    where: { eventId },
-    include: {
-      tickets: true,
-      user: {
-        select: { id: true, name: true, email: true },
-      },
-    },
-  });
+  // 3. Per person (account, else browser session) on this event: counted in the database, never by loading
+  //    the behaviour log (test_intent_analytics_sql.mjs checks the numbers equal the earlier in-memory version)
+  const people = await prisma.$queryRaw`
+    SELECT b."userId", CASE WHEN b."userId" IS NULL THEN b."sessionId" END AS "sessionId",
+      COUNT(*) FILTER (WHERE b."action" = 'event_view')::int AS views,
+      COUNT(*) FILTER (WHERE b."action" IN ('seat_selected', 'seat_locked'))::int AS "seatSelections",
+      COUNT(*) FILTER (WHERE b."action" = 'checkout_started')::int AS "checkoutStarts",
+      COUNT(*) FILTER (WHERE b."action" IN (${Prisma.join(LEFT_CHECKOUT_ACTIONS)}))::int AS "checkoutAbandons",
+      COUNT(*) FILTER (WHERE b."action" = 'payment_completed')::int AS payments,
+      COUNT(*) FILTER (WHERE b."action" = 'ticket_purchased')::int AS tickets,
+      MAX(b."createdAt") AS "lastActive",
+      MAX(u."name") AS name, MAX(u."email") AS email, MAX(u."phone") AS phone, MAX(u."city") AS city
+    FROM "BehaviorEvent" b LEFT JOIN "User" u ON u."id" = b."userId"
+    WHERE b."eventId" = ${eventId} AND COALESCE(b."userId", NULLIF(b."sessionId", '')) IS NOT NULL
+    GROUP BY b."userId", CASE WHEN b."userId" IS NULL THEN b."sessionId" END
+    ORDER BY "lastActive" DESC`;
+  // Paid orders per customer (orders and their tickets)
+  const paidRows = await prisma.$queryRaw`
+    SELECT o."userId", COUNT(*)::int AS orders, COALESCE(SUM(t.n), 0)::int AS tickets
+    FROM "Order" o LEFT JOIN (SELECT "orderId", COUNT(*)::int AS n FROM "Ticket" GROUP BY "orderId") t ON t."orderId" = o."id"
+    WHERE o."eventId" = ${eventId} AND o."status"::text IN ('SUCCESSFUL', 'PARTIALLY_REFUNDED')
+    GROUP BY o."userId"`;
 
   // 4. Calculate Conversion Funnel Stages
   // Stages: Viewed -> Seat Selected -> Checkout Started -> Payment Completed -> Ticket Issued
@@ -109,82 +111,29 @@ export const getEventIntentAnalytics = async (eventId, requesterUser) => {
   const checkoutStarters = new Set();
   const paymentCompleters = new Set();
   const ticketHolders = new Set();
-
-  // Track session/user behavior maps
   const userSessionMap = new Map();
-
-  for (const b of rawBehaviorEvents) {
-    const identifier = b.userId || b.sessionId;
-    if (!identifier) continue;
-
-    if (!userSessionMap.has(identifier)) {
-      userSessionMap.set(identifier, {
-        userId: b.userId,
-        sessionId: b.sessionId,
-        user: b.user,
-        views: 0,
-        seatSelections: 0,
-        checkoutStarts: 0,
-        checkoutAbandons: 0,
-        payments: 0,
-        tickets: 0,
-        lastActive: b.createdAt,
-        latestMetadata: b.metadata || {},
-      });
-    }
-
-    const entry = userSessionMap.get(identifier);
-    if (b.createdAt > entry.lastActive) {
-      entry.lastActive = b.createdAt;
-    }
-
-    switch (b.action) {
-      case 'event_view':
-        viewers.add(identifier);
-        entry.views += 1;
-        break;
-      case 'seat_selected':
-      case 'seat_locked':
-        viewers.add(identifier);
-        seatSelectors.add(identifier);
-        entry.seatSelections += 1;
-        break;
-      case 'checkout_started':
-        viewers.add(identifier);
-        seatSelectors.add(identifier);
-        checkoutStarters.add(identifier);
-        entry.checkoutStarts += 1;
-        break;
-      case 'checkout_abandoned':
-      case 'checkout_cancelled':
-      case 'seat_hold_released':
-      case 'checkout_expired':
-        entry.checkoutAbandons += 1; // "left checkout", any reason (reasons kept apart for ML)
-        break;
-      case 'payment_completed':
-        paymentCompleters.add(identifier);
-        entry.payments += 1;
-        break;
-      case 'ticket_purchased':
-        ticketHolders.add(identifier);
-        entry.tickets += 1;
-        break;
-      default:
-        break;
-    }
+  for (const r of people) {
+    const identifier = r.userId || r.sessionId;
+    if (r.views || r.seatSelections || r.checkoutStarts) viewers.add(identifier);
+    if (r.seatSelections || r.checkoutStarts) seatSelectors.add(identifier);
+    if (r.checkoutStarts) checkoutStarters.add(identifier);
+    if (r.payments) paymentCompleters.add(identifier);
+    if (r.tickets) ticketHolders.add(identifier);
+    userSessionMap.set(identifier, {
+      userId: r.userId, sessionId: r.sessionId,
+      user: r.userId ? { id: r.userId, name: r.name, email: r.email, phone: r.phone, city: r.city } : null,
+      views: r.views, seatSelections: r.seatSelections, checkoutStarts: r.checkoutStarts, checkoutAbandons: r.checkoutAbandons,
+      payments: r.payments, tickets: r.tickets, lastActive: r.lastActive,
+    });
   }
 
   // Completed orders are the truth for who paid: a signed-in person's payments and tickets come from their
   // orders (the payment_completed / ticket_purchased events are the same purchases, so they are not added again)
   const paidByUser = new Map();
-  for (const ord of orders) {
-    if (ord.status !== 'SUCCESSFUL' && ord.status !== 'PARTIALLY_REFUNDED') continue;
-    paymentCompleters.add(ord.userId);
-    if (ord.tickets && ord.tickets.length > 0) ticketHolders.add(ord.userId);
-    const p = paidByUser.get(ord.userId) || { orders: 0, tickets: 0 };
-    p.orders += 1;
-    p.tickets += ord.tickets?.length || 0;
-    paidByUser.set(ord.userId, p);
+  for (const p of paidRows) {
+    paymentCompleters.add(p.userId);
+    if (p.tickets > 0) ticketHolders.add(p.userId);
+    paidByUser.set(p.userId, p);
   }
   for (const u of userSessionMap.values()) {
     if (!u.userId) continue;
@@ -486,17 +435,22 @@ export const sendBatchAttendeeReminders = async ({
  * held seat's price, else the event's cheapest tier (an estimate, labelled as such). Never a made-up figure.
  */
 function cartValueOf(item, event) {
-  const newest = [...item.allActions].sort((x, y) => y.time - x.time);
-  for (const a of newest) {
-    const v = Number(a.metadata?.cartValue ?? a.metadata?.totalAmount);
-    if (v > 0) return { cartValue: v, cartValueSource: 'recorded' };
-  }
-  for (const a of newest) {
-    const v = Number(a.metadata?.price);
-    if ((a.action === 'seat_locked' || a.action === 'seat_selected') && v > 0) return { cartValue: v, cartValueSource: 'seat_price' };
-  }
+  if (item.recordedCart > 0) return { cartValue: item.recordedCart, cartValueSource: 'recorded' };
+  if (item.seatPrice > 0) return { cartValue: item.seatPrice, cartValueSource: 'seat_price' };
   const prices = (event?.tiers || []).map((t) => Number(t.price)).filter((x) => x > 0);
   return { cartValue: prices.length ? Math.min(...prices) : 0, cartValueSource: prices.length ? 'cheapest_tier' : 'unknown' };
+}
+
+/**
+ * A JSON value as a number the way JavaScript's Number() reads the values the app records (numbers, numeric
+ * strings, true = 1); anything else is null. Used for cart values and seat prices kept in behaviour metadata.
+ */
+function jsonNumber(x) {
+  return Prisma.sql`(CASE jsonb_typeof(${x})
+    WHEN 'number' THEN (${x} #>> '{}')::numeric
+    WHEN 'string' THEN CASE WHEN (${x} #>> '{}') ~ '^[[:space:]]*[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?[[:space:]]*$' THEN btrim(${x} #>> '{}')::numeric END
+    WHEN 'boolean' THEN CASE WHEN ${x} = 'true'::jsonb THEN 1 ELSE 0 END
+  END)`;
 }
 
 /**
@@ -504,16 +458,13 @@ function cartValueOf(item, event) {
  * out), otherwise only what the steps show (labelled as not recorded). No reason is invented.
  */
 function abandonReason(item) {
-  const acts = item.allActions;
-  const reasons = new Set(acts.map((a) => a.metadata?.reason).filter(Boolean));
-  const did = (name) => acts.some((a) => a.action === name);
-  if (did('payment_failed') || reasons.has('payment_failure') || reasons.has('payment_hesitation')) {
+  if (item.rPayment) {
     return { likelyReason: 'PAYMENT_FAILED', reasonSource: 'recorded', reasonDetail: 'A payment attempt failed or was not completed at the payment step.', recommendedAction: 'OFFER_PAYMENT_HELP' };
   }
-  if (did('checkout_cancelled') || reasons.has('user_discarded_tickets') || reasons.has('CUSTOMER_CANCELLED')) {
+  if (item.rRemoved) {
     return { likelyReason: 'REMOVED_TICKETS', reasonSource: 'recorded', reasonDetail: 'They removed the tickets from their cart themselves.', recommendedAction: 'SEND_REMINDER_WITH_DISCOUNT' };
   }
-  if (did('checkout_expired') || did('seat_hold_released') || reasons.has('seat_hold_released') || reasons.has('HOLD_EXPIRED')) {
+  if (item.rHold) {
     return { likelyReason: 'HOLD_EXPIRED', reasonSource: 'recorded', reasonDetail: 'The 10-minute seat hold ran out before they paid.', recommendedAction: 'SEND_REMINDER' };
   }
   if (item.startedCheckout) {
@@ -585,90 +536,49 @@ export const getAbandonedIntentDashboard = async ({
     };
   }
 
-  // 2. Fetch all behavior events for these events
-  const behaviorEvents = await prisma.behaviorEvent.findMany({
-    where: {
-      eventId: { in: accessibleEventIds },
-    },
-    include: {
-      user: {
-        select: { id: true, name: true, email: true, phone: true, city: true },
-      },
-      event: {
-        select: { id: true, name: true, city: true, venue: true, date: true, type: true },
-      },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  // 3. Fetch completed orders/tickets for these events to exclude purchasers
-  const orders = await prisma.order.findMany({
-    where: {
-      eventId: { in: accessibleEventIds },
-      status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED'] },
-    },
-    select: { userId: true, eventId: true },
-  });
-
-  const purchasedSet = new Set();
-  for (const o of orders) {
-    purchasedSet.add(`${o.userId}_${o.eventId}`);
-  }
-
-  // Also check ticket records directly
-  const tickets = await prisma.ticket.findMany({
-    where: {
-      eventId: { in: accessibleEventIds },
-      status: { in: ['ACTIVE', 'SCANNED'] },
-    },
-    select: { userId: true, eventId: true },
-  });
-  for (const t of tickets) {
-    purchasedSet.add(`${t.userId}_${t.eventId}`);
-  }
-
-  // 4. Group behavior by User/Session per Event
-  const groupMap = new Map();
-
-  for (const b of behaviorEvents) {
-    const userOrSess = b.userId || b.sessionId;
-    const evId = b.eventId;
-    if (!userOrSess || !evId) continue;
-
-    const groupKey = `${userOrSess}_${evId}`;
-
-    if (!groupMap.has(groupKey)) {
-      groupMap.set(groupKey, {
-        userId: b.userId,
-        sessionId: b.sessionId,
-        user: b.user,
-        event: b.event || eventMap.get(evId),
-        eventId: evId,
-        views: 0,
-        selectedSeat: false,
-        startedCheckout: false,
-        abandonedCheckout: false,
-        lastAction: b.action,
-        lastActionTime: b.createdAt,
-        latestMetadata: b.metadata || {},
-        allActions: [],
-      });
-    }
-
-    const item = groupMap.get(groupKey);
-    item.allActions.push({ action: b.action, time: b.createdAt, metadata: b.metadata });
-
-    if (b.action === 'event_view') item.views += 1;
-    if (b.action === 'seat_selected' || b.action === 'seat_locked') item.selectedSeat = true;
-    if (b.action === 'checkout_started') item.startedCheckout = true;
-    if (LEFT_CHECKOUT_ACTIONS.includes(b.action)) item.abandonedCheckout = true;
-
-    if (b.createdAt > item.lastActionTime) {
-      item.lastAction = b.action;
-      item.lastActionTime = b.createdAt;
-      item.latestMetadata = b.metadata || {};
-    }
-  }
+  // 2-4. One row per person (account, else session) per event who chose a seat, started or left checkout and
+  //      has not bought (no paid order and no live ticket for that event). Counted in the database, never by
+  //      loading the behaviour log; the reason and cart value come from the same recorded metadata as before
+  //      (test_intent_analytics_sql.mjs checks the result equals the earlier in-memory version).
+  const groups = await prisma.$queryRaw`
+    WITH r AS (
+      SELECT b."id", b."userId", b."sessionId", b."eventId", b."action", b."createdAt", b."metadata"->>'reason' AS reason,
+        COALESCE(b."userId", b."sessionId") || '_' || b."eventId" AS gkey,
+        ${jsonNumber(Prisma.sql`COALESCE(NULLIF(b."metadata"->'cartValue', 'null'::jsonb), b."metadata"->'totalAmount')`)} AS cartv,
+        ${jsonNumber(Prisma.sql`b."metadata"->'price'`)} AS pricev
+      FROM "BehaviorEvent" b
+      WHERE b."eventId" = ANY(${accessibleEventIds}) AND COALESCE(b."userId", NULLIF(b."sessionId", '')) IS NOT NULL
+    ), g AS (
+      SELECT gkey, MAX("userId") AS "userId", MAX("eventId") AS "eventId",
+        COUNT(*) FILTER (WHERE "action" = 'event_view')::int AS views,
+        bool_or("action" IN ('seat_selected', 'seat_locked')) AS "selectedSeat",
+        bool_or("action" = 'checkout_started') AS "startedCheckout",
+        bool_or("action" IN (${Prisma.join(LEFT_CHECKOUT_ACTIONS)})) AS "abandonedCheckout",
+        bool_or("action" = 'payment_failed' OR reason IN ('payment_failure', 'payment_hesitation')) AS "rPayment",
+        bool_or("action" = 'checkout_cancelled' OR reason IN ('user_discarded_tickets', 'CUSTOMER_CANCELLED')) AS "rRemoved",
+        bool_or("action" IN ('checkout_expired', 'seat_hold_released') OR reason IN ('seat_hold_released', 'HOLD_EXPIRED')) AS "rHold",
+        (array_agg(cartv ORDER BY "createdAt" DESC, id DESC) FILTER (WHERE cartv > 0))[1] AS "recordedCart",
+        (array_agg(pricev ORDER BY "createdAt" DESC, id DESC) FILTER (WHERE pricev > 0 AND "action" IN ('seat_selected', 'seat_locked')))[1] AS "seatPrice"
+      FROM r GROUP BY gkey
+      HAVING bool_or("action" IN ('seat_selected', 'seat_locked', 'checkout_started', ${Prisma.join(LEFT_CHECKOUT_ACTIONS)}))
+    ), latest AS (
+      -- newest row of the group (two at the same instant: the higher row id)
+      SELECT DISTINCT ON (gkey) gkey, "action" AS "lastAction", "createdAt" AS "lastActionTime", "sessionId" FROM r ORDER BY gkey, "createdAt" DESC, id DESC
+    )
+    SELECT g.*, latest."lastAction", latest."lastActionTime", latest."sessionId", u."name", u."email", u."phone", u."city"
+    FROM g JOIN latest ON latest.gkey = g.gkey LEFT JOIN "User" u ON u."id" = g."userId"
+    WHERE g."userId" IS NULL OR NOT (
+      EXISTS (SELECT 1 FROM "Order" o WHERE o."userId" = g."userId" AND o."eventId" = g."eventId" AND o."status"::text IN ('SUCCESSFUL', 'PARTIALLY_REFUNDED'))
+      OR EXISTS (SELECT 1 FROM "Ticket" t WHERE t."userId" = g."userId" AND t."eventId" = g."eventId" AND t."status"::text IN ('ACTIVE', 'SCANNED'))
+    )
+    ORDER BY latest."lastActionTime" DESC, g.gkey`;
+  const groupMap = new Map(groups.map((g) => [g.gkey, {
+    ...g,
+    user: g.userId ? { id: g.userId, name: g.name, email: g.email, phone: g.phone, city: g.city } : null,
+    event: eventMap.get(g.eventId),
+    recordedCart: g.recordedCart == null ? null : Number(g.recordedCart),
+    seatPrice: g.seatPrice == null ? null : Number(g.seatPrice),
+  }]));
 
   // 5. Filter for users who engaged/abandoned and DID NOT buy
   const abandonedList = [];
@@ -677,13 +587,7 @@ export const getAbandonedIntentDashboard = async ({
   let totalScoreSum = 0;
 
   for (const [key, item] of groupMap.entries()) {
-    // Check if user has purchased this event
-    const hasBought = item.userId ? purchasedSet.has(`${item.userId}_${item.eventId}`) : false;
-    if (hasBought) continue;
-
-    // Must have abandoned checkout OR (started checkout and dropped off) OR (selected seat and dropped off)
-    const isAbandoned = item.abandonedCheckout || item.startedCheckout || item.selectedSeat;
-    if (!isAbandoned) continue;
+    // Buyers, and people who only viewed, are already left out by the query above
 
     // Same intent rule as the Purchase intent page
     const { score, level } = intentRuleScore({

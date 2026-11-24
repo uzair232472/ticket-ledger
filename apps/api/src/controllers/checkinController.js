@@ -8,8 +8,8 @@ import { deviceAuthStatus } from '../config/gateDeviceAuth.js';
 import { quarantine, submitEvidence } from '../services/scanQuarantineService.js';
 import * as conflictsSvc from '../services/scanConflictService.js';
 import * as diag from '../services/gateDiagnosticsService.js';
-import { gateLoadPlan, notifyGatePlan } from '../services/gateLoadPlan.js';
-import { dispatchNotification } from '../services/notificationService.js';
+import { gateLoadPlan } from '../services/gateLoadPlan.js';
+import { queueGateAdvice, latestGateAdvice, runView } from '../services/gateAdviceJob.js';
 import { checkScanSignature } from '../services/scanSignature.js';
 
 const canScan = async (user, eventId, permission = 'gate.scan') => {
@@ -438,8 +438,21 @@ export const opsReport = sup('Could not build the report', async (req, res, even
 /** GET …/gate-plan: expected load per gate, a balanced section-to-gate plan and, on the day, live load (rules). */
 export const gatePlan = sup('Could not build the gate plan', async (req, res, event) => res.json({ success: true, data: await gateLoadPlan(event) }));
 
-/** POST …/gate-plan/notify: tells each ticket holder not yet inside which gate to use (in-app + email). */
+/**
+ * POST …/gate-plan/notify: queues the gate advice (in-app + email to each ticket holder not yet inside) and returns
+ * at once (202); it is sent in the background (services/gateAdviceJob.js). If a send for this event is already
+ * queued or running, that one is returned instead of starting another. Nobody gets the same advice twice.
+ */
 export const notifyGates = sup('Could not send the gate advice', async (req, res, event) => {
-  const out = await notifyGatePlan(event, req.user, { dispatch: dispatchNotification });
-  res.json({ success: true, message: `Gate advice sent to ${out.sent} ticket holder${out.sent === 1 ? '' : 's'}${out.failed ? ` (${out.failed} failed)` : ''}.`, data: out });
+  const { run, created } = await queueGateAdvice(event, req.user);
+  res.status(created ? 202 : 200).json({
+    success: true,
+    message: created ? 'Sending the gate advice now. This page shows the result when it is done.' : 'Gate advice for this event is already being sent.',
+    data: runView(run),
+  });
+});
+
+/** GET …/gate-plan/notify: the latest gate advice send for this event (status and counts), or null. */
+export const notifyGatesStatus = sup('Could not load the gate advice status', async (req, res, event) => {
+  res.json({ success: true, data: runView(await latestGateAdvice(event.id)) });
 });

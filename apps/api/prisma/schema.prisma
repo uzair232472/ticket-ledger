@@ -2053,3 +2053,44 @@ model FraudReview {
   @@index([orderId])
   @@index([decision, createdAt])
 }
+
+// Gate advice ("use Gate C") is sent by a background job, not inside the request (services/gateAdviceJob.js).
+// One QUEUED or RUNNING run per event at a time: partial unique index in migration 20261124140000.
+enum GateAdviceRunStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+model GateAdviceRun {
+  id            String              @id @default(uuid())
+  eventId       String
+  companyId     String?
+  requestedById String
+  status        GateAdviceRunStatus @default(QUEUED)
+  people        Int                 @default(0) // ticket holders the plan gives a gate
+  sent          Int                 @default(0)
+  failed        Int                 @default(0)
+  skipped       Int                 @default(0) // already told the same gate by an earlier run
+  error         String?
+  createdAt     DateTime            @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@index([eventId, createdAt])
+  @@index([status, createdAt])
+}
+
+// One row per person per distinct advice: a second run never repeats the same message to the same person
+model GateAdviceDelivery {
+  id        String   @id @default(uuid())
+  runId     String
+  eventId   String
+  userId    String
+  adviceKey String // hash of the gates and sections the message named
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId, adviceKey])
+  @@index([runId])
+}

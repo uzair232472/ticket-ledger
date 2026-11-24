@@ -8,6 +8,7 @@
  * scope 'customers' (default) counts CUSTOMER accounts and guest sessions only; 'all' adds staff, organizer
  * and admin accounts (and the test scripts' accounts), which otherwise inflate every number.
  */
+import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 
 const DAY = 86_400_000;
@@ -31,94 +32,128 @@ export const STEP_ACTIONS = {
 };
 const SYSTEM = /EVALUATION|^AI_/;
 
-const who = (b) => b.userId || b.sessionId;
+// Postgres regex with the same meaning as SYSTEM (case-sensitive)
+const SYSTEM_SQL = 'EVALUATION|^AI_';
+const SEAT = ['seat_selected', 'seat_locked'];
+const LEFT = ['checkout_abandoned', 'payment_failed'];
+const int = (x) => Number(x || 0);
 
+/**
+ * Counted in the database (GROUP BY / COUNT DISTINCT), never by loading the behaviour log into memory. The
+ * numbers are the same as the earlier in-memory version (test_behaviour_report_sql.mjs checks both agree).
+ */
 export async function behaviourReport({ days = 30, eventId = null, scope = 'customers', now = new Date() } = {}) {
   const span = Math.min(365, Math.max(1, Number(days) || 30));
   const since = new Date(now.getTime() - span * DAY);
   const customersOnly = scope !== 'all';
   const userFilter = customersOnly ? { OR: [{ userId: null }, { user: { role: 'CUSTOMER' } }] } : {};
 
-  const rows = await prisma.behaviorEvent.findMany({
-    where: { createdAt: { gte: since, lt: now }, ...(eventId ? { eventId } : {}), ...userFilter },
-    select: {
-      userId: true, sessionId: true, eventId: true, action: true, createdAt: true,
-      user: { select: { name: true, email: true, role: true } },
-      event: { select: { name: true, city: true, type: true } },
-    },
-  });
-  const orders = await prisma.order.findMany({
-    where: { status: { in: PAID }, createdAt: { gte: since, lt: now }, ...(eventId ? { eventId } : {}), ...(customersOnly ? { user: { role: 'CUSTOMER' } } : {}) },
-    select: { userId: true, eventId: true, totalAmount: true, createdAt: true, event: { select: { name: true, city: true } } },
-  });
+  // Behaviour rows of the period (b, with its account u): same filter as before, written once
+  // Columns are UTC timestamps without a zone: compare with UTC values, whatever the session time zone is
+  const utc = (d) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+  const bWhere = Prisma.sql`b."createdAt" >= ${utc(since)} AND b."createdAt" < ${utc(now)}
+    ${eventId ? Prisma.sql`AND b."eventId" = ${eventId}` : Prisma.empty}
+    ${customersOnly ? Prisma.sql`AND (b."userId" IS NULL OR u."role"::text = 'CUSTOMER')` : Prisma.empty}`;
+  const bFrom = Prisma.sql`"BehaviorEvent" b LEFT JOIN "User" u ON u."id" = b."userId"`;
+  // Paid orders of the period (o, with its customer ou)
+  const oWhere = Prisma.sql`o."status"::text IN (${Prisma.join(PAID)}) AND o."createdAt" >= ${utc(since)} AND o."createdAt" < ${utc(now)}
+    ${eventId ? Prisma.sql`AND o."eventId" = ${eventId}` : Prisma.empty}
+    ${customersOnly ? Prisma.sql`AND ou."role"::text = 'CUSTOMER'` : Prisma.empty}`;
+  const oFrom = Prisma.sql`"Order" o JOIN "User" ou ON ou."id" = o."userId"`;
+  // The person behind a row: the account, else the browser session (guests)
+  const who = Prisma.sql`COALESCE(b."userId", NULLIF(b."sessionId", ''))`;
 
-  // 1. Activity by step (sign-ins counted apart; system evaluations left out)
+  const [actionRows, eventRows, eventOrderRows, [orderSum], [guestRow], personRows] = await Promise.all([
+    // 1. Activity by step
+    prisma.$queryRaw`SELECT b."action", COUNT(*)::int AS n FROM ${bFrom} WHERE ${bWhere} GROUP BY b."action"`,
+    // 2. Per event: distinct people at each step
+    prisma.$queryRaw`
+      SELECT b."eventId", e."name", e."city", e."type"::text AS "type",
+        COUNT(*) FILTER (WHERE b."action" = 'event_view')::int AS views,
+        COUNT(DISTINCT ${who}) FILTER (WHERE b."action" IN ('event_view', ${Prisma.join(SEAT)}, 'checkout_started'))::int AS viewers,
+        COUNT(DISTINCT ${who}) FILTER (WHERE b."action" IN (${Prisma.join(SEAT)}))::int AS seat,
+        COUNT(DISTINCT ${who}) FILTER (WHERE b."action" = 'checkout_started')::int AS checkout,
+        COUNT(DISTINCT ${who}) FILTER (WHERE b."action" IN (${Prisma.join(LEFT)}))::int AS "left"
+      FROM ${bFrom} LEFT JOIN "Event" e ON e."id" = b."eventId"
+      WHERE ${bWhere} AND b."eventId" IS NOT NULL AND ${who} IS NOT NULL
+      GROUP BY b."eventId", e."name", e."city", e."type"`,
+    //    …and buyers / revenue from paid orders
+    prisma.$queryRaw`
+      SELECT o."eventId", e."name", e."city", COUNT(DISTINCT o."userId")::int AS buyers, COALESCE(SUM(o."totalAmount"), 0) AS revenue
+      FROM ${oFrom} LEFT JOIN "Event" e ON e."id" = o."eventId" WHERE ${oWhere} GROUP BY o."eventId", e."name", e."city"`,
+    // Orders, buyers, returning buyers (a paid order before the period, on any event)
+    prisma.$queryRaw`
+      SELECT COUNT(*)::int AS orders, COUNT(DISTINCT o."userId")::int AS buyers, COALESCE(SUM(o."totalAmount"), 0) AS revenue,
+        COUNT(DISTINCT o."userId") FILTER (WHERE EXISTS (
+          SELECT 1 FROM "Order" p WHERE p."userId" = o."userId" AND p."status"::text IN (${Prisma.join(PAID)}) AND p."createdAt" < ${utc(since)}
+        ))::int AS returning
+      FROM ${oFrom} WHERE ${oWhere}`,
+    // Guest sessions (no account)
+    prisma.$queryRaw`SELECT COUNT(DISTINCT b."sessionId")::int AS n FROM ${bFrom} WHERE ${bWhere} AND b."userId" IS NULL AND b."sessionId" <> '' AND b."action" <> 'login'`,
+    // 3. Per signed-in person: the 100 most recently active, and how many there are in all
+    prisma.$queryRaw`
+      WITH acts AS (
+        SELECT b."userId", b."eventId", b."action", b."createdAt", e."name" AS ename
+        FROM ${bFrom} LEFT JOIN "Event" e ON e."id" = b."eventId"
+        WHERE ${bWhere} AND b."userId" IS NOT NULL AND b."action" <> 'login' AND b."action" !~ ${SYSTEM_SQL}
+      ), per AS (
+        SELECT "userId",
+          COUNT(*) FILTER (WHERE "action" = 'event_view')::int AS views,
+          COUNT(*) FILTER (WHERE "action" IN (${Prisma.join(SEAT)}))::int AS seats,
+          COUNT(*) FILTER (WHERE "action" = 'checkout_started')::int AS checkouts,
+          COUNT(*) FILTER (WHERE "action" IN (${Prisma.join(LEFT)}))::int AS "left",
+          MAX("createdAt") AS "lastActive"
+        FROM acts GROUP BY "userId"
+      ), last_ev AS (
+        SELECT DISTINCT ON ("userId") "userId", ename FROM acts WHERE ename IS NOT NULL ORDER BY "userId", "createdAt" DESC
+      ), ord AS (
+        SELECT o."userId", COUNT(*)::int AS orders, SUM(o."totalAmount") AS spent FROM ${oFrom} WHERE ${oWhere} GROUP BY o."userId"
+      ), evs AS (
+        SELECT "userId", COUNT(DISTINCT eid)::int AS events FROM (
+          SELECT "userId", "eventId" AS eid FROM acts WHERE "eventId" IS NOT NULL
+          UNION SELECT o."userId", o."eventId" FROM ${oFrom} WHERE ${oWhere}
+        ) x GROUP BY "userId"
+      )
+      SELECT per.*, pu."name", pu."email", pu."role"::text AS "role", COALESCE(evs.events, 0) AS events,
+        COALESCE(ord.orders, 0) AS orders, COALESCE(ord.spent, 0) AS spent, last_ev.ename AS "lastEvent", COUNT(*) OVER ()::int AS total
+      FROM per
+      LEFT JOIN "User" pu ON pu."id" = per."userId"
+      LEFT JOIN ord ON ord."userId" = per."userId"
+      LEFT JOIN evs ON evs."userId" = per."userId"
+      LEFT JOIN last_ev ON last_ev."userId" = per."userId"
+      ORDER BY per."lastActive" DESC, per."userId"
+      LIMIT 100`,
+  ]);
+
   const activity = {};
   let signIns = 0;
-  for (const r of rows) {
-    if (r.action === 'login') { signIns += 1; continue; }
+  for (const r of actionRows) {
+    if (r.action === 'login') { signIns += r.n; continue; }
     if (SYSTEM.test(r.action)) continue;
-    activity[r.action] = (activity[r.action] || 0) + 1;
+    activity[r.action] = r.n;
   }
 
-  // 2. Per event: distinct people at each step, buyers from paid orders
   const events = new Map();
-  const ev = (id, meta) => {
-    if (!events.has(id)) events.set(id, { eventId: id, name: meta?.name || 'Event', city: meta?.city || null, type: meta?.type || null, views: 0, viewers: new Set(), seat: new Set(), checkout: new Set(), left: new Set(), buyers: new Set(), revenue: 0 });
-    return events.get(id);
-  };
-  for (const r of rows) {
-    if (!r.eventId || !who(r)) continue;
-    const e = ev(r.eventId, r.event);
-    if (r.action === 'event_view') { e.views += 1; e.viewers.add(who(r)); }
-    if (r.action === 'seat_selected' || r.action === 'seat_locked') e.seat.add(who(r));
-    if (r.action === 'checkout_started') e.checkout.add(who(r));
-    if (r.action === 'checkout_abandoned' || r.action === 'payment_failed') e.left.add(who(r));
+  for (const r of eventRows) {
+    events.set(r.eventId, { eventId: r.eventId, name: r.name || 'Event', city: r.city || null, type: r.type || null, views: r.views, viewers: r.viewers, choseSeat: r.seat, startedCheckout: r.checkout, leftCheckout: r.left, bought: 0, revenue: 0 });
   }
-  for (const o of orders) {
-    const e = ev(o.eventId, o.event);
-    e.buyers.add(o.userId);
-    e.revenue += Number(o.totalAmount || 0);
+  for (const r of eventOrderRows) {
+    if (!events.has(r.eventId)) events.set(r.eventId, { eventId: r.eventId, name: r.name || 'Event', city: r.city || null, type: null, views: 0, viewers: 0, choseSeat: 0, startedCheckout: 0, leftCheckout: 0, bought: 0, revenue: 0 });
+    const e = events.get(r.eventId);
+    e.bought = r.buyers;
+    e.revenue = Number(r.revenue);
   }
-  const byEvent = [...events.values()].map((e) => {
-    const viewers = new Set([...e.viewers, ...e.seat, ...e.checkout]).size;
-    return {
-      eventId: e.eventId, name: e.name, city: e.city, type: e.type, views: e.views, viewers,
-      choseSeat: e.seat.size, startedCheckout: e.checkout.size, leftCheckout: e.left.size, bought: e.buyers.size,
-      revenuePkr: Math.round(e.revenue), conversionPct: viewers ? Math.round((e.buyers.size / viewers) * 100) : null,
-    };
-  }).sort((a, b) => b.viewers - a.viewers || b.bought - a.bought);
+  const byEvent = [...events.values()].map(({ revenue, ...e }) => ({
+    ...e, revenuePkr: Math.round(revenue), conversionPct: e.viewers ? Math.round((e.bought / e.viewers) * 100) : null,
+  })).sort((a, b) => b.viewers - a.viewers || b.bought - a.bought || a.name.localeCompare(b.name) || a.eventId.localeCompare(b.eventId));
 
-  // 3. Per signed-in person (guests have no identity to list; they are counted in the totals)
-  const people = new Map();
-  for (const r of rows) {
-    if (!r.userId || r.action === 'login' || SYSTEM.test(r.action)) continue;
-    if (!people.has(r.userId)) people.set(r.userId, { userId: r.userId, name: r.user?.name || '—', email: r.user?.email || null, role: r.user?.role || null, events: new Set(), views: 0, seats: 0, checkouts: 0, left: 0, orders: 0, spentPkr: 0, lastActive: r.createdAt, lastEvent: null });
-    const p = people.get(r.userId);
-    if (r.eventId) p.events.add(r.eventId);
-    if (r.action === 'event_view') p.views += 1;
-    if (r.action === 'seat_selected' || r.action === 'seat_locked') p.seats += 1;
-    if (r.action === 'checkout_started') p.checkouts += 1;
-    if (r.action === 'checkout_abandoned' || r.action === 'payment_failed') p.left += 1;
-    if (r.createdAt >= p.lastActive) { p.lastActive = r.createdAt; if (r.event?.name) p.lastEvent = r.event.name; }
-  }
-  for (const o of orders) {
-    const p = people.get(o.userId);
-    if (!p) continue;
-    p.orders += 1;
-    p.spentPkr += Number(o.totalAmount || 0);
-    p.events.add(o.eventId);
-  }
-  const customers = [...people.values()]
-    .map((p) => ({ ...p, events: p.events.size, spentPkr: Math.round(p.spentPkr) }))
-    .sort((a, b) => b.lastActive - a.lastActive);
-
-  // Buyers: first-time = their first paid order on the platform falls in this period
-  const buyerIds = [...new Set(orders.map((o) => o.userId))];
-  const earlier = buyerIds.length
-    ? await prisma.order.findMany({ where: { userId: { in: buyerIds }, status: { in: PAID }, createdAt: { lt: since } }, select: { userId: true }, distinct: ['userId'] })
-    : [];
-  const guests = new Set(rows.filter((r) => !r.userId && r.sessionId && r.action !== 'login').map((r) => r.sessionId)).size;
+  const signedIn = personRows[0]?.total || 0;
+  const customers = personRows.map((p) => ({
+    userId: p.userId, name: p.name || '—', email: p.email || null, role: p.role || null, events: int(p.events),
+    views: p.views, seats: p.seats, checkouts: p.checkouts, left: p.left, orders: int(p.orders),
+    spentPkr: Math.round(Number(p.spent || 0)), lastActive: p.lastActive, lastEvent: p.lastEvent || null,
+  }));
+  const guests = guestRow.n;
 
   // Events with activity (for the event filter), whatever the current event filter is
   let eventOptions = byEvent.map((e) => ({ id: e.eventId, name: e.name, city: e.city }));
@@ -133,20 +168,20 @@ export async function behaviourReport({ days = 30, eventId = null, scope = 'cust
     scope: customersOnly ? 'customers' : 'all',
     eventId,
     summary: {
-      activePeople: customers.length + guests,
-      signedInPeople: customers.length,
+      activePeople: signedIn + guests,
+      signedInPeople: signedIn,
       guestSessions: guests,
       signIns,
       eventViews: activity.event_view || 0,
-      buyers: buyerIds.length,
-      firstTimeBuyers: buyerIds.length - earlier.length,
-      returningBuyers: earlier.length,
-      orders: orders.length,
-      revenuePkr: Math.round(orders.reduce((a, o) => a + Number(o.totalAmount || 0), 0)),
+      buyers: orderSum.buyers,
+      firstTimeBuyers: orderSum.buyers - orderSum.returning,
+      returningBuyers: orderSum.returning,
+      orders: orderSum.orders,
+      revenuePkr: Math.round(Number(orderSum.revenue)),
     },
     activity: Object.entries(activity).sort((a, b) => b[1] - a[1]).map(([action, count]) => ({ action, label: STEP_ACTIONS[action] || action.replace(/_/g, ' '), count })),
     byEvent: byEvent.slice(0, 50),
-    customers: customers.slice(0, 100),
+    customers,
     events: eventOptions,
   };
 }

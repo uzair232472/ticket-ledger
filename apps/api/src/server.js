@@ -20,6 +20,7 @@ import { runPayouts } from './services/payoutService.js';
 import { runScheduledBroadcasts } from './services/broadcastService.js';
 import { applyPhases, runScheduledPublishing } from './services/eventToolsService.js';
 import { completeEndedEvents } from './services/eventTiming.js';
+import { processGateAdvice } from './services/gateAdviceJob.js';
 import { runMlJobs } from './services/ml/jobs.js';
 
 const PORT = process.env.PORT || 5000;
@@ -111,6 +112,12 @@ async function startServer() {
   ]);
   setTimeout(eventJobs, 45 * 1000).unref();
   setInterval(eventJobs, 5 * 60 * 1000).unref();
+
+  // Every minute: gate advice runs still queued (normally sent right after the request; this picks up runs left
+  // by a restart or queued on another server). Each person gets the same advice at most once (gateAdviceJob.js).
+  const gateAdvice = () => processGateAdvice().then((r) => r.runs && console.log('[Gate advice]', JSON.stringify(r))).catch((e) => console.error('[Gate advice] failed:', e.message));
+  setTimeout(gateAdvice, 20 * 1000).unref();
+  setInterval(gateAdvice, 60 * 1000).unref();
 
   // Every 15 minutes: ML shadow scoring (finished visits, gates before events), blind fraud-review sampling,
   // and attaching real outcomes to past predictions. Logs only: never changes orders, tickets, payments,

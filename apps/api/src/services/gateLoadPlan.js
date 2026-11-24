@@ -14,6 +14,7 @@
  * eligible gate that ends up least full (a greedy makespan rule), so signs, tickets and messages can say
  * "Section B: use Gate C". On the event day the live view adds real entries per gate in the last 15 minutes.
  */
+import { createHash } from 'node:crypto';
 import prisma from '../config/prisma.js';
 import { showRate } from './ml/attendanceBaseline.js';
 import { arrivalHistory, SLOTS } from './ml/crowd.js';
@@ -253,8 +254,12 @@ export async function gateLoadPlan(event, { now = new Date() } = {}) {
 /**
  * Tells every ticket holder who is not inside yet which gate to use (in-app + email). One message per person
  * per event per gate plan; people with tickets in several sections get each gate once.
+ *
+ * Runs in the background (services/gateAdviceJob.js), never inside a request. `claim(userId, adviceKey)` is
+ * called before each message and returns false when that person already got the same advice (an earlier run, or
+ * a run restarted after a crash); `release` undoes a claim whose message failed, so a later run can retry it.
  */
-export async function notifyGatePlan(event, requesterUser, { dispatch, now = new Date() }) {
+export async function notifyGatePlan(event, requesterUser, { dispatch, claim = async () => true, release = async () => {}, now = new Date() }) {
   const plan = await gateLoadPlan(event, { now });
   if (!plan.ready) throw Object.assign(new Error(plan.message), { status: 409 });
   // Gate per section, or per row when the plan splits a section by rows
@@ -279,26 +284,34 @@ export async function notifyGatePlan(event, requesterUser, { dispatch, now = new
   const startText = plan.eventStart.toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Karachi' });
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
   for (const [userId, gates] of byUser) {
-    const parts = [...gates].map(([gate, sections]) => `${[...new Set(sections)].join(', ')}: ${gate}`);
+    const named = [...gates].map(([gate, sections]) => [gate, [...new Set(sections)].sort()]).sort((a, b) => a[0].localeCompare(b[0]));
+    const parts = named.map(([gate, sections]) => `${sections.join(', ')}: ${gate}`);
+    const adviceKey = createHash('sha256').update(JSON.stringify(named)).digest('hex').slice(0, 32);
+    if (!(await claim(userId, adviceKey))) {
+      skipped += 1;
+      continue;
+    }
     try {
       await dispatch({
         userId, type: 'GATE_ADVICE',
         title: `Your entry gate for ${event.name}`,
-        message: `To get in faster on ${startText}, please use ${parts.length === 1 ? [...gates.keys()][0] : 'these gates'} (${parts.join('; ')}). Your ticket works at any gate that accepts its ticket type.`,
-        data: { eventId: event.id, gates: Object.fromEntries([...gates].map(([g, s]) => [g, [...new Set(s)]])) },
+        message: `To get in faster on ${startText}, please use ${parts.length === 1 ? named[0][0] : 'these gates'} (${parts.join('; ')}). Your ticket works at any gate that accepts its ticket type.`,
+        data: { eventId: event.id, gates: Object.fromEntries(named) },
         link: '/my-tickets',
       });
       sent += 1;
     } catch {
       failed += 1;
+      await release(userId, adviceKey).catch(() => {});
     }
   }
   await prisma.auditLog.create({
     data: {
       userId: requesterUser.id, companyId: event.companyId ?? null, action: 'GATE_PLAN_NOTIFIED', targetType: 'Event', targetId: event.id,
-      details: { sent, failed, gates: plan.toNotify },
+      details: { sent, failed, skipped, gates: plan.toNotify },
     },
   });
-  return { sent, failed, people: byUser.size };
+  return { sent, failed, skipped, people: byUser.size };
 }

@@ -123,3 +123,37 @@ export const recBeaconRateLimiter = rateLimit({
   keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
   handler: tooManyRequests,
 });
+
+// Gate load plan (rebuilds the plan from every live ticket and past arrivals): 30 per minute per user in production
+export const gatePlanRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 30 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
+
+// Sending gate advice (a message and email to every ticket holder): 5 per 10 minutes per user in production.
+// The job itself never sends the same advice twice; this only stops a manager from queueing runs in a loop.
+export const gateNotifyRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 5 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
+
+// Super Admin behaviour report and customer timelines (aggregate the behaviour log): 20 per minute per admin
+export const behaviourReportRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 20 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: isTestRun,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`),
+  handler: tooManyRequests,
+});
