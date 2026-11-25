@@ -26,16 +26,16 @@ import {
 } from 'lucide-react';
 
 const NOTIFICATION_TYPES_LIST = [
-  { value: 'BOOKING_CONFIRMATION', label: 'Booking Confirmation', icon: Ticket, color: 'text-emerald-400' },
-  { value: 'PAYMENT_CONFIRMATION', label: 'Payment Confirmation', icon: CreditCard, color: 'text-teal-400' },
-  { value: 'TICKET_ISSUED', label: 'Ticket Issued (NFT Ready)', icon: Sparkles, color: 'text-purple-400' },
-  { value: 'EVENT_REMINDER', label: 'Event Reminder', icon: Clock, color: 'text-amber-400' },
-  { value: 'TICKET_TRANSFERRED', label: 'Ticket Transferred', icon: ArrowRightLeft, color: 'text-blue-400' },
-  { value: 'RESALE_AVAILABLE', label: 'Resale Available (Waitlist)', icon: Tag, color: 'text-emerald-300' },
-  { value: 'ORGANIZER_APPROVAL', label: 'Organizer Approved', icon: ShieldCheck, color: 'text-teal-300' },
-  { value: 'ORGANIZER_REJECTION', label: 'Organizer Rejection', icon: XCircle, color: 'text-rose-400' },
-  { value: 'FRAUD_ALERT', label: 'Fraud / Bot Security Alert', icon: AlertTriangle, color: 'text-rose-400' },
-  { value: 'ABANDONED_CHECKOUT_REMINDER', label: 'Abandoned Checkout Reminder', icon: ShoppingCart, color: 'text-amber-300' },
+  { value: 'BOOKING_CONFIRMATION', label: 'Booking Confirmation', icon: Ticket, tone: 'default' },
+  { value: 'PAYMENT_CONFIRMATION', label: 'Payment Confirmation', icon: CreditCard, tone: 'security' },
+  { value: 'TICKET_ISSUED', label: 'Ticket Issued (NFT Ready)', icon: Sparkles, tone: 'reminder' },
+  { value: 'EVENT_REMINDER', label: 'Event Reminder', icon: Clock, tone: 'reminder' },
+  { value: 'TICKET_TRANSFERRED', label: 'Ticket Transferred', icon: ArrowRightLeft, tone: 'transfer' },
+  { value: 'RESALE_AVAILABLE', label: 'Resale Available (Waitlist)', icon: Tag, tone: 'transfer' },
+  { value: 'ORGANIZER_APPROVAL', label: 'Organizer Approved', icon: ShieldCheck, tone: 'default' },
+  { value: 'ORGANIZER_REJECTION', label: 'Organizer Rejection', icon: XCircle, tone: 'security' },
+  { value: 'FRAUD_ALERT', label: 'Fraud / Bot Security Alert', icon: AlertTriangle, tone: 'security' },
+  { value: 'ABANDONED_CHECKOUT_REMINDER', label: 'Abandoned Checkout Reminder', icon: ShoppingCart, tone: 'transfer' },
 ];
 
 export default function Notifications() {
@@ -151,7 +151,7 @@ export default function Notifications() {
     return <Icon className="w-5 h-5" aria-hidden="true" />;
   };
   const toneOf = (type = '') => {
-    if (type.includes('FRAUD') || type.includes('REJECTION')) return 'security';
+    if (type.includes('FRAUD') || type.includes('REJECTION') || type.includes('ABANDONED')) return 'security';
     if (type.includes('REMINDER')) return 'reminder';
     if (type.includes('TRANSFER')) return 'transfer';
     if (type.includes('ISSUED')) return 'nft';
@@ -168,6 +168,7 @@ export default function Notifications() {
 
   return (
     <BasicShell
+      theme="dark"
       eyebrow="Your account"
       title="Notifications"
       intro={loading ? 'Loading your notification feed…' : `${unreadCount} unread of ${total}. Delivered in-app, by email, by push and in real time.`}
@@ -241,12 +242,12 @@ export default function Notifications() {
         <aside className="tl-nt-side">
           {/* Simulator (Module 12 demonstration) */}
           <div className="tl-basic-card tl-nt-panel">
-            <p className="tl-basic-label">Test dispatcher</p>
-            <h2 style={{ marginTop: 8 }}>Send a test notification</h2>
+            <p className="tl-basic-label tl-nt-badge">Test dispatcher</p>
+            <h2 style={{ marginTop: 12 }}>Send a test notification</h2>
             <p>Pick an event type and dispatch it across in-app, email, push and Socket.io.</p>
             <div className="tl-nt-types" role="group" aria-label="Notification type">
               {NOTIFICATION_TYPES_LIST.map((t) => (
-                <button key={t.value} type="button" className="tl-nt-type-opt" aria-pressed={selectedType === t.value} onClick={() => setSelectedType(t.value)}>
+                <button key={t.value} type="button" className="tl-nt-type-opt" data-tone={t.tone} aria-pressed={selectedType === t.value} onClick={() => setSelectedType(t.value)}>
                   <t.icon className="w-4 h-4" aria-hidden="true" />
                   <span>{t.label}</span>
                 </button>

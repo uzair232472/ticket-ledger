@@ -44,3 +44,49 @@
 @media (max-width: 900px) {
   .tl-sp-grid { grid-template-columns: 1fr; }
 }
+
+/* ================= Help & support (/support), dark: navy page with green glows, glass cards ================= */
+.tl-chrome + main:has(> .tl-sp--dark) {
+  background:
+    radial-gradient(420px 360px at 76% 14%, rgba(34, 197, 94, 0.4), rgba(6, 16, 29, 0) 70%),
+    radial-gradient(480px 420px at 8% 62%, rgba(34, 197, 94, 0.3), rgba(6, 16, 29, 0) 70%),
+    radial-gradient(420px 380px at 70% 82%, rgba(34, 197, 94, 0.28), rgba(6, 16, 29, 0) 70%),
+    #06101d;
+}
+/* Doubled class: legal.css / info.css may load later and reset these with equal weight */
+.tl-legal.tl-sp.tl-sp--dark { --lg-ink: #f4f4f1; --lg-dim: rgba(244, 244, 241, 0.78); --lg-line: rgba(244, 244, 241, 0.14); --lg-green: #22e06b; --sp-ink: #f4f4f1; --sp-dim: rgba(244, 244, 241, 0.78); --sp-line: rgba(244, 244, 241, 0.14); --sp-green: #22e06b; color: #f4f4f1; padding-top: 40px; }
+.tl-sp--dark .tl-legal-head h1, .tl-sp--dark h2, .tl-sp--dark .tl-info-field > span { color: #f4f4f1; }
+.tl-sp--dark .tl-legal-head h1 { max-width: none; font-size: clamp(36px, 5vw, 64px); }
+.tl-sp--dark .tl-legal-switch { color: #22e06b; }
+
+/* Tabs: green underline on the active one, glass pills for the rest */
+.tl-sp--dark .tl-sp-tabs button { border: 1px solid transparent; background: rgba(244, 244, 241, 0.1); color: rgba(244, 244, 241, 0.8); font-weight: 600; }
+.tl-sp--dark .tl-sp-tabs button:hover { background: rgba(244, 244, 241, 0.16); }
+.tl-sp--dark .tl-sp-tabs button[aria-pressed='true'] { background: rgba(34, 224, 107, 0.12); color: #22e06b; border-color: transparent; box-shadow: inset 0 -2px 0 #22e06b; border-radius: 999px 999px 4px 4px; }
+
+/* Request rows and the empty state */
+.tl-sp--dark .tl-sp-item { border-color: rgba(244, 244, 241, 0.14); background: rgba(14, 30, 40, 0.72); backdrop-filter: blur(10px); }
+.tl-sp--dark .tl-sp-item:hover { border-color: #22e06b; box-shadow: 0 0 22px rgba(34, 224, 107, 0.15); }
+.tl-sp--dark .tl-sp-empty { display: grid; justify-items: center; gap: 8px; padding: 40px 24px; border: 1px solid rgba(244, 244, 241, 0.14); border-radius: 16px; background: rgba(60, 70, 80, 0.35); backdrop-filter: blur(10px); box-shadow: 0 20px 44px rgba(0, 0, 0, 0.3); }
+.tl-sp-empty-icon { display: none; }
+.tl-sp--dark .tl-sp-empty-icon { display: grid; place-items: center; width: 64px; height: 64px; color: #22e06b; filter: drop-shadow(0 0 12px rgba(34, 224, 107, 0.6)); }
+.tl-sp--dark .tl-sp-empty-title { font-size: 20px; color: rgba(244, 244, 241, 0.85); }
+.tl-sp--dark .tl-sp-empty p:not(.tl-sp-empty-title) { max-width: 34ch; font-size: 14px; line-height: 1.5; }
+
+/* New request form card */
+.tl-sp--dark .tl-info-formcard { border-color: rgba(244, 244, 241, 0.16); background: rgba(40, 52, 62, 0.55); backdrop-filter: blur(12px); box-shadow: 0 0 60px rgba(34, 224, 107, 0.18), 0 24px 50px rgba(0, 0, 0, 0.4); }
+.tl-sp--dark .tl-info-formcard > h2 svg { color: #22e06b; }
+.tl-sp--dark .tl-info-field input,
+.tl-sp--dark .tl-info-field select,
+.tl-sp--dark .tl-info-field textarea { border-color: rgba(34, 224, 107, 0.45); background-color: rgba(30, 60, 64, 0.55); color: #f4f4f1; }
+.tl-sp--dark .tl-info-field input::placeholder, .tl-sp--dark .tl-info-field textarea::placeholder { color: rgba(244, 244, 241, 0.45); }
+.tl-sp--dark .tl-info-field input:focus,
+.tl-sp--dark .tl-info-field select:focus,
+.tl-sp--dark .tl-info-field textarea:focus { border-color: #22e06b; background-color: rgba(30, 60, 64, 0.75); box-shadow: 0 0 0 3px rgba(34, 224, 107, 0.2); }
+.tl-sp--dark .tl-info-field select { background-image: var(--sel-chev-light); }
+.tl-sp--dark .tl-info-field input[type='file'] { border-color: rgba(244, 244, 241, 0.16); background: rgba(14, 30, 40, 0.5); }
+.tl-sp--dark .tl-info-field input[type='file']::file-selector-button { margin-right: 10px; padding: 6px 12px; border: 0; border-radius: 6px; background: rgba(6, 16, 29, 0.9); color: #f4f4f1; font-weight: 600; cursor: pointer; }
+.tl-sp--dark .tl-info-field small { color: rgba(244, 244, 241, 0.6); }
+.tl-sp--dark .tl-info-formcard .tl-info-btn.is-primary { justify-self: stretch; background: #22e06b; color: #04140a; box-shadow: 0 0 26px rgba(34, 224, 107, 0.45); }
+.tl-sp--dark .tl-info-formcard .tl-info-btn.is-primary:hover { background: #4ade80; }
+.tl-sp--dark .tl-info-error { background: rgba(248, 113, 113, 0.14); color: #fecaca; }

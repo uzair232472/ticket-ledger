@@ -115,6 +115,13 @@ function SiteChrome({ children }) {
   return pathname === '/suspended' || customerOnly || accountSignedOut || legal ? children : null;
 }
 
+/** Site header for pages without their own: light, except on dark pages (Help & support). */
+function ChromeHeader() {
+  const { pathname } = useLocation();
+  const dark = pathname.replace(/\/+$/, '') === '/support';
+  return <div className="tl-home tl-chrome"><HomeHeader tone={dark ? 'dark' : 'light'} /></div>;
+}
+
 /**
  * Every new screen (link, menu, login, logout) opens at its top. Back/forward and reloads ('POP') are left to
  * the pages that restore their own position (homepage, Explore Events, Fan resale).
@@ -202,7 +209,7 @@ export default function App() {
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
           <SiteBanner />
           {/* Pages without their own chrome get the site header (logo, cart, notifications, profile, menu) */}
-          <SiteChrome><div className="tl-home tl-chrome"><HomeHeader tone="light" /></div></SiteChrome>
+          <SiteChrome><ChromeHeader /></SiteChrome>
           <main className="flex-1 w-full">
             <Routes>
               <Route path="/" element={<Dashboard />} />

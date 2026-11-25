@@ -440,6 +440,7 @@ export default function Profile() {
 
   return (
     <BasicShell
+      theme="dark"
       eyebrow={<span className="tl-ov-crumbs">Account <span aria-hidden="true">/</span> <b>{getBreadcrumbLabel()}</b></span>}
       title={loading ? 'Account' : activeTab === 'overview' ? 'Account overview' : getBreadcrumbLabel()}
       intro={loading ? 'Loading your account…' : activeTab === 'overview' ? 'Manage your profile, tickets and connected wallet.' : `Signed in as ${profile?.name || profile?.email || 'you'}.`}

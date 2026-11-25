@@ -6,6 +6,7 @@ import { useWishlist } from '../context/WishlistContext';
 import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
+import ThemedSelect from '../components/events/ThemedSelect';
 import '../components/home/home.css';
 import '../components/events/events.css';
 import RecommendedEvents from '../components/ml/RecommendedEvents';
@@ -55,8 +56,8 @@ export default function Wishlist() {
   const savedCount = events.filter((e) => isSaved(e.id)).length;
 
   return (
-    <div className="tl-home tl-explore">
-      <HomeHeader pageRef={pageRef} onCategories={() => navigate('/categories')} tone="light" />
+    <div className="tl-home tl-explore tl-ex-dark">
+      <HomeHeader pageRef={pageRef} onCategories={() => navigate('/categories')} tone="dark" />
       <div ref={pageRef}>
         <main className="tl-ex-main">
           <div className="tl-ex-head">
@@ -72,12 +73,10 @@ export default function Wishlist() {
               <span className="sr-only">Search saved events</span>
               <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search saved events, venues, cities" />
             </label>
-            <label className="tl-ex-select">
-              <span>Sort</span>
-              <select value={sort} onChange={(e) => setSort(e.target.value)}>
-                {SORTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
+            <div className="tl-ex-select">
+              <span id="tl-wl-lbl-sort">Sort</span>
+              <ThemedSelect labelId="tl-wl-lbl-sort" value={sort} options={SORTS} onChange={setSort} />
+            </div>
           </div>
 
           {status === 'loading' && (

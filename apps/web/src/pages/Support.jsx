@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LifeBuoy, Plus, Send } from 'lucide-react';
+import { MessagesSquare, Plus, Send } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { StatusPill } from '../components/support/SupportThread';
@@ -53,7 +53,7 @@ export default function Support() {
   };
 
   return (
-    <main className="tl-legal tl-info tl-sp">
+    <main className="tl-legal tl-info tl-sp tl-sp--dark">
       <header className="tl-legal-head tl-info-head">
         <p className="tl-legal-eyebrow">Help &amp; support</p>
         <h1>How can we help?</h1>
@@ -70,7 +70,11 @@ export default function Support() {
             ))}
           </div>
           {!tickets ? <p className="tl-sp-empty">Loading…</p> : !tickets.length ? (
-            <p className="tl-sp-empty"><LifeBuoy className="w-6 h-6 inline mb-2" aria-hidden="true" /><br />No {filter === 'all' ? '' : filter === 'open' ? 'open ' : 'resolved '}requests.</p>
+            <div className="tl-sp-empty">
+              <span className="tl-sp-empty-icon" aria-hidden="true"><MessagesSquare className="w-8 h-8" /></span>
+              <p className="tl-sp-empty-title">No {filter === 'all' ? '' : filter === 'open' ? 'open ' : 'resolved '}requests.</p>
+              <p>You’re all caught up! If you need anything, create a new request on the right.</p>
+            </div>
           ) : (
             <div className="tl-sp-list">
               {tickets.map((t) => (

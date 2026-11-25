@@ -949,7 +949,7 @@ export default function CreateEvent() {
             intro="A few quick tips to help you create a great event listing."
             items={[
               { icon: Monitor, title: 'Event banner', text: 'Use a wide, eye-catching image. Recommended size: 2400 × 1080 px (20:9), max 8 MB. Formats: JPG, PNG, WebP.' },
-              { icon: ImageIcon, title: 'Event card image', text: 'Shown in listings. Recommended size: 1600 × 1200 px (4:3), max 5 MB. Formats: JPG, PNG, WebP.' },
+              { icon: ImageIcon, title: 'Event card image', text: 'Shown on event cards in Explore and listings. Recommended size: 1500 × 1000 px (3:2), max 5 MB. Formats: JPG, PNG, WebP.' },
               { icon: ImageIcon, title: 'Event details photo', text: 'Photo in the event details card, beside the tabs. Recommended size: 1800 × 1200 px (3:2), max 8 MB.' },
               { icon: LayoutGrid, title: 'Event gallery', text: 'Add up to 12 landscape images. Recommended size: 1500 × 1000 px (3:2), max 5 MB each.' },
             ]}

@@ -40,14 +40,17 @@ export default function Categories() {
 
   return (
     <div className="tl-home tl-allcats-page">
-      <HomeHeader pageRef={pageRef} onCategories={focusGrid} tone="light" />
+      <HomeHeader pageRef={pageRef} onCategories={focusGrid} tone="dark" />
       <div ref={pageRef}>
         <main id="all-categories" className="tl-categories tl-allcats" tabIndex={-1} aria-labelledby="tl-allcats-title">
           <Link to="/" className="tl-allcats-back">
             <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Home
           </Link>
           <div className="tl-categories-head">
-            <h1 id="tl-allcats-title" className="tl-section-title">All categories</h1>
+            <div className="tl-allcats-copy">
+              <span className="tl-ex-hero-line" aria-hidden="true" />
+              <h1 id="tl-allcats-title" className="tl-section-title"><span>All</span> <span className="is-accent">Categories</span></h1>
+            </div>
             <p>From floodlit stadiums to festival grounds, pick a category to see what’s coming up.</p>
           </div>
           <div className="tl-category-grid">

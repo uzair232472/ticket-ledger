@@ -2,7 +2,7 @@
  * Requirements for organizer-uploaded event images, derived from the containers that display them.
  * Keep in sync with apps/web/src/utils/eventImageSpecs.js (the form shows the same values).
  *
- * - card:        Explore / related tiles (503:377), home cards (4:3) and the map hover card
+ * - card:        Explore / Wishlist event cards (3:2), Other Events, home cards and the map hover card
  * - banner:      Event page hero; full width × max(600px, 72svh) on desktop (~2.2:1), full-height on phones
  * - galleryWide: Event page details card photo, beside the Event Details / Venue Info tabs (3:2)
  * - gallery:     Event Gallery carousel thumbnails (3:2); the photo viewer shows them whole
@@ -15,7 +15,7 @@ export const MAX_DIMENSION = 8000; // px per side
 export const MAX_PIXELS = 40_000_000;
 
 export const EVENT_IMAGE_SPECS = {
-  card: { label: 'Event Card Image', ratio: 4 / 3, ratioLabel: '4:3', recommended: [1600, 1200], min: [800, 600], maxBytes: 5 * MB, maxCount: 1 },
+  card: { label: 'Event Card Image', ratio: 3 / 2, ratioLabel: '3:2', recommended: [1500, 1000], min: [900, 600], maxBytes: 5 * MB, maxCount: 1 },
   banner: { label: 'Event Banner', ratio: 20 / 9, ratioLabel: '20:9', recommended: [2400, 1080], min: [1600, 720], maxBytes: 8 * MB, maxCount: 1 },
   galleryWide: { label: 'Event Details Photo', ratio: 3 / 2, ratioLabel: '3:2', recommended: [1800, 1200], min: [1200, 800], maxBytes: 8 * MB, maxCount: 1 },
   gallery: { label: 'Event Gallery Images', ratio: 3 / 2, ratioLabel: '3:2', recommended: [1500, 1000], min: [900, 600], maxBytes: 5 * MB, maxCount: 12 },

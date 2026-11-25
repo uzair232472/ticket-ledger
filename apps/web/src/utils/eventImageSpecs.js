@@ -3,7 +3,7 @@
  * Keep in sync with apps/api/src/config/eventMedia.js (the API enforces the same limits).
  *
  * `frames` mirror the real containers so previews show exactly what attendees will see:
- * - card:        EventTile (503:377) / home EventCard (4:3), object-position 50% 30%
+ * - card:        EventTile photo on Explore / Wishlist (3:2), also home cards and Other Events, object-position 50% 30%
  * - banner:      EventDetails hero, full width × max(600px, 72svh) on desktop, 100svh on phones, object-position 50% 35%
  * - galleryWide: EventDetails overview card photo (beside the tabs), 3:2 on every screen
  * - gallery:     EventGallery carousel thumbnails, 3:2 (the photo viewer shows the whole image)
@@ -22,13 +22,13 @@ export const EVENT_IMAGE_SPECS = {
     label: 'Event Card Image',
     description: 'Shown on event tiles in Explore, “Other events”, home page cards and the map.',
     fallbackNote: 'Optional. If empty, the Event Banner is used.',
-    ratio: 4 / 3,
-    ratioLabel: '4:3',
-    recommended: [1600, 1200],
-    min: [800, 600],
+    ratio: 3 / 2,
+    ratioLabel: '3:2',
+    recommended: [1500, 1000],
+    min: [900, 600],
     maxBytes: 5 * MB,
     maxCount: 1,
-    frames: [{ label: 'Event tile', aspect: '503 / 377', position: '50% 30%', width: 220 }],
+    frames: [{ label: 'Event card', aspect: '3 / 2', position: '50% 30%', width: 220 }],
   },
   banner: {
     label: 'Event Banner',
@@ -75,7 +75,7 @@ export const EVENT_IMAGE_SPECS = {
 
 const formatMb = (bytes) => `${Math.round((bytes / MB) * 10) / 10}`;
 
-/** "Recommended: 1600 × 1200 px · Ratio: 4:3 · Maximum: 5 MB · Formats: JPG, PNG, WebP" */
+/** "Recommended: 1500 × 1000 px · Ratio: 3:2 · Maximum: 5 MB · Formats: JPG, PNG, WebP" */
 export function specHelperText(spec) {
   return `Recommended: ${spec.recommended[0]} × ${spec.recommended[1]} px · Ratio: ${spec.ratioLabel} · Maximum: ${formatMb(spec.maxBytes)} MB · Formats: JPG, PNG, WebP`;
 }

@@ -7,7 +7,7 @@ const MAX_H = 320;
 
 /** Theme from where the select sits: dark sections, the organizer / admin studio, or paper pages. */
 function themeOf(el) {
-  if (el.closest('.tl-pill, .tl-mapscene, .tl-acct-section--dark, .tl-dlg--dark, .tl-st-select')) return 'dark';
+  if (el.closest('.tl-pill, .tl-mapscene, .tl-acct-section--dark, .tl-dlg--dark, .tl-st-select, .tl-sp--dark, .tl-basic--dark')) return 'dark';
   if (el.closest('.tl-dash--studio, .tl-ve-panel, .tl-wz-card, .tl-lp, .tl-dash')) return 'studio';
   return 'paper';
 }
