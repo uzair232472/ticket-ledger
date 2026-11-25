@@ -154,3 +154,64 @@ export default function EventGallery({ photos, onOpen }) {
     </section>
   );
 }
+
+const SLIDE_MS = 3500;
+
+/**
+ * Details card photo: slides right to left through the event photos on a loop. A copy of the first
+ * slide sits at the end so the wrap-around keeps moving left; it then snaps back unseen.
+ * Pauses while hovered or focused, while the tab is hidden, and doesn't move with reduced motion.
+ */
+export function PhotoSlideshow({ photos }) {
+  const count = photos.length;
+  const [index, setIndex] = useState(0);
+  const [animate, setAnimate] = useState(true);
+  const [hold, setHold] = useState(false);
+  const [reduce] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  useEffect(() => {
+    if (count < 2 || reduce || hold) return undefined;
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      setAnimate(true);
+      setIndex((i) => Math.min(i + 1, count));
+    }, SLIDE_MS);
+    return () => clearInterval(timer);
+  }, [count, reduce, hold]);
+
+  // Landed on the copy of the first slide: jump back to the real one without animating
+  const onEnd = () => {
+    if (index === count) {
+      setAnimate(false);
+      setIndex(0);
+    }
+  };
+  useEffect(() => {
+    if (animate) return undefined;
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => setAnimate(true)));
+    return () => cancelAnimationFrame(id);
+  }, [animate]);
+
+  if (!count) return null;
+  const slides = count > 1 ? [...photos, photos[0]] : photos;
+  const hideBroken = (e) => e.currentTarget.classList.add('is-broken');
+
+  return (
+    <div className="tl-dt-slides" onPointerEnter={() => setHold(true)} onPointerLeave={() => setHold(false)} aria-roledescription="carousel" aria-label="Event photos">
+      <div
+        className="tl-dt-slides-track"
+        style={{ transform: `translateX(-${index * 100}%)`, transition: animate ? undefined : 'none' }}
+        onTransitionEnd={onEnd}
+      >
+        {slides.map((src, i) => (
+          <img key={i} src={sized(src, 1400)} alt="" decoding="async" loading={i === 0 ? 'eager' : 'lazy'} aria-hidden={i === count ? 'true' : undefined} onError={hideBroken} />
+        ))}
+      </div>
+      {count > 1 && (
+        <div className="tl-dt-slides-dots" aria-hidden="true">
+          {photos.map((_, i) => <span key={i} className={i === index % count ? 'is-active' : ''} />)}
+        </div>
+      )}
+    </div>
+  );
+}

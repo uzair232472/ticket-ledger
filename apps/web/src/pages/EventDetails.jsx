@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useNavigationType, useParams } from 're
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
-import { ArrowLeft, ArrowRight, Bell, Building2, CalendarDays, Camera, Check, Clock, LayoutGrid, MapPin, Music, RefreshCw, Share2, Sparkles, Tag, Ticket, Trophy, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, Building2, CalendarDays, Check, Clock, LayoutGrid, MapPin, Music, RefreshCw, Share2, Sparkles, Tag, Ticket, Trophy, Users } from 'lucide-react';
 import { useDialog } from '../components/ui/DialogProvider';
 import { googleMapsUrl } from '../utils/maps';
 import api, { trackClientBehavior } from '../utils/api';
@@ -13,7 +13,7 @@ import { getEventVisual, resolveMediaUrl } from '../utils/eventMedia';
 import { EVENT_TIMEZONE_LABEL, eventDayEnd, formatEventDate, formatEventTime } from '../utils/eventTime';
 import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
-import EventGallery, { GalleryLightbox, useEventPhotos } from '../components/event-detail/EventGallery';
+import EventGallery, { GalleryLightbox, PhotoSlideshow, useEventPhotos } from '../components/event-detail/EventGallery';
 import ContactOrganizer from '../components/event-detail/ContactOrganizer';
 import { categoryName } from '../components/home/homeData';
 import markUrl from '../assets/ticketledger-mark.svg';
@@ -340,6 +340,8 @@ function EventDetailsPage({ id }) {
   const photos = useEventPhotos(event, heroImage);
   // Organizer's details-card photo (3:2), else the first gallery photo, else the banner
   const detailsPhoto = resolveMediaUrl(event?.galleryWideUrl) || photos[0] || heroImage;
+  // Details card slideshow: the details photo first, then the gallery photos (no repeats)
+  const slides = useMemo(() => [...new Set([detailsPhoto, ...photos].filter(Boolean))], [detailsPhoto, photos]);
   const [titleLead, titleAccent] = splitTitle(event?.name);
   const CategoryIcon = categoryIcon(event?.type);
   const closeViewer = useCallback(() => setViewer(null), []);
@@ -470,12 +472,7 @@ function EventDetailsPage({ id }) {
               {/* Photo + tabbed details card */}
               <section className="tl-dt-overview" aria-label="Event overview">
                 <div className="tl-dt-ov-media">
-                  <img src={detailsPhoto} alt="" decoding="async" onError={(e) => e.currentTarget.classList.add('is-broken')} />
-                  {photos.length > 0 && (
-                    <button type="button" className="tl-dt-glass" onClick={() => setViewer(0)}>
-                      <Camera className="w-4 h-4" aria-hidden="true" /> View Gallery ({photos.length})
-                    </button>
-                  )}
+                  <PhotoSlideshow photos={slides} />
                 </div>
 
                 <div className="tl-dt-ov-panel">

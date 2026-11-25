@@ -254,8 +254,13 @@
   box-shadow: 0 0 0 1px rgba(34, 224, 107, 0.06), 0 0 48px rgba(34, 224, 107, 0.12), 0 30px 60px rgba(0, 0, 0, 0.45);
 }
 .tl-dt-ov-media { position: relative; align-self: center; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 14px; background: #0a1628; }
-.tl-dt-ov-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.tl-dt-ov-media img.is-broken { visibility: hidden; }
+.tl-dt-slides { position: absolute; inset: 0; overflow: hidden; }
+.tl-dt-slides-track { display: flex; height: 100%; transition: transform 0.9s cubic-bezier(0.625, 0.05, 0, 1); will-change: transform; }
+.tl-dt-slides-track img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; }
+.tl-dt-slides-track img.is-broken { visibility: hidden; }
+.tl-dt-slides-dots { position: absolute; left: 0; right: 0; bottom: 14px; display: flex; justify-content: center; gap: 6px; pointer-events: none; }
+.tl-dt-slides-dots span { width: 7px; height: 7px; border-radius: 999px; background: rgba(244, 244, 241, 0.45); transition: width 0.3s ease, background-color 0.3s ease; }
+.tl-dt-slides-dots span.is-active { width: 20px; background: var(--dt-green); }
 .tl-dt-glass {
   position: absolute;
   left: 14px;
