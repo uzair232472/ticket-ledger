@@ -5,8 +5,8 @@
  * `frames` mirror the real containers so previews show exactly what attendees will see:
  * - card:        EventTile (503:377) / home EventCard (4:3), object-position 50% 30%
  * - banner:      EventDetails hero, full width × max(600px, 72svh) on desktop, 100svh on phones, object-position 50% 35%
- * - galleryWide: EventGallery wide photo, 1471:740 desktop / 373:349 phones
- * - gallery:     EventGallery strip cards, 539:550 desktop / 373:349 phones
+ * - galleryWide: EventDetails overview card photo (beside the tabs), 3:2 on every screen
+ * - gallery:     EventGallery carousel thumbnails, 3:2 (the photo viewer shows the whole image)
  */
 
 const MB = 1024 * 1024;
@@ -46,31 +46,30 @@ export const EVENT_IMAGE_SPECS = {
     ],
   },
   galleryWide: {
-    label: 'Gallery Wide Image',
-    description: 'Wide photo opening the gallery below the event details.',
-    fallbackNote: 'Optional. If empty, the Event Banner is used.',
-    ratio: 2,
-    ratioLabel: '2:1',
-    recommended: [2400, 1200],
-    min: [1400, 700],
+    label: 'Event Details Photo',
+    description: 'Photo in the event details card, beside the Event Details and Venue Info tabs.',
+    fallbackNote: 'Optional. If empty, the first gallery image (or the Event Banner) is used.',
+    ratio: 3 / 2,
+    ratioLabel: '3:2',
+    recommended: [1800, 1200],
+    min: [1200, 800],
     maxBytes: 8 * MB,
     maxCount: 1,
     frames: [
-      { label: 'Desktop', aspect: '1471 / 740', position: '50% 50%', width: 240 },
-      { label: 'Phone', aspect: '373 / 349', position: '50% 50%', width: 110 },
+      { label: 'Details card', aspect: '3 / 2', position: '50% 50%', width: 210 },
     ],
   },
   gallery: {
-    label: 'Scrolling Gallery Images',
-    description: 'Photos in the drifting strip on the event page, shown in this order.',
+    label: 'Event Gallery Images',
+    description: 'Photos in the Event Gallery carousel on the event page, shown in this order.',
     fallbackNote: 'Optional. If empty, category photos are shown.',
-    ratio: 1,
-    ratioLabel: '1:1',
-    recommended: [1200, 1200],
-    min: [700, 700],
+    ratio: 3 / 2,
+    ratioLabel: '3:2',
+    recommended: [1500, 1000],
+    min: [900, 600],
     maxBytes: 5 * MB,
     maxCount: 12,
-    frames: [{ label: 'Strip card', aspect: '539 / 550', position: '50% 50%', width: 120 }],
+    frames: [{ label: 'Gallery photo', aspect: '3 / 2', position: '50% 50%', width: 150 }],
   },
 };
 

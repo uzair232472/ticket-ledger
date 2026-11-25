@@ -59,7 +59,7 @@ const EVENT_MEDIA_FIELDS = [
 const MULTER_MESSAGES = {
   LIMIT_FILE_SIZE: `An image is larger than ${LARGEST_IMAGE_BYTES / (1024 * 1024)} MB.`,
   LIMIT_FILE_COUNT: 'Too many images in one upload.',
-  LIMIT_UNEXPECTED_FILE: `Too many images, or an unknown image field. Scrolling Gallery Images allows up to ${EVENT_IMAGE_SPECS.gallery.maxCount}.`,
+  LIMIT_UNEXPECTED_FILE: `Too many images, or an unknown image field. Event Gallery Images allows up to ${EVENT_IMAGE_SPECS.gallery.maxCount}.`,
 };
 const eventMediaUpload = (req, res, next) =>
   upload.fields(EVENT_MEDIA_FIELDS)(req, res, (err) => {

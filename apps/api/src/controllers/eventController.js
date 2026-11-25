@@ -80,7 +80,7 @@ const SINGLE_IMAGE_FIELDS = [
 
 const galleryOrderSchema = z
   .array(z.union([z.object({ id: z.string().min(1) }).strict(), z.object({ upload: z.number().int().min(0) }).strict()]))
-  .max(EVENT_IMAGE_SPECS.gallery.maxCount, `Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
+  .max(EVENT_IMAGE_SPECS.gallery.maxCount, `Event Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
 
 
 // Same name once case, spacing and punctuation are ignored ("PSL Final 2026" = "psl final-2026")
@@ -172,7 +172,7 @@ export const createEvent = async (req, res) => {
     const files = req.files || {};
     const galleryFiles = files.galleryImages || [];
     if (galleryFiles.length > EVENT_IMAGE_SPECS.gallery.maxCount) {
-      throw new MediaValidationError(`Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
+      throw new MediaValidationError(`Event Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
     }
     const single = (field, kind) => (files[field]?.[0] ? [{ file: files[field][0], kind, field }] : []);
     const uploads = [
@@ -1201,7 +1201,7 @@ export const updateEvent = async (req, res) => {
     } else if (galleryFiles.length) {
       galleryPlan = [...event.galleryImages.map((img) => ({ id: img.id })), ...galleryFiles.map((_, upload) => ({ upload }))];
       if (galleryPlan.length > EVENT_IMAGE_SPECS.gallery.maxCount) {
-        throw new MediaValidationError(`Scrolling Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
+        throw new MediaValidationError(`Event Gallery Images: at most ${EVENT_IMAGE_SPECS.gallery.maxCount} images.`);
       }
     }
     galleryFiles.forEach((file) => uploads.push({ file, kind: 'gallery', field: 'galleryImages' }));

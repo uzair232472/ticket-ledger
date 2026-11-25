@@ -1,187 +1,155 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Pause, Play } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, X } from 'lucide-react';
 import { EVENT_VISUALS, resolveMediaUrl } from '../../utils/eventMedia';
 import { CATEGORIES } from '../home/homeData';
-
-gsap.registerPlugin(ScrollTrigger);
-
-const SPEED = 36; // px/s, measured on the reference marquee
-const MIN_CARDS = 6;
 
 const photo = (id, w) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}&q=82`;
 // Atmosphere photos already used in the project, grouped so a match never shows concert crowds
 const SPORT_POOL = ['1540747913346-19e32dc3e97e', '1431324155629-1a6deb1dec8d', '1508098682722-e99c43a406b2', '1531415074968-036ba1b575da'];
 const MUSIC_POOL = ['1501386761578-eac5c94b800a', '1470229722913-7c0e2dbbafd3', '1459749411175-04bf5292ceea', '1540039155733-5bb30b53aa14', '1514525253161-7a46d19cd819', '1470225620780-dba8ba36b745'];
-const MUSIC_TYPES = ['MUSIC_CONCERT', 'MUSIC_FESTIVAL'];
+const MUSIC_TYPES = ['MUSIC_CONCERT', 'MUSIC_FESTIVAL', 'QAWWALI'];
 
 const photoId = (src = '') => src.match(/photo-([\w-]+?)(\?|$)/)?.[1] || src;
-
-// Wide banner: 1800px so it fills the 16/7 cinematic strip without upscaling
-const sizedWide = (src) => (src.includes('images.unsplash.com') ? src.replace(/w=\d+/, 'w=1800').replace(/q=\d+/, 'q=88') : src);
-// Marquee cards: 1400px is ample for the 38vw tiles at any desktop viewport
-const sizedCard = (src) => (src.includes('images.unsplash.com') ? src.replace(/w=\d+/, 'w=1400').replace(/q=\d+/, 'q=82') : src);
-
-/** Repeats a list until there are enough cards for the strip to be wider than the screen. */
-const fill = (pool) => {
-  const out = [];
-  for (let i = 0; out.length < Math.max(MIN_CARDS, pool.length); i++) out.push(pool[i % pool.length]);
-  return out;
-};
+const sized = (src, w) => (src?.includes('images.unsplash.com') ? src.replace(/w=\d+/, `w=${w}`) : src);
 
 /**
  * The organizer's gallery images in their saved order when there are any; otherwise the event's own
- * image first, then photos for its category, then generic ones from the same group.
+ * image first, then photos for its category, then generic ones from the same group (no repeats).
  */
-function buildCards(event, mainImage) {
+export function buildPhotos(event, mainImage) {
   const own = (event.galleryImages || []).map((img) => resolveMediaUrl(img.url)).filter(Boolean);
-  if (own.length) return fill(own);
+  if (own.length) return own;
   const visual = EVENT_VISUALS[event.type] || {};
   const category = CATEGORIES.find((c) => c.type === event.type);
-  // Pull marquee cards at 1400px so they never look upscaled in the 38vw strip
   const group = (MUSIC_TYPES.includes(event.type) ? MUSIC_POOL : SPORT_POOL).map((id) => photo(id, 1400));
-  const seen = new Set([photoId(mainImage)]);
-  const cards = [];
-  [visual.defaultImage, visual.altImage, category?.image, ...group].filter(Boolean).forEach((src) => {
+  const seen = new Set();
+  const out = [];
+  [mainImage, visual.defaultImage, visual.altImage, category?.image, ...group].filter(Boolean).forEach((src) => {
     const key = photoId(src);
     if (!seen.has(key)) {
       seen.add(key);
-      cards.push(sizedCard(src));
+      out.push(src);
     }
   });
-  // Too few distinct photos: include the event image and repeat so the strip is wider than the screen
-  return fill(cards.length ? [sizedCard(mainImage), ...cards] : [sizedCard(mainImage)]);
+  return out;
 }
 
-/**
- * Reference gallery: one wide image, then a strip of tall cards that drifts left continuously,
- * speeds up while the page scrolls, can be dragged (with a little inertia) and pauses off screen.
- * Reduced motion: no drift, drag only. A pause button covers WCAG 2.2.2 for the moving strip.
- */
-export default function EventGallery({ event, mainImage }) {
-  const cards = useMemo(() => buildCards(event, mainImage), [event, mainImage]);
-  // Wide banner: 1800px so the cinematic 16/7 strip is never pixelated
-  const rawWide = resolveMediaUrl(event.galleryWideUrl) || mainImage;
-  const wideImage = sizedWide(rawWide);
-  const stripRef = useRef(null);
-  const trackRef = useRef(null);
-  const [paused, setPaused] = useState(false);
-  const pausedRef = useRef(false);
-  const [reduce] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+export function useEventPhotos(event, mainImage) {
+  return useMemo(() => (event ? buildPhotos(event, mainImage) : []), [event, mainImage]);
+}
+
+/** Full-screen photo viewer: arrows / ← → keys to step, Esc or the backdrop to close. */
+export function GalleryLightbox({ photos, index, onClose, onIndex }) {
+  const closeRef = useRef(null);
+  const count = photos.length;
+  const step = useCallback((d) => onIndex((index + d + count) % count), [index, count, onIndex]);
 
   useEffect(() => {
-    pausedRef.current = paused;
-  }, [paused]);
-
-  useEffect(() => {
-    const strip = stripRef.current;
-    const track = trackRef.current;
-    const list = track.firstElementChild;
-    let listWidth = list.offsetWidth;
-    let x = 0;
-    let boost = 0; // extra speed from page scrolling
-    let fling = 0; // drag inertia (px/s)
-    let visible = false;
-    let drag = null;
-    const wrap = (v) => gsap.utils.wrap(-listWidth, 0, v);
-    const render = () => gsap.set(track, { x });
-
-    const tick = (_, delta) => {
-      if (!visible || drag) return;
-      const dt = Math.min(delta, 64) / 1000;
-      if (pausedRef.current) fling = 0; // paused means still (dragging still works)
-      const auto = reduce || pausedRef.current ? 0 : SPEED * (1 + boost);
-      x = wrap(x - auto * dt + fling * dt);
-      fling *= Math.pow(0.04, dt); // inertia fades out in about a second
-      if (Math.abs(fling) < 1) fling = 0;
-      boost *= Math.pow(0.08, dt);
-      render();
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowRight') step(1);
+      else if (e.key === 'ArrowLeft') step(-1);
     };
-    gsap.ticker.add(tick);
-
-    const st = ScrollTrigger.create({
-      trigger: strip,
-      start: 'top bottom',
-      end: 'bottom top',
-      onToggle: (self) => {
-        visible = self.isActive;
-      },
-      onUpdate: (self) => {
-        if (!reduce) boost = Math.min(Math.abs(self.getVelocity()) / 400, 4);
-      },
-    });
-
-    // Drag (pointer events; vertical page scrolling still works on touch thanks to touch-action: pan-y)
-    const onDown = (e) => {
-      if (e.button !== 0) return;
-      drag = { startX: e.clientX, startPos: x, lastX: e.clientX, lastT: performance.now(), v: 0, id: e.pointerId };
-      strip.classList.add('is-dragging');
-    };
-    const onMove = (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      if (!strip.hasPointerCapture(e.pointerId) && Math.abs(e.clientX - drag.startX) > 4) strip.setPointerCapture(e.pointerId);
-      const now = performance.now();
-      drag.v = ((e.clientX - drag.lastX) / Math.max(now - drag.lastT, 1)) * 1000;
-      drag.lastX = e.clientX;
-      drag.lastT = now;
-      x = wrap(drag.startPos + (e.clientX - drag.startX));
-      render();
-    };
-    const onUp = (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      fling = reduce ? 0 : gsap.utils.clamp(-2500, 2500, drag.v);
-      drag = null;
-      strip.classList.remove('is-dragging');
-    };
-    strip.addEventListener('pointerdown', onDown);
-    strip.addEventListener('pointermove', onMove);
-    strip.addEventListener('pointerup', onUp);
-    strip.addEventListener('pointercancel', onUp);
-
-    const ro = new ResizeObserver(() => {
-      listWidth = list.offsetWidth || 1;
-      x = wrap(x);
-      render();
-    });
-    ro.observe(list);
-
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKey);
     return () => {
-      gsap.ticker.remove(tick);
-      st.kill();
-      ro.disconnect();
-      strip.removeEventListener('pointerdown', onDown);
-      strip.removeEventListener('pointermove', onMove);
-      strip.removeEventListener('pointerup', onUp);
-      strip.removeEventListener('pointercancel', onUp);
-      gsap.set(track, { clearProps: 'transform' });
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
+      previous?.focus?.();
     };
-  }, [cards, reduce]);
-
-  const hideBroken = (e) => e.currentTarget.parentElement.classList.add('is-broken');
-  const renderList = (copy) => (
-    <div className="tl-dt-marquee-list" aria-hidden={copy ? 'true' : undefined}>
-      {cards.map((src, i) => (
-        <div key={i} className="tl-dt-marquee-item">
-          <img src={src} alt="" draggable="false" loading="lazy" decoding="async" onError={hideBroken} />
-        </div>
-      ))}
-    </div>
-  );
+  }, [onClose, step]);
 
   return (
-    <section className="tl-dt-gallery" aria-label="Photos">
-      <div ref={stripRef} className="tl-dt-marquee" data-event-marquee>
-        <div ref={trackRef} className="tl-dt-marquee-track">
-          {renderList(false)}
-          {renderList(true)}
-        </div>
+    <div className="tl-dt-lightbox" role="dialog" aria-modal="true" aria-label={`Photo ${index + 1} of ${count}`} onClick={onClose}>
+      <button ref={closeRef} type="button" className="tl-dt-lightbox-close" onClick={onClose} aria-label="Close photos">
+        <X className="w-6 h-6" aria-hidden="true" />
+      </button>
+      <img src={sized(photos[index], 2000)} alt="" className="tl-dt-lightbox-img" onClick={(e) => e.stopPropagation()} />
+      {count > 1 && (
+        <>
+          <button type="button" className="tl-dt-arrow tl-dt-lightbox-prev" onClick={(e) => { e.stopPropagation(); step(-1); }} aria-label="Previous photo">
+            <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+          </button>
+          <button type="button" className="tl-dt-arrow tl-dt-lightbox-next" onClick={(e) => { e.stopPropagation(); step(1); }} aria-label="Next photo">
+            <ArrowRight className="w-5 h-5" aria-hidden="true" />
+          </button>
+          <p className="tl-dt-lightbox-count">{index + 1} / {count}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** "Event Gallery": a row of thumbnails that scrolls a page at a time, with arrows and page dots. */
+export default function EventGallery({ photos, onOpen }) {
+  const railRef = useRef(null);
+  const [pages, setPages] = useState(1);
+  const [page, setPage] = useState(0);
+
+  const measure = useCallback(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const total = Math.max(1, Math.ceil((rail.scrollWidth - 2) / rail.clientWidth));
+    setPages(total);
+    setPage(Math.min(total - 1, Math.round(rail.scrollLeft / rail.clientWidth)));
+  }, []);
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return undefined;
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(rail);
+    rail.addEventListener('scroll', measure, { passive: true });
+    return () => {
+      ro.disconnect();
+      rail.removeEventListener('scroll', measure);
+    };
+  }, [measure, photos]);
+
+  if (!photos.length) return null;
+  const go = (p) => {
+    const rail = railRef.current;
+    const target = Math.max(0, Math.min(pages - 1, p));
+    rail.scrollTo({ left: target * rail.clientWidth, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
+  const hideBroken = (e) => e.currentTarget.parentElement.classList.add('is-broken');
+
+  return (
+    <section className="tl-dt-section tl-dt-gallery" aria-labelledby="tl-dt-gallery-title">
+      <div className="tl-dt-section-head">
+        <h2 id="tl-dt-gallery-title" className="tl-dt-section-title">Event Gallery</h2>
       </div>
-      {!reduce && (
-        <button type="button" className="tl-dt-marquee-toggle" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
-          {paused ? <Play className="w-3.5 h-3.5" aria-hidden="true" /> : <Pause className="w-3.5 h-3.5" aria-hidden="true" />}
-          {paused ? 'Play photos' : 'Pause photos'}
-        </button>
+      <div className="tl-dt-gallery-wrap">
+        {pages > 1 && (
+          <button type="button" className="tl-dt-arrow tl-dt-gallery-prev" onClick={() => go(page - 1)} disabled={page === 0} aria-label="Previous photos">
+            <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+          </button>
+        )}
+        <ul ref={railRef} className="tl-dt-gallery-rail">
+          {photos.map((src, i) => (
+            <li key={src + i} className="tl-dt-gallery-item">
+              <button type="button" className={`tl-dt-gallery-thumb${i === 0 ? ' is-first' : ''}`} onClick={() => onOpen(i)} aria-label={`Open photo ${i + 1} of ${photos.length}`}>
+                <img src={sized(src, 800)} alt="" loading="lazy" decoding="async" onError={hideBroken} />
+              </button>
+            </li>
+          ))}
+        </ul>
+        {pages > 1 && (
+          <button type="button" className="tl-dt-arrow tl-dt-gallery-next" onClick={() => go(page + 1)} disabled={page >= pages - 1} aria-label="More photos">
+            <ArrowRight className="w-5 h-5" aria-hidden="true" />
+          </button>
+        )}
+      </div>
+      {pages > 1 && (
+        <div className="tl-dt-dots" role="group" aria-label="Gallery pages">
+          {Array.from({ length: pages }, (_, i) => (
+            <button key={i} type="button" className={`tl-dt-dot${i === page ? ' is-active' : ''}`} onClick={() => go(i)} aria-label={`Page ${i + 1}`} aria-current={i === page ? 'true' : undefined} />
+          ))}
+        </div>
       )}
     </section>
   );

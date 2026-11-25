@@ -4,8 +4,8 @@
  *
  * - card:        Explore / related tiles (503:377), home cards (4:3) and the map hover card
  * - banner:      Event page hero; full width × max(600px, 72svh) on desktop (~2.2:1), full-height on phones
- * - galleryWide: Wide photo above the scrolling strip (1471:740 desktop, 373:349 phones)
- * - gallery:     Scrolling strip cards (539:550 desktop, 373:349 phones)
+ * - galleryWide: Event page details card photo, beside the Event Details / Venue Info tabs (3:2)
+ * - gallery:     Event Gallery carousel thumbnails (3:2); the photo viewer shows them whole
  */
 
 const MB = 1024 * 1024;
@@ -17,8 +17,8 @@ export const MAX_PIXELS = 40_000_000;
 export const EVENT_IMAGE_SPECS = {
   card: { label: 'Event Card Image', ratio: 4 / 3, ratioLabel: '4:3', recommended: [1600, 1200], min: [800, 600], maxBytes: 5 * MB, maxCount: 1 },
   banner: { label: 'Event Banner', ratio: 20 / 9, ratioLabel: '20:9', recommended: [2400, 1080], min: [1600, 720], maxBytes: 8 * MB, maxCount: 1 },
-  galleryWide: { label: 'Gallery Wide Image', ratio: 2, ratioLabel: '2:1', recommended: [2400, 1200], min: [1400, 700], maxBytes: 8 * MB, maxCount: 1 },
-  gallery: { label: 'Scrolling Gallery Images', ratio: 1, ratioLabel: '1:1', recommended: [1200, 1200], min: [700, 700], maxBytes: 5 * MB, maxCount: 12 },
+  galleryWide: { label: 'Event Details Photo', ratio: 3 / 2, ratioLabel: '3:2', recommended: [1800, 1200], min: [1200, 800], maxBytes: 8 * MB, maxCount: 1 },
+  gallery: { label: 'Event Gallery Images', ratio: 3 / 2, ratioLabel: '3:2', recommended: [1500, 1000], min: [900, 600], maxBytes: 5 * MB, maxCount: 12 },
   // Background for a custom venue plan: any ratio (kept as uploaded), sections are drawn over it
   venuePlan: { label: 'Venue Plan', ratio: null, ratioLabel: 'any', recommended: [3000, 2000], min: [1000, 600], maxBytes: 10 * MB, maxCount: 1 },
 };

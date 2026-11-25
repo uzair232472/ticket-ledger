@@ -950,10 +950,10 @@ export default function CreateEvent() {
             items={[
               { icon: Monitor, title: 'Event banner', text: 'Use a wide, eye-catching image. Recommended size: 2400 × 1080 px (20:9), max 8 MB. Formats: JPG, PNG, WebP.' },
               { icon: ImageIcon, title: 'Event card image', text: 'Shown in listings. Recommended size: 1600 × 1200 px (4:3), max 5 MB. Formats: JPG, PNG, WebP.' },
-              { icon: ImageIcon, title: 'Gallery wide image', text: 'Wide image for the event gallery. Recommended size: 2400 × 1200 px (2:1), max 8 MB.' },
-              { icon: LayoutGrid, title: 'Scrolling gallery', text: 'Add up to 12 square images. Recommended size: 1200 × 1200 px (1:1), max 5 MB each.' },
+              { icon: ImageIcon, title: 'Event details photo', text: 'Photo in the event details card, beside the tabs. Recommended size: 1800 × 1200 px (3:2), max 8 MB.' },
+              { icon: LayoutGrid, title: 'Event gallery', text: 'Add up to 12 landscape images. Recommended size: 1500 × 1000 px (3:2), max 5 MB each.' },
             ]}
-            note="If you don’t add images, the banner falls back to category artwork, and the card and gallery images fall back to the banner. The scrolling gallery uses category photos when empty."
+            note="If you don’t add images, the banner falls back to category artwork, and the card image falls back to the banner. The details photo uses the first gallery image (or the banner), and the gallery uses category photos when empty."
           />
         </div>
 
