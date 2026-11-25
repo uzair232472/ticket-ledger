@@ -581,3 +581,93 @@ fieldset.tl-bk-panel { min-width: 0; margin-inline: 0; }
 .tl-co-terms { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 13px; }
 .tl-co-terms input { margin-top: 3px; }
 .tl-co-terms summary { display: inline; cursor: pointer; text-decoration: underline; }
+
+/* ===================================================================== */
+/* Seat page hero (SeatMap.jsx): organizer's cover image, title, steps   */
+/* ===================================================================== */
+.tl-book--hero .tl-bk-main { padding-top: 18px; }
+.tl-sh { position: relative; z-index: 5; color: #fff; padding: clamp(96px, 13vh, 120px) 0 54px; isolation: isolate; }
+.tl-sh-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: #06122a; }
+.tl-sh-bg img { width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+.tl-sh-bg::after { content: ''; position: absolute; inset: 0; background:
+  linear-gradient(90deg, rgba(4, 12, 32, 0.92) 0%, rgba(4, 12, 32, 0.72) 45%, rgba(4, 12, 32, 0.25) 100%),
+  linear-gradient(180deg, rgba(4, 12, 32, 0.55) 0%, rgba(4, 12, 32, 0) 30%, rgba(4, 12, 32, 0.35) 100%); }
+.tl-sh-wave { position: absolute; left: 0; right: 0; bottom: -1px; width: 100%; height: 34px; z-index: 0; pointer-events: none; }
+.tl-sh-wave path { fill: var(--bk-bg); filter: drop-shadow(0 -3px 0 rgba(34, 197, 94, 0.85)); }
+.tl-sh-inner { position: relative; z-index: 1; max-width: 1320px; margin: 0 auto; padding: 0 20px; }
+.tl-sh-back { display: inline-flex; align-items: center; gap: 10px; min-height: 36px; color: #fff; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+.tl-sh-back:hover { color: #86efac; }
+.tl-sh-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 18px 32px; }
+.tl-sh-text { min-width: 0; flex: 1 1 520px; }
+.tl-sh-title { margin-top: 6px; font-size: clamp(32px, 4.6vw, 60px); line-height: 1; font-weight: 800; letter-spacing: -0.03em; text-wrap: balance; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35); }
+.tl-sh-title em { font-style: normal; color: #4ade80; }
+.tl-sh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; margin-top: 14px; font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.92); }
+.tl-sh-meta span { display: inline-flex; align-items: center; gap: 8px; }
+.tl-sh-meta span + span::before { content: ''; width: 1px; height: 18px; margin: 0 16px; background: rgba(255, 255, 255, 0.3); }
+.tl-sh-switch:empty, .tl-sh-tickets:empty { display: none; }
+.tl-sh-switch { margin-top: 22px; }
+.tl-sh .tl-v3-switch { padding: 4px; gap: 4px; border-radius: 999px; background: rgba(6, 14, 34, 0.78); border: 1px solid rgba(255, 255, 255, 0.12); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.tl-sh .tl-v3-switch button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 22px; border-radius: 999px; color: #fff; font-size: 14px; font-weight: 700; }
+.tl-sh .tl-v3-switch button[aria-pressed='true'] { background: linear-gradient(180deg, #22c55e, #15803d); color: #fff; box-shadow: 0 0 0 1px rgba(134, 239, 172, 0.5), 0 6px 20px rgba(34, 197, 94, 0.45); }
+.tl-sh .tl-v3-switch button[aria-pressed='false']:hover { background: rgba(255, 255, 255, 0.08); }
+
+/* Steps + My tickets, in one dark glass box */
+.tl-sh-box { position: relative; isolation: isolate; display: grid; gap: 4px; padding: 10px 14px 12px; border-radius: 14px; background: rgba(6, 14, 34, 0.82); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3); }
+/* Blur on a pseudo-element: a filter on the box itself would trap the phone bottom sheet (position: fixed) inside it */
+.tl-sh-box::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.tl-sh .tl-bk-steps { font-family: inherit; font-size: 11px; font-weight: 700; line-height: 1; letter-spacing: 0.02em; gap: 0 18px; }
+.tl-sh .tl-bk-steps li { color: rgba(255, 255, 255, 0.75); min-height: 30px; }
+.tl-sh .tl-bk-steps li + li::before { content: none; }
+.tl-sh .tl-bk-steps li[aria-current='step'] { color: #4ade80; text-decoration: none; box-shadow: inset 0 -2px 0 #4ade80; }
+.tl-sh .tl-bk-steps li.is-done { color: #fff; }
+.tl-sh .tl-vb-mine { width: 100%; justify-content: space-between; gap: 16px; padding: 0 0 0 4px; background: transparent; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.12); border-radius: 0; font-family: inherit; font-size: 13px; font-weight: 800; line-height: 1; padding-top: 8px; }
+.tl-sh .tl-vb-mine:hover, .tl-sh .tl-vb-mine.is-open { background: transparent; color: #86efac; }
+.tl-sh .tl-vb-mine > span:first-child { flex: 1; text-align: left; }
+.tl-sh .tl-vb-mine-time { font-variant-numeric: tabular-nums; opacity: 1; font-weight: 700; }
+.tl-sh .tl-vb-badge { border-radius: 6px; }
+.tl-sh :focus-visible { outline-color: #86efac; }
+@media (max-width: 767px) {
+  .tl-sh { padding: 92px 0 46px; }
+  .tl-sh-inner { padding: 0 16px; }
+  .tl-sh-meta { font-size: 13px; }
+  .tl-sh-meta span + span::before { display: none; }
+  .tl-sh-meta { gap: 6px 16px; }
+  .tl-sh-box { width: 100%; }
+  .tl-sh .tl-v3-switch button { padding: 0 16px; }
+}
+
+/* ---------- My tickets panel: same card language as the 3D seat card ---------- */
+.tl-vb-panel { border: 0; border-radius: 16px; background: rgba(255, 255, 255, 0.98); color: #0f172a; box-shadow: 0 18px 44px rgba(15, 23, 42, 0.28); font-family: inherit; overflow: hidden; }
+.tl-vb-panel small { display: block; font-size: 10.5px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
+.tl-vb-panel .tl-vb-panel-head { padding: 14px 10px 12px 16px; border-bottom: 1px solid #eef2f6; align-items: flex-start; }
+.tl-vb-panel .tl-vb-panel-head > div { flex: 1; min-width: 0; }
+.tl-vb-panel .tl-vb-panel-head h2 { margin-top: 2px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.tl-vb-panel .tl-vb-timer { min-height: 0; padding: 5px 9px; border: 0; border-radius: 9px; background: #fff4dc; color: #8a5a00; font-family: inherit; font-size: 13px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.tl-vb-panel .tl-vb-timer.is-urgent { background: #fee2e2; color: #b91c1c; }
+.tl-vb-panel .tl-vb-icon { border-radius: 10px; color: #475569; }
+.tl-vb-panel .tl-vb-icon:hover:not(:disabled) { background: #f1f5f9; }
+.tl-vb-panel .tl-vb-panel-list { padding: 4px 16px; }
+.tl-vb-panel .tl-vb-group { padding: 10px 0; }
+.tl-vb-panel .tl-vb-group + .tl-vb-group { border-top: 1px solid #eef2f6; }
+.tl-vb-panel .tl-vb-group-name { align-items: center; font-family: inherit; font-size: 13px; font-weight: 700; text-transform: none; color: #0f172a; margin-bottom: 2px; }
+.tl-vb-panel .tl-vb-group-name span { display: inline-flex; align-items: center; gap: 7px; color: inherit; font-weight: 700; }
+.tl-vb-panel .tl-vb-group-name i { width: 10px; height: 10px; border-radius: 3px; background: #16a34a; }
+.tl-vb-panel .tl-vb-group-name b { font-weight: 700; color: #475569; font-size: 13px; }
+.tl-vb-panel .tl-vb-group li { gap: 6px; }
+.tl-vb-panel .tl-vb-line { padding: 7px 0; gap: 1px; }
+.tl-vb-panel .tl-vb-line-title { font-size: 15px; font-weight: 700; }
+.tl-vb-panel .tl-vb-line-price { font-family: inherit; font-size: 14px; font-weight: 700; }
+.tl-vb-remove { display: inline-grid; place-items: center; width: 36px; height: 36px; flex: none; border: 0; border-radius: 10px; background: transparent; color: #b91c1c; cursor: pointer; }
+.tl-vb-remove:hover:not(:disabled) { background: #fef2f2; }
+.tl-vb-remove:disabled { opacity: 0.3; cursor: not-allowed; }
+.tl-vb-panel .tl-vb-panel-foot { gap: 10px; padding: 12px 16px 16px; border-top: 1px solid #eef2f6; }
+.tl-vb-panel .tl-vb-total { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tl-vb-panel .tl-vb-total b { display: block; font-size: 15px; font-weight: 700; }
+.tl-vb-panel .tl-vb-muted { font-size: 12px; color: #64748b; }
+.tl-vb-get { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 14px; border: 0; border-radius: 11px; background: #0f172a; color: #fff; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.tl-vb-get:hover:not(:disabled) { background: #1e293b; }
+.tl-vb-get:disabled { opacity: 0.45; cursor: not-allowed; }
+.tl-vb-panel :focus-visible { outline: 2px solid #16a34a; outline-offset: 2px; }
+@media (max-width: 767px) {
+  .tl-vb-panel { border-radius: 18px 18px 0 0; }
+}

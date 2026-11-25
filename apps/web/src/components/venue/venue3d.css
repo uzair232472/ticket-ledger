@@ -16,6 +16,7 @@
 .tl-v3-pill-txt b { font-size: 13.5px; }
 .tl-v3-pill-txt small { font-size: 11px; font-weight: 500; opacity: 0.75; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-v3-night { position: absolute; top: 14px; right: 14px; z-index: 3; }
+.tl-v3-night svg { color: #facc15; }
 
 /* Hover card */
 .tl-v3-tip { position: absolute; display: none; z-index: 4; pointer-events: none; min-width: 150px; max-width: 240px; padding: 9px 12px; border-radius: 12px; background: rgba(15, 23, 42, 0.94); color: #fff; font-size: 12.5px; line-height: 1.45; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25); }
@@ -41,12 +42,8 @@
 .tl-v3-card { position: absolute; z-index: 3; background: rgba(255, 255, 255, 0.97); border-radius: 16px; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2); padding: 14px; animation: tl-v3-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @keyframes tl-v3-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .tl-v3-seatcard { top: 70px; left: 14px; width: 310px; }
-/* Ticket preview: a card that flips to the hospitality box offer */
-.tl-v3-ticket { position: absolute; z-index: 3; top: 70px; right: 14px; width: 320px; perspective: 1400px; animation: tl-v3-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.tl-v3-flip { display: grid; transition: transform 0.8s cubic-bezier(0.3, 0.7, 0.2, 1); transform-style: preserve-3d; }
-.tl-v3-flip.is-flipped { transform: rotateY(180deg); }
-.tl-v3-face { grid-area: 1 / 1; padding: 14px; border-radius: 16px; background: linear-gradient(165deg, #ffffff 55%, #f0fdf4); box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2); backface-visibility: hidden; -webkit-backface-visibility: hidden; max-height: calc(100% - 20px); overflow: auto; }
-.tl-v3-face.is-back { transform: rotateY(180deg); background: linear-gradient(165deg, #fffaf0 45%, #fff); }
+/* Hospitality box offer (right side, same card as the seat card) */
+.tl-v3-boxcard { top: 70px; right: 14px; width: 320px; background: linear-gradient(165deg, #fffaf0 45%, #fff); }
 .tl-v3-btn.is-gold { background: linear-gradient(135deg, #d6a945, #a77a1f); color: #fff; }
 .tl-v3-btn.is-gold:hover { filter: brightness(1.05); }
 .tl-v3-badge.is-gold { background: #fbf0d6; color: #8a6212; }
@@ -69,18 +66,7 @@
 .tl-v3-btn.is-dark:hover { background: #1e293b; }
 .tl-v3-btn.is-ghost { flex: 0 0 auto; background: transparent; color: #b91c1c; }
 .tl-v3-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.tl-v3-ticket-top { display: flex; justify-content: space-between; align-items: center; }
-.tl-v3-brand { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; color: #15803d; }
-.tl-v3-brand i { width: 24px; height: 24px; border-radius: 7px; background: #16a34a; color: #fff; display: grid; place-items: center; font-style: normal; font-size: 11px; }
-.tl-v3-badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: #dcfce7; color: #166534; }
-.tl-v3-ticket-ev { margin: 12px 0 2px; padding-bottom: 12px; border-bottom: 1px dashed #cbd5e1; }
-.tl-v3-ticket-ev small { text-transform: none; letter-spacing: 0; font-size: 12px; }
-.tl-v3-ticket-ev b { display: block; font-size: 17px; margin: 2px 0; }
-.tl-v3-ticket-ev span { font-size: 13px; color: #334155; }
-.tl-v3-qr { display: flex; gap: 12px; align-items: center; padding: 10px; border-radius: 12px; background: #f8fafc; }
-.tl-v3-qr canvas { width: 92px; height: 92px; border-radius: 6px; flex: none; image-rendering: pixelated; opacity: 0.9; }
-.tl-v3-qr p { margin: 3px 0 6px; font-size: 12px; color: #475569; }
-.tl-v3-qr b { font-size: 16px; }
+.tl-v3-badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: #dcfce7; color: #166534; white-space: nowrap; }
 
 .tl-v3-hint { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 2; margin: 0; padding: 7px 14px; border-radius: 999px; background: rgba(15, 23, 42, 0.78); color: #fff; font-size: 12.5px; white-space: nowrap; pointer-events: none; }
 .tl-v3.is-seat .tl-v3-hint { display: none; }
@@ -101,14 +87,11 @@
   .tl-v3-legend { left: 10px; bottom: 10px; width: 210px; }
   .tl-v3-seatcard { top: 62px; left: 10px; right: 10px; width: auto; padding: 10px 12px; }
   .tl-v3-seatcard .tl-v3-facts, .tl-v3-seatcard .tl-v3-note { display: none; }
-  .tl-v3-ticket { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; }
-  .tl-v3-face { padding: 12px; max-height: 52vh; }
-  .tl-v3-ticket .tl-v3-facts { margin: 8px 0; }
-  .tl-v3-qr canvas { width: 70px; height: 70px; }
+  .tl-v3-boxcard { top: auto; bottom: 10px; left: 10px; right: 10px; width: auto; max-height: 60vh; overflow: auto; }
   .tl-v3-btn { min-height: 44px; }
   .tl-v3-hint { bottom: 10px; white-space: normal; text-align: center; width: calc(100% - 250px); left: auto; right: 10px; transform: none; font-size: 11.5px; }
 }
-@media (prefers-reduced-motion: reduce) { .tl-v3-card, .tl-v3-ticket { animation: none; } .tl-v3-flip { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tl-v3-card { animation: none; } }
 
 /* Switch on the left, My tickets on the right */
 .tl-vb-top:has(.tl-v3-switch) { justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -117,3 +100,158 @@
 .tl-v3-gate { margin: -4px 0 10px; font-size: 12.5px; color: #334155; }
 .tl-v3-gate b { color: #15803d; }
 .tl-v3-canvas canvas:focus-visible { outline: 3px solid #16a34a; outline-offset: -3px; border-radius: 18px; }
+
+/* ===================================================================== */
+/* Full-screen seat page (VenueBooking immersive): the stadium fills the  */
+/* viewport; only the pavilion menu and the two bottom buttons sit on it  */
+/* ===================================================================== */
+.tl-book--bare { min-height: 0; }
+.tl-book--bare .tl-bk-main { padding: 0; max-width: none; }
+.tl-book--bare .tl-vb-skeleton, .tl-imm-loading { position: fixed; inset: 0; z-index: 90; height: auto; border-radius: 0; background: radial-gradient(ellipse at 50% 45%, #0c3441 0%, #061b2b 52%, #020d18 100%); }
+.tl-vb.tl-imm { --imm-panel: linear-gradient(145deg, rgba(8, 34, 49, 0.9), rgba(3, 18, 31, 0.82)); --imm-line: rgba(126, 226, 221, 0.22); --imm-green: #00ed72; position: fixed; inset: 0; z-index: 90; color: #f4fbff; font-family: Inter, system-ui, sans-serif; }
+.tl-imm .tl-imm-stage { position: absolute; inset: 0; height: auto; border-radius: 0; box-shadow: none; }
+.tl-imm .tl-v3-canvas canvas:focus-visible { border-radius: 0; }
+/* The page's own controls replace the in-stadium navigation pills */
+.tl-imm .tl-v3-nav { display: none; }
+.tl-imm .tl-v3-night { top: 18px; right: 18px; }
+.tl-imm .tl-v3-hint { top: 22px; bottom: auto; }
+.tl-imm .tl-v3-seatcard { top: 82px; left: 18px; }
+.tl-imm .tl-v3-boxcard { top: 82px; right: 18px; }
+.tl-imm .tl-v3-legend { left: 18px; bottom: 100px; }
+
+/* Shared glass surface */
+.tl-imm-menu-btn, .tl-imm-panel, .tl-imm-toast { background: var(--imm-panel); border: 1px solid var(--imm-line); box-shadow: 0 18px 55px rgba(0, 0, 0, 0.5), inset 0 1px rgba(255, 255, 255, 0.04); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+
+/* Pavilion menu */
+.tl-imm-menu { position: absolute; top: 18px; left: 18px; z-index: 6; }
+.tl-imm-menu-btn { display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 18px 0 14px; border-radius: 14px; color: #e9fbff; font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; max-width: min(320px, calc(100vw - 160px)); }
+.tl-imm-menu-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-imm-menu-btn svg { color: var(--imm-green); flex: none; }
+.tl-imm-menu-btn:hover { border-color: rgba(0, 237, 114, 0.5); }
+.tl-imm-menu-backdrop { position: fixed; inset: 0; z-index: -1; }
+.tl-imm-panel { position: absolute; top: 58px; left: 0; width: 300px; max-height: calc(100vh - 190px); display: flex; flex-direction: column; border-radius: 18px; overflow: hidden; animation: tl-v3-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tl-imm-panel-head { padding: 16px 16px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
+.tl-imm-panel-head small { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--imm-green); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-imm-panel-head b { display: block; margin-top: 4px; font-size: 15px; letter-spacing: 0.02em; }
+.tl-imm-panel ul { list-style: none; margin: 0; padding: 8px; overflow: auto; scrollbar-width: thin; scrollbar-color: #176d73 transparent; }
+.tl-imm-panel li button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 9px; border: 1px solid transparent; border-radius: 11px; background: transparent; color: #e9f7fa; text-align: left; font-family: inherit; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+.tl-imm-panel li button:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.08); }
+.tl-imm-panel li button.is-active { background: linear-gradient(90deg, rgba(0, 214, 109, 0.14), rgba(8, 201, 196, 0.1)); border-color: rgba(0, 237, 114, 0.4); box-shadow: inset 3px 0 var(--imm-green); }
+.tl-imm-panel li i { width: 9px; height: 9px; flex: none; border-radius: 50%; box-shadow: 0 0 9px currentColor; }
+.tl-imm-name { flex: 1; min-width: 0; }
+.tl-imm-name b { display: block; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-imm-name small { display: block; margin-top: 3px; font-size: 11px; color: #91aeb9; }
+.tl-imm-price { font-size: 12px; font-weight: 700; color: #c8f8e2; white-space: nowrap; }
+.tl-imm-2d { display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 16px; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.07); background: transparent; color: #9cb5c1; font-family: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.tl-imm-2d:hover { color: #fff; }
+
+/* Problems only (confirmations are announced to screen readers) */
+.tl-imm-toast { position: absolute; top: 76px; left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; max-width: min(520px, calc(100vw - 36px)); margin: 0; padding: 9px 10px 9px 16px; border-radius: 14px; font-size: 13px; line-height: 1.4; }
+.tl-imm-toast.is-warn { border-color: rgba(245, 189, 54, 0.55); }
+.tl-imm-toast.is-error { border-color: rgba(248, 113, 113, 0.6); }
+.tl-imm-toast button { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: 8px; background: rgba(255, 255, 255, 0.06); color: #fff; cursor: pointer; }
+
+/* Bottom bar: Back to 3D Plan · selection · My Tickets */
+/* No transform or filter on the bar itself: either would trap the phone My tickets sheet (position: fixed) inside it */
+.tl-imm-bar { position: absolute; left: 0; right: 0; bottom: 20px; margin: 0 auto; z-index: 6; isolation: isolate; width: min(620px, calc(100% - 36px)); display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 17px; background: var(--imm-panel); border: 1px solid rgba(0, 216, 117, 0.4); box-shadow: 0 12px 45px rgba(0, 0, 0, 0.55), 0 0 25px rgba(0, 219, 102, 0.18); }
+.tl-imm-bar::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.tl-imm-back, .tl-imm-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 17px; border-radius: 12px; font-family: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: background 0.2s, transform 0.2s; }
+.tl-imm-back { border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); color: #e8f8fb; }
+.tl-imm-back:hover { background: rgba(255, 255, 255, 0.09); transform: translateY(-1px); }
+.tl-imm-mine { border: 0; background: linear-gradient(110deg, #00c85f, #00f17a); color: #002416; box-shadow: 0 5px 18px rgba(0, 232, 117, 0.25); padding-right: 8px; }
+.tl-imm-mine:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.tl-imm-mine .tl-vb-badge { min-width: 26px; height: 26px; border-radius: 8px; background: #002416; color: #4ade80; }
+.tl-imm-mine .tl-vb-badge.is-empty { background: rgba(0, 36, 22, 0.25); color: #002416; }
+.tl-imm-summary { flex: 1; min-width: 0; padding: 0 6px; }
+.tl-imm-summary small { display: block; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #8eabb6; }
+.tl-imm-summary b { display: block; margin-top: 4px; font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-imm-summary em { font-style: normal; color: var(--imm-green); }
+.tl-vb.tl-imm :focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
+/* My tickets opens upwards from the bar */
+@media (min-width: 768px) { .tl-imm .tl-imm-tickets .tl-vb-panel { top: auto; bottom: calc(100% + 18px); right: -10px; max-height: min(64vh, 600px); } }
+
+@media (max-width: 720px) {
+  .tl-imm .tl-v3-night { top: 12px; right: 12px; }
+  .tl-imm .tl-v3-hint { display: none; }
+  .tl-imm-menu { top: 12px; left: 12px; }
+  .tl-imm-menu-btn { height: 44px; max-width: calc(100vw - 150px); }
+  .tl-imm-panel { width: min(300px, calc(100vw - 24px)); max-height: calc(100svh - 170px); }
+  .tl-imm .tl-v3-seatcard { top: 66px; left: 10px; right: 10px; }
+  .tl-imm .tl-v3-boxcard { bottom: 86px; }
+  .tl-imm .tl-v3-legend { left: 10px; bottom: 84px; }
+  .tl-imm-bar { bottom: 10px; width: calc(100% - 20px); padding: 7px; gap: 6px; }
+  .tl-imm-summary { display: none; }
+  .tl-imm-back, .tl-imm-mine { flex: 1; justify-content: center; padding: 0 10px; }
+  .tl-imm .tl-imm-tickets { flex: 1; display: flex; }
+}
+@media (prefers-reduced-motion: reduce) { .tl-imm-panel { animation: none; } .tl-imm-back, .tl-imm-mine { transition: none; } }
+
+/* ===================================================================== */
+/* Seat card (SeatTicketCard): the 3D seat card and every My tickets card */
+/* ===================================================================== */
+.tl-seatcard-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.tl-seatcard-x { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f5f9; color: #334155; cursor: pointer; }
+.tl-seatcard-x:hover { background: #e2e8f0; color: #0f172a; }
+.tl-v3-card-head > div:first-child { min-width: 0; }
+.tl-v3-card-head b { display: block; }
+
+/* My tickets = a stack of seat cards */
+.tl-vb-panel.tl-mt { background: #eef2f6; }
+.tl-vb-panel.tl-mt .tl-vb-panel-head, .tl-vb-panel.tl-mt .tl-vb-panel-foot { background: #fff; }
+.tl-mt-list { flex: 1 1 auto; min-height: 0; list-style: none; margin: 0; padding: 12px; display: grid; gap: 10px; overflow-y: auto; overscroll-behavior: contain; }
+.tl-mt-list .tl-v3-card { position: relative; inset: auto; width: auto; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0; animation-duration: 0.3s; }
+.tl-mt-list .tl-v3-card-head b { font-size: 16px; }
+.tl-mt-list .tl-v3-facts { margin: 10px 0 8px; grid-template-columns: 1.3fr 1fr; }
+.tl-mt-list .tl-v3-facts:has(> div:nth-child(3)) { grid-template-columns: 1.2fr 0.9fr 1fr; }
+.tl-mt-list .tl-v3-gate { margin: 0 0 8px; }
+.tl-mt-list .tl-v3-note { margin: 0 0 8px; color: #8a5a00; }
+.tl-mt-list .tl-v3-btn.is-ghost { flex: 0 0 auto; }
+
+/* Full-screen seat page: My tickets opens above the bottom-right button */
+.tl-imm-tickets { position: absolute; z-index: 7; }
+.tl-imm-tickets .tl-fab { position: fixed; z-index: 7; }
+@media (min-width: 768px) {
+  .tl-vb-panel.is-floating { position: fixed; top: auto; right: clamp(16px, 2.4vw, 28px); bottom: calc(clamp(16px, 2.4vw, 24px) + 66px); width: 400px; max-height: min(72vh, 680px); z-index: 8; }
+}
+
+/* Top left: Back + pavilion menu (no bottom bar) */
+.tl-imm-top { position: absolute; top: 18px; left: 18px; z-index: 6; display: flex; align-items: flex-start; gap: 10px; }
+.tl-imm-top .tl-imm-menu { position: relative; top: 0; left: 0; }
+.tl-imm-top .tl-imm-back { height: 48px; min-height: 48px; border-radius: 14px; border: 1px solid var(--imm-line); background: var(--imm-panel); box-shadow: 0 18px 55px rgba(0, 0, 0, 0.5); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.tl-imm-top .tl-imm-back svg { color: var(--imm-green); }
+.tl-imm .tl-v3-hint { top: auto; bottom: 22px; }
+.tl-imm .tl-v3-legend { bottom: 18px; }
+.tl-imm .tl-v3-boxcard { bottom: auto; }
+@media (max-width: 720px) {
+  .tl-imm-top { top: 12px; left: 12px; right: 120px; gap: 8px; }
+  .tl-imm-top .tl-imm-back { height: 44px; min-height: 44px; padding: 0 12px; }
+  .tl-imm-top .tl-imm-back span { display: none; }
+  .tl-imm-top .tl-imm-menu-btn { max-width: calc(100vw - 200px); }
+  .tl-imm .tl-v3-legend { bottom: 12px; }
+  .tl-imm .tl-v3-boxcard { top: auto; bottom: 74px; }
+}
+
+/* ===================================================================== */
+/* Seat key: dark glass card, seat-shaped swatches, price chips           */
+/* ===================================================================== */
+.tl-v3 .tl-v3-legend { width: 260px; padding: 12px; border-radius: 18px; color: #e8f4f8; background: linear-gradient(150deg, rgba(10, 36, 52, 0.9), rgba(3, 16, 28, 0.86)); border: 1px solid rgba(126, 226, 221, 0.22); box-shadow: 0 18px 45px rgba(0, 0, 0, 0.42), inset 0 1px rgba(255, 255, 255, 0.05); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); animation: tl-v3-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.tl-v3 .tl-v3-legend.is-closed { width: auto; padding: 0; border-radius: 14px; }
+.tl-v3 .tl-v3-legend-head { width: 100%; gap: 9px; color: #e8f4f8; font-size: 12px; letter-spacing: 0.1em; }
+.tl-v3 .tl-v3-legend.is-closed .tl-v3-legend-head { padding: 8px 12px 8px 8px; }
+.tl-v3-legend-ico { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgba(0, 237, 114, 0.14); color: #00ed72; }
+.tl-v3-legend-title { flex: 1; text-align: left; }
+.tl-v3-legend-chev { color: #8fb0bd; transition: transform 0.25s; }
+.tl-v3-legend.is-closed .tl-v3-legend-chev { transform: rotate(-90deg); }
+.tl-v3 .tl-v3-legend .tl-v3-prices { margin-top: 12px !important; gap: 6px; }
+.tl-v3 .tl-v3-legend .tl-v3-prices li { grid-template-columns: 18px 1fr auto; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 12px; background: linear-gradient(90deg, color-mix(in srgb, var(--tc) 22%, transparent), rgba(255, 255, 255, 0.03) 70%); border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: inset 3px 0 var(--tc); font-size: 12.5px; font-weight: 600; }
+.tl-v3 .tl-v3-legend .tl-v3-prices b { padding: 4px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.28); color: #c8f8e2; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* Seat-shaped swatch: back rest + seat */
+.tl-v3 .tl-v3-legend i.tl-v3-seat-ico { position: relative; width: 16px; height: 14px; border-radius: 4px 4px 2px 2px; background: var(--tc); box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.28), 0 0 10px color-mix(in srgb, var(--tc) 55%, transparent); }
+.tl-v3 .tl-v3-legend i.tl-v3-seat-ico::after { content: ''; position: absolute; left: -2px; right: -2px; bottom: -3px; height: 4px; border-radius: 2px; background: var(--tc); filter: brightness(0.8); }
+.tl-v3 .tl-v3-legend .tl-v3-states { margin-top: 10px !important; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); gap: 6px; color: #b6cdd6; font-size: 11.5px; }
+.tl-v3 .tl-v3-legend .tl-v3-states li { gap: 8px; padding: 5px 7px; border-radius: 9px; background: rgba(255, 255, 255, 0.04); }
+.tl-v3 .tl-v3-legend .tl-v3-states i.tl-v3-seat-ico { width: 12px; height: 11px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.28); }
+.tl-v3 .tl-v3-legend .tl-v3-states i.tl-v3-seat-ico::after { bottom: -2px; height: 3px; }
+.tl-v3 .tl-v3-legend :focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
+@media (max-width: 720px) { .tl-v3 .tl-v3-legend { width: 228px; } }
+@media (prefers-reduced-motion: reduce) { .tl-v3 .tl-v3-legend, .tl-v3-legend-chev { animation: none; transition: none; } }

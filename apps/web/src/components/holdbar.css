@@ -1,83 +1,60 @@
-/* Site-wide seat-hold countdown: the seat plan's "My tickets" button, floating top-right under the menu button */
-.tl-holdbar {
+/*
+ * The one My Tickets button (MyTicketsFab): the same look and the same spot, bottom right, on every page while
+ * seats are held. Used by the site-wide HoldBar and by the full-screen seat page, where it opens My tickets.
+ */
+.tl-fab {
   position: fixed;
-  right: clamp(16px, 2.4vw, 32px);
-  /* Header height (76px) plus a clear gap below the menu button */
-  top: 116px;
+  right: clamp(16px, 2.4vw, 28px);
+  bottom: calc(clamp(16px, 2.4vw, 24px) + env(safe-area-inset-bottom));
   /* Under the site menu (backdrop 55, panel 58) so an open menu still covers it */
   z-index: 54;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-height: 44px;
-  padding: 0 8px 0 16px;
-  border: 1px solid #0b0b0b;
-  border-radius: 2px;
-  background: #0b0b0b;
-  color: #fff;
-  font: 600 12px/1 'JetBrains Mono', monospace;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
-  animation: tl-holdbar-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
-  transition: background-color 0.2s ease;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 8px 0 18px;
+  border: 1px solid rgba(134, 239, 172, 0.55);
+  border-radius: 16px;
+  background: linear-gradient(110deg, #00b956, #00e874);
+  color: #002416;
+  font: 800 14px/1 Inter, system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), 0 0 0 4px rgba(0, 232, 117, 0.14);
+  animation: tl-fab-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: transform 0.2s, filter 0.2s;
 }
-
-.tl-holdbar:hover {
-  background: #262626;
-}
-
-.tl-holdbar:focus-visible {
-  outline: 3px solid #4ade80;
-  outline-offset: 3px;
-}
-
-.tl-holdbar-time {
-  font-weight: 500;
-  opacity: 0.75;
+.tl-fab:hover { transform: translateY(-2px); filter: brightness(1.05); }
+.tl-fab.is-open { filter: brightness(0.95); }
+.tl-fab:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.tl-fab-time {
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: rgba(0, 36, 22, 0.14);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-
-.tl-holdbar-count {
+.tl-fab-count {
   display: inline-grid;
   place-items: center;
-  min-width: 28px;
-  height: 28px;
-  padding: 0 6px;
-  border-radius: 2px;
-  background: #16a34a;
-  color: #fff;
-  font-weight: 700;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: #002416;
+  color: #4ade80;
+  font-weight: 800;
 }
-
-/* Last minute: the time turns red and the bar pulses gently */
-.tl-holdbar.is-urgent .tl-holdbar-time {
-  color: #f87171;
-  opacity: 1;
-}
-
-.tl-holdbar.is-urgent {
-  animation: tl-holdbar-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes tl-holdbar-in {
-  from { opacity: 0; transform: translateY(-12px); }
-}
+/* Last minute: the time turns red and the button pulses gently */
+.tl-fab.is-urgent .tl-fab-time { background: #b91c1c; color: #fff; }
+.tl-fab.is-urgent { animation: tl-fab-pulse 1.6s ease-in-out infinite; }
+@keyframes tl-fab-in { from { opacity: 0; transform: translateY(14px); } }
+@keyframes tl-fab-pulse { 50% { box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), 0 0 0 8px rgba(248, 113, 113, 0.3); } }
 
 @media (max-width: 639px) {
-  .tl-holdbar {
-    right: 12px;
-    top: 104px;
-  }
+  .tl-fab { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); min-height: 48px; padding-left: 14px; }
 }
-
-@keyframes tl-holdbar-pulse {
-  50% { box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), 0 0 0 6px rgba(248, 113, 113, 0.25); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .tl-holdbar,
-  .tl-holdbar.is-urgent {
-    animation: none;
-  }
+  .tl-fab, .tl-fab.is-urgent { animation: none; transition: none; }
 }

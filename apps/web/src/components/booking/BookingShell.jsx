@@ -29,8 +29,10 @@ export function BookingSteps({ current }) {
 /**
  * Page frame for the booking flow (seat selection, checkout, payment states, confirmation): the same
  * fixed header, menu and footer as the homepage and Explore Events, on the Explore paper background.
+ * `bare`: no header or footer (the full-screen 3D seat page); children keep their place, so nothing remounts.
+ * `hero`: a full-width dark banner above the content (seat page); the header then starts in its light-on-dark tone.
  */
-export default function BookingShell({ children }) {
+export default function BookingShell({ children, hero = null, bare = false }) {
   const navigate = useNavigate();
   const pageRef = useRef(null);
   const toCategories = useCallback(() => navigate('/events'), [navigate]);
@@ -40,11 +42,12 @@ export default function BookingShell({ children }) {
   }, []);
 
   return (
-    <div className="tl-home tl-explore tl-book">
-      <HomeHeader pageRef={pageRef} onCategories={toCategories} tone="light" />
+    <div className={`tl-home tl-explore tl-book${hero ? ' tl-book--hero' : ''}${bare ? ' tl-book--bare' : ''}`}>
+      {!bare && <HomeHeader pageRef={pageRef} onCategories={toCategories} tone={hero ? 'dark' : 'light'} />}
       <div ref={pageRef}>
+        {hero}
         <main className="tl-bk-main">{children}</main>
-        <SiteFooter />
+        {!bare && <SiteFooter />}
       </div>
     </div>
   );

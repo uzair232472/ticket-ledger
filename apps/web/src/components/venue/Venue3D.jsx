@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BOX_SEATS, DEG, bounds, polygonCentroid, rotate, rowsOf, sectionView3d, shapePolygon, view3dOf, widestChord } from '@venue-core';
-import { ArrowUpRight, ChevronLeft, Clock, Eye, Info, Maximize2, ShoppingBag, Trash2, Plus } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ChevronLeft, Eye, Info, Maximize2, Moon, ShoppingBag, Sun, Trash2, Plus } from 'lucide-react';
+import { SeatTicketCard } from './BookingSummary';
 import { formatPkr, generated } from './venueTheme';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
 import './venue3d.css';
@@ -30,7 +31,6 @@ function toGeo(pos) { const g = new THREE.BufferGeometry(); g.setAttribute('posi
 function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
 function gradientTex(top, bottom) { return canvasTex(2, 256, (g) => { const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, top); gr.addColorStop(1, bottom); g.fillStyle = gr; g.fillRect(0, 0, 2, 256); }); }
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
-const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
 
 /** Local frame of a block or custom-shape section (same transform as venue-core's seat generator). */
 function frameOf(sh) {
@@ -531,20 +531,9 @@ function buildScoreboard(scene, sections, R, board, mats) {
   }
 }
 
-function drawQR(cv, text) {
-  const N = 25, q = 2, ctx = cv.getContext('2d'), Sz = cv.width, m = Sz / (N + q * 2), r = mulberry32(fnv(text));
-  const g = Array.from({ length: N }, () => Array.from({ length: N }, () => r() < 0.5));
-  const finder = (ox, oy) => { for (let y = -1; y <= 7; y++) for (let x = -1; x <= 7; x++) { const X = ox + x, Y = oy + y; if (X < 0 || Y < 0 || X >= N || Y >= N) continue; const ring = Math.max(Math.abs(x - 3), Math.abs(y - 3)); g[Y][X] = ring === 4 ? false : ring === 3 ? true : ring !== 2; } };
-  finder(0, 0); finder(N - 7, 0); finder(0, N - 7);
-  for (let i = 8; i < N - 8; i++) { g[6][i] = i % 2 === 0; g[i][6] = i % 2 === 0; }
-  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, Sz, Sz); ctx.fillStyle = '#111';
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (g[y][x]) ctx.fillRect(Math.floor((x + q) * m), Math.floor((y + q) * m), Math.ceil(m), Math.ceil(m));
-}
-
 // Each scene build gets a new number, so effects that paint seats or move the camera run again after a rebuild
 let buildSeq = 0;
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 // ─── Component ───────────────────────────────────────────────────────────────────────────────────────────────
 export default function Venue3D({
@@ -564,7 +553,6 @@ export default function Venue3D({
   const [ready, setReady] = useState(0); // 0 = no scene; otherwise the build number
   const [rebuild, setRebuild] = useState(0);
   const lastFocus = useRef(null);
-  const qrRef = useRef(null);
   const liveRef = useRef(null);
   const boardKey = [event?.name, event?.venue, event?.city, event?.date, event?.time].join('|');
   const touch = typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
@@ -928,7 +916,6 @@ export default function Venue3D({
     ctxRef.current?.goSeat(b.key);
   };
 
-  useEffect(() => { if (view.mode === 'seat' && seatEntry && qrRef.current) drawQR(qrRef.current, seatEntry.seat.key); }, [view.mode, seatEntry]);
 
   const back = useCallback(() => {
     if (view.mode === 'box' && seatEntry) ctxRef.current?.goSeat(seatEntry.seat.key);
@@ -967,7 +954,6 @@ export default function Venue3D({
   const diff = (boxTier?.price || 0) - (tier?.price || 0);
   const diffText = `${diff >= 0 ? '+' : '−'}${formatPkr(Math.abs(diff))}`;
   const seatLabel = inSeat ? (seatEntry.seat.tableKey ? `${seatEntry.seat.row} · Seat ${seatEntry.seat.number}` : `Row ${seatEntry.seat.row} · Seat ${seatEntry.seat.number}`) : '';
-  const time = formatEventTime(event?.time);
   const focusedName = focusId ? layout.sections.find((s) => s.id === focusId)?.name : '';
   const hint = view.mode === 'overview' ? (touch ? 'Tap a stand to fly in · drag to rotate · pinch to zoom' : 'Hover a stand for prices · click to fly in · drag to rotate')
     : view.mode === 'section' ? `${touch ? 'Tap' : 'Click'} a coloured seat to reserve it for 10 minutes`
@@ -992,24 +978,32 @@ export default function Venue3D({
         </div>
       )}
       <button type="button" className="tl-v3-pill tl-v3-night" onClick={() => setNight((n) => !n)} aria-pressed={night}>
-        {night ? 'Day match' : 'Night match'}
+        {night ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />} {night ? 'Day match' : 'Night match'}
       </button>
 
       {!inSeat && !inBox && (
         <div className={`tl-v3-legend${legendOpen ? '' : ' is-closed'}`} aria-label="Seat colours">
           <button type="button" className="tl-v3-legend-head" onClick={() => setLegendOpen((o) => !o)} aria-expanded={legendOpen}>
-            <Info className="w-3.5 h-3.5" aria-hidden="true" /> Seat key
+            <span className="tl-v3-legend-ico"><Info className="w-3.5 h-3.5" aria-hidden="true" /></span>
+            <span className="tl-v3-legend-title">Seat key</span>
+            <ChevronDown className="tl-v3-legend-chev w-4 h-4" aria-hidden="true" />
           </button>
           {legendOpen && (
             <>
-              <ul className="tl-v3-prices">
+              <ul className="tl-v3-prices" aria-label="Ticket types">
                 {tierList.map((t) => (
-                  <li key={t.id}><i style={{ background: tierColor(t) }} /> <span>{t.name}</span> <b>{formatPkr(t.price)}</b></li>
+                  <li key={t.id} style={{ '--tc': tierColor(t) }}>
+                    <i className="tl-v3-seat-ico" aria-hidden="true" />
+                    <span>{t.name}</span>
+                    <b>{formatPkr(t.price)}</b>
+                  </li>
                 ))}
               </ul>
-              <ul className="tl-v3-states">
+              <ul className="tl-v3-states" aria-label="Seat states">
                 {['mine', 'held', 'sold', 'blocked'].map((k) => (
-                  <li key={k}><i style={{ background: COLORS[k] }} /> {k === 'mine' ? 'Your seats' : k === 'held' ? 'Held' : k === 'sold' ? 'Sold' : 'Not on sale'}</li>
+                  <li key={k} style={{ '--tc': COLORS[k] }}>
+                    <i className="tl-v3-seat-ico" aria-hidden="true" /> {k === 'mine' ? 'Your seats' : k === 'held' ? 'Held' : k === 'sold' ? 'Sold' : 'Not on sale'}
+                  </li>
                 ))}
               </ul>
             </>
@@ -1018,20 +1012,20 @@ export default function Venue3D({
       )}
 
       {inSeat && (
-        <section className="tl-v3-card tl-v3-seatcard" aria-label="Your seat">
-          <div className="tl-v3-card-head">
-            <div><small>{seatEntry.sec.name}</small><b>{seatLabel}</b></div>
-            {secondsLeft != null && <span className="tl-v3-timer"><Clock className="w-3.5 h-3.5" aria-hidden="true" /> {clock(secondsLeft)}</span>}
-          </div>
-          <div className="tl-v3-facts">
-            <div><small>Ticket type</small><b><i style={{ background: tier ? tierColor(tier) : COLORS.none }} />{tier?.name || '—'}</b></div>
-            <div><small>Price</small><b>{formatPkr(tier?.price)}</b></div>
-            <div><small>Your tickets</small><b>{mineCount} of {maxTickets}</b></div>
-          </div>
-          {gatesFor(seatEntry.sec.tierId).length > 0 && (
-            <p className="tl-v3-gate">Entry: <b>{gatesFor(seatEntry.sec.tierId).slice(0, 3).join(' or ')}</b>{gatesFor(seatEntry.sec.tierId).length > 3 ? ' or another gate for this ticket type' : ''}</p>
-          )}
-          <p className="tl-v3-note">Held for you for 10 minutes. If you don’t pay in time, it goes back on sale.</p>
+        <SeatTicketCard
+          className="tl-v3-seatcard"
+          section={seatEntry.sec.name}
+          title={seatLabel}
+          tierName={tier?.name}
+          tierColor={tier ? tierColor(tier) : COLORS.none}
+          price={formatPkr(tier?.price)}
+          extra={{ label: 'Your tickets', value: `${mineCount} of ${maxTickets}` }}
+          gates={gatesFor(seatEntry.sec.tierId)}
+          secondsLeft={secondsLeft}
+          note="Held for you for 10 minutes. It stays in My Tickets when you close this card."
+          onClose={back}
+          closeLabel="Close: the seat stays in My Tickets"
+        >
           <div className="tl-v3-actions">
             <button type="button" className="tl-v3-btn is-primary" onClick={addNext} disabled={!nextSeat() || mineCount >= maxTickets || busy}><Plus className="w-4 h-4" aria-hidden="true" /> Add next seat</button>
             <button type="button" className="tl-v3-btn" onClick={back}><Eye className="w-4 h-4" aria-hidden="true" /> See another seat</button>
@@ -1040,64 +1034,37 @@ export default function Venue3D({
             <button type="button" className="tl-v3-btn is-dark" onClick={onGetTickets}><ShoppingBag className="w-4 h-4" aria-hidden="true" /> Get tickets ({mineCount})</button>
             <button type="button" className="tl-v3-btn is-ghost" onClick={() => onRemoveSeat(seatEntry.seat.key)} disabled={busy}><Trash2 className="w-4 h-4" aria-hidden="true" /> Remove</button>
           </div>
-        </section>
+          {boxOffer && boxTier && (
+            <div className="tl-v3-actions">
+              <button type="button" className="tl-v3-btn is-gold" onClick={() => ctxRef.current?.goSeat(boxOffer.seat.key, { from: seatEntry.seat.key })} disabled={busy}>
+                <ArrowUpRight className="w-4 h-4" aria-hidden="true" /> {diff > 0 ? `Upgrade to a box · ${diffText}` : diff === 0 ? 'See a hospitality box · same price' : `See a hospitality box · ${diffText}`}
+              </button>
+            </div>
+          )}
+        </SeatTicketCard>
       )}
 
-      {(inSeat || inBox) && (
-        <aside className="tl-v3-ticket" aria-label={inBox ? 'Hospitality box upgrade' : 'Ticket preview'}>
-          <div className={`tl-v3-flip${inBox ? ' is-flipped' : ''}`}>
-            <section className="tl-v3-face" aria-hidden={inBox ? 'true' : undefined}>
-            <div className="tl-v3-ticket-top"><span className="tl-v3-brand"><i>TL</i> TicketLedger</span><span className="tl-v3-badge">NFT ticket</span></div>
-              <div className="tl-v3-ticket-ev">
-                <small>{[event?.venue, event?.city].filter(Boolean).join(', ')}</small>
-                <b>{event?.name}</b>
-                <span>{event?.date ? formatEventDate(event.date) : ''}{time ? ` · ${time}` : ''}</span>
-              </div>
-              <div className="tl-v3-facts is-3">
-                <div><small>Stand</small><b>{seatEntry.sec.name}</b></div>
-                <div><small>{seatEntry.seat.tableKey ? 'Table' : 'Row'}</small><b>{seatEntry.seat.row}</b></div>
-                <div><small>Seat</small><b>{seatEntry.seat.number}</b></div>
-                {gatesFor(seatEntry.sec.tierId).length > 0 && <div className="tl-v3-gate-fact"><small>Entry</small><b>{gatesFor(seatEntry.sec.tierId)[0]}{gatesFor(seatEntry.sec.tierId).length > 1 ? ` +${gatesFor(seatEntry.sec.tierId).length - 1}` : ''}</b></div>}
-              </div>
-              <div className="tl-v3-qr">
-                <canvas ref={qrRef} width="200" height="200" aria-hidden="true" />
-                <div><small>Ticket preview</small><p>Your QR code, manual code and NFT record are issued when you pay.</p><b>{formatPkr(tier?.price)}</b></div>
-              </div>
-              {boxOffer && boxTier && (
-                <div className="tl-v3-actions">
-                  <button type="button" className="tl-v3-btn is-gold" onClick={() => ctxRef.current?.goSeat(boxOffer.seat.key, { from: seatEntry.seat.key })} disabled={busy}>
-                    <ArrowUpRight className="w-4 h-4" aria-hidden="true" /> {diff > 0 ? `Upgrade to a box · ${diffText}` : diff === 0 ? 'See a hospitality box · same price' : `See a hospitality box · ${diffText}`}
-                  </button>
-                </div>
-              )}
-            </section>
-            <section className="tl-v3-face is-back" aria-hidden={inBox ? undefined : 'true'}>
-              {inBox && (
-                <>
-                  <div className="tl-v3-ticket-top"><span className="tl-v3-brand"><i>TL</i> TicketLedger</span><span className="tl-v3-badge is-gold">Hospitality</span></div>
-                  <div className="tl-v3-ticket-ev">
-                    <small>{boxEntry.sec.name}</small>
-                    <b>Box {boxOf(boxEntry.seat)} · Row {boxEntry.seat.row} · Seat {boxEntry.seat.number}</b>
-                    <span>{event?.name}</span>
-                  </div>
-                  <ul className="tl-v3-perks"><li>Glass-fronted box with leather seats</li><li>This is the view from this box seat</li></ul>
-                  <div className="tl-v3-facts is-3">
-                    <div><small>Box seat</small><b>{formatPkr(boxTier?.price)}</b></div>
-                    <div><small>Your seat</small><b>{formatPkr(tier?.price)}</b></div>
-                    <div><small>Difference</small><b>{diff === 0 ? 'Same price' : diffText}</b></div>
-                  </div>
-                  <div className="tl-v3-actions">
-                    <button type="button" className="tl-v3-btn is-gold" onClick={reserveBox} disabled={busy || boxState !== 'available'}>Switch to this box seat</button>
-                  </div>
-                  <div className="tl-v3-actions">
-                    <button type="button" className="tl-v3-btn" onClick={back}><ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back to my seat</button>
-                  </div>
-                  <p className="tl-v3-note">Switching reserves this box seat for 10 minutes and then releases your current seat.</p>
-                </>
-              )}
-            </section>
+      {/* Hospitality box offer: its own card (no ticket or QR preview is shown before payment) */}
+      {inBox && (
+        <section className="tl-v3-card tl-v3-boxcard" aria-label="Hospitality box upgrade">
+          <div className="tl-v3-card-head">
+            <div><small>{boxEntry.sec.name}</small><b>Box {boxOf(boxEntry.seat)} · Row {boxEntry.seat.row} · Seat {boxEntry.seat.number}</b></div>
+            <span className="tl-v3-badge is-gold">Hospitality</span>
           </div>
-        </aside>
+          <ul className="tl-v3-perks"><li>Glass-fronted box with leather seats</li><li>This is the view from this box seat</li></ul>
+          <div className="tl-v3-facts is-3">
+            <div><small>Box seat</small><b>{formatPkr(boxTier?.price)}</b></div>
+            <div><small>Your seat</small><b>{formatPkr(tier?.price)}</b></div>
+            <div><small>Difference</small><b>{diff === 0 ? 'Same price' : diffText}</b></div>
+          </div>
+          <p className="tl-v3-note">Switching reserves this box seat for 10 minutes and then releases your current seat.</p>
+          <div className="tl-v3-actions">
+            <button type="button" className="tl-v3-btn is-gold" onClick={reserveBox} disabled={busy || boxState !== 'available'}>Switch to this box seat</button>
+          </div>
+          <div className="tl-v3-actions">
+            <button type="button" className="tl-v3-btn" onClick={back}><ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back to my seat</button>
+          </div>
+        </section>
       )}
 
       <p className="tl-v3-hint">{hint}</p>

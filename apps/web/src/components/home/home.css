@@ -1891,103 +1891,103 @@
   outline-color: var(--tl-ink);
 }
 
+/* Footer (every page): navy, green wave on top, gradient wordmark, crowd silhouette along the bottom */
 .tl-footer {
   position: relative;
   z-index: 3;
-  background: var(--tl-footer);
-  padding: 40px clamp(16px, 2.4vw, 32px) 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(180deg, #071a3a 0%, #06142e 55%, #040d20 100%);
+  color: #fff;
+  padding: 92px clamp(16px, 2.4vw, 32px) 18px;
 }
-
-/* Oversized brand lettering, bookending the hero wordmark */
-.tl-footer-wordmark {
-  font-weight: 800;
-  font-size: clamp(48px, 8vw, 128px);
-  line-height: 0.8;
-  letter-spacing: -0.065em;
-  color: #f1f5f2;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.tl-footer-wordmark span {
-  color: var(--tl-green);
-}
+.tl-footer-wave { position: absolute; top: 0; left: 0; width: 100%; height: 70px; z-index: 0; pointer-events: none; }
+.tl-footer-wave-glow { fill: #16a34a; filter: drop-shadow(0 0 14px rgba(34, 197, 94, 0.55)); }
+.tl-footer-wave-fill { fill: #071a3a; }
+.tl-footer-crowd { position: absolute; left: 0; right: 0; bottom: 44px; width: 100%; height: 120px; z-index: -1; pointer-events: none; }
+.tl-footer-crowd path { fill: #0d2552; opacity: 0.85; }
+.tl-footer-inner { position: relative; max-width: 1320px; margin: 0 auto; }
 
 .tl-footer-top {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) repeat(4, minmax(0, 1fr));
-  gap: 24px 32px;
+  grid-template-columns: minmax(0, 1.9fr) repeat(4, minmax(0, 1fr));
+  gap: 28px 32px;
+  padding-bottom: 96px;
 }
-
-.tl-footer-brand .tl-brand {
-  font-size: 22px;
-  --brand-navy: #fff;
+.tl-footer a.tl-footer-wordmark {
+  display: inline-block;
+  min-height: 0;
+  font-weight: 800;
+  font-size: clamp(38px, 4.2vw, 56px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  background: linear-gradient(90deg, #1d6bff 0%, #1aa0ff 38%, #22c55e 62%, #4ade80 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-decoration: none;
 }
-
+.tl-footer a.tl-footer-wordmark span { color: transparent; }
+.tl-footer a.tl-footer-wordmark:hover { text-decoration: none; filter: brightness(1.12); }
+.tl-footer a.tl-footer-wordmark:focus-visible { outline: 2px solid #4ade80; outline-offset: 4px; border-radius: 6px; }
 .tl-footer-brand p {
-  margin-top: 10px;
-  max-width: 340px;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.5;
-  font-size: 13px;
+  margin-top: 14px;
+  max-width: 330px;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.55;
+  font-size: 14px;
 }
-
 .tl-footer h3 {
-  font: 600 12px/1 'JetBrains Mono', monospace;
-  letter-spacing: 0.1em;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #86efac;
-  margin-bottom: 8px;
+  color: #22c55e;
+  margin: 6px 0 10px;
 }
-
-.tl-footer ul {
-  display: grid;
-  gap: 0;
-}
-
+.tl-footer ul { display: grid; gap: 0; }
 .tl-footer a,
 .tl-footer button.tl-footer-link {
   display: inline-flex;
-  min-height: 30px;
+  min-height: 28px;
   align-items: center;
-  color: rgba(255, 255, 255, 0.86);
-  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 15px;
   background: none;
   border: 0;
   padding: 0;
   cursor: pointer;
 }
-
 .tl-footer a:hover,
 .tl-footer button.tl-footer-link:hover {
-  color: #fff;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: #4ade80;
+  text-decoration: none;
 }
-
 .tl-footer-bottom {
-  margin-top: 24px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 12px;
+  gap: 10px 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
 }
+.tl-footer-legal { display: flex; flex-wrap: wrap; align-items: center; }
+.tl-footer .tl-footer-legal a { min-height: 0; font-size: 13px; color: rgba(255, 255, 255, 0.85); }
+.tl-footer .tl-footer-legal a + a::before { content: ''; display: inline-block; width: 1px; height: 14px; margin: 0 14px; background: rgba(255, 255, 255, 0.35); }
 
-@media (max-width: 899px) {
-  .tl-footer-top {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .tl-footer-brand {
-    grid-column: 1 / -1;
-  }
+@media (max-width: 1023px) {
+  .tl-footer-top { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tl-footer-brand { grid-column: 1 / -1; }
+}
+@media (max-width: 599px) {
+  .tl-footer { padding-top: 72px; }
+  .tl-footer-top { grid-template-columns: 1fr 1fr; gap: 22px 24px; padding-bottom: 80px; }
+  .tl-footer-crowd { height: 90px; }
 }
 
 /* ============ Motion mode (scroll-scrubbed scenes) ============ */
@@ -2406,24 +2406,6 @@
 .tl-collage-tile:nth-child(4) img { object-position: 36% 50%; } /* concert singer */
 .tl-collage-tile:nth-child(6) img { object-position: 26% 50%; } /* qawwal */
 .tl-collage-tile:nth-child(7) img { object-position: 85% 50%; } /* youth club speaker */
-
-/* Footer: the wordmark and logo are home links; legal links sit in the bottom bar */
-.tl-footer a.tl-footer-wordmark { display: block; width: max-content; max-width: 100%; min-height: 0; font-size: clamp(48px, 8vw, 128px); color: #f1f5f2; text-decoration: none; }
-.tl-footer a.tl-footer-wordmark:hover { text-decoration: none; color: #fff; }
-.tl-footer a.tl-footer-wordmark:hover span { color: #4ade80; }
-.tl-footer a.tl-footer-logo { min-height: 0; }
-.tl-footer a.tl-footer-logo:hover { text-decoration: none; opacity: 0.85; }
-.tl-footer a.tl-footer-wordmark:focus-visible, .tl-footer a.tl-footer-logo:focus-visible { outline: 2px solid #4ade80; outline-offset: 4px; border-radius: 6px; }
-.tl-footer-legal { display: flex; flex-wrap: wrap; gap: 4px 20px; }
-.tl-footer .tl-footer-legal a { min-height: 0; font-size: 12px; color: rgba(255, 255, 255, 0.7); }
-.tl-footer-bottom { align-items: center; }
-@media (max-width: 1023px) {
-  .tl-footer-top { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .tl-footer-brand { grid-column: 1 / -1; }
-}
-@media (max-width: 599px) {
-  .tl-footer-top { grid-template-columns: 1fr 1fr; gap: 22px 24px; }
-}
 
 /* Hero: an organizer's event approved for the hero banner (its promo video plays behind) */
 .tl-hero-promo {

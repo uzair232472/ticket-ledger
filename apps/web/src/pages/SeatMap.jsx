@@ -3,6 +3,7 @@ import VenueBooking from '../components/venue/VenueBooking';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 import { liveAdapter } from '../components/venue/adapters';
+import { getEventVisual } from '../utils/eventMedia';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
@@ -36,6 +37,10 @@ export default function SeatMap() {
   const [mode, setMode] = useState('checking'); // checking | venue | legacy
   const [venueEvent, setVenueEvent] = useState(null);
   const adapter = useMemo(() => liveAdapter(eventId), [eventId]);
+  const [slots, setSlots] = useState(null);
+  // Full-screen 3D stadium: guessed from the plan as soon as it loads, then confirmed by VenueBooking
+  const [likely3d, setLikely3d] = useState(false);
+  const [immersive, setImmersive] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -45,6 +50,13 @@ export default function SeatMap() {
         if (!alive) return;
         setVenueEvent(d.event);
         setMode(d.layout ? 'venue' : 'legacy');
+        let wants3d = true;
+        try {
+          wants3d = localStorage.getItem('tl-venue-view') !== '2d';
+        } catch {
+          // default: 3D
+        }
+        setLikely3d(Boolean(d.layout?.data?.feature?.kind === 'cricket' && wants3d));
       })
       .catch(() => alive && setMode('legacy'));
     return () => {
@@ -60,32 +72,77 @@ export default function SeatMap() {
     );
   }
 
-  const time = formatEventTime(venueEvent?.time);
+  const bare = immersive ?? likely3d;
   return (
-    <BookingShell>
-      <Link to={`/events/${eventId}`} className="tl-bk-back">
-        <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Event details
-      </Link>
-      <header className="tl-bk-head tl-bk-rise">
-        <div>
-          <p className="tl-bk-kicker">Choose your seats</p>
-          <h1 className="tl-bk-title">{venueEvent?.name || 'Loading venue…'}</h1>
-          {venueEvent && (
-            <p className="tl-bk-meta">
-              <span><MapPin className="w-4 h-4" aria-hidden="true" /> {venueEvent.venue}, {venueEvent.city}</span>
-              <span><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(venueEvent.date)}{time && ` · ${time}`}</span>
-              <span><Clock className="w-4 h-4" aria-hidden="true" /> Selected seats are reserved for 10 minutes</span>
-            </p>
-          )}
-        </div>
-        <BookingSteps current="seats" />
-      </header>
+    <BookingShell bare={bare} hero={bare ? null : <SeatHero event={venueEvent} eventId={eventId} onSlots={setSlots} />}>
       {mode === 'checking' ? (
         <div className="tl-vb-skeleton" aria-busy="true" aria-label="Loading the venue plan" />
       ) : (
-        <VenueBooking adapter={adapter} eventId={eventId} isAuthenticated={isAuthenticated} userId={user?.id || null} />
+        <VenueBooking adapter={adapter} eventId={eventId} isAuthenticated={isAuthenticated} userId={user?.id || null} slots={bare ? null : slots} immersive onImmersive={setImmersive} />
       )}
     </BookingShell>
+  );
+}
+
+/**
+ * Seat page hero: the organizer's card cover image behind the event title, date and venue, with the 2D/3D switch
+ * (bottom left) and the booking steps + My tickets (right). The two controls are rendered by VenueBooking into the
+ * slots this hero hands up.
+ */
+function SeatHero({ event, eventId, onSlots }) {
+  const viewRef = useRef(null);
+  const ticketsRef = useRef(null);
+  useEffect(() => {
+    onSlots({ view: viewRef.current, tickets: ticketsRef.current });
+    return () => onSlots(null);
+  }, [onSlots]);
+  // The site header is light-on-dark over this hero and switches back to its light-page colours below it
+  const heroRef = useRef(null);
+  useEffect(() => {
+    const hero = heroRef.current;
+    const header = document.querySelector('[data-home-header]');
+    if (!hero || !header || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([e]) => { header.dataset.tone = e.isIntersecting ? 'dark' : 'light'; }, { rootMargin: '-72px 0px 0px 0px' });
+    io.observe(hero);
+    return () => io.disconnect();
+  }, []);
+  const cover = event ? getEventVisual(event).imageUrl : null;
+  const time = formatEventTime(event?.time);
+  const words = (event?.name || 'Loading venue…').trim().split(/\s+/);
+  const last = words.length > 1 ? words.pop() : null;
+  return (
+    <section ref={heroRef} className="tl-sh" aria-labelledby="tl-sh-title">
+      <div className="tl-sh-bg" aria-hidden="true">
+        {cover && <img src={cover} alt="" onError={(e) => e.currentTarget.remove()} />}
+      </div>
+      <div className="tl-sh-inner">
+        <Link to={`/events/${eventId}`} className="tl-sh-back">
+          <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Event details
+        </Link>
+        <div className="tl-sh-row">
+          <div className="tl-sh-text">
+            <h1 id="tl-sh-title" className="tl-sh-title">
+              {words.join(' ')}{last && <> <em>{last}</em></>}
+            </h1>
+            {event && (
+              <p className="tl-sh-meta">
+                <span><MapPin className="w-4 h-4" aria-hidden="true" /> {[event.venue, event.city].filter(Boolean).join(', ')}</span>
+                <span><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</span>
+                <span><Clock className="w-4 h-4" aria-hidden="true" /> Selected seats are reserved for 10 minutes</span>
+              </p>
+            )}
+            <div ref={viewRef} className="tl-sh-switch" />
+          </div>
+          <div className="tl-sh-box">
+            <BookingSteps current="seats" />
+            <div ref={ticketsRef} className="tl-sh-tickets" />
+          </div>
+        </div>
+      </div>
+      <svg className="tl-sh-wave" viewBox="0 0 1440 60" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0 34 C 320 6, 620 58, 960 30 S 1320 8, 1440 22 V60 H0 Z" />
+      </svg>
+    </section>
   );
 }
 
