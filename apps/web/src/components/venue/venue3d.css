@@ -151,24 +151,10 @@
 .tl-imm-toast.is-error { border-color: rgba(248, 113, 113, 0.6); }
 .tl-imm-toast button { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: 8px; background: rgba(255, 255, 255, 0.06); color: #fff; cursor: pointer; }
 
-/* Bottom bar: Back to 3D Plan · selection · My Tickets */
-/* No transform or filter on the bar itself: either would trap the phone My tickets sheet (position: fixed) inside it */
-.tl-imm-bar { position: absolute; left: 0; right: 0; bottom: 20px; margin: 0 auto; z-index: 6; isolation: isolate; width: min(620px, calc(100% - 36px)); display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 17px; background: var(--imm-panel); border: 1px solid rgba(0, 216, 117, 0.4); box-shadow: 0 12px 45px rgba(0, 0, 0, 0.55), 0 0 25px rgba(0, 219, 102, 0.18); }
-.tl-imm-bar::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-.tl-imm-back, .tl-imm-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 17px; border-radius: 12px; font-family: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: background 0.2s, transform 0.2s; }
-.tl-imm-back { border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.04); color: #e8f8fb; }
+.tl-imm-back { color: #e8f8fb; }
+.tl-imm-back { display: inline-flex; align-items: center; gap: 8px; padding: 0 17px; font-family: inherit; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: background 0.2s, transform 0.2s; }
 .tl-imm-back:hover { background: rgba(255, 255, 255, 0.09); transform: translateY(-1px); }
-.tl-imm-mine { border: 0; background: linear-gradient(110deg, #00c85f, #00f17a); color: #002416; box-shadow: 0 5px 18px rgba(0, 232, 117, 0.25); padding-right: 8px; }
-.tl-imm-mine:hover { transform: translateY(-1px); filter: brightness(1.05); }
-.tl-imm-mine .tl-vb-badge { min-width: 26px; height: 26px; border-radius: 8px; background: #002416; color: #4ade80; }
-.tl-imm-mine .tl-vb-badge.is-empty { background: rgba(0, 36, 22, 0.25); color: #002416; }
-.tl-imm-summary { flex: 1; min-width: 0; padding: 0 6px; }
-.tl-imm-summary small { display: block; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #8eabb6; }
-.tl-imm-summary b { display: block; margin-top: 4px; font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tl-imm-summary em { font-style: normal; color: var(--imm-green); }
 .tl-vb.tl-imm :focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
-/* My tickets opens upwards from the bar */
-@media (min-width: 768px) { .tl-imm .tl-imm-tickets .tl-vb-panel { top: auto; bottom: calc(100% + 18px); right: -10px; max-height: min(64vh, 600px); } }
 
 @media (max-width: 720px) {
   .tl-imm .tl-v3-night { top: 12px; right: 12px; }
@@ -179,12 +165,8 @@
   .tl-imm .tl-v3-seatcard { top: 66px; left: 10px; right: 10px; }
   .tl-imm .tl-v3-boxcard { bottom: 86px; }
   .tl-imm .tl-v3-legend { left: 10px; bottom: 84px; }
-  .tl-imm-bar { bottom: 10px; width: calc(100% - 20px); padding: 7px; gap: 6px; }
-  .tl-imm-summary { display: none; }
-  .tl-imm-back, .tl-imm-mine { flex: 1; justify-content: center; padding: 0 10px; }
-  .tl-imm .tl-imm-tickets { flex: 1; display: flex; }
 }
-@media (prefers-reduced-motion: reduce) { .tl-imm-panel { animation: none; } .tl-imm-back, .tl-imm-mine { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tl-imm-panel { animation: none; } .tl-imm-back { transition: none; } }
 
 /* ===================================================================== */
 /* Seat card (SeatTicketCard): the 3D seat card and every My tickets card */
@@ -255,3 +237,33 @@
 .tl-v3 .tl-v3-legend :focus-visible { outline: 2px solid #4ade80; outline-offset: 2px; }
 @media (max-width: 720px) { .tl-v3 .tl-v3-legend { width: 228px; } }
 @media (prefers-reduced-motion: reduce) { .tl-v3 .tl-v3-legend, .tl-v3-legend-chev { animation: none; transition: none; } }
+
+/* Seat card: step through held tickets (My Tickets on the 3D page) */
+.tl-seatcard-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding: 4px; border-radius: 11px; background: #f1f5f9; font-size: 12.5px; color: #475569; }
+.tl-seatcard-nav b { color: #0f172a; }
+.tl-seatcard-nav button { display: grid; place-items: center; width: 32px; height: 30px; border: 0; border-radius: 8px; background: #fff; color: #0f172a; cursor: pointer; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12); }
+.tl-seatcard-nav button:hover { background: #e2e8f0; }
+
+/* Full-screen page: the top buttons and the seat key are frosted glass (blurred, lightly tinted, with a bright
+   edge), so the stadium or hall shows through softly behind them */
+.tl-imm { --imm-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05)); --imm-glass-edge: rgba(255, 255, 255, 0.28); }
+.tl-imm .tl-imm-top .tl-imm-back,
+.tl-imm .tl-imm-menu-btn,
+.tl-imm .tl-v3-night,
+.tl-imm .tl-v3 .tl-v3-legend {
+  background: var(--imm-glass);
+  border: 1px solid var(--imm-glass-edge);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+.tl-imm .tl-imm-top .tl-imm-back:hover,
+.tl-imm .tl-imm-menu-btn:hover,
+.tl-imm .tl-v3-night:hover { background: linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.09)); border-color: rgba(255, 255, 255, 0.45); }
+.tl-imm .tl-v3 .tl-v3-legend .tl-v3-prices li { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+.tl-imm .tl-v3 .tl-v3-legend .tl-v3-prices b { background: rgba(0, 0, 0, 0.22); padding: 4px 8px; color: #fff; }
+.tl-imm .tl-v3 .tl-v3-legend .tl-v3-states { border-top-color: rgba(255, 255, 255, 0.16); color: #fff; }
+.tl-imm .tl-v3 .tl-v3-legend .tl-v3-states li { background: rgba(255, 255, 255, 0.05); }
+.tl-imm .tl-v3-legend-ico { background: rgba(255, 255, 255, 0.12); }

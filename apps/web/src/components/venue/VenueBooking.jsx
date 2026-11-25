@@ -6,6 +6,7 @@ import { ArrowLeft, Box, List, Map as MapIcon, Menu, Minus, Plus, RefreshCw, Use
 import { tablesOf } from '@venue-core';
 import VenueMap from './VenueMap';
 import MyTicketsPanel, { MyTicketsButton, MyTicketsFab } from './BookingSummary';
+import { VENUE_WORDS, venue3dKind } from './venue3dKind';
 import SeatPopover from './SeatPopover';
 import { getEventVisual } from '../../utils/eventMedia';
 import { SEAT_STATES, formatPkr, generated, geometryBox, reducedMotion, tierPalette } from './venueTheme';
@@ -102,7 +103,14 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
   const [pop, setPop] = useState(null); // seat or table whose popover is open: { type, key }
   // Opened from the site-wide My Tickets button on another page (?tickets=1)
   const [ticketsOpen, setTicketsOpen] = useState(() => new URLSearchParams(location.search).get('tickets') === '1');
-  const stadiumRef = useRef(null); // the 3D view's camera controls (goSeat), for "View seat" in My tickets
+  const stadiumRef = useRef(null); // the 3D view's camera controls (goSeat), for My Tickets
+  const [stadiumReady, setStadiumReady] = useState(0);
+  // Came from the site-wide My Tickets button: on the 3D page, open the first held seat's card once it is built
+  const wantCardRef = useRef(ticketsOpen);
+  const showHeldRef = useRef(null);
+  const heldIdx = useRef(-1);
+  const [cardKey, setCardKey] = useState(null); // the held seat whose card the 3D view shows, if any
+  const openSeatWhenHeld = useRef(null); // a seat reserved after sign-in: open its view once it shows as yours
   const [menuOpen, setMenuOpen] = useState(false);
   const [validating, setValidating] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -431,6 +439,7 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
       ? sectionById[pending.body.sectionId]
       : sectionById[(pending.body.key || pending.body.tableKey || '').split('/')[0]];
     if (section) openSection(section);
+    if (pending.body.key) openSeatWhenHeld.current = pending.body.key; // 3D: show the seat's view and card
     run(`resume:${pending.label}`, () => adapter.hold(pending.body), `${pending.label} reserved for you.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview, isAuthenticated, data, eventId]);
@@ -531,8 +540,10 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     navigate(`/events/${eventId}/checkout`, { state: { eventId, from: 'seats' } });
   };
 
-  // ---------- 3D stadium view (cricket grounds for now) ----------
-  const has3d = Boolean(layout?.feature?.kind === 'cricket' && canWebGL());
+  // ---------- 3D view: cricket grounds (stadium) and seated stage / screen venues (hall) ----------
+  const kind3d = venue3dKind(layout);
+  const has3d = Boolean(kind3d && canWebGL());
+  const words = VENUE_WORDS[kind3d || 'stadium'];
   const [view3d, setView3d] = useState(() => {
     try {
       return localStorage.getItem(VIEW_KEY) !== '2d';
@@ -555,6 +566,20 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
       html.style.overflow = prev;
     };
   }, [immersive]);
+  // Held tickets the 3D view can show as a seat card (standing places have no seat to fly to)
+  const heldSeatKeys = useMemo(() => mine.filter((m) => m.kind !== 'GA_SLOT').map((m) => m.key), [mine]);
+  useEffect(() => {
+    const k = openSeatWhenHeld.current;
+    if (!k || !immersive || !stadiumReady || !heldSeatKeys.includes(k)) return;
+    openSeatWhenHeld.current = null;
+    showHeldRef.current?.(k);
+  }, [immersive, stadiumReady, heldSeatKeys]);
+  useEffect(() => {
+    if (!immersive || !stadiumReady || !wantCardRef.current || !heldSeatKeys.length) return;
+    wantCardRef.current = false;
+    setTicketsOpen(false);
+    showHeldRef.current?.(heldSeatKeys[0]);
+  }, [immersive, stadiumReady, heldSeatKeys]);
   useEffect(() => {
     if (!menuOpen) return undefined;
     const onKey = (e) => e.key === 'Escape' && setMenuOpen(false);
@@ -640,10 +665,30 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     if (sectionId !== focusId) open3dSection(sec);
     if (line?.type === 'seat' || line?.type === 'tableSeat') setTimeout(() => stadiumRef.current?.goSeat(line.id), sectionId !== focusId ? 80 : 0);
   };
+  // 3D: My Tickets = the seat card of a held ticket (the button steps through them; the card has ‹ › too)
+  const showHeld = (key) => {
+    const m = mineByKey.get(key);
+    if (!m) return;
+    heldIdx.current = heldSeatKeys.indexOf(key);
+    viewHeld(m.sectionId, { type: 'seat', id: key });
+  };
+  showHeldRef.current = showHeld;
+  // My Tickets opens the card (the last one looked at, else the first) and closes it when it is open
+  const onMyTickets = () => {
+    if (!heldSeatKeys.length) return setTicketsOpen((o) => !o); // only standing places held: the list
+    if (cardKey) {
+      // Back to the seat's section (the page may have another one open after stepping through held seats)
+      const sec = mineByKey.get(cardKey)?.sectionId || focusId;
+      if (sec !== focusId && sectionById[sec]) return open3dSection(sectionById[sec]);
+      return stadiumRef.current?.goSection(sec, 'seat');
+    }
+    const last = heldSeatKeys[heldIdx.current];
+    return showHeld(last || heldSeatKeys[0]);
+  };
 
   const viewSwitch = has3d ? (
     <div className="tl-v3-switch" role="group" aria-label="Map view">
-      <button type="button" aria-pressed={show3d} onClick={() => chooseView(true)}><Box className="w-4 h-4" aria-hidden="true" /> 3D stadium</button>
+      <button type="button" aria-pressed={show3d} onClick={() => chooseView(true)}><Box className="w-4 h-4" aria-hidden="true" /> {words.view}</button>
       <button type="button" aria-pressed={!show3d} onClick={() => chooseView(false)}><MapIcon className="w-4 h-4" aria-hidden="true" /> 2D plan</button>
     </div>
   ) : null;
@@ -673,7 +718,7 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
     return (
       <div className="tl-vb tl-imm">
         <div className="tl-v3-stage tl-imm-stage">
-          <Suspense fallback={<div className="tl-imm-loading" aria-busy="true" aria-label="Loading the 3D stadium" />}>
+          <Suspense fallback={<div className="tl-imm-loading" aria-busy="true" aria-label={words.loading} />}>
             <Venue3D
               layout={layout}
               tiers={tiers}
@@ -690,7 +735,10 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
               onSelectSeat={select3dSeat}
               onRemoveSeat={remove3dSeat}
               onGetTickets={getTickets}
-              onReady={(c) => { stadiumRef.current = c; }}
+              heldKeys={heldSeatKeys}
+              onShowHeld={showHeld}
+              onSeatCard={setCardKey}
+              onReady={(c) => { stadiumRef.current = c; setStadiumReady((n) => n + 1); }}
             />
           </Suspense>
         </div>
@@ -703,15 +751,15 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
         <div className="tl-imm-menu">
           <button type="button" className="tl-imm-menu-btn" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-controls="tl-imm-list">
             {menuOpen ? <X className="w-5 h-5" aria-hidden="true" /> : <Menu className="w-5 h-5" aria-hidden="true" />}
-            <span>{focused ? focused.name : 'Pavilions'}</span>
+            <span>{focused ? focused.name : words.parts}</span>
           </button>
           {menuOpen && (
             <>
               <div className="tl-imm-menu-backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-              <nav id="tl-imm-list" className="tl-imm-panel" aria-label="Pavilions">
+              <nav id="tl-imm-list" className="tl-imm-panel" aria-label={words.parts}>
                 <div className="tl-imm-panel-head">
                   <small>{data.event?.name}</small>
-                  <b>Choose a pavilion</b>
+                  <b>{words.choose}</b>
                 </div>
                 <ul>
                   {layout.sections.map((s) => {
@@ -762,12 +810,12 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
               count={mine.length}
               secondsLeft={mine.length ? secondsLeft : null}
               urgent={secondsLeft != null && secondsLeft < 60}
-              open={ticketsOpen}
-              onClick={() => setTicketsOpen((o) => !o)}
-              aria-controls="tl-vb-panel"
-              aria-label={`My Tickets: ${mine.length} held`}
+              open={Boolean(cardKey) || ticketsOpen}
+              onClick={onMyTickets}
+              aria-label={`My Tickets: ${mine.length} held. ${heldSeatKeys.length > 1 ? 'Shows your seats one by one' : 'Shows your seat'}`}
             />
-            {ticketsOpen && (
+            {/* The list only for places the 3D view has no seat card for (standing areas) */}
+            {ticketsOpen && !heldSeatKeys.length && (
               <MyTicketsPanel
                 id="tl-vb-panel"
                 className="is-floating"
@@ -814,7 +862,7 @@ export default function VenueBooking({ adapter, isAuthenticated = true, userId =
 
       {show3d && (
         <div className="tl-v3-stage">
-          <Suspense fallback={<div className="tl-vb-skeleton" aria-busy="true" aria-label="Loading the 3D stadium" />}>
+          <Suspense fallback={<div className="tl-vb-skeleton" aria-busy="true" aria-label={words.loading} />}>
             <Venue3D
               layout={layout}
               tiers={tiers}

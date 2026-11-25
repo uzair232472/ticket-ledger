@@ -3,9 +3,12 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BOX_SEATS, DEG, bounds, polygonCentroid, rotate, rowsOf, sectionView3d, shapePolygon, view3dOf, widestChord } from '@venue-core';
-import { ArrowUpRight, ChevronDown, ChevronLeft, Eye, Info, Maximize2, Moon, ShoppingBag, Sun, Trash2, Plus } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, ChevronLeft, Eye, Info, Lightbulb, Maximize2, Moon, ShoppingBag, Sparkles, Sun, Trash2, Plus } from 'lucide-react';
 import { SeatTicketCard } from './BookingSummary';
 import { formatPkr, generated } from './venueTheme';
+import { canvasTex, gradientTex, quad, toGeo } from './scene3dUtils';
+import { buildHallShell, buildHallStage, theatreSeatGeometry } from './hallScene';
+import { VENUE_WORDS, venue3dKind } from './venue3dKind';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
 import './venue3d.css';
 
@@ -19,17 +22,14 @@ import './venue3d.css';
  */
 
 const LEATHER = '#7a4a2a'; // hospitality box seats
+const PULSE_TO = new THREE.Color('#cfe0ff');
 const COLORS = { mine: '#1e66f5', pending: '#8fb3ff', held: '#f5a524', sold: '#9aa3ab', blocked: '#2a2f35', none: '#c7ccd1' };
 // The 2D palette has a blue tier; in 3D blue means "your seat", so that tier is drawn in rose instead
 export const tier3dColor = (c) => (String(c).toLowerCase() === '#2563eb' ? '#e11d48' : c);
 const boxOf = (seat) => Math.floor(seat.position / BOX_SEATS) + 1;
-const STATE_LABEL = { available: 'Available', mine: 'Held for you', pending: 'Reserving…', held: 'Held by another fan (up to 10 min)', sold: 'Sold', blocked: 'Not on sale' };
+const STATE_LABEL = { available: 'Available', mine: 'Held for you (not paid yet)', pending: 'Reserving…', held: 'Held by another fan (up to 10 min)', sold: 'Sold', blocked: 'Not on sale' };
 
 // ─── Small geometry helpers (plan coordinates in, world coordinates out) ─────────────────────────────────────
-function quad(pos, a, b, c, d) { pos.push(...a, ...b, ...c, ...a, ...c, ...d); }
-function toGeo(pos) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g; }
-function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
-function gradientTex(top, bottom) { return canvasTex(2, 256, (g) => { const gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, top); gr.addColorStop(1, bottom); g.fillStyle = gr; g.fillRect(0, 0, 2, 256); }); }
 function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
 /** Local frame of a block or custom-shape section (same transform as venue-core's seat generator). */
@@ -62,6 +62,7 @@ function fittingRows(sec) {
 /** Stepped terrace for a seated section: front wall, a tread + riser per row, back wall, side walls. */
 function terraceGeometry(sec, W, lv) {
   const R = rowsOf(sec), rs = R.rowSpacing, n = Math.max(1, fittingRows(sec));
+  // lv.trimBack (halls): the stepped floor ends just behind the last row instead of filling the drawn shape
   const h = (i) => lv.h0 + Math.min(i, n - 1) * lv.rise;
   const top = h(n - 1) + lv.parapet;
   const pos = [];
@@ -69,7 +70,8 @@ function terraceGeometry(sec, W, lv) {
     const { cx, cy, r0, r1, a0, a1 } = sec.shape;
     const P = (r, a, y) => W(cx + r * Math.cos(a * DEG), cy + r * Math.sin(a * DEG), y);
     const rf = (i) => (i === 0 ? r0 : r0 + R.inset + rs * i);
-    const rb = (i) => (i === n - 1 ? r1 : r0 + R.inset + rs * (i + 1));
+    const rEnd = lv.trimBack ? Math.min(r1, r0 + R.inset * 2 + rs * n) : r1;
+    const rb = (i) => (i === n - 1 ? rEnd : r0 + R.inset + rs * (i + 1));
     const segs = Math.max(6, Math.ceil(Math.abs(a1 - a0) / 1.5));
     for (let s = 0; s < segs; s++) {
       const aa = a0 + ((a1 - a0) * s) / segs, ab = a0 + ((a1 - a0) * (s + 1)) / segs;
@@ -78,7 +80,7 @@ function terraceGeometry(sec, W, lv) {
         quad(pos, P(rf(i), aa, h(i)), P(rf(i), ab, h(i)), P(rb(i), ab, h(i)), P(rb(i), aa, h(i)));
         if (i < n - 1) quad(pos, P(rb(i), aa, h(i)), P(rb(i), ab, h(i)), P(rb(i), ab, h(i + 1)), P(rb(i), aa, h(i + 1)));
       }
-      quad(pos, P(r1, aa, 0), P(r1, aa, top), P(r1, ab, top), P(r1, ab, 0));
+      quad(pos, P(rEnd, aa, 0), P(rEnd, aa, top), P(rEnd, ab, top), P(rEnd, ab, 0));
     }
     for (const a of [a0, a1]) for (let i = 0; i < n; i++) quad(pos, P(rf(i), a, 0), P(rb(i), a, 0), P(rb(i), a, h(i)), P(rf(i), a, h(i)));
     return toGeo(pos);
@@ -86,7 +88,8 @@ function terraceGeometry(sec, W, lv) {
   const F = frameOf(sec.shape), b = bounds(F.local);
   const L = (x, y, yy) => { const [px, py] = F.toPlan([x, y]); return W(px, py, yy); };
   const yf = (i) => (i === 0 ? b.y : b.y + R.inset + rs * i);
-  const yb = (i) => (i === n - 1 ? b.maxY : b.y + R.inset + rs * (i + 1));
+  const yEnd = lv.trimBack ? Math.min(b.maxY, b.y + R.inset * 2 + rs * n) : b.maxY;
+  const yb = (i) => (i === n - 1 ? yEnd : b.y + R.inset + rs * (i + 1));
   const chord = (i) => (F.rect ? [b.x, b.maxX] : widestChord(F.local, b.y + R.inset + rs * (i + 0.5)) || [b.x, b.maxX]);
   for (let i = 0; i < n; i++) {
     const [c0, c1] = chord(i);
@@ -330,14 +333,15 @@ function startsLowDetail(layout) {
   return Boolean(weak || (phone && seats > 15000));
 }
 
-function buildScene(host, layout, { low = false, board = null } = {}) {
+function buildScene(host, layout, { low = false, board = null, kind = 'stadium' } = {}) {
+  const hall = kind === 'hall'; // theatre / auditorium / conference room instead of a ground
   const renderer = new THREE.WebGLRenderer({ antialias: !low });
   renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = !low; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   host.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = gradientTex('#3c82d4', '#d8e9f6');
+  scene.background = hall ? gradientTex('#1c1412', '#070505') : gradientTex('#3c82d4', '#d8e9f6');
 
   // Plan units → world: one seat pitch ≈ one world unit; seats and people are drawn ~1.5× life size so the
   // plan's proportions (pitch vs stands) stay exactly as the organizer drew them
@@ -356,11 +360,13 @@ function buildScene(host, layout, { low = false, board = null } = {}) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = 1.47;
   controls.minDistance = 4; controls.maxDistance = R * 5; controls.screenSpacePanning = false;
-  scene.fog = new THREE.Fog(0xd8e9f6, R * 4, R * 10);
+  scene.fog = hall ? new THREE.Fog(0x0b0807, R * 3, R * 9) : new THREE.Fog(0xd8e9f6, R * 4, R * 10);
 
-  const hemi = new THREE.HemisphereLight(0xd3e8ff, 0x4d6b36, 0.95); scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0d4, 2.7);
-  sun.position.set(-R * 1.3, R * 1.25, R * 0.85); sun.castShadow = true;
+  const hemi = hall ? new THREE.HemisphereLight(0xffe8d2, 0x2a1a14, 0.85) : new THREE.HemisphereLight(0xd3e8ff, 0x4d6b36, 0.95); scene.add(hemi);
+  // Indoors the "sun" is the house lighting, from high above the room
+  const sun = new THREE.DirectionalLight(hall ? 0xffe6c8 : 0xfff0d4, hall ? 1.5 : 2.7);
+  if (hall) sun.position.set(R * 0.2, R * 1.8, R * 0.6); else sun.position.set(-R * 1.3, R * 1.25, R * 0.85);
+  sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -R * 1.5, right: R * 1.5, top: R * 1.5, bottom: -R * 1.5, near: 1, far: R * 5 });
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
@@ -380,23 +386,32 @@ function buildScene(host, layout, { low = false, board = null } = {}) {
     wood: new THREE.MeshStandardMaterial({ color: 0x8a6440, roughness: 0.55, side: THREE.DoubleSide }),
     boxWall: new THREE.MeshStandardMaterial({ color: 0xe9e2d6, roughness: 0.8, side: THREE.DoubleSide }),
     glass: new THREE.MeshPhysicalMaterial({ color: 0xbfe3ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+    gold: new THREE.MeshStandardMaterial({ color: 0xb8904f, roughness: 0.35, metalness: 0.65 }),
   };
-  const ground = new THREE.Mesh(new THREE.CircleGeometry(R * 9, 64).rotateX(-Math.PI / 2), mats.grass); ground.position.y = -0.05; ground.receiveShadow = true; scene.add(ground);
-  const paving = new THREE.Mesh(new THREE.CircleGeometry(R * 1.14, 128).rotateX(-Math.PI / 2), mats.paving); paving.receiveShadow = true; scene.add(paving);
-  buildFeature(scene, f, W, S, mats);
+  let stage = null;
+  if (hall) {
+    // Carpeted steps and floors; the stage, its curtains or screen, and the lighting truss
+    mats.concrete.color.set(0x4a1f26); mats.platform.color.set(0x4a1f26);
+    stage = buildHallStage(scene, layout, W, S, mats, board);
+  } else {
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(R * 9, 64).rotateX(-Math.PI / 2), mats.grass); ground.position.y = -0.05; ground.receiveShadow = true; scene.add(ground);
+    const paving = new THREE.Mesh(new THREE.CircleGeometry(R * 1.14, 128).rotateX(-Math.PI / 2), mats.paving); paving.receiveShadow = true; scene.add(paving);
+    buildFeature(scene, f, W, S, mats);
+  }
 
   // Stands: level by level, each level starting above the one in front of it
   const sections = new Map(), terraces = [];
   const levels = [...new Set(layout.sections.map((s) => s.level || 1))].sort((a, b) => a - b);
   let base = 0;
-  const seatGeo = seatGeometry(P), chairGeo = chairGeometry(P);
+  const seatGeo = hall ? theatreSeatGeometry(P) : seatGeometry(P), chairGeo = chairGeometry(P);
   const dummy = new THREE.Object3D();
   for (const level of levels) {
     let top = base;
     for (const sec of layout.sections.filter((s) => (s.level || 1) === level)) {
       const booking = sec.booking || 'seats';
       const rs = rowsOf(sec).rowSpacing * S;
-      const lv = { h0: base + 0.6, rise: rs * 0.5, parapet: 0.9 };
+      // A hall's stalls are gently raked; its balconies are steeper. A ground's stands are steep throughout
+      const lv = hall ? { h0: base + 0.25, rise: rs * (level === levels[0] ? 0.22 : 0.45), parapet: 0.7, trimBack: true } : { h0: base + 0.6, rise: rs * 0.5, parapet: 0.9 };
       const g = generated(sec);
       const tables = new Map((g.tables || []).map((t) => [t.key, t]));
       let mesh;
@@ -426,7 +441,24 @@ function buildScene(host, layout, { low = false, board = null } = {}) {
       const secTop = booking === 'seats' ? lv.h0 + (n - 1) * lv.rise + lv.parapet : base + 0.6;
       sections.set(sec.id, { sec, terrace, mesh, seats, seatByKey: new Map(seats.map((s) => [s.key, s])), box, rowDepth: rs, top: secTop, hosp });
     }
-    base = top + 2.2;
+    base = top + (hall ? 3.5 : 2.2);
+  }
+
+  if (hall) {
+    const shell = buildHallShell(scene, stage, sections, mats, R);
+    const boxLight = new THREE.PointLight(0xffe2b8, 0, 12, 2); scene.add(boxLight);
+    const labels = buildLabels(scene, sections);
+    const setLow = () => {
+      renderer.setPixelRatio(1); renderer.shadowMap.enabled = false; sun.castShadow = false;
+      scene.traverse((o) => { const m = o.material; (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => { x.needsUpdate = true; }); });
+    };
+    return {
+      kind, renderer, scene, camera, controls, sun, hemi, floods: stage.spots, glow: [...stage.glow, ...shell.glow], sections, terraces, R, P, boxLight, labels, setLow, low,
+      overviewPose: shell.overviewPose, sectionPose: shell.sectionPose, seatLook: stage.seatLook,
+      // House lights up, or dimmed for the show (stage spotlights on)
+      lighting: { day: { sun: 1.5, hemi: 0.85, flood: 0.5, fog: 0x0b0807 }, night: { sun: 0.1, hemi: 0.16, flood: 4, fog: 0x050303 } },
+      sky: { day: scene.background, night: gradientTex('#070404', '#000000') },
+    };
   }
 
   buildRoofs(scene, layout, sections, W, mats);
@@ -466,7 +498,12 @@ function buildScene(host, layout, { low = false, board = null } = {}) {
     renderer.setPixelRatio(1); renderer.shadowMap.enabled = false; sun.castShadow = false;
     scene.traverse((o) => { const m = o.material; (Array.isArray(m) ? m : m ? [m] : []).forEach((x) => { x.needsUpdate = true; }); });
   };
-  return { renderer, scene, camera, controls, sun, hemi, floods, lampMat, sections, terraces, R, P, boxLight, labels, setLow, low, sky: { day: scene.background, night: gradientTex('#02050d', '#16263f') } };
+  return {
+    kind, renderer, scene, camera, controls, sun, hemi, floods, glow: [{ mat: lampMat, day: 0.12, show: 3 }], sections, terraces, R, P, boxLight, labels, setLow, low,
+    overviewPose: null, seatLook: new THREE.Vector3(0, 0.6, 0),
+    lighting: { day: { sun: 2.7, hemi: 0.95, flood: 0, fog: 0xd8e9f6 }, night: { sun: 0.12, hemi: 0.22, flood: 1.5, fog: 0x16263f } },
+    sky: { day: scene.background, night: gradientTex('#02050d', '#16263f') },
+  };
 }
 
 /** Stand names floating above each stand in the whole-ground view. Fixed on-screen size: they never grow with zoom. */
@@ -538,7 +575,7 @@ const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 // ─── Component ───────────────────────────────────────────────────────────────────────────────────────────────
 export default function Venue3D({
   layout, tiers, event, focusId, stateOf, sectionInfo, mineCount, maxTickets, secondsLeft, busy,
-  onOpenSection, onBackToVenue, onSelectSeat, onRemoveSeat, onGetTickets, onReady,
+  onOpenSection, onBackToVenue, onSelectSeat, onRemoveSeat, onGetTickets, onReady, heldKeys = [], onShowHeld, onSeatCard,
 }) {
   const hostRef = useRef(null);
   const tipRef = useRef(null);
@@ -553,11 +590,18 @@ export default function Venue3D({
   const [ready, setReady] = useState(0); // 0 = no scene; otherwise the build number
   const [rebuild, setRebuild] = useState(0);
   const lastFocus = useRef(null);
+  // A seat just reserved by a click: its view stays open while the page catches up with the server (the seat can
+  // read as free for a moment between the hold and the refreshed seat states)
+  const confirming = useRef(null); // { key, until }
+  const [recheck, setRecheck] = useState(0);
   const liveRef = useRef(null);
   const boardKey = [event?.name, event?.venue, event?.city, event?.date, event?.time].join('|');
   const touch = typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 
   const v3 = useMemo(() => view3dOf(layout), [layout]);
+  // Cricket ground or indoor hall (theatre, auditorium, conference room): same seats and booking, different room
+  const kind = venue3dKind(layout) || 'stadium';
+  const words = VENUE_WORDS[kind];
   // Seat colour for a ticket type: its own colour, or the team colour when the organizer chose team colours
   // Ticket types sold only in hospitality boxes show as leather seats
   const boxOnlyTiers = useMemo(() => {
@@ -580,7 +624,7 @@ export default function Venue3D({
     let ctx;
     try {
       const when = [event?.date ? formatEventDate(event.date) : '', formatEventTime(event?.time)].filter(Boolean).join(' · ');
-      ctx = buildScene(host, layout, { low: startsLowDetail(layout), board: event?.name ? { name: event.name, venue: [event.venue, event.city].filter(Boolean).join(', '), when } : null });
+      ctx = buildScene(host, layout, { kind, low: startsLowDetail(layout), board: event?.name ? { name: event.name, venue: [event.venue, event.city].filter(Boolean).join(', '), when } : null });
     } catch (e) {
       console.error('[Venue3D] could not build the 3D view', e);
       return undefined;
@@ -597,8 +641,9 @@ export default function Venue3D({
     const ro = new ResizeObserver(size); ro.observe(host);
 
     const portrait = () => camera.aspect < 1;
-    const overviewPose = () => { const k = portrait() ? 1.7 : 1; return { pos: new THREE.Vector3(0, R * 1.35 * k, R * 1.15 * k), target: new THREE.Vector3(0, 0, R * 0.04) }; };
+    const overviewPose = () => { if (ctx.overviewPose) return ctx.overviewPose(portrait()); const k = portrait() ? 1.7 : 1; return { pos: new THREE.Vector3(0, R * 1.35 * k, R * 1.15 * k), target: new THREE.Vector3(0, 0, R * 0.04) }; };
     const sectionPose = (entry) => {
+      if (ctx.sectionPose) return ctx.sectionPose(entry.box, portrait()); // hall: stays inside the room
       const c = entry.box.getCenter(new THREE.Vector3()), sz = entry.box.getSize(new THREE.Vector3());
       const toCenter = new THREE.Vector3(-c.x, 0, -c.z); if (toCenter.lengthSq() < 1e-6) toCenter.set(0, 0, 1); toCenter.normalize();
       const D = Math.max(sz.x, sz.z) * (portrait() ? 1.25 : 0.85) + 6;
@@ -615,7 +660,7 @@ export default function Venue3D({
     ctx.goSeat = (key, { from } = {}) => {
       const e = sections.get(key.split('/')[0]); const s = e?.seatByKey.get(key); if (!s) return;
       // In a box, look slightly down so the ledge, glass and seats in front are in view too
-      yaw = 0; pitch = e.hosp ? 0.3 : 0; eye.copy(seatEye(s)); lookBase.set(0, 0.6, 0);
+      yaw = 0; pitch = e.hosp ? 0.3 : 0; eye.copy(seatEye(s)); lookBase.copy(ctx.seatLook);
       setFov(62); // closer to what a person sees from a seat
       ctx.labels.visible = false;
       ctx.boxLight.intensity = e.hosp ? 7 : 0; ctx.boxLight.position.copy(eye).add(new THREE.Vector3(0, 1.1, 0));
@@ -623,10 +668,13 @@ export default function Venue3D({
       const t = lookBase.clone().sub(eye); sph.setFromVector3(t); sph.phi = THREE.MathUtils.clamp(sph.phi + pitch, 0.25, Math.PI - 0.25); t.setFromSpherical(sph);
       flyTo(eye, eye.clone().add(t), { lift: 2 });
     };
+    // Night match (ground) or show lighting (hall)
     ctx.setNight = (on) => {
-      scene.background = on ? ctx.sky.night : ctx.sky.day; scene.fog.color.set(on ? 0x16263f : 0xd8e9f6);
-      ctx.sun.intensity = on ? 0.12 : 2.7; ctx.hemi.intensity = on ? 0.22 : 0.95;
-      for (const fl of ctx.floods) fl.intensity = on ? 1.5 : 0; ctx.lampMat.emissiveIntensity = on ? 3 : 0.12;
+      const L = on ? ctx.lighting.night : ctx.lighting.day;
+      scene.background = on ? ctx.sky.night : ctx.sky.day; scene.fog.color.set(L.fog);
+      ctx.sun.intensity = L.sun; ctx.hemi.intensity = L.hemi;
+      for (const fl of ctx.floods) fl.intensity = L.flood;
+      for (const g of ctx.glow) { const k = on ? g.show : g.day; if (g.basic) g.mat.color.setScalar(k); else g.mat.emissiveIntensity = k; }
     };
 
     const setNdc = (e) => { const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, camera); };
@@ -699,7 +747,7 @@ export default function Venue3D({
         if (st !== 'available') return;
         clearHover();
         const ok = await props.current.onSelectSeat(s.key, s.tableKey ? `${s.row}, seat ${s.number}` : `Row ${s.row}, seat ${s.number}`);
-        if (ok) ctx.goSeat(s.key);
+        if (ok) { confirming.current = { key: s.key, until: performance.now() + 6000 }; ctx.goSeat(s.key); }
         return;
       }
       const hit = pickSection();
@@ -725,7 +773,7 @@ export default function Venue3D({
     // Escape goes back (handled by the component). Each step is described in a live region for screen readers.
     canvas.tabIndex = 0;
     canvas.setAttribute('role', 'application');
-    canvas.setAttribute('aria-label', '3D stadium. Use the arrow keys to move between stands and seats, Enter to choose, Escape to go back.');
+    canvas.setAttribute('aria-label', `${words.view}. Use the arrow keys to move between ${words.part}s and seats, Enter to choose, Escape to go back.`);
     const say = (t) => { if (liveRef.current) liveRef.current.textContent = t; };
     const order = [...sections.values()].sort((a, b) => { const ca = a.box.getCenter(new THREE.Vector3()), cb = b.box.getCenter(new THREE.Vector3()); return Math.atan2(ca.z, ca.x) - Math.atan2(cb.z, cb.x); });
     let kSec = null, kSeat = null;
@@ -777,7 +825,7 @@ export default function Venue3D({
         const st = props.current.stateOf(kSeat.key, kSeat), s = kSeat;
         paintSeat(s, false); kSeat = null;
         if (st === 'mine') ctx.goSeat(s.key);
-        else if (st === 'available' && (await props.current.onSelectSeat(s.key, `Row ${s.row}, seat ${s.number}`))) ctx.goSeat(s.key);
+        else if (st === 'available' && (await props.current.onSelectSeat(s.key, `Row ${s.row}, seat ${s.number}`))) { confirming.current = { key: s.key, until: performance.now() + 6000 }; ctx.goSeat(s.key); }
         else say(`Row ${s.row}, seat ${s.number} is ${STATE_LABEL[st].toLowerCase()}.`);
       }
     };
@@ -790,6 +838,7 @@ export default function Venue3D({
     canvas.addEventListener('webglcontextrestored', onRestored);
 
     let frames = 0, slowSince = null, last = 0;
+    const pulse = new THREE.Color(), reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const tick = (now) => {
       raf = requestAnimationFrame(tick);
       // Slow frames for 3 seconds in a row (not during the first second): switch to lower detail once
@@ -811,6 +860,14 @@ export default function Venue3D({
         tmp.setFromSpherical(sph); camera.position.copy(eye); look.copy(eye).add(tmp); camera.lookAt(look);
       } else { controls.update(); look.copy(controls.target); }
       if (pointerDirty) { pointerDirty = false; hoverTest(); }
+      // Seats held for you pulse between blue and pale blue: reserved, but not paid for yet
+      if (ctx.heldSeats?.length && !reduceMotion) {
+        const k = 0.5 + 0.5 * Math.sin(now / 320);
+        pulse.set(COLORS.mine).lerp(PULSE_TO, 0.15 + 0.55 * k);
+        const touched = new Set();
+        for (const { e, s } of ctx.heldSeats) { if (s === hoverSeat) continue; e.mesh.setColorAt(s.idx, pulse); touched.add(e.mesh); }
+        for (const m of touched) m.instanceColor.needsUpdate = true;
+      }
       renderer.render(scene, camera);
     };
     const p0 = overviewPose();
@@ -841,11 +898,13 @@ export default function Venue3D({
   useEffect(() => {
     const ctx = ctxRef.current; if (!ctx || !ready) return;
     const c = new THREE.Color();
+    const held = [];
     for (const e of ctx.sections.values()) {
       if (!e.mesh) continue;
-      for (const s of e.seats) { c.set(colorOf(e.sec, stateOf(s.key, s))); e.mesh.setColorAt(s.idx, c); }
+      for (const s of e.seats) { const st = stateOf(s.key, s); c.set(colorOf(e.sec, st)); e.mesh.setColorAt(s.idx, c); if (st === 'mine') held.push({ e, s }); }
       e.mesh.instanceColor.needsUpdate = true;
     }
+    ctx.heldSeats = held; // pulsed by the render loop: held for you, not paid yet
   }, [ready, stateOf, colorOf]);
 
   // The parent decides which section is open (shared with the 2D plan)
@@ -874,8 +933,17 @@ export default function Venue3D({
   }, [view.seatKey, ready]);
   const seatState = seatEntry ? stateOf(seatEntry.seat.key, seatEntry.seat) : null;
   useEffect(() => {
-    if ((view.mode === 'seat' || view.mode === 'box') && seatEntry && seatState !== 'mine' && seatState !== 'pending') toSection(seatEntry.sec);
-  }, [view.mode, seatEntry, seatState, toSection]);
+    if (!((view.mode === 'seat' || view.mode === 'box') && seatEntry)) return undefined;
+    if (seatState === 'mine' || seatState === 'pending') { if (confirming.current?.key === seatEntry.seat.key && seatState === 'mine') confirming.current = null; return undefined; }
+    const c = confirming.current;
+    if (c && c.key === seatEntry.seat.key && performance.now() < c.until) {
+      const id = setTimeout(() => setRecheck((n) => n + 1), c.until - performance.now() + 50); // still not yours by then: close
+      return () => clearTimeout(id);
+    }
+    confirming.current = null;
+    toSection(seatEntry.sec);
+    return undefined;
+  }, [view.mode, seatEntry, seatState, toSection, recheck]);
 
   // Upgrade offer: the best free seat in a hospitality box: second row first (the box, its glass and the seats in
   // front are in view), then the front row, then further back; middle of the row first
@@ -953,9 +1021,12 @@ export default function Venue3D({
   const tier = (inSeat || inBox) ? tiers[seatEntry.sec.tierId] : null;
   const diff = (boxTier?.price || 0) - (tier?.price || 0);
   const diffText = `${diff >= 0 ? '+' : '−'}${formatPkr(Math.abs(diff))}`;
+  // The page's My Tickets button opens and closes this card, so it needs to know whether one is open
+  const cardKey = inSeat ? seatEntry.seat.key : null;
+  useEffect(() => { onSeatCard?.(cardKey); }, [cardKey, onSeatCard]);
   const seatLabel = inSeat ? (seatEntry.seat.tableKey ? `${seatEntry.seat.row} · Seat ${seatEntry.seat.number}` : `Row ${seatEntry.seat.row} · Seat ${seatEntry.seat.number}`) : '';
   const focusedName = focusId ? layout.sections.find((s) => s.id === focusId)?.name : '';
-  const hint = view.mode === 'overview' ? (touch ? 'Tap a stand to fly in · drag to rotate · pinch to zoom' : 'Hover a stand for prices · click to fly in · drag to rotate')
+  const hint = view.mode === 'overview' ? (touch ? `Tap a ${words.part} to fly in · drag to rotate · pinch to zoom` : `Hover a ${words.part} for prices · click to fly in · drag to rotate`)
     : view.mode === 'section' ? `${touch ? 'Tap' : 'Click'} a coloured seat to reserve it for 10 minutes`
       : view.mode === 'box' ? 'Hospitality box view · drag to look around' : 'Your view from this seat · drag to look around';
 
@@ -971,14 +1042,16 @@ export default function Venue3D({
               <ChevronLeft className="w-4 h-4" aria-hidden="true" /> <span>{inBox ? 'Back to my seat' : seatEntry.sec.name}</span>
             </button>
           )}
-          <button type="button" className="tl-v3-pill is-ground" onClick={onBackToVenue} aria-label="Show the whole ground">
+          <button type="button" className="tl-v3-pill is-ground" onClick={onBackToVenue} aria-label={`Show the whole ${words.venue}`}>
             <span className="tl-v3-pill-ico"><Maximize2 className="w-4 h-4" aria-hidden="true" /></span>
-            <span className="tl-v3-pill-txt"><b>Whole ground</b>{!inSeat && !inBox && focusedName && <small>Leave {focusedName}</small>}</span>
+            <span className="tl-v3-pill-txt"><b>{words.whole}</b>{!inSeat && !inBox && focusedName && <small>Leave {focusedName}</small>}</span>
           </button>
         </div>
       )}
       <button type="button" className="tl-v3-pill tl-v3-night" onClick={() => setNight((n) => !n)} aria-pressed={night}>
-        {night ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />} {night ? 'Day match' : 'Night match'}
+        {kind === 'hall'
+          ? <>{night ? <Lightbulb className="w-4 h-4" aria-hidden="true" /> : <Sparkles className="w-4 h-4" aria-hidden="true" />} {night ? 'House lights' : 'Show lighting'}</>
+          : <>{night ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />} {night ? 'Day match' : 'Night match'}</>}
       </button>
 
       {!inSeat && !inBox && (
@@ -1002,7 +1075,7 @@ export default function Venue3D({
               <ul className="tl-v3-states" aria-label="Seat states">
                 {['mine', 'held', 'sold', 'blocked'].map((k) => (
                   <li key={k} style={{ '--tc': COLORS[k] }}>
-                    <i className="tl-v3-seat-ico" aria-hidden="true" /> {k === 'mine' ? 'Your seats' : k === 'held' ? 'Held' : k === 'sold' ? 'Sold' : 'Not on sale'}
+                    <i className="tl-v3-seat-ico" aria-hidden="true" /> {k === 'mine' ? 'Held · not paid' : k === 'held' ? 'Held' : k === 'sold' ? 'Sold' : 'Not on sale'}
                   </li>
                 ))}
               </ul>
@@ -1020,6 +1093,10 @@ export default function Venue3D({
           tierColor={tier ? tierColor(tier) : COLORS.none}
           price={formatPkr(tier?.price)}
           extra={{ label: 'Your tickets', value: `${mineCount} of ${maxTickets}` }}
+          nav={heldKeys.length > 1 && onShowHeld ? (() => {
+            const i = Math.max(0, heldKeys.indexOf(seatEntry.seat.key)), n = heldKeys.length;
+            return { index: i, count: n, prev: () => onShowHeld(heldKeys[(i - 1 + n) % n]), next: () => onShowHeld(heldKeys[(i + 1) % n]) };
+          })() : null}
           gates={gatesFor(seatEntry.sec.tierId)}
           secondsLeft={secondsLeft}
           note="Held for you for 10 minutes. It stays in My Tickets when you close this card."

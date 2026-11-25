@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Clock, Eye, ShoppingBag, Ticket, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Eye, ShoppingBag, Ticket, Trash2, X } from 'lucide-react';
 import { formatPkr } from './venueTheme';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -68,7 +68,7 @@ export function HoldTimer({ secondsLeft, label = 'Reserved for' }) {
  * The seat card: shown when a seat is selected in the 3D stadium, and once per held ticket in My tickets, so a
  * ticket looks the same everywhere. No ticket, NFT or QR preview is shown before payment.
  */
-export function SeatTicketCard({ section, title, tierName, tierColor, price, gates = [], secondsLeft = null, extra = null, note = null, onClose, closeLabel = 'Close', className = '', label = 'Your seat', children }) {
+export function SeatTicketCard({ section, title, tierName, tierColor, price, gates = [], secondsLeft = null, extra = null, note = null, onClose, closeLabel = 'Close', className = '', label = 'Your seat', nav = null, children }) {
   return (
     <section className={`tl-v3-card tl-seatcard${className ? ` ${className}` : ''}`} aria-label={label}>
       <div className="tl-v3-card-head">
@@ -80,6 +80,13 @@ export function SeatTicketCard({ section, title, tierName, tierColor, price, gat
           )}
         </div>
       </div>
+      {nav && (
+        <div className="tl-seatcard-nav" role="group" aria-label="Your held tickets">
+          <button type="button" onClick={nav.prev} aria-label="Previous held ticket"><ChevronLeft className="w-4 h-4" aria-hidden="true" /></button>
+          <span>Ticket <b>{nav.index + 1}</b> of {nav.count}</span>
+          <button type="button" onClick={nav.next} aria-label="Next held ticket"><ChevronRight className="w-4 h-4" aria-hidden="true" /></button>
+        </div>
+      )}
       <div className="tl-v3-facts">
         <div><small>Ticket type</small><b><i style={{ background: tierColor || '#c7ccd1' }} />{tierName || '—'}</b></div>
         <div><small>Price</small><b>{price}</b></div>

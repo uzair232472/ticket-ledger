@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import VenueBooking from '../components/venue/VenueBooking';
+import { venue3dKind } from '../components/venue/venue3dKind';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 import { liveAdapter } from '../components/venue/adapters';
@@ -56,7 +57,7 @@ export default function SeatMap() {
         } catch {
           // default: 3D
         }
-        setLikely3d(Boolean(d.layout?.data?.feature?.kind === 'cricket' && wants3d));
+        setLikely3d(Boolean(venue3dKind(d.layout?.data) && wants3d));
       })
       .catch(() => alive && setMode('legacy'));
     return () => {

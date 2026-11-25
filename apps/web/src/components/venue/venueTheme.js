@@ -21,7 +21,7 @@ export const formatPkr = (v) => `PKR ${Number(v || 0).toLocaleString('en-PK')}`;
 /** Each seat state has a colour AND a symbol/label, so it never relies on colour alone. */
 export const SEAT_STATES = {
   available: { label: 'Available', symbol: 'ring' },
-  mine: { label: 'Held for you', symbol: 'check' },
+  mine: { label: 'Held for you (not paid)', symbol: 'check' },
   pending: { label: 'Requesting…', symbol: 'dash' },
   held: { label: 'Held by someone else', symbol: 'clock' },
   sold: { label: 'Sold', symbol: 'cross' },
