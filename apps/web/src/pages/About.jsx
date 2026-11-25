@@ -1,8 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, Repeat2, ScanLine, ShieldCheck, Ticket, Users, MapPinned } from 'lucide-react';
 import './legal.css';
 import './info.css';
+import './dark-pages.css';
+import LogoFlight from '../components/about/LogoFlight';
 
 const VALUES = [
   { icon: ShieldCheck, title: 'Real tickets only', text: 'Every pass is cryptographically signed, so a fake or copied QR is caught at the gate in a second.' },
@@ -19,6 +21,7 @@ const STEPS = [
 
 /** About us (/about). */
 export default function About() {
+  const logoAnchorRef = useRef(null);
   useEffect(() => {
     const previous = document.title;
     document.title = 'About us · TicketLedger';
@@ -28,10 +31,13 @@ export default function About() {
   }, []);
 
   return (
-    <main className="tl-legal tl-info">
+    <main className="tl-legal tl-info tl-page--dark tl-about">
+      {/* Where the big turning logo starts; it then flies into the header logo on scroll */}
+      <div ref={logoAnchorRef} className="tl-about-logo-anchor" aria-hidden="true" />
+      <LogoFlight anchorRef={logoAnchorRef} />
       <header className="tl-legal-head tl-info-head">
         <p className="tl-legal-eyebrow">About us</p>
-        <h1>Every ticket. Truly yours.</h1>
+        <h1>Every ticket. <span className="is-accent">Truly yours.</span></h1>
         <p className="tl-legal-intro">
           TicketLedger is Pakistan’s home for live events: one place to find the big nights, book the seat you want and walk in with a ticket nobody can fake or scalp.
         </p>
