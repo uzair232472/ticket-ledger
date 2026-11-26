@@ -2094,3 +2094,16 @@ model GateAdviceDelivery {
   @@unique([eventId, userId, adviceKey])
   @@index([runId])
 }
+
+/// Event reminder emails sent (services/eventReminderJob.js): one row per person per reminder, so a reminder is
+/// never sent twice. kind = HOLDER_<days> (ticket holders) or WINBACK_<days> (earlier buyers of the organizer).
+model EventReminderDelivery {
+  id        String   @id @default(uuid())
+  eventId   String
+  userId    String
+  kind      String
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId, kind])
+  @@index([eventId, kind])
+}

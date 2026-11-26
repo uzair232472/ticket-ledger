@@ -22,8 +22,12 @@ import {
   XCircle,
   RefreshCw,
   Mail,
-  Smartphone
+  Smartphone,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
+
+const PAGE_SIZE = 15;
 
 const NOTIFICATION_TYPES_LIST = [
   { value: 'BOOKING_CONFIRMATION', label: 'Booking Confirmation', icon: Ticket, tone: 'default' },
@@ -41,7 +45,10 @@ const NOTIFICATION_TYPES_LIST = [
 export default function Notifications() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState(0); // in the current tab
+  const [allTotal, setAllTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, UNREAD, BOOKINGS, SECURITY, TRANSFERS
@@ -51,14 +58,25 @@ export default function Notifications() {
   const [simulating, setSimulating] = useState(false);
   const [simFeedback, setSimFeedback] = useState(null);
 
-  const fetchNotifications = async () => {
+  // One page of 15 for the current tab (the server filters, so every tab pages through all its items)
+  const fetchNotifications = async (pageArg = page, tab = activeTab) => {
     try {
       setLoading(true);
-      const res = await api.get('/notifications?limit=50');
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), page: String(pageArg) });
+      if (tab !== 'ALL') params.set('filter', tab);
+      const res = await api.get(`/notifications?${params}`);
       if (res.data.success) {
-        setNotifications(res.data.data.notifications || []);
-        setTotal(res.data.data.total || 0);
-        setUnreadCount(res.data.data.unreadCount || 0);
+        const d = res.data.data;
+        // A page emptied by deletes: step back one page
+        if (!(d.notifications || []).length && pageArg > 1) {
+          setPage(pageArg - 1);
+          return;
+        }
+        setNotifications(d.notifications || []);
+        setTotal(d.total || 0);
+        setAllTotal(d.allTotal ?? d.total ?? 0);
+        setTotalPages(d.totalPages || Math.max(1, Math.ceil((d.total || 0) / PAGE_SIZE)));
+        setUnreadCount(d.unreadCount || 0);
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
@@ -68,8 +86,8 @@ export default function Notifications() {
   };
 
   useEffect(() => {
-    fetchNotifications();
-  }, []);
+    fetchNotifications(page, activeTab);
+  }, [page, activeTab]);
 
   const handleMarkAsRead = async (id) => {
     try {
@@ -96,8 +114,8 @@ export default function Notifications() {
   const handleDelete = async (id) => {
     try {
       await api.delete(`/notifications/${id}`);
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-      setTotal((prev) => Math.max(0, prev - 1));
+      // Reload the page so the next notification moves up into the free slot
+      await fetchNotifications(page, activeTab);
     } catch (err) {
       console.error(err);
     }
@@ -124,7 +142,8 @@ export default function Notifications() {
           success: true,
           message: `Dispatched ${selectedType} across In-App, Email, and Push!`,
         });
-        await fetchNotifications();
+        if (page !== 1) setPage(1);
+        else await fetchNotifications(1, activeTab);
       }
     } catch (err) {
       setSimFeedback({
@@ -136,14 +155,12 @@ export default function Notifications() {
     }
   };
 
-  // Filter items
-  const filteredNotifications = notifications.filter((n) => {
-    if (activeTab === 'UNREAD') return !n.isRead;
-    if (activeTab === 'BOOKINGS') return ['BOOKING', 'PAYMENT', 'REFUND', 'EVENT_CANCELLED', 'EVENT_POSTPONED', 'EVENT_RESCHEDULED'].some((k) => n.type.includes(k));
-    if (activeTab === 'TRANSFERS') return n.type.includes('TRANSFER') || n.type.includes('RESALE') || n.type.includes('TICKET');
-    if (activeTab === 'SECURITY') return n.type.includes('FRAUD') || n.type.includes('ORGANIZER') || n.type.includes('ABANDONED');
-    return true;
-  });
+  // The server already filtered this page by tab
+  const filteredNotifications = notifications;
+  const openTab = (id) => {
+    setActiveTab(id);
+    setPage(1);
+  };
 
   // Icon per type; the colour comes from the row's tone group (see basic.css)
   const getIcon = (type) => {
@@ -159,7 +176,7 @@ export default function Notifications() {
   };
 
   const TABS = [
-    { id: 'ALL', label: `All (${total})` },
+    { id: 'ALL', label: `All (${allTotal})` },
     { id: 'UNREAD', label: `Unread (${unreadCount})` },
     { id: 'BOOKINGS', label: 'Bookings & Payments' },
     { id: 'TRANSFERS', label: 'NFTs & Transfers' },
@@ -171,7 +188,7 @@ export default function Notifications() {
       theme="dark"
       eyebrow="Your account"
       title="Notifications"
-      intro={loading ? 'Loading your notification feed…' : `${unreadCount} unread of ${total}. Delivered in-app, by email, by push and in real time.`}
+      intro={loading ? 'Loading your notification feed…' : `${unreadCount} unread of ${allTotal}. Delivered in-app, by email, by push and in real time.`}
       actions={
         <>
           {unreadCount > 0 && (
@@ -179,7 +196,7 @@ export default function Notifications() {
               <CheckCheck className="w-4 h-4" aria-hidden="true" /> Mark all read
             </button>
           )}
-          <button type="button" onClick={fetchNotifications} className="tl-basic-icon-btn" title="Refresh" aria-label="Refresh notifications">
+          <button type="button" onClick={() => fetchNotifications(page, activeTab)} className="tl-basic-icon-btn" title="Refresh" aria-label="Refresh notifications">
             <RefreshCw className={`w-4 h-4 ${loading ? 'tl-nt-spin' : ''}`} aria-hidden="true" />
           </button>
         </>
@@ -189,7 +206,7 @@ export default function Notifications() {
         <section aria-label="Notification feed">
           <div className="tl-nt-tabs" role="group" aria-label="Filter notifications">
             {TABS.map((tab) => (
-              <button key={tab.id} type="button" className="tl-nt-tab" aria-pressed={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
+              <button key={tab.id} type="button" className="tl-nt-tab" aria-pressed={activeTab === tab.id} onClick={() => openTab(tab.id)}>
                 {tab.label}
               </button>
             ))}
@@ -236,6 +253,21 @@ export default function Notifications() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {total > PAGE_SIZE && (
+            <nav className="tl-nt-pager" aria-label="Notification pages">
+              <p>Showing <strong>{(page - 1) * PAGE_SIZE + 1}–{Math.min(total, page * PAGE_SIZE)}</strong> of <strong>{total}</strong></p>
+              <div>
+                <button type="button" className="tl-nt-pg" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
+                  <ChevronLeft className="w-4 h-4" aria-hidden="true" /> Previous 15
+                </button>
+                <span>Page {page} of {totalPages}</span>
+                <button type="button" className="tl-nt-pg is-next" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
+                  Next 15 <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+            </nav>
           )}
         </section>
 

@@ -181,6 +181,8 @@ function usePendingCounts(enabled, pathname) {
 // Admin console pages shown on the dark layout (super admins only; organizers keep the studio look)
 const ADMIN_DARK = /^\/(admin\/|organizer\/(team|gates)\/?$|support\/desk|scanner\/?$)/;
 /** True inside an admin console page on the dark layout: page headings render the stadium hero. */
+// Organizer pages that are the same screens admins or gate staff use: shown on the same dark design
+const ORG_SHARED = /^\/(organizer\/(team|gates|purchase-intent|demand-forecast|abandoned-intents)|demand-forecast|analytics\/intent|support\/desk|scanner|staff\/events)\/?$/;
 export const AdminDarkContext = createContext(false);
 export const useAdminDark = () => useContext(AdminDarkContext);
 
@@ -193,6 +195,7 @@ const PAGE_ICONS = {
   '/admin/finance': Wallet,
   '/admin/fraud-watchlist': ShieldAlert,
   '/organizer/gates': DoorOpen,
+  '/staff/events': CalendarCheck,
 };
 const iconForPath = (pathname) => {
   const key = Object.keys(PAGE_ICONS).sort((a, b) => b.length - a.length).find((p) => pathname.startsWith(p));
@@ -220,7 +223,12 @@ export default function DashShell({ children }) {
   const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
   const current = Object.entries(aliasesFor(user?.role)).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
   // Admin console pages on the dark layout (sidebar instead of the console nav), see ADMIN_DARK
-  const bare = user?.role === 'SUPER_ADMIN' && ADMIN_DARK.test(pathname);
+  // ...the gate team's console (My events, Scanner), and for organizers the pages they share with admins or
+  // gate staff (Team, Gates, Scanner, My events, Support desk, the insight pages)
+  const orgConsole = Boolean(console_) && user?.role !== 'SUPER_ADMIN' && console_ !== CONSOLES.GATE_STAFF;
+  const bare = (user?.role === 'SUPER_ADMIN' && ADMIN_DARK.test(pathname))
+    || (console_ === CONSOLES.GATE_STAFF && /^\/(staff\/events|scanner)\/?$/.test(pathname))
+    || (orgConsole && ORG_SHARED.test(pathname));
   const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit|manage)))\/?$/.test(pathname);
 
   useEffect(() => {
@@ -250,7 +258,7 @@ export default function DashShell({ children }) {
       <div className="tl-home tl-dash tl-aov-root">
         <HomeHeader pageRef={pageRef} onCategories={() => navigate('/events')} tone="dark" />
         <div ref={pageRef} className="tl-aov-shell">
-          <AdminSidebar console={console_} pending={pending} />
+          <AdminSidebar console={console_} pending={pending} isAdmin={user?.role === 'SUPER_ADMIN'} />
           <ThemedSelectLayer />
           <main className="tl-aov-main">
             <AdminDarkContext.Provider value>

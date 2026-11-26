@@ -22,6 +22,7 @@ import { applyPhases, runScheduledPublishing } from './services/eventToolsServic
 import { completeEndedEvents } from './services/eventTiming.js';
 import { processGateAdvice } from './services/gateAdviceJob.js';
 import { runMlJobs } from './services/ml/jobs.js';
+import { runEventReminders } from './services/eventReminderJob.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -125,6 +126,12 @@ async function startServer() {
   const mlJobs = () => runMlJobs().then((r) => console.log('[ML jobs]', JSON.stringify(r))).catch((e) => console.error('[ML jobs] failed:', e.message));
   setTimeout(mlJobs, 3 * 60 * 1000).unref();
   setInterval(mlJobs, 15 * 60 * 1000).unref();
+
+  // Every 30 minutes: event reminder emails (15, 7, 5, 3 days before and on the day) to ticket holders, and to
+  // earlier buyers of the organizer while tickets are available. Sent 9:00–21:00 PKT, never twice to anyone.
+  const reminders = () => runEventReminders().then((r) => (r.holders || r.winback) && console.log('[Event reminders]', JSON.stringify(r))).catch((e) => console.error('[Event reminders] failed:', e.message));
+  setTimeout(reminders, 2 * 60 * 1000).unref();
+  setInterval(reminders, 30 * 60 * 1000).unref();
 
   server.listen(PORT, () => {
     console.log(`🚀 TicketLedger Express API is running on http://localhost:${PORT}`);

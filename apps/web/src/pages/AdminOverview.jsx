@@ -1,5 +1,7 @@
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { activeOrg } from '../lib/permissions';
 import {
   ArrowRight,
   ArrowUp,
@@ -516,9 +518,15 @@ export function AovFooter() {
 
 /** The Super Admin role badge. */
 export function RoleBadge({ large = false }) {
+  const { user } = useAuth();
+  // The console's role: super admins, organizers (and their team members with studio access), or gate staff
+  const org = activeOrg(user);
+  const label = user?.role === 'SUPER_ADMIN'
+    ? 'Super Admin'
+    : user?.role === 'ORGANIZER' || org?.permissions?.includes('event.view') || org?.permissions?.includes('staff.view') ? 'Organizer' : 'Gate Staff';
   return (
     <span className={`tl-aov-role${large ? ' tl-aov-role--lg' : ''}`}>
-      <ShieldCheck className={large ? 'tl-aov-role-icon' : 'w-4 h-4'} aria-hidden="true" /> Super Admin
+      <ShieldCheck className={large ? 'tl-aov-role-icon' : 'w-4 h-4'} aria-hidden="true" /> {label}
     </span>
   );
 }

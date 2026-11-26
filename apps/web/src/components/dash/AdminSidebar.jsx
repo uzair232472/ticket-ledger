@@ -20,6 +20,13 @@ import {
   ShoppingBag,
   Users,
   Wallet,
+  BarChart3,
+  CalendarClock,
+  CalendarPlus,
+  LayoutGrid,
+  ShoppingCart,
+  Tag,
+  TrendingUp,
 } from 'lucide-react';
 
 // Sections of the overview page itself (tabs of /admin/dashboard)
@@ -44,6 +51,19 @@ export const ICONS = {
   '/support/desk': LifeBuoy,
   '/organizer/gates': DoorOpen,
   '/scanner': ScanLine,
+  '/staff/events': CalendarCheck,
+  // Organizer studio links (shown when an organizer is on a shared page)
+  '/organizer/dashboard': LayoutGrid,
+  '/organizer/events/new': CalendarPlus,
+  '/organizer/prebook': CalendarClock,
+  '/organizer/team': Users,
+  '/organizer/organization': Building2,
+  '/organizer/discounts': Tag,
+  '/organizer/purchase-intent': TrendingUp,
+  '/organizer/demand-forecast': BarChart3,
+  '/organizer/abandoned-intents': ShoppingCart,
+  '/organizer/support': LifeBuoy,
+  '/organizer/checkout-settings': Settings,
 };
 
 // Fans with raised hands and flags at the foot of the sidebar (fixed seed, so it never changes between renders)
@@ -88,7 +108,7 @@ function Crowd() {
 const KEY = 'tl-admin-side-collapsed';
 const readCollapsed = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
 
-export default function AdminSidebar({ console: consoleNav, pending = {} }) {
+export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmin = true }) {
   const { pathname, search } = useLocation();
   // Collapsed = slim icon rail; the choice is kept for next time
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -118,7 +138,7 @@ export default function AdminSidebar({ console: consoleNav, pending = {} }) {
         {collapsed ? <ChevronsRight className="w-4 h-4" aria-hidden="true" /> : <ChevronsLeft className="w-4 h-4" aria-hidden="true" />}
       </button>
       <nav className="tl-aov-side-nav">
-        <ul className="tl-aov-side-list">
+        {isAdmin && <ul className="tl-aov-side-list">
           {PAGE_LINKS.map(({ tab: t, label, icon: Icon }) => {
             const active = onPage && (tab || null) === t;
             return (
@@ -135,11 +155,11 @@ export default function AdminSidebar({ console: consoleNav, pending = {} }) {
               </li>
             );
           })}
-        </ul>
+        </ul>}
 
         {flat.length > 0 && (
           <>
-            <p className="tl-aov-side-label">Console</p>
+            <p className="tl-aov-side-label">{isAdmin ? 'Console' : consoleNav?.label || 'Console'}</p>
             <ul className="tl-aov-side-list">
               {flat.map((l) => {
                 const Icon = ICONS[l.to] || Settings;

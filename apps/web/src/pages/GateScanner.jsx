@@ -3,8 +3,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { connectSocket } from '../lib/socket';
 import {
   AlertTriangle, ArrowLeft, Armchair, Camera, Check, ChevronRight, Clock, ShieldOff, CheckCircle2, CloudOff, CloudUpload, ImageUp, Info, Keyboard, MapPin,
-  RefreshCw, ScanLine, ShieldCheck, Tag, Ticket, User, Users, Wifi, X,
+  RefreshCw, ScanLine, ShieldCheck, Tag, Ticket, User, Users, Wifi, X, Activity, CalendarDays, ExternalLink, HardDrive, Zap,
 } from 'lucide-react';
+import { useAdminDark } from '../components/dash/DashShell';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import QrCamera from '../components/scanner/QrCamera';
@@ -304,6 +305,7 @@ function EventPicker({ events, loading, onPick }) {
  */
 export default function GateScanner() {
   const { user } = useAuth();
+  const dark = useAdminDark(); // console layout: overview cards above the scanning tools
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const eventId = params.get('eventId') || '';
@@ -899,6 +901,100 @@ export default function GateScanner() {
         <p className="tl-gs-note" role="alert"><ShieldOff className="w-4 h-4 inline" aria-hidden="true" /> This device’s credential is missing. Ask a supervisor to reset its enrollment (Gate management → Devices); scans made offline stay on this device meanwhile.</p>
       )}
       {syncNote && <p className="tl-gs-note" role="status">{syncNote} <button type="button" onClick={() => setSyncNote('')} aria-label="Dismiss"><X className="w-4 h-4" /></button></p>}
+
+      {dark && (() => {
+        // Overview (console layout only): event details, quick actions, gate activity, status
+        const d = event?.date ? new Date(event.date) : null;
+        const today = new Date();
+        const isToday = d && d.toDateString() === today.toDateString();
+        const ended = d && !isToday && d < today;
+        const gates = stats?.gates || [];
+        const maxGate = Math.max(1, ...gates.map((g) => g.entered || 0));
+        const results = stats?.scans || {};
+        const problems = [
+          !online && 'offline',
+          counts?.FAILED > 0 && `${counts.FAILED} failed upload${counts.FAILED === 1 ? '' : 's'}`,
+          counts?.CONFLICT > 0 && `${counts.CONFLICT} conflict${counts.CONFLICT === 1 ? '' : 's'}`,
+          recovery?.error && 'upload problem',
+          !pack?.tickets && 'offline list not ready',
+        ].filter(Boolean);
+        return (
+          <div className="tl-sx">
+            <section className="tl-sx-card tl-sx-details">
+              <h2 className="tl-sx-title"><Info className="w-5 h-5" aria-hidden="true" /> Event details</h2>
+              <dl>
+                <div><dt>Event name</dt><dd>{event?.name || '—'}</dd></div>
+                <div><dt>Date &amp; time</dt><dd>{d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—'}{event?.time ? ` • ${event.time}` : ''}</dd></div>
+                <div><dt>Location</dt><dd>{[event?.venue, event?.city].filter(Boolean).join(', ') || '—'}</dd></div>
+                <div><dt>Tickets sold</dt><dd>{sold.toLocaleString()}</dd></div>
+                <div>
+                  <dt>Entered</dt>
+                  <dd>
+                    {entered.toLocaleString()} ({pct}%){stats?.inside != null ? ` · ${stats.inside} inside` : ''}
+                    <span className="tl-sx-meter"><i style={{ width: `${pct}%` }} /></span>
+                  </dd>
+                </div>
+              </dl>
+              <a href={`/events/${eventId}`} target="_blank" rel="noreferrer" className="tl-sx-link">View event page <ExternalLink className="w-4 h-4" aria-hidden="true" /></a>
+            </section>
+
+            <section className="tl-sx-card tl-sx-actions">
+              <h2 className="tl-sx-title"><Zap className="w-5 h-5" aria-hidden="true" /> Quick actions</h2>
+              <button type="button" className="tl-sx-btn is-primary" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
+                <ScanLine className="w-5 h-5" aria-hidden="true" /> {gateOk ? 'Open scanner' : 'Choose a gate first'}
+              </button>
+              <button type="button" className="tl-sx-btn" onClick={() => setShowScans((v) => !v)} aria-expanded={showScans}>
+                <HardDrive className="w-5 h-5" aria-hidden="true" /> {showScans ? 'Hide scans on this device' : 'Scans on this device'}
+              </button>
+              <button type="button" className="tl-sx-btn" onClick={testConnection} disabled={connTest?.state === 'testing'}>
+                <Wifi className="w-5 h-5" aria-hidden="true" /> {connTest?.state === 'testing' ? 'Testing…' : 'Test connection'}
+              </button>
+              <Link to="/staff/events" className="tl-sx-btn"><CalendarDays className="w-5 h-5" aria-hidden="true" /> My events</Link>
+            </section>
+
+            <section className="tl-sx-card tl-sx-activity">
+              <div className="tl-sx-head">
+                <h2 className="tl-sx-title"><Activity className="w-5 h-5" aria-hidden="true" /> Scan activity</h2>
+                <span className={`tl-sx-live${online ? '' : ' is-off'}`}><i aria-hidden="true" />{online ? 'Live' : 'Offline'}</span>
+              </div>
+              {gates.length ? (
+                <ul className="tl-sx-bars" aria-label="Entries per gate">
+                  {gates.map((g) => (
+                    <li key={g.gate}>
+                      <span>{g.gate}</span>
+                      <span className="tl-sx-bar"><i style={{ width: `${Math.max(2, ((g.entered || 0) / maxGate) * 100)}%` }} /></span>
+                      <b>{g.entered || 0}</b>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="tl-sx-muted">No entries yet. Gate counts appear here as people enter.</p>}
+              <div className="tl-sx-chips">
+                <span className="is-good"><CheckCircle2 className="w-4 h-4" aria-hidden="true" /> {results.GREEN ?? 0} admitted</span>
+                <span className="is-warn"><AlertTriangle className="w-4 h-4" aria-hidden="true" /> {results.YELLOW ?? 0} already used</span>
+                <span className="is-bad"><X className="w-4 h-4" aria-hidden="true" /> {results.RED ?? 0} turned away</span>
+              </div>
+            </section>
+
+            <section className="tl-sx-card tl-sx-status">
+              <h2 className="tl-sx-title"><ShieldCheck className="w-5 h-5" aria-hidden="true" /> Event status</h2>
+              <span className={`tl-sx-state${ended ? ' is-ended' : isToday ? '' : ' is-soon'}`} aria-hidden="true">
+                {ended ? <Clock /> : isToday ? <Check /> : <CalendarDays />}
+              </span>
+              <strong>{ended ? 'Ended' : isToday ? 'Active' : 'Upcoming'}</strong>
+              <p>{ended ? 'This event has ended.' : isToday ? (online ? 'Event is live and accepting scans.' : 'Event is live; scans are checked on this device.') : 'Gates open on the event day.'}</p>
+            </section>
+
+            <section className={`tl-sx-system${problems.length ? ' is-warn' : ''}`} role="status">
+              <span className="tl-sx-system-icon" aria-hidden="true">{problems.length ? <AlertTriangle /> : <ShieldCheck />}</span>
+              <div>
+                <strong>{problems.length ? `Needs attention: ${problems.join(' · ')}` : 'All systems are running smoothly'}</strong>
+                <span>{pack?.savedAt ? `Offline list updated ${ago(pack.savedAt)}` : 'Downloading the offline list…'}{connTest?.state === 'ok' ? ` · connected in ${connTest.ms} ms` : ''}</span>
+              </div>
+              <button type="button" className="tl-sx-refresh" onClick={loadStats}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Refresh</button>
+            </section>
+          </div>
+        );
+      })()}
 
       {/* Gate */}
       <section className="tl-gs-card">
