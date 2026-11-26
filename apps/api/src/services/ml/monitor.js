@@ -251,14 +251,80 @@ export async function modelOps(name) {
   if (!m) throw Object.assign(new Error('Unknown model'), { status: 404 });
   const { db, get, now } = deps;
   const model = await db.mlModel.findFirst({ where: { name, status: 'SHADOW' }, orderBy: { registeredAt: 'desc' } });
-  const [card, drift] = await Promise.all([
+  const optional = (path) => get(path, { timeoutMs: 3000 }).catch((e) => (e.status === 404 ? null : { unavailable_reason: 'ML_SERVICE_UNAVAILABLE' }));
+  const [card, drift, publicData, realData] = await Promise.all([
     get(`/v2/model-card/${name}`, { timeoutMs: 3000 }).catch((e) => ({ unavailable_reason: e.status === 404 ? 'NO_REPORT' : 'ML_SERVICE_UNAVAILABLE' })),
     model ? driftCheck(name, model) : { status: 'UNAVAILABLE', reason: 'no model registered' },
+    optional(`/v2/public-report/${name}`),
+    optional(`/v2/real-report/${name}`),
   ]);
   const fingerprintOk = !card.registry_sha256 || !model || card.registry_sha256 === model.sha256;
   return {
     decision_source: 'rules', generated_at: now().toISOString(), model: name, title: m.title, feature: m.feature,
     registered: { ...modelBlock(name, model), registered_at: model?.registeredAt ?? null },
     card, card_matches_registered_model: fingerprintOk, drift,
+    // Another organisation's recorded data (method check), and TicketLedger's own exported data once it exists
+    public_data: publicData,
+    real_data: realData || { status: 'WAITING_FOR_LIVE_DATA', note: 'Appears after the platform is live, data is exported (scripts/ml-export-datasets.mjs) and scripts/auto_retrain.py has evaluated a candidate.' },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Go-live readiness and the governance report (SUPER_ADMIN, read-only). Every condition a model would have to meet
+// before it could serve decisions, each shown as met or not. Nothing here can promote a model: there is no promotion
+// path in the code, so the verdict is always STAYS_SHADOW. It explains what is missing, it does not grant anything.
+// ---------------------------------------------------------------------------------------------
+const item = (key, label, status, detail) => ({ key, label, status, detail });
+
+export function readinessOf(ops, outcomes, minimums) {
+  const reg = ops.registered;
+  const card = ops.card && !ops.card.unavailable_reason ? ops.card : null;
+  const real = ops.real_data && ops.real_data.status !== 'WAITING_FOR_LIVE_DATA' && !ops.real_data.unavailable_reason ? ops.real_data : null;
+  const watch = card?.diagnostics?.fairness?.watch || [];
+  const ev = evaluationBlock(outcomes, minimums);
+  const items = [
+    item('registered_shadow', 'Registered and running in shadow', reg.status === 'SHADOW' ? 'MET' : 'NOT_MET', reg.status ? `Status ${reg.status}, version ${reg.version}.` : 'No model registered.'),
+    item('trained_on_real_data', "Trained on TicketLedger's own data", reg.source === 'db-export' ? 'MET' : 'NOT_MET', `Training data: ${reg.source || 'none'}.`),
+    item('offline_test', 'Passed the offline test against the rule', card?.status === 'PASSED' ? 'MET' : card ? 'NOT_MET' : 'PENDING', card ? `${card.status}${card.reasons?.length ? `: ${card.reasons[0]}` : ''}` : 'No report.'),
+    item('real_data_test', 'Passed the test on exported real data', real ? (real.status === 'PASSED' ? 'MET' : 'NOT_MET') : 'PENDING', real ? `${real.status} (${real.stamp}).` : 'Waiting for live data.'),
+    item('fairness', 'No group served clearly worse (fairness check)', !card ? 'PENDING' : watch.length ? 'NOT_MET' : 'MET', !card ? 'No report.' : watch.length ? `Needs review: ${watch.join(', ')}.` : 'No group flagged on the offline test.'),
+    item('live_outcomes', 'Enough real outcomes logged to judge it live', ev.status === 'MINIMUMS_REACHED_EVALUATE_OFFLINE' ? 'MET' : ev.status === 'NO_OUTCOMES_YET' ? 'PENDING' : 'NOT_MET',
+      ev.short_of.length ? `Short of: ${ev.short_of.map((x) => `${x.measure} ${x.have}/${x.need}`).join(', ')}.` : 'Minimums reached.'),
+    item('inputs_stable', 'Live inputs still look like the training data', ops.drift.status === 'DRIFT' ? 'NOT_MET' : ['STABLE', 'WATCH'].includes(ops.drift.status) ? 'MET' : 'PENDING',
+      ops.drift.status === 'DRIFT' ? `Drifted: ${ops.drift.drifted.join(', ')}.` : ops.drift.status === 'NOT_ENOUGH_ROWS' ? `${ops.drift.live_rows} live rows (need ${ops.drift.minimum_rows}).` : ops.drift.reason || `Drift check: ${ops.drift.status}.`),
+    item('live_shadow_check', 'Live shadow check signed off', 'NOT_AVAILABLE', 'Not built on purpose: it comes with real customers.'),
+    item('admin_approval', 'Approved by an admin to serve decisions', 'NOT_AVAILABLE', 'No approval or promotion path exists in the code. Models can only run in shadow.'),
+  ];
+  const met = items.filter((i) => i.status === 'MET').length;
+  return { verdict: 'STAYS_SHADOW', met, total: items.length, items, may_serve_decisions: false };
+}
+
+export async function governanceSnapshot() {
+  const { db, now } = deps;
+  const models = [];
+  for (const m of MONITORED) {
+    const [ops, outcomes] = await Promise.all([modelOps(m.name), outcomeCounts(m.name, db)]);
+    const card = ops.card && !ops.card.unavailable_reason ? ops.card : null;
+    models.push({
+      name: m.name, title: m.title, feature: m.feature,
+      registered: ops.registered,
+      offline: card ? { status: card.status, measure: card.main_measure, higher_is_better: card.higher_is_better, result: card.result, reasons: card.reasons,
+        data: card.data, guards: card.guards, fairness_watch: card.diagnostics?.fairness?.watch || [] } : null,
+      drift: { status: ops.drift.status, drifted: ops.drift.drifted || [], live_rows: ops.drift.live_rows ?? null },
+      public_data: ops.public_data?.report ? { experiment: ops.public_data.experiment, banner: ops.public_data.report.banner } : null,
+      real_data: ops.real_data,
+      readiness: readinessOf(ops, outcomes, m.min),
+    });
+  }
+  return {
+    decision_source: 'rules', generated_at: now().toISOString(), may_serve_decisions: false, models,
+    principles: [
+      'The rules make every decision: checkout, payment, ticket validity, gate admission, prices and accounts.',
+      'Every model runs in shadow: it scores in the background and its answers are logged next to the rule decision and, later, the real outcome.',
+      'Gates were fixed before any model was evaluated; a model must beat the current rule with a 95% interval above zero and pass every must-not-get-worse check.',
+      'Accuracy is only measured offline, on the newest unseen data; live traffic is checked for input drift, never scored for accuracy.',
+      'Fraud labels come from blind reviews: reviewers never see the detector, a score or the reasons, and reviews by anyone who saw detector output are kept out of the labels.',
+      'There is no promotion path in the code. Serving decisions would need real-data evaluation, a live shadow check and an admin approval that do not exist yet.',
+    ],
   };
 }

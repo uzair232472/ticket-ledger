@@ -547,14 +547,191 @@
         ]
       }
     ],
-    "explanation_note": "Each reason is the change in this prediction (scans) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+    "explanation_note": "Each reason is the change in this prediction (scans) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 660,
+            "note": "too few events to measure"
+          },
+          "Islamabad": {
+            "rows": 2610,
+            "model": 19.0063,
+            "rule": 20.1498,
+            "watch": false,
+            "why": null
+          },
+          "Karachi": {
+            "rows": 4320,
+            "model": 18.0935,
+            "rule": 22.5754,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 3660,
+            "model": 17.8197,
+            "rule": 21.3797,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 810,
+            "note": "too few events to measure"
+          },
+          "Peshawar": {
+            "rows": 690,
+            "note": "too few events to measure"
+          },
+          "Rawalpindi": {
+            "rows": 1230,
+            "model": 17.3912,
+            "rule": 22.8078,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 300,
+            "note": "too few events to measure"
+          },
+          "CONFERENCE": {
+            "rows": 660,
+            "model": 2.5265,
+            "rule": 2.3553,
+            "watch": true,
+            "why": "worse than the rule in this group"
+          },
+          "CRICKET_MATCH": {
+            "rows": 6120,
+            "model": 21.862,
+            "rule": 27.0522,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 1050,
+            "model": 18.387,
+            "rule": 25.2326,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 630,
+            "note": "too few events to measure"
+          },
+          "KABADDI": {
+            "rows": 960,
+            "model": 14.0078,
+            "rule": 14.0467,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 1920,
+            "model": 21.7609,
+            "rule": 24.3788,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 1140,
+            "model": 17.1247,
+            "rule": 22.8103,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 600,
+            "model": 7.9234,
+            "rule": 7.8135,
+            "watch": true,
+            "why": "worse than the rule in this group"
+          },
+          "THEATRE": {
+            "rows": 600,
+            "model": 2.7561,
+            "rule": 2.7594,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [
+        "event_type: CONFERENCE",
+        "event_type: QAWWALI"
+      ],
+      "rule": "error worse than the rule in the group",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    },
+    "overload": {
+      "range_level": 0.8,
+      "range_coverage": 0.772,
+      "slots_over_capacity": 6275,
+      "slots": 13980,
+      "calibration": [
+        {
+          "predicted": 0.0167,
+          "actual": 0.0351,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.0167,
+          "actual": 0.025,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.043,
+          "actual": 0.0508,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.2575,
+          "actual": 0.2332,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.4549,
+          "actual": 0.4127,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.6291,
+          "actual": 0.603,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.7045,
+          "actual": 0.686,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.7481,
+          "actual": 0.7704,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.8294,
+          "actual": 0.824,
+          "rows": 1398
+        },
+        {
+          "predicted": 0.8917,
+          "actual": 0.8484,
+          "rows": 1398
+        }
+      ],
+      "note": "Chance that a gate gets more scans in a 5-minute slot than its capacity allows (capacity per hour / 12)."
+    }
   },
   "status": "PASSED",
   "reasons": [],
   "deployed_model": {
     "status": "NO_DEPLOYED_MODEL"
   },
-  "duration_seconds": 28.5,
+  "duration_seconds": 21.8,
   "recommendation": "KEEP_CURRENT: trained on synthetic data",
   "artifact": "models/v0/crowd.joblib"
 }

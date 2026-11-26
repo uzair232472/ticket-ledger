@@ -156,3 +156,57 @@ def test_replay_compares_two_files_on_rows_newer_than_both(tmp_path):
     joblib.dump(old, p)
     res = replay("intent", str(p), str(p), DATA, resamples=20)
     assert res["status"] == "COMPARED" and res["b_minus_a_improvement"] == 0 and res["verdict"] == "no clear difference"
+
+
+def test_every_report_has_a_fairness_check_that_never_changes_the_status():
+    for name in ("intent", "fraud", "demand", "attendance", "crowd", "checkout_abandonment"):
+        with open(os.path.join(REPORTS, f"{name}.json")) as f:
+            rep = json.load(f)
+        fair = rep["diagnostics"]["fairness"]
+        assert fair["groups"] and isinstance(fair["watch"], list), name
+        listed = {f"{g}: {v}" for g, vs in fair["groups"].items() for v, r in vs.items() if r.get("watch")}
+        assert listed == set(fair["watch"]), name
+        # Informational only: the status comes from the fixed gates, and the watch list is not among the reasons
+        assert not any("fair" in r.lower() for r in rep.get("reasons", [])), name
+
+
+def test_crowd_range_and_overload_chance_are_calibrated_and_served(monkeypatch, registry):  # noqa: F811
+    with open(os.path.join(REPORTS, "crowd.json")) as f:
+        o = json.load(f)["diagnostics"]["overload"]
+    assert 0.7 <= o["range_coverage"] <= 0.9
+    # Calibrated: in every tenth of the test slots the stated chance is within 8 points of what happened
+    assert all(abs(b["predicted"] - b["actual"]) <= 0.08 for b in o["calibration"]), o["calibration"]
+    art = _artifact("crowd")
+    assert len(art["thresholds"]["resid_q"]) == 99 and len(art["thresholds"]["over_cal"]) == 101
+    c, _ = _client(monkeypatch)
+    from ml.evaluate import load
+    from ml.schema import SPECS as S
+    df = load(S["crowd"], DATA).sample(4, random_state=3)
+    feats = registry["crowd"]["features"]
+    rows = [{k: (v.item() if hasattr(v, "item") else v) for k, v in r.items() if k in feats["categorical"] + feats["numeric"]} for r in df.to_dict("records")]
+    preds = c.post("/v2/shadow/crowd", headers=H, json={"sha256": registry["crowd"]["sha256"], "rows": rows}).json()["predictions"]
+    for p in preds:
+        assert 0 <= p["low"] <= p["scans"] <= p["high"] + 1e-6
+        assert 0 <= p["p_over_capacity"] <= 1
+
+
+def test_public_and_real_data_reports(monkeypatch, tmp_path):
+    c, _ = _client(monkeypatch)
+    pub = c.get("/v2/public-report/fraud", headers=H)
+    if pub.status_code == 404:
+        pytest.skip("public fraud experiment not run (python -m ml.public_experiment fraud)")
+    r = pub.json()["report"]
+    assert pub.json()["source_class"] == "PUBLIC" and pub.json()["may_serve_decisions"] is False
+    assert r["model"]["false_flag_rate"] <= 0.0101 and r["threshold"]["fixed_on"] == "calibration period"
+    assert c.get("/v2/public-report/demand", headers=H).status_code == 404
+    # Real data: nothing until an evaluation on a db-export exists; synthetic candidates never count
+    monkeypatch.setenv("ML_CANDIDATE_REPORTS_DIR", str(tmp_path))
+    c, _ = _client(monkeypatch)
+    assert c.get("/v2/real-report/fraud", headers=H).status_code == 404
+    (tmp_path / "20270101T000000Z").mkdir()
+    (tmp_path / "20270101T000000Z" / "fraud.json").write_text(json.dumps({"status": "REJECTED", "data": {"source": "synthetic-v0"}}))
+    assert c.get("/v2/real-report/fraud", headers=H).status_code == 404
+    (tmp_path / "20270201T000000Z").mkdir()
+    (tmp_path / "20270201T000000Z" / "fraud.json").write_text(json.dumps({"status": "PASSED", "data": {"source": "db-export", "rows": 900}, "result": {"model": 0.9}}))
+    real = c.get("/v2/real-report/fraud", headers=H).json()
+    assert real["stamp"] == "20270201T000000Z" and real["status"] == "PASSED" and real["may_serve_decisions"] is False

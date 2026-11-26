@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, ChevronDown, TrendingDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getEventVisual } from '../../utils/eventMedia';
 import api from '../../utils/api';
@@ -28,11 +28,20 @@ const CONSOLES = {
       { to: '/admin/investigations', label: 'Investigations', adminPermission: 'admin.fraud' },
       { to: '/organizer/team', label: 'Organization teams', adminPermission: 'admin.orgs' },
       { to: '/admin/platform', label: 'Platform', adminPermission: 'admin.view' },
-      { to: '/admin/demand-forecast', label: 'Demand forecast' },
-      { to: '/admin/purchase-intent', label: 'Purchase intent' },
-      { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
-      { to: '/admin/behavior-profile', label: 'Behavior' },
-      { to: '/admin/ai-monitor', label: 'AI monitor' },
+      // AI: one dropdown in the nav (insights first, then the shadow models' monitoring and governance)
+      {
+        key: 'ai', label: 'AI', children: [
+          { to: '/admin/demand-forecast', label: 'Demand forecast' },
+          { to: '/admin/purchase-intent', label: 'Purchase intent' },
+          { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
+          { to: '/admin/behavior-profile', label: 'Behavior' },
+          { divider: true, label: 'Models' },
+          { to: '/admin/ai-monitor', label: 'AI monitor' },
+          { to: '/admin/ai-models', label: 'Model cards' },
+          { to: '/admin/ai-readiness', label: 'Go-live readiness' },
+          { to: '/admin/ai-report', label: 'Governance report' },
+        ],
+      },
       { to: '/admin/payouts', label: 'Payouts', adminPermission: 'admin.finance' },
       { to: '/support/desk', label: 'Support desk', adminPermission: 'admin.support' },
       { to: '/organizer/gates', label: 'Gates' },
@@ -94,8 +103,48 @@ function consoleFor(user) {
 // Neutral addresses of the shared insight pages, highlighted as the admin or organizer menu item
 const aliasesFor = (role) => ({ '/demand-forecast': insightPath(role, 'demand'), '/analytics/intent': insightPath(role, 'intent') });
 
+/**
+ * A nav entry that opens a small menu of links (the AI pages). Active when the current page is one of its links.
+ * Closes on a link click, Escape, a click outside or a page change; the menu is a plain list of links.
+ */
+function NavGroup({ group, current }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const links = group.children.filter((c) => c.to);
+  const active = links.find((c) => current.startsWith(c.to));
+  useEffect(() => { setOpen(false); }, [current]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const id = `tl-nav-menu-${group.key}`;
+  return (
+    <span ref={ref} className={`tl-dash-nav-link tl-dash-nav-group${active ? ' is-active' : ''}`}>
+      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+        {group.label}{active ? `: ${active.label}` : ''}
+        <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }} />
+      </button>
+      {open && (
+        <ul id={id} className="tl-dash-nav-menu">
+          {group.children.map((c) => (c.divider
+            ? <li key={`d-${c.label}`} className="tl-dash-nav-menu-label" aria-hidden="true">{c.label}</li>
+            : (
+              <li key={c.to}>
+                <Link to={c.to} aria-current={current.startsWith(c.to) ? 'page' : undefined} className={current.startsWith(c.to) ? 'is-active' : undefined}>{c.label}</Link>
+              </li>
+            )))}
+        </ul>
+      )}
+    </span>
+  );
+}
+
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor', '/organizer/purchase-intent', '/organizer/demand-forecast', '/organizer/abandoned-intents'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor', '/admin/ai-models', '/admin/ai-readiness', '/organizer/purchase-intent', '/organizer/demand-forecast', '/organizer/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
@@ -171,7 +220,7 @@ export default function DashShell({ children }) {
             <nav className="tl-dash-nav" aria-label={console_.label}>
               <span className="tl-dash-nav-label">{console_.label}</span>
               <div className="tl-dash-nav-links">
-                {console_.links.map((l) => (
+                {console_.links.map((l) => (l.children ? <NavGroup key={l.key} group={l} current={current} /> : (
                   <NavLink
                     key={l.to}
                     to={l.to}
@@ -185,7 +234,7 @@ export default function DashShell({ children }) {
                       </span>
                     )}
                   </NavLink>
-                ))}
+                )))}
               </div>
             </nav>
           )}

@@ -24,6 +24,7 @@ if BASE_DIR not in sys.path:
 from scripts.train_intent_model import train_intent
 from scripts.train_fraud_model import train_fraud
 from scripts.train_demand_model import train_demand
+from ml.evaluate import crowd_range
 from ml.explain import reasons as explain_reasons
 from ml.models import predict as ml_predict
 from ml.schema import ALL_SPECS, NULLABLE_FEATURES, SPECS
@@ -645,6 +646,10 @@ def shadow_predict(name: str, req: ShadowRequest):
             item = {"sales_next_24h": round(v, 1)}
         else:
             item = {"scans": round(v, 2)}
+            if th.get("resid_q") and "gate_capacity_per_hour" in df:
+                # 80% range and the chance this gate goes over its capacity in the slot (ml/evaluate.crowd_range)
+                lo, hi, p_over = crowd_range([v], [float(df["gate_capacity_per_hour"].iloc[i]) / 12.0], th["resid_q"], over_cal=th.get("over_cal"))
+                item.update(low=round(float(lo[0]), 2), high=round(float(hi[0]), 2), p_over_capacity=round(float(p_over[0]), 4))
         if why is not None:
             item["reasons"] = why[i]
         preds.append(item)
@@ -662,6 +667,43 @@ def reference_profile(name: str, sha256: str):
         raise HTTPException(status_code=404, detail=f"model '{name}' was built before reference profiles existed")
     return {"model": name, "sha256": sha256, "trained_from": artifact.get("trained_from"), "trained_to": artifact.get("trained_to"),
             "features": artifact["features"], "reference": ref}
+
+
+PUBLIC_DIR = os.path.join(BASE_DIR, "reports", "public")
+CANDIDATES_DIR = os.environ.get("ML_CANDIDATE_REPORTS_DIR", os.path.join(BASE_DIR, "reports", "candidates"))
+# Which public experiment checks which model's method (ml/public_experiment.py)
+PUBLIC_FOR = {"intent": "online_shoppers", "fraud": "credit_card_fraud"}
+
+
+@app.get("/v2/public-report/{name}")
+def public_report(name: str):
+    """The PUBLIC-data method check for a model (another shop's / bank's recorded data, never TicketLedger data)."""
+    exp = PUBLIC_FOR.get(name)
+    path = exp and os.path.join(PUBLIC_DIR, f"{exp}.json")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"no public-data experiment for '{name}'")
+    with open(path, encoding="utf-8") as f:
+        return {"model": name, "experiment": exp, "source_class": "PUBLIC", "may_serve_decisions": False, "report": json.load(f)}
+
+
+@app.get("/v2/real-report/{name}")
+def real_report(name: str):
+    """The newest evaluation of `name` on TicketLedger's own exported data (scripts/auto_retrain.py writes
+    reports/candidates/<stamp>/<name>.json). 404 until live data has been exported and evaluated."""
+    if name not in ALL_SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    stamps = sorted((d for d in os.listdir(CANDIDATES_DIR) if os.path.isdir(os.path.join(CANDIDATES_DIR, d))), reverse=True) if os.path.isdir(CANDIDATES_DIR) else []
+    for stamp in stamps:
+        path = os.path.join(CANDIDATES_DIR, stamp, f"{name}.json")
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                r = json.load(f)
+            if (r.get("data") or {}).get("source") == "db-export":
+                return {"model": name, "stamp": stamp, "may_serve_decisions": False,
+                        **{k: r.get(k) for k in ("status", "reasons", "main_measure", "higher_is_better", "result", "test_size", "guards", "recommendation", "deployed_model")},
+                        "data": {k: (r.get("data") or {}).get(k) for k in ("rows", "source", "from", "to")},
+                        "fairness_watch": ((r.get("diagnostics") or {}).get("fairness") or {}).get("watch")}
+    raise HTTPException(status_code=404, detail="no evaluation on exported real data yet")
 
 
 CARD_KEYS = ("model", "title", "kind", "label", "status", "reasons", "main_measure", "higher_is_better", "result", "details",

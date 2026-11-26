@@ -20,7 +20,8 @@ import { MemoryRouter } from 'react-router-dom';
 import * as P from ${src('components/ml/InsightPanels.jsx')};
 import * as C from ${src('components/ml/charts.jsx')};
 import AccountGraph from ${src('components/ml/AccountGraph.jsx')};
-const all = { ...P, ...C, AccountGraph };
+import CrowdFlowChart from ${src('components/gates/CrowdFlowChart.jsx')};
+const all = { ...P, ...C, AccountGraph, CrowdFlowChart };
 exports.render = (name, props) => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(all[name], props)));
 `);
 await build({
@@ -87,4 +88,40 @@ test('account graph: nothing is loaded until asked, and the exposure warning is 
   assert.match(html, /Show linked accounts/);
   assert.match(html, /will not count as blind/);
   assert.doesNotMatch(html, /<svg[^>]*aria-label="Graph of linked accounts"/);
+});
+
+const slotOf = (minutes, o = {}) => ({ minutes, rule: null, model: null, model_low: null, model_high: null, model_p_over: null, actual: null, ...o });
+const crowd = { rules: { gates: [
+  { gate_id: 'g1', gate: 'Gate A', capacity_per_hour: 120, slots: [slotOf(-15, { rule: 8, model: 9, model_low: 5, model_high: 13, model_p_over: 0.3 }), slotOf(-10, { rule: 12, model: 14, model_low: 9, model_high: 19, model_p_over: 0.8, actual: 11 }), slotOf(-5, { rule: 6, model: 7, model_p_over: 0.1 }), slotOf(0, { rule: 5 })] },
+  { gate_id: 'g2', gate: 'Gate B', capacity_per_hour: 60, slots: [slotOf(-15, { rule: 3 }), slotOf(-10, { rule: 4 }), slotOf(-5, { rule: 2 }), slotOf(0, { rule: 2 })] },
+] }, experimental: { hidden: false } };
+const noop = () => {};
+
+test('crowd-flow chart, all gates: one line per gate, dashed capacity, selected slot named, table has no invented zeros', () => {
+  const html = render('CrowdFlowChart', { data: crowd, slot: -10, onSlot: noop, source: 'rule', onSource: noop, gateId: null, onGate: noop });
+  assert.match(html, /All gates/);
+  assert.match(html, />Gate A</);
+  assert.match(html, />Gate B</);
+  assert.match(html, /stroke-dasharray="6 4"/, 'capacity line is dashed');
+  assert.match(html, /Selected: <b>10 min before the start<\/b>/);
+  assert.match(html, /AI model \(shadow\)/, 'the AI source is offered when visible');
+  assert.doesNotMatch(html, /chance of going over capacity/, 'the overload strip belongs to the single-gate view');
+});
+
+test('crowd-flow chart, one gate: AI range band, overload bars, actual only where scanned (gaps elsewhere)', () => {
+  const html = render('CrowdFlowChart', { data: crowd, slot: -10, onSlot: noop, source: 'rule', onSource: noop, gateId: 'g1', onGate: noop });
+  assert.match(html, /AI 80% range/);
+  assert.match(html, /AI: chance of going over capacity/);
+  assert.match(html, />80%</, "the selected slot's chance is written out");
+  const table = html.slice(html.indexOf('<table'));
+  const rows = table.split('<tr').slice(2);
+  assert.equal(rows.length, 4);
+  // Actual column: only the -10 slot has a value; the other slots show a dash, never 0
+  const actualCells = rows.map((r) => r.split('<td').slice(1)[3]);
+  assert.match(actualCells[1], />11</);
+  assert.ok([0, 2, 3].every((i) => /—/.test(actualCells[i])), actualCells.join(' | '));
+});
+
+test('crowd-flow chart: nothing to show -> renders nothing (the panel keeps its own message)', () => {
+  assert.equal(render('CrowdFlowChart', { data: { rules: { gates: [] } }, slot: null, onSlot: noop, source: 'rule', onSource: noop, gateId: null, onGate: noop }), '');
 });

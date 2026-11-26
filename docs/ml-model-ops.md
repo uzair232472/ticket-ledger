@@ -101,3 +101,65 @@ python -m ml.replay --model fraud --a models/v0/fraud.joblib --b models/candidat
 | `apps/api/test_ml_ops_unit.mjs` | PSI / drift maths, model ops with stand-ins, no live accuracy, read-only and decision-path guards |
 | `apps/api/test_ml_ops.mjs` | on `*_verify`: links as of a moment, overturned reviews, graph + exposure, reasons persisted, model ops |
 | `apps/web/tests/mlOps.render.test.mjs` | range band, reasons, charts, graph opening state (offline renders) |
+
+---
+
+# Round 2 (2026-11-26): demo simulator, public / real data, fairness, crowd overload, readiness, governance report
+
+## 8. Demo traffic simulator (`apps/api/scripts/ml-demo-simulate.mjs`)
+
+```
+node scripts/ml-demo-simulate.mjs --setup-gates --with-tickets 2000 --yes   # fill the AI pages
+node scripts/ml-demo-simulate.mjs --reset --yes                             # remove every trace
+```
+
+Plays activity through the app's own ML code (feature builders, rules, shadow logging with the real ML service,
+the review sample, blind reviews, the visit and crowd jobs): ~100 customers (half with an earlier purchase), a
+family sharing a phone, a bot ring of 6 accounts sharing 2 phones and 1 browser (half machine-speed, half
+human-speed). On a fresh copy: the rules flagged 11 of the ring's 21 orders (the machine-speed ones), the shadow
+model would have flagged all 21, and none of the 86 ordinary orders.
+
+Safe by construction: accounts are `@demo.test` (a test domain in `dataPolicy.js`, so never exported for training),
+payments are MOCK (no server-verified evidence: also never exported), prediction rows carry `output.demo =
+"simulator"`, gates are named `Demo gate …` and only added to an event without gates. Refuses NODE_ENV/ML_ENV
+production; needs `--yes` on a database not named `*_verify`. `--reset` frees the seats it sold.
+
+## 9. Public and real data on the model card
+
+- `python scripts/fetch_public_datasets.py --only credit_card_fraud` (ULB card fraud, OpenML 1597, licence "Public",
+  citation Dal Pozzolo et al. 2015) and `python -m ml.public_experiment fraud`: the fraud METHOD on real recorded
+  fraud. Chronological split, isotonic calibration, threshold fixed at 1% false flags on the calibration period:
+  85% of frauds caught vs 1.3% for a "largest amounts" rule, 0.89% false flags; 11% of flags are fraud at a 0.13%
+  base rate (85x random). Card fraud is not scalping: method evidence, not TicketLedger evidence.
+- Purchase intent keeps the UCI Online Shoppers experiment (honest variant: 38% buyers in the top 10% vs 22% rule).
+- `GET /v2/public-report/{name}` (intent, fraud) and `GET /v2/real-report/{name}`: the newest
+  `reports/candidates/<stamp>/<name>.json` trained on a **db-export** (synthetic candidates never count). Until the
+  platform is live the model card shows "waiting for live data".
+
+## 10. Fairness check (`report.diagnostics.fairness`)
+
+The offline test split by city, event type, payment method and first-time vs returning customers. Flagged:
+fraud = false flags over 1% and over twice the overall rate; other binary models = predicted rate off by more than
+5 points; forecasts = worse than the rule in the group. Informational: never changes a status (gates are fixed).
+Current flags (synthetic): fraud: first-time customers, Faisalabad; checkout abandonment: Faisalabad, Islamabad;
+crowd: conference, qawwali events.
+
+## 11. Crowd: 80% range and chance of going over capacity
+
+Split-conformal scaled residuals (validation period) give each slot an 80% range and the chance that scans exceed
+the gate's capacity (per hour / 12), calibrated with isotonic regression on the validation period (within 5 points
+of what happened in every tenth of the test slots). Served with every crowd shadow prediction (`low`, `high`,
+`p_over_capacity`) and shown in the 3D view when "AI model (shadow)" is selected.
+
+## 12. Go-live readiness (`/admin/ai-readiness`) and governance report (`/admin/ai-report`)
+
+`GET /api/ml/governance` (SUPER_ADMIN). Per model, nine conditions: registered in shadow, trained on TicketLedger
+data, offline test passed, real-data test passed, fairness, enough live outcomes, inputs stable, live shadow check
+(not built, on purpose), admin approval (no path exists). Verdict is always STAYS_SHADOW. The report page prints
+to PDF (browser print): principles, offline results, fairness, live monitoring, public / real evidence, readiness.
+
+| Test | What |
+|---|---|
+| `apps/api/test_ml_demo_simulator.mjs` | on `*_verify`: simulate, check every page's data, nothing exportable, reset removes all; refusals |
+| `apps/api/test_ml_ops_unit.mjs` | + readiness never met without evidence, governance always stays shadow |
+| `apps/ml-service/tests/test_ops.py` | + fairness lists, calibrated overload chance served, public / real report endpoints |

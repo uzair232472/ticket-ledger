@@ -45,7 +45,9 @@ const mk = (name, phone, ageDays = 100) => prisma.user.create({ data: { email: `
 
 test('account links, the graph and its exposure record, persisted and read back', async () => {
   const event = await prisma.event.findFirst({ where: { tiers: { some: {} } }, select: { id: true } });
-  const [a, b, c, d, admin] = await Promise.all([mk('a', '+92 300 777-1234'), mk('b', '03007771234'), mk('c', null), mk('d', '03119998888'), mk('admin', null)]);
+    // Numbers unique to this run (earlier runs in the same copy must not add links)
+  const n7 = String(tag).slice(-7);
+  const [a, b, c, d, admin] = await Promise.all([mk('a', `+92 300 ${n7.slice(0, 3)}-${n7.slice(3)}`), mk('b', `0300${n7}`), mk('c', null), mk('d', `0311${n7}`), mk('admin', null)]);
   const now = new Date();
   const browser = `sess_ops_${tag}`;
   // a and c used the same browser; d used it only AFTER the checkout moment (must not count)

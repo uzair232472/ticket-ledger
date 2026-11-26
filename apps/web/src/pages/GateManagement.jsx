@@ -4,9 +4,9 @@ import { connectSocket } from '../lib/socket';
 import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X, GitCompareArrows, Archive, Wifi, AlertTriangle } from 'lucide-react';
 import api from '../utils/api';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
-import { AttendanceInsightPanel, CrowdInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
+import { AttendanceInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
 import GateLoadPlan from '../components/gates/GateLoadPlan';
-import CrowdHall3D from '../components/gates/CrowdHall3D';
+import CrowdFlowSection from '../components/gates/CrowdFlowSection';
 
 /*
  * Gate management for supervisors (gate.supervise): live load per gate, the gates themselves (type, ticket
@@ -129,8 +129,8 @@ export default function GateManagement() {
             <InsightBoundary>
               <div className="space-y-6" style={{ marginTop: 24 }}>
                 <AttendanceInsightPanel eventId={eventId} />
-                <CrowdInsightPanel eventId={eventId} />
-                <CrowdHall3D eventId={eventId} />
+                {/* The arrivals panel (with the crowd-flow chart) and the 3D view share one data load and one selection */}
+                <CrowdFlowSection eventId={eventId} />
               </div>
             </InsightBoundary>
           )}

@@ -101,4 +101,4 @@ Option 1: the existing rules stay the active decision-making system; the v0 frau
 ## Final model
 Refitted with the same settings on all 51,500 rows (2023-01-01 to 2025-12-31). Calibration: isotonic, 5-fold (CalibratedClassifierCV). It starts in shadow mode: it must also beat the rules on live data before an admin can promote it.
 
-_Duration 33.0 s._
+_Duration 21.6 s._

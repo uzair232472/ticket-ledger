@@ -119,3 +119,51 @@ test('account links and the graph: read-only, never reachable from checkout, pay
   const queue = review.slice(review.indexOf('export async function reviewQueue'), review.indexOf('export async function recordReview'));
   assert.ok(!/reasons|mlProbability|shadowPrediction/.test(queue), 'the blind queue never touches model output');
 });
+
+const { readinessOf, governanceSnapshot } = await import('./src/services/ml/monitor.js');
+const opsOf = (over = {}) => ({
+  registered: { status: 'SHADOW', version: 'v0', source: 'synthetic-v0', may_serve_decisions: false },
+  card: { status: 'PASSED', reasons: [], diagnostics: { fairness: { watch: [] } } },
+  drift: { status: 'STABLE' }, real_data: { status: 'WAITING_FOR_LIVE_DATA' }, ...over,
+});
+
+test('readiness: always STAYS_SHADOW; nothing missing is ever shown as met; approval is never available', () => {
+  const best = readinessOf(opsOf({ registered: { status: 'SHADOW', version: 'v9', source: 'db-export' }, real_data: { status: 'PASSED', stamp: 'x' } }),
+    { with_outcome: 500, positives: 200, negatives: 300, events: 200 }, { positives: 100, negatives: 100 });
+  assert.equal(best.verdict, 'STAYS_SHADOW');
+  assert.equal(best.may_serve_decisions, false);
+  const by = Object.fromEntries(best.items.map((i) => [i.key, i.status]));
+  assert.equal(by.admin_approval, 'NOT_AVAILABLE');
+  assert.equal(by.live_shadow_check, 'NOT_AVAILABLE');
+  assert.equal(best.met, best.total - 2, 'even with every other condition met, two can never be met');
+
+  const now = readinessOf(opsOf(), { with_outcome: 0 }, { positives: 100, negatives: 100 });
+  const s = Object.fromEntries(now.items.map((i) => [i.key, i.status]));
+  assert.equal(s.trained_on_real_data, 'NOT_MET');
+  assert.equal(s.real_data_test, 'PENDING');
+  assert.equal(s.live_outcomes, 'PENDING');
+  const flagged = readinessOf(opsOf({ card: { status: 'REJECTED', reasons: ['x'], diagnostics: { fairness: { watch: ['city: Quetta'] } } }, drift: { status: 'DRIFT', drifted: ['price'] } }), { with_outcome: 5, positives: 1, negatives: 4 }, { positives: 100 });
+  const f = Object.fromEntries(flagged.items.map((i) => [i.key, i]));
+  assert.equal(f.offline_test.status, 'NOT_MET');
+  assert.equal(f.fairness.status, 'NOT_MET');
+  assert.match(f.fairness.detail, /city: Quetta/);
+  assert.equal(f.inputs_stable.status, 'NOT_MET');
+  assert.equal(f.live_outcomes.status, 'NOT_MET');
+  const down = readinessOf(opsOf({ card: { unavailable_reason: 'ML_SERVICE_UNAVAILABLE' }, drift: { status: 'UNAVAILABLE', reason: 'down' } }), { with_outcome: 0 }, {});
+  assert.ok(down.items.filter((i) => ['offline_test', 'fairness', 'inputs_stable'].includes(i.key)).every((i) => i.status === 'PENDING'), 'unknown is pending, never met');
+});
+
+test('governance report: one entry per monitored model, decision source rules, nothing may serve decisions', async () => {
+  __setMonitorDeps({
+    db: { mlModel: { findFirst: async () => null }, mlPrediction: { findMany: async () => [] }, $queryRaw: async () => [{ with_outcome: 0, positives: 0, negatives: 0, events: 0 }] },
+    get: async () => { throw Object.assign(new Error('nf'), { status: 404 }); },
+  });
+  const g = await governanceSnapshot();
+  __setMonitorDeps(null);
+  assert.equal(g.decision_source, 'rules');
+  assert.equal(g.may_serve_decisions, false);
+  assert.equal(g.models.length, 8);
+  assert.ok(g.models.every((m) => m.readiness.verdict === 'STAYS_SHADOW' && m.registered.may_serve_decisions === false));
+  assert.ok(g.models.every((m) => m.real_data.status === 'WAITING_FOR_LIVE_DATA'));
+  assert.ok(g.principles.some((p) => /no promotion path/i.test(p)));
+});

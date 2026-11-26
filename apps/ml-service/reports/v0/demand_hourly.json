@@ -361,7 +361,157 @@
         ]
       }
     ],
-    "explanation_note": "Each reason is the change in this prediction (scans) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+    "explanation_note": "Each reason is the change in this prediction (scans) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 360,
+            "model": 0.1706,
+            "rule": 0.46,
+            "watch": false,
+            "why": null
+          },
+          "Islamabad": {
+            "rows": 1272,
+            "model": 0.1662,
+            "rule": 0.6453,
+            "watch": false,
+            "why": null
+          },
+          "Karachi": {
+            "rows": 3156,
+            "model": 0.1771,
+            "rule": 0.6351,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 2424,
+            "model": 0.2082,
+            "rule": 0.7399,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 468,
+            "model": 0.1495,
+            "rule": 0.7664,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 504,
+            "model": 0.1714,
+            "rule": 0.7144,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 36,
+            "note": "too few events to measure"
+          },
+          "Rawalpindi": {
+            "rows": 780,
+            "model": 0.2189,
+            "rule": 0.646,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 432,
+            "model": 0.2405,
+            "rule": 0.7567,
+            "watch": false,
+            "why": null
+          },
+          "CONFERENCE": {
+            "rows": 636,
+            "model": 0.2942,
+            "rule": 0.5613,
+            "watch": false,
+            "why": null
+          },
+          "CRICKET_MATCH": {
+            "rows": 2664,
+            "model": 0.1929,
+            "rule": 0.6994,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 672,
+            "model": 0.15,
+            "rule": 0.5347,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 408,
+            "model": 0.1718,
+            "rule": 0.4805,
+            "watch": false,
+            "why": null
+          },
+          "KABADDI": {
+            "rows": 732,
+            "model": 0.1939,
+            "rule": 0.56,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 1452,
+            "model": 0.1923,
+            "rule": 0.7862,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 780,
+            "model": 0.1613,
+            "rule": 0.5305,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 672,
+            "model": 0.2556,
+            "rule": 0.8427,
+            "watch": false,
+            "why": null
+          },
+          "THEATRE": {
+            "rows": 552,
+            "model": 0.307,
+            "rule": 0.7154,
+            "watch": false,
+            "why": null
+          }
+        },
+        "customer_history": {
+          "first_day_on_sale": {
+            "rows": 450,
+            "model": 0.3379,
+            "rule": 1.0771,
+            "watch": false,
+            "why": null
+          },
+          "last_week_before_event": {
+            "rows": 2012,
+            "model": 0.1016,
+            "rule": 0.3154,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [],
+      "rule": "error worse than the rule in the group",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    }
   },
   "status": "REJECTED",
   "reasons": [
@@ -384,7 +534,7 @@
     "trained_from": "2023-01-01T19:00:00+00:00",
     "trained_to": "2025-12-29T17:00:00+00:00"
   },
-  "duration_seconds": 24.1,
+  "duration_seconds": 16.7,
   "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
   "artifact": "models/v0/demand_hourly.joblib"
 }

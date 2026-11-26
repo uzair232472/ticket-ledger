@@ -104,7 +104,13 @@ export default function AiMonitor() {
         crumbs={['Admin', 'AI']}
         title="AI monitor"
         intro="All eight AI features run in shadow mode: the rules make every decision. This page shows what the experimental models logged and how far each one is from having enough real outcomes to be evaluated."
-        controls={<button type="button" className="tl-st-btn tl-st-btn--light" onClick={load} disabled={loading}><RefreshCw className={`w-4 h-4 ${loading ? 'tl-dash-spin' : ''}`} /> Refresh</button>}
+        controls={(
+          <>
+            <Link className="tl-st-btn tl-st-btn--light" to="/admin/ai-readiness">Go-live readiness</Link>
+            <Link className="tl-st-btn tl-st-btn--light" to="/admin/ai-report">Governance report</Link>
+            <button type="button" className="tl-st-btn tl-st-btn--light" onClick={load} disabled={loading}><RefreshCw className={`w-4 h-4 ${loading ? 'tl-dash-spin' : ''}`} /> Refresh</button>
+          </>
+        )}
         actions={<RuleTag />}
       />
 

@@ -454,7 +454,7 @@ export async function crowdInsight(eventId, { db = prisma, now = new Date() } = 
   const gateName = new Map(event.gates.map((g) => [g.id, g.name]));
   const series = new Map(); // gateId -> minutes -> {rule, model, actual}
   const cell = (gateId, minutes) => {
-    if (!series.has(gateId)) series.set(gateId, new Map(SLOTS.map((m) => [m, { minutes: m, rule: null, model: null, actual: null }])));
+    if (!series.has(gateId)) series.set(gateId, new Map(SLOTS.map((m) => [m, { minutes: m, rule: null, model: null, model_low: null, model_high: null, model_p_over: null, actual: null }])));
     return series.get(gateId).get(minutes);
   };
   for (const r of ruleRows) {
@@ -465,10 +465,11 @@ export async function crowdInsight(eventId, { db = prisma, now = new Date() } = 
     if (r.outcomeAt) c.actual = r.outcomeLabel;
   }
   let liveRule = false;
+  let liveBasis = null;
   if (!ruleRows.length && readiness.ready && startOf(event) > now) {
     // Not logged yet (the job logs 30 min - 26 h before the start): show the rule baseline computed now
     try {
-      for (const r of await crowdRows({ eventId, at: now })) cell(r.gateId, r.minutes).rule = Math.round(r.baseline * 10) / 10;
+      for (const r of await crowdRows({ eventId, at: now })) { cell(r.gateId, r.minutes).rule = Math.round(r.baseline * 10) / 10; liveBasis = r.basis; }
       liveRule = true;
     } catch (e) {
       if (!(e instanceof MissingInput)) throw e;
@@ -481,14 +482,26 @@ export async function crowdInsight(eventId, { db = prisma, now = new Date() } = 
       if (s.output?.error || s.output?.skipped || s.score === null) continue;
       const { gateId, minutes } = parseSlotSubject(s.subjectId);
       const c = cell(gateId, minutes);
-      if (c) c.model = Math.round(s.score * 10) / 10;
+      if (c) {
+        c.model = Math.round(s.score * 10) / 10;
+        // 80% range and chance of going over the gate's capacity in the slot (models trained after 2026-11-26)
+        if (Number.isFinite(s.output?.low)) { c.model_low = s.output.low; c.model_high = s.output.high; }
+        if (Number.isFinite(s.output?.p_over_capacity)) c.model_p_over = s.output.p_over_capacity;
+      }
     }
     experimental.value = shadowRowStats(shadow);
     if (!shadow.length) experimental.unavailable_reason = 'NO_SHADOW_PREDICTIONS_YET';
   }
-  const gates = [...series.entries()].map(([gateId, m]) => ({ gate_id: gateId, gate: gateName.get(gateId) || 'Gate', slots: [...m.values()] }));
+  const gateCap = new Map(event.gates.map((g) => [g.id, g.capacityPerHour ?? null]));
+  // capacity_per_hour: the gate's setting now (null = not set); a 5-minute slot holds capacity_per_hour / 12
+  const gates = [...series.entries()].map(([gateId, m]) => ({ gate_id: gateId, gate: gateName.get(gateId) || 'Gate', capacity_per_hour: gateCap.get(gateId) ?? null, slots: [...m.values()] }));
   return envelope('crowd', {
-    rules: { readiness, logged_at: ruleRows[0]?.asOf ?? null, computed_now: liveRule, gates, slot_minutes: 5, rule: 'tickets sold x show rate x arrival curve x gate capacity share' },
+    rules: {
+      readiness, logged_at: ruleRows[0]?.asOf ?? null, computed_now: liveRule, gates, slot_minutes: 5, rule: 'tickets sold x show rate x arrival curve x gate capacity share',
+      // What the arrival curve came from: 't:<TYPE>' past events of this type, 'all' past events of any type,
+      // 'default' no past gate scans (arrivals spread evenly)
+      curve_basis: ruleRows[0]?.output?.basis ?? liveBasis ?? null,
+    },
     experimental,
     evaluation: evaluationBlock(await outcomeCounts('crowd', db), { events: MINIMUMS.min_test_events_crowd }),
     notes: ['The gate scanner, admission and staffing never use these numbers.'],

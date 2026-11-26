@@ -10,7 +10,7 @@ export const SERIES = { model: '#257de0', rule: '#f47230' };
 const INK = '#191919', INK2 = '#666666', GRID = '#e7e7e7', AXIS = '#c2c2c2';
 const PAD = { l: 44, r: 92, t: 12, b: 28 };
 
-function useWidth(min = 280) {
+export function useWidth(min = 280) {
   const ref = useRef(null);
   const [w, setW] = useState(560);
   useEffect(() => {

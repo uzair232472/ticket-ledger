@@ -360,14 +360,156 @@
         ]
       }
     ],
-    "explanation_note": "Each reason is the change in this prediction (tickets) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+    "explanation_note": "Each reason is the change in this prediction (tickets) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 31,
+            "model": 0.4229,
+            "rule": 0.4449,
+            "watch": false,
+            "why": null
+          },
+          "Islamabad": {
+            "rows": 105,
+            "model": 0.3504,
+            "rule": 0.35,
+            "watch": true,
+            "why": "worse than the rule in this group"
+          },
+          "Karachi": {
+            "rows": 263,
+            "model": 0.3334,
+            "rule": 0.4047,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 202,
+            "model": 0.3675,
+            "rule": 0.4242,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 39,
+            "model": 0.3838,
+            "rule": 0.4914,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 43,
+            "model": 0.4012,
+            "rule": 0.4375,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 3,
+            "note": "too few events to measure"
+          },
+          "Rawalpindi": {
+            "rows": 65,
+            "model": 0.3255,
+            "rule": 0.418,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 36,
+            "model": 0.4005,
+            "rule": 0.5314,
+            "watch": false,
+            "why": null
+          },
+          "CONFERENCE": {
+            "rows": 53,
+            "model": 0.5002,
+            "rule": 0.6683,
+            "watch": false,
+            "why": null
+          },
+          "CRICKET_MATCH": {
+            "rows": 222,
+            "model": 0.3412,
+            "rule": 0.3915,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 55,
+            "model": 0.3834,
+            "rule": 0.4956,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 34,
+            "model": 0.5142,
+            "rule": 0.5438,
+            "watch": false,
+            "why": null
+          },
+          "KABADDI": {
+            "rows": 60,
+            "model": 0.4383,
+            "rule": 0.5386,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 122,
+            "model": 0.3529,
+            "rule": 0.413,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 65,
+            "model": 0.3595,
+            "rule": 0.4035,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 56,
+            "model": 0.3912,
+            "rule": 0.4383,
+            "watch": false,
+            "why": null
+          },
+          "THEATRE": {
+            "rows": 48,
+            "model": 0.3664,
+            "rule": 0.5456,
+            "watch": false,
+            "why": null
+          }
+        },
+        "customer_history": {
+          "organizer_first_event": {
+            "rows": 0,
+            "note": "too few events to measure"
+          }
+        }
+      },
+      "watch": [
+        "city: Islamabad"
+      ],
+      "rule": "error worse than the rule in the group",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    }
   },
   "status": "PASSED",
   "reasons": [],
   "deployed_model": {
     "status": "NO_DEPLOYED_MODEL"
   },
-  "duration_seconds": 5.3,
+  "duration_seconds": 2.9,
   "recommendation": "KEEP_CURRENT: trained on synthetic data",
   "artifact": "models/v0/demand.joblib"
 }

@@ -231,7 +231,7 @@ export function AttendanceInsightPanel({ eventId, data: given }) {
 // H. Crowd flow
 // ---------------------------------------------------------------------------------------------
 const CROWD_COLORS = { rule: 'var(--ds-s1)', actual: 'var(--ds-s3)', model: 'var(--ds-s4)' };
-export function CrowdInsightPanel({ eventId, data: given }) {
+export function CrowdInsightPanel({ eventId, data: given, chart = null }) {
   const loaded = useInsight(!given && eventId ? `/ml/insights/events/${eventId}/crowd` : null);
   const data = given ?? loaded.data;
   if (!data) return null;
@@ -241,16 +241,21 @@ export function CrowdInsightPanel({ eventId, data: given }) {
     <Panel icon={DoorOpen} title="Expected arrivals per gate" sub="Scans per 5 minutes around the start. The scanner, admission and staffing never use these numbers." action={<RuleTag />}>
       {!r.readiness?.ready && <p className="tl-pn-sub">Not available: {r.readiness?.reason === 'GATE_CAPACITY_MISSING' ? `set a capacity per hour on ${r.readiness.missingCapacity.join(', ')}` : 'add at least one active gate'}.</p>}
       {r.gates.length === 0 && r.readiness?.ready && <p className="tl-pn-sub">The estimate appears from 26 hours before the start.</p>}
-      {r.gates.map((g) => {
-        const { labels, series } = crowdSeries(g, { showModel });
-        if (!series.length) return null;
-        return (
-          <div key={g.gate_id} style={{ marginTop: 12 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 6px' }}>{g.gate}</h3>
-            <LineChart labels={labels} series={series.map((s) => ({ label: s.key === 'model' ? 'Experimental model (not used)' : s.label, color: CROWD_COLORS[s.key], values: s.values }))} height={170} label={`Arrivals at ${g.gate}`} />
-          </div>
-        );
-      })}
+      {chart}
+      {(() => {
+        const perGate = r.gates.map((g) => {
+          const { labels, series } = crowdSeries(g, { showModel });
+          if (!series.length) return null;
+          return (
+            <div key={g.gate_id} style={{ marginTop: 12 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700, margin: '0 0 6px' }}>{g.gate}</h3>
+              <LineChart labels={labels} series={series.map((s) => ({ label: s.key === 'model' ? 'Experimental model (not used)' : s.label, color: CROWD_COLORS[s.key], values: s.values }))} height={170} label={`Arrivals at ${g.gate}`} />
+            </div>
+          );
+        });
+        // With the crowd-flow chart above, the small per-gate charts stay available, folded away
+        return chart ? <details className="tl-mc-table"><summary>Small chart per gate</summary>{perGate}</details> : perGate;
+      })()}
       <ExperimentalBlock experimental={data.experimental} evaluation={data.evaluation}>
         <Figures items={shadowFigures(data.experimental?.value)} />
       </ExperimentalBlock>

@@ -419,14 +419,187 @@
         ]
       }
     ],
-    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 591,
+            "predicted_rate": 0.1347,
+            "actual_rate": 0.1421,
+            "gap": -0.0075,
+            "auc": 0.8609,
+            "watch": false,
+            "why": null
+          },
+          "Islamabad": {
+            "rows": 2212,
+            "predicted_rate": 0.1636,
+            "actual_rate": 0.1722,
+            "gap": -0.0087,
+            "auc": 0.9229,
+            "watch": false,
+            "why": null
+          },
+          "Karachi": {
+            "rows": 4995,
+            "predicted_rate": 0.1774,
+            "actual_rate": 0.1896,
+            "gap": -0.0122,
+            "auc": 0.9105,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 4204,
+            "predicted_rate": 0.1827,
+            "actual_rate": 0.1855,
+            "gap": -0.0028,
+            "auc": 0.9137,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 727,
+            "predicted_rate": 0.181,
+            "actual_rate": 0.1884,
+            "gap": -0.0075,
+            "auc": 0.9246,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 779,
+            "predicted_rate": 0.1976,
+            "actual_rate": 0.1977,
+            "gap": -0.0001,
+            "auc": 0.9157,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 16,
+            "note": "too few cases to measure"
+          },
+          "Rawalpindi": {
+            "rows": 1476,
+            "predicted_rate": 0.1866,
+            "actual_rate": 0.1836,
+            "gap": 0.003,
+            "auc": 0.9223,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 207,
+            "note": "too few cases to measure"
+          },
+          "CONFERENCE": {
+            "rows": 58,
+            "note": "too few cases to measure"
+          },
+          "CRICKET_MATCH": {
+            "rows": 9436,
+            "predicted_rate": 0.2029,
+            "actual_rate": 0.2094,
+            "gap": -0.0065,
+            "auc": 0.9098,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 901,
+            "predicted_rate": 0.1775,
+            "actual_rate": 0.1831,
+            "gap": -0.0057,
+            "auc": 0.9213,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 249,
+            "predicted_rate": 0.268,
+            "actual_rate": 0.2771,
+            "gap": -0.0091,
+            "auc": 0.9262,
+            "watch": false,
+            "why": null
+          },
+          "KABADDI": {
+            "rows": 587,
+            "predicted_rate": 0.2442,
+            "actual_rate": 0.2538,
+            "gap": -0.0096,
+            "auc": 0.9328,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 1723,
+            "predicted_rate": 0.1129,
+            "actual_rate": 0.1219,
+            "gap": -0.009,
+            "auc": 0.9074,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 1590,
+            "predicted_rate": 0.0739,
+            "actual_rate": 0.0799,
+            "gap": -0.0059,
+            "auc": 0.8648,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 193,
+            "predicted_rate": 0.1672,
+            "actual_rate": 0.171,
+            "gap": -0.0038,
+            "auc": 0.9516,
+            "watch": false,
+            "why": null
+          },
+          "THEATRE": {
+            "rows": 56,
+            "note": "too few cases to measure"
+          }
+        },
+        "customer_history": {
+          "first_time_visitors": {
+            "rows": 1845,
+            "predicted_rate": 0.1514,
+            "actual_rate": 0.1469,
+            "gap": 0.0045,
+            "auc": 0.9102,
+            "watch": false,
+            "why": null
+          },
+          "returning_visitors": {
+            "rows": 13155,
+            "predicted_rate": 0.1809,
+            "actual_rate": 0.1889,
+            "gap": -0.008,
+            "auc": 0.9142,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [],
+      "rule": "predicted rate off by more than 5%",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    }
   },
   "status": "PASSED",
   "reasons": [],
   "deployed_model": {
     "status": "NO_DEPLOYED_MODEL"
   },
-  "duration_seconds": 64.5,
+  "duration_seconds": 15.6,
   "recommendation": "KEEP_CURRENT: trained on synthetic data",
   "artifact": "models/v0/intent.joblib"
 }

@@ -10,7 +10,7 @@ import { canAccessEvent } from '../services/orgAccess.js';
 import {
   abandonmentInsight, attendanceInsight, behaviourInsight, crowdInsight, demandInsight, fraudInsight, intentInsight,
 } from '../services/ml/insights.js';
-import { MONITORED, modelOps, monitorSnapshot } from '../services/ml/monitor.js';
+import { MONITORED, governanceSnapshot, modelOps, monitorSnapshot } from '../services/ml/monitor.js';
 import { reviewedCases, recordWatchlistView } from '../services/ml/fraudReview.js';
 import { accountGraph } from '../services/ml/accountLinks.js';
 
@@ -78,6 +78,8 @@ const adminInsight = (feature, fn) => async (req, res) => {
 export const getBehaviourInsight = adminInsight('behaviour', () => behaviourInsight());
 export const getFraudInsight = adminInsight('fraud', () => fraudInsight());
 export const getMonitor = adminInsight('monitor', () => monitorSnapshot());
+/** GET /api/ml/governance (SUPER_ADMIN): go-live readiness of every model + the governance report data. */
+export const getGovernance = adminInsight('governance', () => governanceSnapshot());
 
 /** GET /api/ml/ops/:name (SUPER_ADMIN): offline model card + live input drift. */
 export const getModelOps = async (req, res) => {

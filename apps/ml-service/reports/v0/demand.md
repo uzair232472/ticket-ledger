@@ -60,4 +60,4 @@ KEEP_CURRENT: trained on synthetic data
 }
 ```
 
-_Duration 5.3 s._
+_Duration 2.9 s._

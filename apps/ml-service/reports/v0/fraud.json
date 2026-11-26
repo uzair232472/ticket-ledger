@@ -468,6 +468,220 @@
       }
     ],
     "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 298,
+            "false_flag_rate": 0.0184,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 26,
+            "watch": true,
+            "why": "false flags over 1% and over twice the overall rate"
+          },
+          "Islamabad": {
+            "rows": 1093,
+            "false_flag_rate": 0.0108,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 70,
+            "recall": 0.9286,
+            "rule_recall": 0.2,
+            "watch": false,
+            "why": null
+          },
+          "Karachi": {
+            "rows": 2584,
+            "false_flag_rate": 0.0103,
+            "rule_false_flag_rate": 0.0004,
+            "frauds": 165,
+            "recall": 0.9394,
+            "rule_recall": 0.4061,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 2180,
+            "false_flag_rate": 0.0067,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 105,
+            "recall": 0.9524,
+            "rule_recall": 0.3143,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 384,
+            "false_flag_rate": 0.0028,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 21,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 432,
+            "false_flag_rate": 0.0,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 32,
+            "recall": 0.9375,
+            "rule_recall": 0.5,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 8,
+            "note": "too few legitimate orders to measure"
+          },
+          "Rawalpindi": {
+            "rows": 746,
+            "false_flag_rate": 0.0087,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 56,
+            "recall": 0.9286,
+            "rule_recall": 0.25,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 96,
+            "note": "too few legitimate orders to measure"
+          },
+          "CONFERENCE": {
+            "rows": 39,
+            "note": "too few legitimate orders to measure"
+          },
+          "CRICKET_MATCH": {
+            "rows": 5110,
+            "false_flag_rate": 0.006,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 247,
+            "recall": 0.9271,
+            "rule_recall": 0.251,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 450,
+            "false_flag_rate": 0.0138,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 16,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 157,
+            "note": "too few legitimate orders to measure"
+          },
+          "KABADDI": {
+            "rows": 346,
+            "false_flag_rate": 0.0063,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 28,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 761,
+            "false_flag_rate": 0.0159,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 70,
+            "recall": 0.9286,
+            "rule_recall": 0.4143,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 597,
+            "false_flag_rate": 0.0072,
+            "rule_false_flag_rate": 0.0018,
+            "frauds": 41,
+            "recall": 0.9268,
+            "rule_recall": 0.3415,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 141,
+            "note": "too few legitimate orders to measure"
+          },
+          "THEATRE": {
+            "rows": 28,
+            "note": "too few legitimate orders to measure"
+          }
+        },
+        "payment_method": {
+          "EASYPAISA": {
+            "rows": 2418,
+            "false_flag_rate": 0.0077,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 90,
+            "recall": 0.9,
+            "rule_recall": 0.2778,
+            "watch": false,
+            "why": null
+          },
+          "JAZZCASH": {
+            "rows": 3251,
+            "false_flag_rate": 0.0073,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 120,
+            "recall": 0.9083,
+            "rule_recall": 0.3167,
+            "watch": false,
+            "why": null
+          },
+          "STRIPE": {
+            "rows": 2056,
+            "false_flag_rate": 0.0117,
+            "rule_false_flag_rate": 0.0006,
+            "frauds": 266,
+            "recall": 0.9474,
+            "rule_recall": 0.3609,
+            "watch": false,
+            "why": null
+          }
+        },
+        "customer_history": {
+          "human_speed": {
+            "rows": 7552,
+            "false_flag_rate": 0.0084,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 304,
+            "recall": 0.8882,
+            "rule_recall": 0.0,
+            "watch": false,
+            "why": null
+          },
+          "first_time_customers": {
+            "rows": 1684,
+            "false_flag_rate": 0.0242,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 74,
+            "recall": 0.9054,
+            "rule_recall": 0.0,
+            "watch": true,
+            "why": "false flags over 1% and over twice the overall rate"
+          },
+          "returning_customers": {
+            "rows": 6041,
+            "false_flag_rate": 0.0041,
+            "rule_false_flag_rate": 0.0002,
+            "frauds": 402,
+            "recall": 0.9328,
+            "rule_recall": 0.3955,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [
+        "city: Faisalabad",
+        "customer_history: first_time_customers"
+      ],
+      "rule": "fraud: false flags over 1% and over twice the overall rate",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    },
     "without_link_features": {
       "precision": 0.8228,
       "rule_precision": 0.9938,
@@ -498,7 +712,7 @@
     "trained_from": "2023-01-01T11:07:00+00:00",
     "trained_to": "2025-12-31T17:25:00+00:00"
   },
-  "duration_seconds": 33.0,
+  "duration_seconds": 21.6,
   "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
   "artifact": "models/v0/fraud.joblib"
 }

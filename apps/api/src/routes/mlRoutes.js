@@ -5,7 +5,7 @@ import { mlInsightsRateLimiter, mlLegacyRateLimiter } from '../middlewares/rateL
 import { orgGuard } from '../middlewares/auth.js';
 import {
   getAbandonmentInsight, getAttendanceInsight, getBehaviourInsight, getCrowdInsight, getDemandInsight, getFraudInsight,
-  getIntentInsight, getMlFlags, getMonitor, getModelOps, getReviewedCases, getAccountGraph,
+  getIntentInsight, getMlFlags, getMonitor, getModelOps, getReviewedCases, getAccountGraph, getGovernance,
 } from '../controllers/mlInsightsController.js';
 import {
   checkFraud,
@@ -64,6 +64,7 @@ router.get('/account-graph/:userId', authenticateJWT, requireRole('SUPER_ADMIN')
 router.get('/flags', getMlFlags);
 router.get('/monitor', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getMonitor);
 router.get('/ops/:name', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getModelOps);
+router.get('/governance', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getGovernance);
 router.get('/insights/behaviour', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getBehaviourInsight);
 router.get('/insights/fraud', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getFraudInsight);
 router.get('/insights/events/:id/intent', ...orgGuard('attendee.view'), mlInsightsRateLimiter, getIntentInsight);

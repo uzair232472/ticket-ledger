@@ -210,6 +210,9 @@ def _outputs(spec, model, df, ctx):
         p = ctx["calibrator"].predict(raw) if ctx.get("calibrator") is not None else raw
         return {"raw": raw, "p": p}
     out = {"pred": raw}
+    if spec.name == "crowd" and ctx.get("resid_q"):
+        lo, hi, p_over = crowd_range(raw, df["gate_capacity_per_hour"].to_numpy(dtype=float) / 12.0, ctx["resid_q"], over_cal=ctx.get("over_cal"))
+        out.update(lo=lo, hi=hi, p_over=p_over)
     if spec.name == "demand":
         cap = df["venue_capacity"].to_numpy(dtype=float)
         q = ctx["conformal_q"]
@@ -217,6 +220,21 @@ def _outputs(spec, model, df, ctx):
         out["lo"] = np.clip(share - q, 0, 1) * cap
         out["hi"] = np.clip(share + q, 0, 1) * cap
     return out
+
+
+def crowd_range(pred, capacity_per_slot, resid_q, level=0.80, over_cal=None):
+    """80% range and P(scans > capacity in the slot) from the scaled validation residuals; `over_cal` (101 points
+    on 0..1) maps the raw chance to the calibrated one."""
+    q = np.asarray(resid_q, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    s = np.sqrt(pred + 1.0)
+    a = (1 - level) / 2
+    lo = np.maximum(0.0, pred + np.quantile(q, a) * s)
+    hi = pred + np.quantile(q, 1 - a) * s
+    p_over = ((pred[:, None] + q[None, :] * s[:, None]) > np.asarray(capacity_per_slot, dtype=float)[:, None]).mean(axis=1)
+    if over_cal is not None:
+        p_over = np.interp(p_over, np.linspace(0, 1, len(over_cal)), np.asarray(over_cal, dtype=float))
+    return lo, hi, p_over
 
 
 def _prepare_context(spec, model, df, split):
@@ -239,6 +257,19 @@ def _prepare_context(spec, model, df, split):
             grid = np.unique(np.quantile(p_v, np.linspace(0.01, 0.99, 99)))
             ba = [metrics.balanced_accuracy(y_v, p_v >= t) for t in grid]
             ctx["threshold"] = float(grid[int(np.argmax(ba))])
+    if spec.name == "crowd":
+        # Split-conformal on scaled residuals (count data: spread grows with the level), validation period only.
+        # 99 quantiles give a range and the chance that a slot goes over the gate's capacity (crowd_overload).
+        pred_v = predict(model, df.iloc[v], spec)
+        r = (df["scans"].to_numpy(dtype=float)[v] - pred_v) / np.sqrt(pred_v + 1.0)
+        ctx["resid_q"] = [float(x) for x in np.quantile(r, np.linspace(0.01, 0.99, 99))]
+        # The raw chance pools all levels, so it is calibrated (isotonic) against what happened on the validation
+        # period; stored as interpolation points so the ML service needs no extra object.
+        cap_v = df["gate_capacity_per_hour"].to_numpy(dtype=float)[v] / 12.0
+        _, _, raw_v = crowd_range(pred_v, cap_v, ctx["resid_q"])
+        iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0).fit(raw_v, (df["scans"].to_numpy(dtype=float)[v] > cap_v).astype(float))
+        grid = np.linspace(0, 1, 101)
+        ctx["over_cal"] = [round(float(x), 6) for x in iso.predict(grid)]
     if spec.name == "demand":
         share_pred = predict(model, df.iloc[v], spec) / df["venue_capacity"].to_numpy(dtype=float)[v]
         share_act = df["sales_48h"].to_numpy(dtype=float)[v] / df["venue_capacity"].to_numpy(dtype=float)[v]
@@ -481,6 +512,69 @@ def _without_links(spec, df, split, base, seed=0, complexity=None):
             **{k: round(v, 4) for k, v in flags.items()}}
 
 
+# Fairness: the same test rows split by group. Informational: it never changes the status (the gates were fixed
+# before evaluation); it lists groups the model serves worse, for a person to look at before any go-live.
+FAIR_GROUPS = ("city", "event_type", "payment_method")
+FAIR_MIN = {"binary_each_class": 30, "events": 10, "legit_for_false_flags": 200}
+
+
+def _fair_row(spec, df, idx, out, base, ctx, overall):
+    y = df[spec.label].to_numpy()[idx]
+    row = {"rows": int(len(idx))}
+    if spec.name == "fraud":
+        w = _sub(weights(spec, df), idx)
+        legit = int((y == 0).sum())
+        if legit < FAIR_MIN["legit_for_false_flags"]:
+            return {**row, "note": "too few legitimate orders to measure"}
+        m = metrics.flag_stats(y, out["p"][idx] >= ctx["threshold"], w)
+        b = metrics.flag_stats(y, base["flag"][idx], w)
+        row.update(false_flag_rate=round(m["false_flag_rate"], 4), rule_false_flag_rate=round(b["false_flag_rate"], 4), frauds=int((y == 1).sum()))
+        if (y == 1).sum() >= FAIR_MIN["binary_each_class"]:
+            row.update(recall=round(m["recall"], 4), rule_recall=round(b["recall"], 4))
+        worse = m["false_flag_rate"] > max(GATES["max_false_flag_rate"], 2 * overall.get("false_flag_rate", 0))
+        row["watch"] = bool(worse)
+        row["why"] = "false flags over 1% and over twice the overall rate" if worse else None
+        return row
+    if spec.kind == "binary":
+        if min((y == 1).sum(), (y == 0).sum()) < FAIR_MIN["binary_each_class"]:
+            return {**row, "note": "too few cases to measure"}
+        p = out["p"][idx]
+        gap = float(p.mean() - y.mean())
+        row.update(predicted_rate=round(float(p.mean()), 4), actual_rate=round(float(y.mean()), 4), gap=round(gap, 4),
+                   auc=round(metrics.auc(y, p), 4))
+        row["watch"] = bool(abs(gap) > GATES["max_calibration_error"])
+        row["why"] = f"predicted rate off by more than {GATES['max_calibration_error']:.0%}" if row["watch"] else None
+        return row
+    if df["event_id"].iloc[idx].nunique() < FAIR_MIN["events"]:
+        return {**row, "note": "too few events to measure"}
+    m, b = main_measure(spec, df, idx, out, base, ctx)
+    worse = (m > b) if not HIGHER_IS_BETTER[spec.name] else (m < b)
+    row.update(model=round(m, 4), rule=round(b, 4), watch=bool(worse), why="worse than the rule in this group" if worse else None)
+    return row
+
+
+def _fairness(spec, df, split, out, base, ctx):
+    test = split.test
+    y = df[spec.label].to_numpy()[test]
+    overall = {}
+    if spec.name == "fraud":
+        overall = metrics.flag_stats(y, out["p"][test] >= ctx["threshold"], _sub(weights(spec, df), test))
+    groups = {}
+    cols = [c for c in FAIR_GROUPS if c in spec.cat]
+    for c in cols:
+        vals = df[c].iloc[test].astype(str).to_numpy()
+        groups[c] = {v: _fair_row(spec, df, test[vals == v], out, base, ctx, overall) for v in sorted(set(vals))}
+    if spec.segments:
+        groups["customer_history"] = {name: _fair_row(spec, df, test[fn(df.iloc[test]).to_numpy()], out, base, ctx, overall)
+                                      for name, fn in spec.segments.items()}
+    watch = [f"{g}: {v}" for g, vs in groups.items() for v, r in vs.items() if r.get("watch")]
+    return {"groups": groups, "watch": watch,
+            "rule": ("fraud: false flags over 1% and over twice the overall rate" if spec.name == "fraud" else
+                     f"predicted rate off by more than {GATES['max_calibration_error']:.0%}" if spec.kind == "binary" else
+                     "error worse than the rule in the group"),
+            "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."}
+
+
 def _diagnostics(spec, model, df, split, out, base, ctx, seed=0):
     test = split.test
     y_t = df[spec.label].to_numpy()[test]
@@ -496,6 +590,19 @@ def _diagnostics(spec, model, df, split, out, base, ctx, seed=0):
         d["explanation_note"] = explanation_note(spec)
     except Exception as e:
         d["examples_error"] = str(e)[:200]
+    d["fairness"] = _fairness(spec, df, split, out, base, ctx)
+    if spec.name == "crowd" and "p_over" in out:
+        cap = df["gate_capacity_per_hour"].to_numpy(dtype=float)[test] / 12.0
+        over = (y_t > cap).astype(float)
+        p = out["p_over"][test]
+        order = np.argsort(p, kind="stable")
+        d["overload"] = {
+            "range_level": 0.80, "range_coverage": round(metrics.coverage(y_t, out["lo"][test], out["hi"][test]), 4),
+            "slots_over_capacity": int(over.sum()), "slots": int(len(over)),
+            "calibration": [{"predicted": round(float(p[c].mean()), 4), "actual": round(float(over[c].mean()), 4), "rows": int(len(c))}
+                            for c in np.array_split(order, 10) if len(c)],
+            "note": "Chance that a gate gets more scans in a 5-minute slot than its capacity allows (capacity per hour / 12).",
+        }
     if spec.name == "fraud" and all(c in spec.num for c in LINK_FEATURES):
         d["without_link_features"] = _without_links(spec, df, split, base, seed=seed, complexity=ctx.get("complexity"))
     return d
@@ -686,7 +793,7 @@ def _final_artifact(spec, df, ctx, report, manifest, seed):
     return {
         "format": ARTIFACT_FORMAT, "model_name": spec.name, "model": model,
         "features": {"categorical": list(spec.cat), "numeric": list(spec.num)}, "kind": spec.kind,
-        "thresholds": {k: ctx[k] for k in ("threshold", "conformal_q") if k in ctx},
+        "thresholds": {k: ctx[k] for k in ("threshold", "conformal_q", "resid_q", "over_cal") if k in ctx},
         "calibration": calibration, "complexity": ctx["complexity"],
         # Typical values (for per-prediction reasons) and training distributions (for drift checks)
         "reference": reference_profile(df, spec),

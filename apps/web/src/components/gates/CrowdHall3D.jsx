@@ -6,6 +6,7 @@ import { DashCard } from '../dash/DashShell';
 import { buildScene } from '../venue/Venue3D';
 import { venue3dKind } from '../venue/venue3dKind';
 import './gateLoadPlan.css';
+import { ruleNote } from '../../lib/crowdFlow';
 
 /*
  * Crowd flow in 3D (gate supervisors). The venue's own 3D model, each seat coloured by how loaded ITS gate is
@@ -23,17 +24,23 @@ const STATUS = {
 const statusOf = (u) => (u == null ? 'NONE' : u > 1 ? 'OVER' : u > BUSY ? 'BUSY' : 'OK');
 const slotText = (m) => (m === 0 ? 'at the start' : m < 0 ? `${-m} min before the start` : `${m} min after the start`);
 
-function useCrowdData(eventId) {
+// `given`: the crowd insight already loaded by the page (CrowdFlowSection), so the 3D view and the chart use the
+// same numbers; undefined = this component loads it itself
+function useCrowdData(eventId, given) {
   const [d, setD] = useState({ state: 'loading' });
+  const own = given === undefined;
   useEffect(() => {
     let live = true;
     Promise.allSettled([
       api.get(`/venues/event/${eventId}`),
       api.get(`/checkin/manage/events/${eventId}/gate-plan`),
-      api.get(`/ml/insights/events/${eventId}/crowd`),
+      own ? api.get(`/ml/insights/events/${eventId}/crowd`) : Promise.resolve({ data: { data: given } }),
     ]).then(([venue, plan, crowd]) => {
       if (!live) return;
-      const layout = venue.status === 'fulfilled' ? venue.value.data.data?.layout : null;
+      // GET /venues/event/:id answers { event, layout: { id, version, data } }: the plan itself is layout.data
+      // (as VenueBooking reads it)
+      if (venue.status !== 'fulfilled') return setD({ state: 'failed', message: venue.reason?.response?.data?.message });
+      const layout = venue.value.data.data?.layout?.data || null;
       const p = plan.status === 'fulfilled' ? plan.value.data.data : null;
       const c = crowd.status === 'fulfilled' ? crowd.value.data.data : null;
       if (!layout?.sections?.length) return setD({ state: 'no-layout' });
@@ -42,16 +49,28 @@ function useCrowdData(eventId) {
       return setD({ state: 'ok', layout, plan: p, crowd: c });
     });
     return () => { live = false; };
-  }, [eventId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, own ? null : given]);
   return d;
 }
 
-export default function CrowdHall3D({ eventId }) {
-  const data = useCrowdData(eventId);
+/**
+ * slot / onSlot and source / onSource: optional. When the page passes them (CrowdFlowSection), the chart and this
+ * view share one selection; otherwise this view keeps its own.
+ */
+export default function CrowdHall3D({ eventId, crowd: crowdGiven, slot: slotProp, onSlot, source: sourceProp, onSource }) {
+  const data = useCrowdData(eventId, crowdGiven);
   const hostRef = useRef(null);
   const ctxRef = useRef(null);
-  const [slot, setSlot] = useState(null);
-  const [source, setSource] = useState('rule');
+  const [slotOwn, setSlotOwn] = useState(null);
+  const [sourceOwn, setSourceOwn] = useState('rule');
+  const controlled = slotProp !== undefined && typeof onSlot === 'function';
+  const slot = controlled ? slotProp : slotOwn;
+  const setSlot = controlled ? onSlot : setSlotOwn;
+  const source = sourceProp !== undefined && typeof onSource === 'function' ? sourceProp : sourceOwn;
+  const setSource = sourceProp !== undefined && typeof onSource === 'function' ? onSource : setSourceOwn;
+  const slotRef = useRef(slot);
+  slotRef.current = slot;
   const [playing, setPlaying] = useState(false);
   const [hover, setHover] = useState(null);
 
@@ -59,13 +78,18 @@ export default function CrowdHall3D({ eventId }) {
   const slots = useMemo(() => gates[0]?.slots.map((s) => s.minutes) || [], [gates]);
   const modelShown = Boolean(data.crowd && !data.crowd.experimental?.hidden && gates.some((g) => g.slots.some((s) => s.model !== null)));
   const actualShown = gates.some((g) => g.slots.some((s) => s.actual !== null));
-  const capacity = useMemo(() => new Map((data.plan?.balanced || []).map((g) => [g.gateId, g.capacityPerHour])), [data.plan]);
+  // Capacity per hour: from the crowd data itself (same numbers as the chart), else the gate plan
+  const capacity = useMemo(() => {
+    const m = new Map((data.plan?.balanced || []).map((g) => [g.gateId, g.capacityPerHour]));
+    for (const g of gates) if (g.capacity_per_hour != null) m.set(g.gate_id, g.capacity_per_hour);
+    return m;
+  }, [data.plan, gates]);
   // Default slot: the rule's busiest slot over all gates
   useEffect(() => {
-    if (!gates.length || slot !== null) return;
+    if (controlled || !gates.length || slot !== null) return;
     const total = slots.map((_, i) => gates.reduce((a, g) => a + (g.slots[i]?.rule || 0), 0));
     setSlot(slots[total.indexOf(Math.max(...total))] ?? slots[0]);
-  }, [gates, slots, slot]);
+  }, [gates, slots, slot, controlled]);
 
   // Load per gate in the slot: scans per 5 min × 12 = per hour, over the gate's capacity per hour
   const loads = useMemo(() => {
@@ -74,7 +98,9 @@ export default function CrowdHall3D({ eventId }) {
       const s = g.slots.find((x) => x.minutes === slot);
       const v = s ? s[source] : null;
       const cap = capacity.get(g.gate_id);
-      out.set(g.gate_id, { name: g.gate, scans: v, perHour: v == null ? null : v * 12, capacity: cap, utilisation: v == null || !cap ? null : (v * 12) / cap });
+      // AI source only: its 80% range and the calibrated chance of going over capacity in this slot
+      const ai = source === 'model' && s ? { low: s.model_low, high: s.model_high, pOver: s.model_p_over } : {};
+      out.set(g.gate_id, { name: g.gate, scans: v, perHour: v == null ? null : v * 12, capacity: cap, utilisation: v == null || !cap ? null : (v * 12) / cap, ...ai });
     }
     return out;
   }, [gates, slot, source, capacity]);
@@ -94,9 +120,16 @@ export default function CrowdHall3D({ eventId }) {
     const host = hostRef.current;
     if (data.state !== 'ok' || !host) return undefined;
     let ctx;
-    try { ctx = buildScene(host, data.layout, { kind: venue3dKind(data.layout) || 'stadium', low: true }); } catch (e) { console.error('[CrowdHall3D]', e); return undefined; }
+    // Full detail (sharp when zoomed: anti-aliasing and the screen's pixel density)
+    try { ctx = buildScene(host, data.layout, { kind: venue3dKind(data.layout) || 'stadium', low: false }); } catch (e) { console.error('[CrowdHall3D]', e); return undefined; }
     ctxRef.current = ctx;
     const { renderer, scene, camera, controls, R, sections, terraces } = ctx;
+    // Seats (and standing areas) as flat, unlit colour: the load colours stay exact in any light, at any angle and
+    // after the film-style tone mapping, which otherwise washes green / amber / red out
+    for (const entry of sections.values()) {
+      if (entry.mesh) { entry.mesh.material.dispose(); entry.mesh.material = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }); }
+      else { entry.terrace.material.dispose(); entry.terrace.material = new THREE.MeshBasicMaterial({ color: 0xc9d3cc, toneMapped: false }); }
+    }
     const size = () => { const w = host.clientWidth || 800, h = host.clientHeight || 420; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); };
     size();
     const ro = new ResizeObserver(size); ro.observe(host);
@@ -146,13 +179,14 @@ export default function CrowdHall3D({ eventId }) {
   // Play: step through the slots
   useEffect(() => {
     if (!playing || !slots.length) return undefined;
-    const t = setInterval(() => setSlot((s) => slots[(slots.indexOf(s) + 1) % slots.length]), 700);
+    const t = setInterval(() => setSlot(slots[(slots.indexOf(slotRef.current) + 1) % slots.length]), 700);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, slots]);
 
   if (data.state === 'loading') return null;
   if (data.state !== 'ok') {
-    const text = { 'no-layout': 'This event has no seat plan, so there is no 3D view.', 'no-plan': data.message || 'The gate plan is not ready yet (gates need a capacity per hour).', 'no-estimate': 'No crowd estimate yet: it appears from 26 hours before the start.' }[data.state];
+    const text = { failed: `The seat plan could not be loaded${data.message ? `: ${data.message}` : ''}.`, 'no-layout': 'This event has no seat plan, so there is no 3D view.', 'no-plan': data.message || 'The gate plan is not ready yet (gates need a capacity per hour).', 'no-estimate': 'No crowd estimate yet: it appears from 26 hours before the start.' }[data.state];
     return <DashCard title="Crowd flow in 3D" icon={Box}><p className="text-sm text-slate-500">{text}</p></DashCard>;
   }
   const hoverGate = hover && gateOfSeat(hover.sec, '*');
@@ -171,6 +205,7 @@ export default function CrowdHall3D({ eventId }) {
           <input type="range" className="grow" min={0} max={Math.max(0, slots.length - 1)} value={Math.max(0, slots.indexOf(slot))} onChange={(e) => { setPlaying(false); setSlot(slots[Number(e.target.value)]); }} aria-label="Time slot" />
         </label>
       </div>
+      {source === 'rule' && <p className="tl-cf-note" style={{ marginTop: 0 }}>{ruleNote(data.crowd)} Switch to &quot;AI model (shadow)&quot; to see gates differ.</p>}
       <div style={{ position: 'relative' }}>
         <div ref={hostRef} className="tl-ch3-host" />
         {hover && (
@@ -178,7 +213,7 @@ export default function CrowdHall3D({ eventId }) {
             <b>{hover.sec.name}</b>
             {hoverRows.length > 1
               ? hoverRows.map((r) => { const l = loads.get(r.gateId); return <span key={r.rows}>Rows {r.rows} → {r.gateName}: {l?.utilisation == null ? '—' : `${Math.round(l.utilisation * 100)}%`}</span>; })
-              : hoverGate ? (() => { const l = loads.get(hoverGate); return <span>{l?.name}: {l?.scans == null ? 'no estimate' : `${Math.round(l.scans)} scans in 5 min · ${Math.round(l.utilisation * 100)}% of capacity`}</span>; })() : <span>No gate assigned in the plan</span>}
+              : hoverGate ? (() => { const l = loads.get(hoverGate); return <><span>{l?.name}: {l?.scans == null ? 'no estimate' : `${Math.round(l.scans)} scans in 5 min · ${Math.round(l.utilisation * 100)}% of capacity${l.pOver != null ? ` · ${Math.round(l.pOver * 100)}% chance of going over` : ''}`}</span>{source === 'rule' && l?.scans != null && <span className="tl-ch3-tip-note">Rule: the same % at every gate (shared by capacity)</span>}</>; })() : <span>No gate assigned in the plan</span>}
           </div>
         )}
       </div>
@@ -186,10 +221,11 @@ export default function CrowdHall3D({ eventId }) {
         {Object.values(STATUS).map((s) => <span key={s.label} className="inline-flex items-center gap-1"><i style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: s.color }} />{s.icon && <s.icon className="w-3 h-3" aria-hidden="true" />}{s.label}</span>)}
       </div>
       <table className="tl-dash-table mt-3">
-        <thead><tr><th>Gate</th><th>Scans in this slot</th><th>Per hour</th><th>Capacity / hour</th><th>Load</th></tr></thead>
+        <thead><tr><th>Gate</th><th>Scans in this slot</th><th>Per hour</th><th>Capacity / hour</th><th>Load</th>{source === 'model' && <th>Chance over capacity</th>}</tr></thead>
         <tbody>{[...loads.entries()].map(([id, l]) => { const st = STATUS[statusOf(l.utilisation)]; return (
           <tr key={id}><td><strong>{l.name}</strong></td><td>{l.scans == null ? '—' : Math.round(l.scans)}</td><td>{l.perHour == null ? '—' : Math.round(l.perHour)}</td><td>{l.capacity ?? '—'}</td>
-            <td><span className="inline-flex items-center gap-1">{st.icon && <st.icon className="w-3.5 h-3.5" style={{ color: st.color }} aria-hidden="true" />}{l.utilisation == null ? '—' : `${Math.round(l.utilisation * 100)}%`} · {st.label}</span></td></tr>
+            <td><span className="inline-flex items-center gap-1">{st.icon && <st.icon className="w-3.5 h-3.5" style={{ color: st.color }} aria-hidden="true" />}{l.utilisation == null ? '—' : `${Math.round(l.utilisation * 100)}%`} · {st.label}</span></td>
+            {source === 'model' && <td>{l.pOver == null ? '—' : <><b>{Math.round(l.pOver * 100)}%</b>{Number.isFinite(l.low) && <div className="text-xs text-slate-500">range {Math.round(l.low)}–{Math.round(l.high)} scans</div>}</>}</td>}</tr>
         ); })}</tbody>
       </table>
       <p className="text-xs text-slate-500 mt-2">{source === 'model' ? 'Shadow AI model: an experiment beside the rule. ' : ''}The gate scanners, admission and staffing never use these numbers.</p>

@@ -49,6 +49,20 @@ CATALOGUE = {
                        "by default (43.5 MB xlsx, needs openpyxl).",
         "files": ["online_retail_II.xlsx"], "fetch": False,
     },
+    "credit_card_fraud": {
+        "title": "Credit Card Fraud Detection (ULB, September 2013)",
+        "url": "https://openml.org/data/v1/download/1673544/creditcard.arff",
+        "page": "https://www.openml.org/d/1597",
+        "license": "Public (OpenML dataset 1597, checked 2026-11-26); citation requested",
+        "citation": "Dal Pozzolo, A., Caelen, O., Johnson, R. A. & Bontempi, G. (2015). Calibrating Probability with Undersampling for Unbalanced Classification. IEEE Symposium on Computational Intelligence and Data Mining (CIDM).",
+        "rows": 284807, "label": "Class (1 = fraud, 492 of 284,807)",
+        "feature": "C. Fraud (method check only)",
+        "suitability": "Card transactions of European cardholders over two days, with anonymised PCA features: NOT ticket scalping "
+                       "and no shared inputs with the TicketLedger fraud model. Useful to check the fraud METHOD on genuinely "
+                       "recorded, very rare fraud: chronological split, calibration, a flag threshold fixed at 1% false flags on "
+                       "the calibration period, precision / recall against a simple rule.",
+        "files": ["creditcard.csv"], "fetch": True, "format": "arff",
+    },
 }
 # Looked at and NOT used
 REJECTED = {
@@ -56,7 +70,6 @@ REJECTED = {
                             "was not verified; cancellations are not ticket no-shows. Not used.",
     "kaggle_event_recommendation_challenge": "Kaggle competition data: the rules page could not be read (script-rendered), and "
                                              "competition data is normally limited to the competition. Not used.",
-    "credit_card_fraud": "Card-transaction fraud (anonymised PCA features): unrelated to ticket scalping bots. Not used.",
     "crowd_flow": "No public dataset of venue gate scans per 5 minutes was found. Crowd flow stays synthetic until real gate data exists.",
 }
 
@@ -69,14 +82,30 @@ def fetch(name, meta):
     out = os.path.join(BASE, name)
     os.makedirs(out, exist_ok=True)
     req = urllib.request.Request(meta["url"], headers={"User-Agent": "dataset-fetch/1.0"})
-    with urllib.request.urlopen(req, timeout=120) as r:
+    with urllib.request.urlopen(req, timeout=600) as r:
         blob = r.read()
-    with zipfile.ZipFile(io.BytesIO(blob)) as z:
-        for member in z.namelist():
-            base = os.path.basename(member)
-            if base in meta["files"]:
-                with open(os.path.join(out, base), "wb") as f:
-                    f.write(z.read(member))
+    if meta.get("format") == "arff":
+        # ARFF -> CSV: the header names the columns; the rows after @data are already comma-separated
+        cols, rows, in_data = [], [], False
+        for line in blob.decode("utf-8").splitlines():
+            t = line.strip()
+            if not t or t.startswith("%"):
+                continue
+            if in_data:
+                rows.append(t.replace("'", ""))
+            elif t.lower().startswith("@attribute"):
+                cols.append(t.split()[1].strip("'\""))
+            elif t.lower().startswith("@data"):
+                in_data = True
+        with open(os.path.join(out, meta["files"][0]), "w", encoding="utf-8", newline="") as f:
+            f.write(",".join(cols) + chr(10) + chr(10).join(rows) + chr(10))
+    else:
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            for member in z.namelist():
+                base = os.path.basename(member)
+                if base in meta["files"]:
+                    with open(os.path.join(out, base), "wb") as f:
+                        f.write(z.read(member))
     manifest = {"source_class": "PUBLIC", "name": name, **{k: meta[k] for k in ("title", "url", "page", "license", "citation", "label", "feature", "suitability")},
                 "archive_sha256": sha256(blob), "files": {fn: sha256(open(os.path.join(out, fn), "rb").read()) for fn in meta["files"]},
                 "downloaded_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),

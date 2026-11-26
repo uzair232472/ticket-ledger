@@ -87,6 +87,108 @@ function LinkAblation({ card }) {
   );
 }
 
+const pctx = (v, d = 1) => (v == null || !Number.isFinite(Number(v)) ? '—' : `${(Number(v) * 100).toFixed(d)}%`);
+const GROUP_LABEL = { city: 'City', event_type: 'Event type', payment_method: 'Payment method', customer_history: 'Customer history' };
+
+function Fairness({ card }) {
+  const f = card.diagnostics?.fairness;
+  if (!f) return null;
+  const fraud = card.model === 'fraud';
+  const binary = card.kind === 'binary';
+  return (
+    <Panel icon={ShieldCheck} title="Fairness check" sub={`The same test rows split by group. Flagged when: ${f.rule}.`} action={f.watch.length ? <Badge tone="amber" icon={AlertTriangle}>{f.watch.length} to review</Badge> : <Badge tone="green" icon={CheckCircle2}>none flagged</Badge>}>
+      {Object.entries(f.groups).map(([g, vals]) => (
+        <details key={g} className="tl-mc-table" open={Object.values(vals).some((r) => r.watch)}>
+          <summary>{GROUP_LABEL[g] || g} ({Object.keys(vals).length})</summary>
+          <div className="tl-ml-scroll">
+            <table className="tl-ml-table">
+              <thead><tr><th>Group</th><th className="num">Rows</th>
+                {fraud ? <><th className="num">False flags (AI)</th><th className="num">False flags (rule)</th><th className="num">Frauds caught (AI)</th></>
+                  : binary ? <><th className="num">Predicted</th><th className="num">Actual</th><th className="num">AUC</th></>
+                    : <><th className="num">AI error</th><th className="num">Rule error</th></>}
+                <th>Status</th></tr></thead>
+              <tbody>{Object.entries(vals).map(([v, r]) => (
+                <tr key={v}><td>{v.replace(/_/g, ' ')}</td><td className="num">{r.rows.toLocaleString()}</td>
+                  {r.note ? <td colSpan={fraud || binary ? 3 : 2} className="tl-pn-sub">{r.note}</td>
+                    : fraud ? <><td className="num">{pctx(r.false_flag_rate, 2)}</td><td className="num">{pctx(r.rule_false_flag_rate, 2)}</td><td className="num">{pctx(r.recall)}</td></>
+                      : binary ? <><td className="num">{pctx(r.predicted_rate)}</td><td className="num">{pctx(r.actual_rate)}</td><td className="num">{r.auc}</td></>
+                        : <><td className="num">{fmt(r.model, card.main_measure)}</td><td className="num">{fmt(r.rule, card.main_measure)}</td></>}
+                  <td>{r.note ? '—' : r.watch ? <Badge tone="amber" icon={AlertTriangle}>review</Badge> : <Badge tone="green" icon={CheckCircle2}>ok</Badge>}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </details>
+      ))}
+      <p className="tl-pn-sub" style={{ marginTop: 8 }}>{f.note}</p>
+    </Panel>
+  );
+}
+
+function Overload({ card }) {
+  const o = card.diagnostics?.overload;
+  if (!o) return null;
+  return (
+    <Panel icon={Gauge} title="Chance a gate goes over capacity" sub={`${o.note} Calibrated on the validation period; each dot is a tenth of the test slots.`}>
+      <dl className="tl-ml-grid">
+        <div className="tl-ml-fig"><dt>80% range held the real count</dt><dd>{pctx(o.range_coverage)}</dd></div>
+        <div className="tl-ml-fig"><dt>Test slots over capacity</dt><dd>{o.slots_over_capacity.toLocaleString()} / {o.slots.toLocaleString()}</dd></div>
+      </dl>
+      <CalibrationChart bins={o.calibration} />
+    </Panel>
+  );
+}
+
+function PublicData({ pub }) {
+  if (!pub?.report) return null;
+  const r = pub.report;
+  const fraud = pub.experiment === 'credit_card_fraud';
+  return (
+    <Panel icon={FlaskConical} title="Method check on real public data" sub={r.banner} action={<Badge tone="blue">public data</Badge>}>
+      {fraud ? (
+        <>
+          <table className="tl-ml-table">
+            <thead><tr><th>Detector</th><th className="num">Flagged</th><th className="num">Share of flags that are fraud</th><th className="num">Frauds caught</th><th className="num">False flags</th></tr></thead>
+            <tbody>
+              <tr><td>Model (threshold fixed at 1% false flags)</td><td className="num">{r.model.flagged}</td><td className="num">{pctx(r.model.precision)}</td><td className="num"><b>{pctx(r.model.recall)}</b></td><td className="num">{pctx(r.model.false_flag_rate, 2)}</td></tr>
+              <tr><td>{r.rule.rule}</td><td className="num">{r.rule.flagged}</td><td className="num">{pctx(r.rule.precision)}</td><td className="num">{pctx(r.rule.recall)}</td><td className="num">{pctx(r.rule.false_flag_rate, 2)}</td></tr>
+            </tbody>
+          </table>
+          <p className="tl-pn-sub" style={{ marginTop: 8 }}>{r.split.rows.test.toLocaleString()} test transactions, {r.split.frauds.test} frauds (base rate {pctx(r.base_rate, 2)}): the model's flags are {r.model.lift_over_random}x more likely to be fraud than a random transaction. AUC {r.model.test_auc}; 95% interval of the recall gain {pctx(r.recall_gain_95ci[0])} to {pctx(r.recall_gain_95ci[1])}.</p>
+        </>
+      ) : (
+        <table className="tl-ml-table">
+          <thead><tr><th>Variant</th><th className="num">Buyers in the top 10% (AI)</th><th className="num">Rule</th><th className="num">AUC</th><th className="num">Calibration error</th></tr></thead>
+          <tbody>{['without_PageValues', 'with_PageValues'].filter((k) => r[k]).map((k) => (
+            <tr key={k}><td>{k === 'without_PageValues' ? 'Honest (no after-the-fact page values)' : 'With page values (leaks the outcome)'}</td><td className="num"><b>{pctx(r[k].top10_buyer_share)}</b></td><td className="num">{pctx(r[k].rule_top10_buyer_share)}</td><td className="num">{r[k].test_auc}</td><td className="num">{r[k].calibration_error_ece}</td></tr>
+          ))}</tbody>
+        </table>
+      )}
+      <p className="tl-pn-sub" style={{ marginTop: 8 }}>Source: {r.source.title}. {r.source.citation} Licence: {r.source.license}. This shows the method works on genuinely recorded data; it says nothing about TicketLedger's own customers.</p>
+    </Panel>
+  );
+}
+
+function RealData({ real, card }) {
+  if (!real) return null;
+  if (real.status === 'WAITING_FOR_LIVE_DATA') {
+    return (
+      <Panel icon={FlaskConical} title="Test on TicketLedger's own data" action={<Badge tone="grey">waiting for live data</Badge>}>
+        <p className="tl-pn-sub" style={{ marginTop: 0 }}>{real.note}</p>
+        <p className="tl-pn-sub">When it appears, this panel shows the same test as above (AI vs the current rule on the newest unseen period) on real customers, with its own pass or fail.</p>
+      </Panel>
+    );
+  }
+  if (real.unavailable_reason) return null;
+  const res = real.result || {};
+  return (
+    <Panel icon={FlaskConical} title="Test on TicketLedger's own data" sub={`Export ${real.stamp}: ${(real.data?.rows || 0).toLocaleString()} rows.`} action={<Badge tone={real.status === 'PASSED' ? 'green' : 'amber'}>{real.status}</Badge>}>
+      <p className="tl-pn-sub" style={{ marginTop: 0 }}>{real.main_measure}: AI {fmt(res.model, real.main_measure)} vs rule {fmt(res.baseline, real.main_measure)} (95% interval of the improvement {fmt(res.improvement_95ci?.[0], real.main_measure)} to {fmt(res.improvement_95ci?.[1], real.main_measure)}).</p>
+      {real.reasons?.length > 0 && <ul className="tl-pn-sub">{real.reasons.map((x) => <li key={x}>{x}</li>)}</ul>}
+      <p className="tl-pn-sub">Recommendation: {real.recommendation}. Nothing is promoted automatically.</p>
+    </Panel>
+  );
+}
+
 function Drift({ drift }) {
   if (!drift) return null;
   return (
@@ -190,6 +292,7 @@ export default function ModelCard() {
         controls={(
           <>
             <Link className="tl-st-btn tl-st-btn--light" to="/admin/ai-monitor"><ArrowLeft className="w-4 h-4" /> AI monitor</Link>
+            <Link className="tl-st-btn tl-st-btn--light" to="/admin/ai-readiness">Go-live readiness</Link>
             <button type="button" className="tl-st-btn tl-st-btn--light" onClick={load} disabled={state === 'loading'}><RefreshCw className={`w-4 h-4 ${state === 'loading' ? 'tl-dash-spin' : ''}`} /> Refresh</button>
           </>
         )}
@@ -246,6 +349,10 @@ export default function ModelCard() {
               </Panel>
             )}
             {hasCard && name === 'fraud' && <LinkAblation card={card} />}
+            {hasCard && <Overload card={card} />}
+            {hasCard && <Fairness card={card} />}
+            <PublicData pub={data.public_data} />
+            <RealData real={data.real_data} card={card} />
             <Drift drift={data.drift} />
             {hasCard && card.guards?.length > 0 && (
               <Panel icon={ShieldCheck} title="Must-not-get-worse checks" sub="Fixed before any model was evaluated (ml/gates.py). One failure rejects the model.">
