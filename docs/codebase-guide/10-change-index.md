@@ -67,7 +67,7 @@
 | Intent / abandoned scoring rules | `services/intentAnalyticsService.js` | pages `PurchaseIntentAnalytics`, `AbandonedIntentDashboard` |
 | Fix behaviour profile ML scoring | `behaviorService.getUserBehavioralProfile` (calls non-existent `predictPurchaseIntent`/`predictFraud`) | `mlService.scorePurchaseIntent` / `checkFraudRisk` |
 | Demand forecast rules (launch time, price warnings) | `eventController.getPreLaunchDemandForecast` | `DemandForecast.jsx` |
-| ML models / features | `apps/ml-service/scripts/train_*.py`, `main.py execute_*` | `mlService.js` payload mapping; retrain and regenerate `model_metrics.json` |
+| ML models / features | `apps/ml-service/scripts/train_*.py`, `main.py execute_*` | `mlService.js` payload mapping; retrain with `python -m ml.train` (reports in `reports/v0/`) |
 | ML service URL / timeouts | `services/mlService.js` | `ML_SERVICE_URL` |
 | NFT minting / contract address | `services/nftService.js` | `.env` names (`POLYGON_PRIVATE_KEY`, `TICKET_NFT_CONTRACT_ADDRESS`), `contracts/` |
 | Smart contract logic | `contracts/contracts/TicketLedgerNFT.sol` | `contracts/test/…`, `nftService` ABI |

@@ -209,7 +209,9 @@ test('flags off: the insight and monitor endpoints answer disabled', async () =>
 // The application decides identically whatever the ML service does
 // ---------------------------------------------------------------------------------------------
 const bookable = await prisma.event.findFirst({
-  where: { status: 'PUBLISHED', isHidden: false, cancelledAt: null, terms: null, OR: [{ salesOpenAt: null }, { salesOpenAt: { lte: new Date() } }], AND: [{ OR: [{ salesCloseAt: null }, { salesCloseAt: { gt: new Date() } }] }] },
+  where: { status: 'PUBLISHED', isHidden: false, cancelledAt: null, terms: null, OR: [{ salesOpenAt: null }, { salesOpenAt: { lte: new Date() } }], AND: [{ OR: [{ salesCloseAt: null }, { salesCloseAt: { gt: new Date() } }] },
+    // not started yet (assertOnSale closes sales at the start): the copy's older events have passed by now
+    { OR: [{ startsAt: { gt: new Date(Date.now() + 2 * 3600_000) } }, { startsAt: null, date: { gt: new Date(Date.now() + 2 * 86400_000) } }] }] },
   select: { id: true },
 });
 const strip = (j) => JSON.parse(JSON.stringify(j, (k, v) => (['orderId', 'requestId', 'timestamp', 'generated_at'].includes(k) ? undefined : v)));
@@ -285,7 +287,10 @@ test('insights label every ML failure; the rules part is unchanged', async () =>
   for (const m of models) {
     assert.equal(m.registered.may_serve_decisions, false);
     assert.equal(m.evaluation.metrics, null);
+    // The five v0 models are always registered; the others may be (ml-register-models.mjs registers the whole
+    // registry). Either way: SHADOW only, or explicitly not registered
     if (['intent', 'abandonment', 'fraud', 'demand', 'crowd'].includes(m.name)) assert.equal(m.registered.status, 'SHADOW', m.name);
+    else if (m.registered.status) assert.equal(m.registered.status, 'SHADOW', m.name);
     else assert.equal(m.registered.unavailable_reason, 'NO_MODEL_REGISTERED', m.name);
   }
   // The what-if changed no price and did not publish or otherwise touch the event

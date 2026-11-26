@@ -61,7 +61,8 @@ export const COLUMNS = {
   fraud_purchases: ['order_id', 'customer_id', 'event_id', 'ts', 'event_type', 'city', 'country', 'tickets_requested', 'currency',
     'total_amount', 'unit_price_rel', 'payment_method', 'checkout_duration_seconds', 'clicks_per_minute', 'rapid_seat_attempts',
     'time_on_seatmap_seconds', 'device_switches', 'account_age_days', 'customer_prior_orders', 'orders_last_24h', 'failed_payments_30d',
-    'prior_resale_listings', 'hours_since_sales_open', 'is_fraud', 'sample_weight', 'rule_flag', 'rule_score', 'feature_source'],
+    'prior_resale_listings', 'hours_since_sales_open', 'linked_accounts', 'linked_accounts_confirmed_fraud', 'linked_orders_same_event_24h',
+    'is_fraud', 'sample_weight', 'rule_flag', 'rule_score', 'feature_source'],
   event_demand: ['event_id', 'organizer_id', 'ts', 'event_start', 'event_type', 'city', 'country', 'timezone', 'venue_capacity',
     'tier_count', 'currency', 'min_price', 'avg_price', 'max_price', 'min_price_rel', 'avg_price_rel', 'max_price_rel', 'day_of_week',
     'start_hour', 'sales_open_hour', 'lead_days', 'start_month', 'organizer_past_events', 'organizer_past_sell_through_48h', 'sales_48h',
@@ -400,6 +401,7 @@ async function exportVisits(db, ctx, now, sink) {
 // ---------------------------------------------------------------------------------------------
 // fraud_purchases: logged checkout snapshots + blind review labels, weighted by the sampling design
 // ---------------------------------------------------------------------------------------------
+const LINK_INPUTS = ['linked_accounts', 'linked_accounts_confirmed_fraud', 'linked_orders_same_event_24h'];
 async function exportFraud(db, ctx, now, sink) {
   const out = new Out('fraud_purchases', (r) => r.order_id, sink, ctx);
   const t = out.tally;
@@ -425,6 +427,8 @@ async function exportFraud(db, ctx, now, sink) {
       if (disputed.has(order.id)) { quality.disputed += 1; t.skip('payment disputed (kept separate from fraud labels)'); continue; }
       const bad = snapshotProblem(p);
       if (bad) { t.skip(bad); continue; }
+      // Snapshots logged before the account-link inputs existed: the values are not reconstructed afterwards
+      if (!LINK_INPUTS.every((k) => Number.isFinite(p.features?.[k]))) { t.skip('snapshot taken before account-link inputs'); continue; }
       const s = samples.get(p.subjectId);
       if (!s) { quality.notSampled += 1; t.skip('not yet placed in the review sample'); continue; }
       if (!s.selected) { quality.sampledNotSelected += 1; t.skip('not selected for review (no label)'); continue; }

@@ -297,3 +297,32 @@ export async function reviewMetrics({ from, to } = {}) {
     note: notes.join(' '),
   };
 }
+
+/**
+ * Reviewed cases for the AI monitor (SUPER_ADMIN; reviewers never call this). Only samples whose blind review is
+ * RESOLVED, so nothing about an open queue item is shown: the rule decision, the shadow model's probability and
+ * its top reasons (logged with the shadow row), next to the reviewer's decision. For reading model behaviour,
+ * not for deciding: the order, payment, tickets and account are not changed by anything here.
+ */
+export async function reviewedCases({ limit = 30 } = {}, db = prisma) {
+  const samples = await db.fraudSample.findMany({
+    where: { selected: true, reviews: { some: { blind: true, decision: { in: ['CONFIRMED_FRAUD', 'LEGITIMATE'] } } } },
+    orderBy: { sampledAt: 'desc' }, take: Math.min(100, Math.max(1, limit)),
+    select: { id: true, orderId: true, cell: true, inclusionProbability: true, ruleDecision: true, ruleScore: true, mlProbability: true, mlWouldFlag: true, shadowPredictionId: true, sampledAt: true,
+      reviews: { select: { decision: true, createdAt: true, blind: true } } },
+  });
+  const ids = samples.map((s) => s.shadowPredictionId).filter(Boolean);
+  const shadow = new Map((ids.length ? await db.mlPrediction.findMany({ where: { id: { in: ids } }, select: { id: true, output: true } }) : []).map((p) => [p.id, p.output]));
+  return samples.map((s) => {
+    const e = effectiveReview(s.reviews);
+    if (!e || e.decision === 'UNRESOLVED') return null;
+    const out = shadow.get(s.shadowPredictionId);
+    return {
+      sampleId: s.id, cell: s.cell, samplingRate: s.inclusionProbability, sampledAt: s.sampledAt,
+      rule: { decision: s.ruleDecision, score: s.ruleScore },
+      model: { probability: s.mlProbability, wouldFlag: s.mlWouldFlag, reasons: Array.isArray(out?.reasons) ? out.reasons : null },
+      review: { decision: e.decision, at: e.createdAt },
+      agreement: (s.mlWouldFlag ? 'CONFIRMED_FRAUD' : 'LEGITIMATE') === e.decision ? 'model matched the review' : 'model did not match the review',
+    };
+  }).filter(Boolean);
+}

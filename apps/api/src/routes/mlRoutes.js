@@ -5,7 +5,7 @@ import { mlInsightsRateLimiter, mlLegacyRateLimiter } from '../middlewares/rateL
 import { orgGuard } from '../middlewares/auth.js';
 import {
   getAbandonmentInsight, getAttendanceInsight, getBehaviourInsight, getCrowdInsight, getDemandInsight, getFraudInsight,
-  getIntentInsight, getMlFlags, getMonitor,
+  getIntentInsight, getMlFlags, getMonitor, getModelOps, getReviewedCases, getAccountGraph,
 } from '../controllers/mlInsightsController.js';
 import {
   checkFraud,
@@ -55,10 +55,15 @@ router.get('/fraud-review/queue', authenticateJWT, requireAdmin('admin.fraud'), 
 router.post('/fraud-review/:sampleId', authenticateJWT, requireAdmin('admin.fraud'), submitFraudReview);
 router.get('/fraud-review/:sampleId/history', authenticateJWT, requireAdmin('admin.fraud'), fraudReviewHistory);
 router.get('/fraud-review-metrics', authenticateJWT, requireRole('SUPER_ADMIN'), fraudReviewMetrics);
+// Resolved blind reviews beside the rule decision, model probability and its reasons (never shown to reviewers)
+router.get('/fraud-review-cases', authenticateJWT, requireRole('SUPER_ADMIN'), getReviewedCases);
+// Accounts linked by a shared phone number or browser (investigations); viewing counts as detector exposure
+router.get('/account-graph/:userId', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getAccountGraph);
 
 // Step 6: read-only AI insights (aggregates; rules decide everything) and the AI monitor
 router.get('/flags', getMlFlags);
 router.get('/monitor', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getMonitor);
+router.get('/ops/:name', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getModelOps);
 router.get('/insights/behaviour', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getBehaviourInsight);
 router.get('/insights/fraud', authenticateJWT, requireRole('SUPER_ADMIN'), mlInsightsRateLimiter, getFraudInsight);
 router.get('/insights/events/:id/intent', ...orgGuard('attendee.view'), mlInsightsRateLimiter, getIntentInsight);

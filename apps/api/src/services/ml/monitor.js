@@ -175,3 +175,90 @@ export async function monitorSnapshot() {
     warnings,
   };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Model ops (SUPER_ADMIN): the offline model card + a live input-drift check. Drift compares the INPUTS logged
+// with recent shadow predictions against the training distributions (PSI); it needs no outcome and measures no
+// accuracy, so it keeps the rule above (accuracy is only ever measured offline).
+// ---------------------------------------------------------------------------------------------
+export const DRIFT = { days: 14, maxRows: 3000, minRows: 100, watch: 0.10, alert: 0.25 };
+const EPS = 1e-4;
+
+/** Population stability index of two share vectors (same bins). */
+export function psi(ref, cur) {
+  let total = 0;
+  for (let i = 0; i < ref.length; i++) {
+    const r = Math.max(ref[i], EPS), c = Math.max(cur[i], EPS);
+    total += (c - r) * Math.log(c / r);
+  }
+  return Math.round(total * 10000) / 10000;
+}
+
+/** Live shares of each input in the training bins, then PSI per input. rows: array of feature objects. */
+export function driftOf(reference, rows) {
+  const out = [];
+  for (const [f, spec] of Object.entries(reference.numeric || {})) {
+    const vals = rows.map((r) => Number(r[f])).filter(Number.isFinite);
+    if (!vals.length) continue;
+    const counts = new Array(spec.edges.length + 1).fill(0);
+    for (const v of vals) { let k = 0; while (k < spec.edges.length && v >= spec.edges[k]) k += 1; counts[k] += 1; }
+    const shares = counts.map((c) => c / vals.length);
+    out.push({ feature: f, kind: 'numeric', psi: psi(spec.shares, shares), rows: vals.length, training_median: reference.typical?.[f] ?? null, live_median: median(vals) });
+  }
+  for (const [f, spec] of Object.entries(reference.categorical || {})) {
+    const vals = rows.map((r) => (r[f] === null || r[f] === undefined ? '(missing)' : String(r[f])));
+    if (!vals.length) continue;
+    const keys = Object.keys(spec.shares);
+    const counts = Object.fromEntries(keys.map((k) => [k, 0]));
+    let other = 0;
+    for (const v of vals) { if (v in counts) counts[v] += 1; else other += 1; }
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+    out.push({
+      feature: f, kind: 'category', rows: vals.length,
+      psi: psi([...keys.map((k) => spec.shares[k]), spec.other_share], [...keys.map((k) => counts[k] / vals.length), other / vals.length]),
+      training_most_common: reference.typical?.[f] ?? null, live_most_common: top && top[1] > 0 ? top[0] : other ? 'a value not seen in training' : null,
+    });
+  }
+  for (const d of out) d.status = d.psi > DRIFT.alert ? 'DRIFT' : d.psi > DRIFT.watch ? 'WATCH' : 'STABLE';
+  return out.sort((a, b) => b.psi - a.psi);
+}
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return Math.round((s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2) * 1000) / 1000; };
+
+export async function driftCheck(name, model) {
+  const { db, get, now } = deps;
+  let ref;
+  try {
+    ref = await get(`/v2/reference/${name}?sha256=${model.sha256}`, { timeoutMs: 3000 });
+  } catch (e) {
+    return { status: 'UNAVAILABLE', reason: e.status === 404 ? 'the registered model has no training profile (built before profiles existed)' : `ML service ${e.status ? `status ${e.status}` : 'unreachable'}` };
+  }
+  const since = new Date(now().getTime() - DRIFT.days * 86400_000);
+  const rows = await db.mlPrediction.findMany({
+    where: { modelName: name, role: 'SHADOW', modelId: model.id, createdAt: { gte: since }, score: { not: null } },
+    select: { features: true }, orderBy: { createdAt: 'desc' }, take: DRIFT.maxRows,
+  });
+  const feats = rows.map((r) => r.features).filter((f) => f && typeof f === 'object');
+  const base = { window_days: DRIFT.days, live_rows: feats.length, thresholds: { watch: DRIFT.watch, drift: DRIFT.alert }, trained_from: ref.trained_from, trained_to: ref.trained_to,
+    note: 'Inputs only (no outcomes, no accuracy). Live rows include internal and test activity, and synthetic training data will differ from real traffic.' };
+  if (feats.length < DRIFT.minRows) return { ...base, status: 'NOT_ENOUGH_ROWS', minimum_rows: DRIFT.minRows, features: [] };
+  const features = driftOf(ref.reference, feats);
+  const drifted = features.filter((f) => f.status === 'DRIFT').map((f) => f.feature);
+  return { ...base, status: drifted.length ? 'DRIFT' : features.some((f) => f.status === 'WATCH') ? 'WATCH' : 'STABLE', drifted, features };
+}
+
+export async function modelOps(name) {
+  const m = MONITORED.find((x) => x.name === name);
+  if (!m) throw Object.assign(new Error('Unknown model'), { status: 404 });
+  const { db, get, now } = deps;
+  const model = await db.mlModel.findFirst({ where: { name, status: 'SHADOW' }, orderBy: { registeredAt: 'desc' } });
+  const [card, drift] = await Promise.all([
+    get(`/v2/model-card/${name}`, { timeoutMs: 3000 }).catch((e) => ({ unavailable_reason: e.status === 404 ? 'NO_REPORT' : 'ML_SERVICE_UNAVAILABLE' })),
+    model ? driftCheck(name, model) : { status: 'UNAVAILABLE', reason: 'no model registered' },
+  ]);
+  const fingerprintOk = !card.registry_sha256 || !model || card.registry_sha256 === model.sha256;
+  return {
+    decision_source: 'rules', generated_at: now().toISOString(), model: name, title: m.title, feature: m.feature,
+    registered: { ...modelBlock(name, model), registered_at: model?.registeredAt ?? null },
+    card, card_matches_registered_model: fingerprintOk, drift,
+  };
+}

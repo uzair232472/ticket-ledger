@@ -22,6 +22,9 @@ import { referenceInputs } from './features.js';
 const SHADOW_TIMEOUT_MS = Number(process.env.ML_SHADOW_TIMEOUT_MS) || 2000; // off the request path
 const MODEL_CACHE_MS = 60_000;
 const BATCH = 500; // rows per ML call (the service accepts up to 1000)
+// Models whose shadow rows also log the top-3 reasons (ml/explain.py). Per-customer models with large batches
+// (intent, abandonment, attendance) are left out: ~15 extra model evaluations per row would slow the jobs.
+export const EXPLAINED_MODELS = new Set(['fraud', 'demand', 'demand_hourly', 'crowd']);
 const modelCache = new Map(); // name -> { at, model }
 
 // Swappable for tests only (database and ML service stand-ins; hooks to inject concurrent changes)
@@ -71,7 +74,7 @@ export async function logPredictions(name, items) {
     let callError = null;
     if (model && withInputs.length) {
       try {
-        const r = await deps.post(`/v2/shadow/${name}`, { sha256: model.sha256, rows: withInputs.map((it) => it.features) }, { timeoutMs: SHADOW_TIMEOUT_MS });
+        const r = await deps.post(`/v2/shadow/${name}`, { sha256: model.sha256, rows: withInputs.map((it) => it.features), explain: EXPLAINED_MODELS.has(name) }, { timeoutMs: SHADOW_TIMEOUT_MS });
         preds = r.predictions;
       } catch (e) {
         callError = e.name === 'TimeoutError' ? 'timeout' : e.message;

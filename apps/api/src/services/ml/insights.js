@@ -358,14 +358,20 @@ export async function demandLive(event, model, whatIf, post = mlPost) {
     rows.push({ key: 'what_if', f: w });
   }
   try {
-    const r = await post(`/v2/shadow/${model.name}`, { sha256: model.sha256, rows: rows.map((x) => x.f) }, { timeoutMs: WHAT_IF_TIMEOUT_MS });
+    const r = await post(`/v2/shadow/${model.name}`, { sha256: model.sha256, rows: rows.map((x) => x.f), explain: true }, { timeoutMs: WHAT_IF_TIMEOUT_MS });
     const preds = r.predictions || [];
     if (r.may_serve_decisions !== false || preds.length !== rows.length) {
       return { current: null, sensitivity: null, what_if: whatIf ? { unavailable_reason: 'UNEXPECTED_RESPONSE' } : null, unavailable_reason: 'UNEXPECTED_RESPONSE' };
     }
     const at = (key) => preds[rows.findIndex((x) => x.key === key)];
     const cur = at('current');
-    const current = { sales_48h: cur.sales_48h, low: cur.low, high: cur.high, capacity: f.venue_capacity, stored: false, applied: false };
+    const current = {
+      sales_48h: cur.sales_48h, low: cur.low, high: cur.high, capacity: f.venue_capacity, stored: false, applied: false,
+      // What moves this forecast most (one input at a time vs a typical event; ml/explain.py)
+      reasons: Array.isArray(cur.reasons) ? cur.reasons : null,
+      // How often the 80% range held the real number in the offline test (registry evaluation)
+      range_level: 0.8, range_offline_coverage: Number.isFinite(model.evaluation?.range_coverage) ? model.evaluation.range_coverage : null,
+    };
     const sensitivity = rows.filter((x) => x.label).map((x) => {
       const p = at(x.key);
       return { key: x.key, label: x.label, sales_48h: p.sales_48h, change: Math.round((p.sales_48h - cur.sales_48h) * 10) / 10 };

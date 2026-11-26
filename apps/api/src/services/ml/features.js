@@ -10,6 +10,7 @@
 import prisma from '../../config/prisma.js';
 import { dataPolicy, organizerExclusion } from './dataPolicy.js';
 import { latestInputChange } from './snapshotIntegrity.js';
+import { linkFeatures } from './accountLinks.js';
 
 // Single place to change when events get their own country / time zone (the platform is Pakistan-only today)
 export const COUNTRY = 'PK';
@@ -168,6 +169,8 @@ export async function fraudFeatures({ userId, eventId, seatIds, telemetry, payme
     hours_since_sales_open: round(Math.max(0, at - salesOpenOf(event)) / HOUR, 2),
   };
   for (const [col, key] of Object.entries(TELEMETRY)) row[col] = Number(telemetry[key]);
+  // Account links (shared phone number or browser) as of the checkout: accountLinks.js
+  Object.assign(row, await linkFeatures({ userId, eventId, at: new Date(at) }));
   return row;
 }
 

@@ -92,7 +92,7 @@ const checkIn = async (ticket, ev, gateName, at) => {
   await prisma.ticket.update({ where: { id: ticket.id }, data: { checkedInAt: at, status: 'SCANNED' } });
 };
 const behave = (userId, eventId, action, at, metadata) => prisma.behaviorEvent.create({ data: { userId, eventId, action, sessionId: `fx-${tag}`, createdAt: at, metadata } });
-const FRAUD_FEATURES = { event_type: 'CRICKET_MATCH', city: 'Lahore', country: 'PK', payment_method: 'STRIPE', tickets_requested: 2, unit_price_rel: 1, checkout_duration_seconds: 40, clicks_per_minute: 20, rapid_seat_attempts: 0, time_on_seatmap_seconds: 30, device_switches: 0, account_age_days: 300, customer_prior_orders: 1, orders_last_24h: 0, failed_payments_30d: 0, prior_resale_listings: 0, hours_since_sales_open: 100 };
+const FRAUD_FEATURES = { event_type: 'CRICKET_MATCH', city: 'Lahore', country: 'PK', payment_method: 'STRIPE', tickets_requested: 2, unit_price_rel: 1, checkout_duration_seconds: 40, clicks_per_minute: 20, rapid_seat_attempts: 0, time_on_seatmap_seconds: 30, device_switches: 0, account_age_days: 300, customer_prior_orders: 1, orders_last_24h: 0, failed_payments_30d: 0, prior_resale_listings: 0, hours_since_sales_open: 100, linked_accounts: 0, linked_accounts_confirmed_fraud: 0, linked_orders_same_event_24h: 0 };
 /** The checkout's fraud prediction, logged by the real logger at the time of the order (in fixture order). */
 const fraudLog = (o, decision) => logPredictions('fraud', [{ subjectType: 'ORDER', subjectId: o.id, eventId: o.eventId, userId: o.userId, asOf: o.createdAt, rule: { score: decision === 'SUSPICIOUS' ? 60 : 10, decision }, features: FRAUD_FEATURES }]);
 async function fraudCase(o, { decision, cell, p, reviews }) {
