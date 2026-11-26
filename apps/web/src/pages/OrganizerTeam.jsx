@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Users, Mail, ShieldCheck, ScanLine, History, Send, RefreshCw, XCircle, UserX, UserCheck, Trash2, KeyRound, Download, Crown } from 'lucide-react';
+import { Users, Mail, ShieldCheck, ScanLine, History, Send, RefreshCw, XCircle, UserX, UserCheck, Trash2, KeyRound, Download, Crown, X, CalendarDays } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/ui/DialogProvider';
@@ -275,6 +275,7 @@ function MemberAccess({ member, events, catalog, has, scope, run }) {
 function Invitations({ invites, events, has, isOwner, scope, run, dialog, myEventIds }) {
   const [form, setForm] = useState({ email: '', role: 'STAFF', eventIds: [] });
   const [error, setError] = useState('');
+  const [inviteOpen, setInviteOpen] = useState(false); // the invite form opens in a dialog
   const pickable = myEventIds ? events.filter((e) => myEventIds.includes(e.id)) : events;
   const roles = Object.keys(ROLE_LABELS).filter((r) => isOwner || !OWNER_ONLY.includes(r));
 
@@ -285,37 +286,56 @@ function Invitations({ invites, events, has, isOwner, scope, run, dialog, myEven
     if (bad) return;
     await run(() => api.post('/org/invitations', { email: form.email.trim().toLowerCase(), role: form.role, eventIds: SCOPED.includes(form.role) ? form.eventIds : [] }, { params: scope }), 'Invitation sent.');
     setForm({ email: '', role: form.role, eventIds: [] });
+    setInviteOpen(false);
   };
 
   return (
     <div className="space-y-6">
       {has('staff.invite') && (
-        <DashCard title="Invite someone" sub="New and existing TicketLedger accounts. The link works once and expires in 72 hours." icon={Send}>
-          <form onSubmit={submit} className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <input className="tl-dash-input" type="email" placeholder="name@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} aria-label="Email" />
-              <select className="tl-dash-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} aria-label="Role">
-                {roles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-              </select>
-              <button type="submit" className="tl-st-btn tl-st-btn--green tl-st-btn--sm">Send invitation</button>
-            </div>
-            {error && <p className="text-xs text-rose-600">{error}</p>}
+        <section className="tl-inv-cta">
+          <span className="tl-inv-cta-icon" aria-hidden="true"><Send /></span>
+          <div>
+            <h2>Invite someone</h2>
+            <p>New and existing TicketLedger accounts. The link works once and expires in 72 hours.</p>
+          </div>
+          <button type="button" className="tl-st-btn tl-st-btn--green" onClick={() => { setError(''); setInviteOpen(true); }}>
+            <Send className="w-4 h-4" aria-hidden="true" /> Send invite
+          </button>
+        </section>
+      )}
+      {has('staff.invite') && inviteOpen && (
+        <div className="tl-dash-dialog-backdrop" onClick={(e) => e.target === e.currentTarget && setInviteOpen(false)}>
+          <form onSubmit={submit} className="tl-dash-dialog tl-inv-dialog" role="dialog" aria-modal="true" aria-labelledby="tl-inv-title">
+            <button type="button" className="tl-inv-close" onClick={() => setInviteOpen(false)} aria-label="Close"><X className="w-4 h-4" /></button>
+            <h3 id="tl-inv-title">Invite someone</h3>
+            <p>The link works once and expires in 72 hours.</p>
+            <label htmlFor="tl-inv-email">Email</label>
+            <input id="tl-inv-email" className="tl-dash-input" type="email" placeholder="name@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} autoFocus />
+            <label htmlFor="tl-inv-role">Role</label>
+            <select id="tl-inv-role" className="tl-dash-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              {roles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+            </select>
             {SCOPED.includes(form.role) && (
-              <div>
-                <p className="text-xs font-bold mb-1">Events they can work on</p>
-                <div className="flex flex-wrap gap-3">
+              <fieldset className="tl-inv-events">
+                <legend><CalendarDays className="w-4 h-4" aria-hidden="true" /> Events they can work on <span>({form.eventIds.length} selected)</span></legend>
+                <div>
                   {pickable.map((ev) => (
-                    <label key={ev.id} className="text-xs flex items-center gap-1">
+                    <label key={ev.id} className={form.eventIds.includes(ev.id) ? 'is-on' : undefined}>
                       <input type="checkbox" checked={form.eventIds.includes(ev.id)} onChange={() => setForm({ ...form, eventIds: form.eventIds.includes(ev.id) ? form.eventIds.filter((x) => x !== ev.id) : [...form.eventIds, ev.id] })} />
-                      {ev.name}
+                      <span>{ev.name}</span>
                     </label>
                   ))}
-                  {!pickable.length && <span className="text-xs text-slate-500">No events to assign yet.</span>}
+                  {!pickable.length && <span className="tl-inv-none">No events to assign yet.</span>}
                 </div>
-              </div>
+              </fieldset>
             )}
+            {error && <p className="tl-inv-error" role="alert">{error}</p>}
+            <div className="tl-dash-dialog-actions">
+              <button type="button" className="tl-dash-btn" onClick={() => setInviteOpen(false)}>Cancel</button>
+              <button type="submit" className="tl-dash-btn tl-dash-btn--green"><Send className="w-4 h-4" aria-hidden="true" /> Send invitation</button>
+            </div>
           </form>
-        </DashCard>
+        </div>
       )}
       <DashCard title="Invitations" icon={Mail}>
         {!invites.length ? <DashState icon={Mail} title="No invitations" /> : (

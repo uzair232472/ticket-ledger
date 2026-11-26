@@ -1,4 +1,5 @@
 import React from 'react';
+import { DarkHero, useAdminDark } from './DashShell';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 /*
@@ -8,6 +9,11 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 /** Breadcrumb + large title + intro, then a row with page controls (left) and actions (right). */
 export function StudioHead({ crumbs = [], title, intro, controls, actions }) {
+  // Admin console (dark layout): the stadium heading, with the pickers and actions on the right
+  const dark = useAdminDark();
+  if (dark) {
+    return <DarkHero title={title} intro={intro} aside={(controls || actions) && <div className="tl-dk-tools">{controls}{actions}</div>} />;
+  }
   return (
     <header className="tl-sh">
       {crumbs.length > 0 && (

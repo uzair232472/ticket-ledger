@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, CalendarClock, Check, CheckCircle2, Eye, HelpCircle, Info, Mail, RefreshCw, XCircle } from 'lucide-react';
+import { Armchair, Building2, CalendarCheck, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronRight, Clock, Eye, HelpCircle, Info, Mail, MapPin, MessageSquare, RefreshCw, Send, Tag, Ticket, XCircle } from 'lucide-react';
+import { getEventVisual } from '../utils/eventMedia';
+import { PageHero, AovFooter } from './AdminOverview';
 import api from '../utils/api';
 import { formatEventTime } from '../utils/eventTime';
 import { categoryName } from '../components/home/homeData';
@@ -126,25 +128,32 @@ function ReviewCard({ event, onReviewed }) {
   return (
     <div className="tl-eva-row">
       <article className="tl-eva-card">
-        <div className="tl-eva-tags">
-          <span className={`tl-eva-tag is-${status.tone}`}>{status.label}</span>
-          <span className="tl-eva-tag is-outline">{KIND_TAG[kind]}</span>
-          {event.isHidden && !pending && <span className="tl-eva-tag is-amber">Hidden by organizer</span>}
+        <div className="tl-eva-top">
+          <div className="tl-eva-top-copy">
+            <div className="tl-eva-tags">
+              <span className={`tl-eva-tag is-${status.tone}`}>{status.label}</span>
+              <span className="tl-eva-tag is-outline">{KIND_TAG[kind]}</span>
+              {event.isHidden && !pending && <span className="tl-eva-tag is-amber">Hidden by organizer</span>}
+            </div>
+            <h2>{event.name}</h2>
+            <p className="tl-eva-cat"><Tag className="w-4 h-4" aria-hidden="true" /> {categoryName(event.type, event.categoryLabel)}</p>
+            <p className="tl-eva-company"><Building2 className="w-4 h-4" aria-hidden="true" /> {event.company?.companyName}</p>
+          </div>
+          <div className="tl-eva-photo" aria-hidden="true">
+            <img src={getEventVisual(event).image} alt="" loading="lazy" onError={(e) => e.currentTarget.remove()} />
+          </div>
         </div>
-        <h2>{event.name}</h2>
-        <p className="tl-eva-cat">{categoryName(event.type, event.categoryLabel)}</p>
-        <p className="tl-eva-company"><Building2 className="w-5 h-5" aria-hidden="true" /> {event.company?.companyName}</p>
 
         <hr />
         <h3>Event details</h3>
         <dl className="tl-eva-facts">
-          <div><dt>Requested date</dt><dd>{day(event.startsAt || event.date)}</dd></div>
-          <div><dt>Start time</dt><dd>{time || '—'}</dd></div>
-          <div><dt>Location</dt><dd>{event.city}<small>{event.venue}</small></dd></div>
-          <div><dt>Seats</dt><dd>{(event._count?.seats || 0).toLocaleString()}</dd></div>
+          <div><dt><CalendarDays aria-hidden="true" />Requested date</dt><dd>{day(event.startsAt || event.date)}</dd></div>
+          <div><dt><Clock aria-hidden="true" />Start time</dt><dd>{time || '—'}</dd></div>
+          <div><dt><MapPin aria-hidden="true" />Location</dt><dd>{event.city}<small>{event.venue}</small></dd></div>
+          <div><dt><Armchair aria-hidden="true" />Seats</dt><dd>{(event._count?.seats || 0).toLocaleString()}</dd></div>
           {event.tiers?.length > 0 && (
             <div className="is-wide">
-              <dt>Tickets</dt>
+              <dt><Ticket aria-hidden="true" />Tickets</dt>
               <dd className="tl-ap-tiers">{event.tiers.map((t) => <span key={t.id}>{t.name} · {pkr(t.price)} · {t.totalQuantity}</span>)}</dd>
             </div>
           )}
@@ -153,14 +162,15 @@ function ReviewCard({ event, onReviewed }) {
         <hr />
         <dl className="tl-eva-facts">
           <div className="is-wide">
-            <dt>{pending ? 'Submitted' : 'Reviewed'}</dt>
+            <dt><Send aria-hidden="true" />{pending ? 'Submitted' : 'Reviewed'}</dt>
             <dd className="is-soft">
               {pending ? day(event.submittedAt) : `${day(event.reviewedAt)}${event.reviewedBy ? ` by ${event.reviewedBy}` : ''}`}
             </dd>
           </div>
         </dl>
         <a href={`/events/${event.id}`} target="_blank" rel="noreferrer" className="tl-eva-preview">
-          <Eye className="w-5 h-5" aria-hidden="true" /> Preview event page
+          <Eye className="w-5 h-5" aria-hidden="true" /> <span>Preview event page</span>
+          <ChevronRight className="w-5 h-5" aria-hidden="true" />
         </a>
 
         <div className="tl-eva-info">
@@ -217,7 +227,7 @@ function ReviewCard({ event, onReviewed }) {
             )}
 
             <label htmlFor={`ap-comment-${event.id}`} className="tl-eva-label">
-              Message to organizer <span>({needsMessage ? 'required' : 'optional'})</span>
+              <MessageSquare className="w-4 h-4" aria-hidden="true" /> Message to organizer <span>({needsMessage ? 'required' : 'optional'})</span>
             </label>
             <textarea
               id={`ap-comment-${event.id}`}
@@ -235,7 +245,7 @@ function ReviewCard({ event, onReviewed }) {
               {choice === 'REJECT' ? <XCircle className="w-5 h-5" /> : choice === 'REQUEST_CHANGES' ? <HelpCircle className="w-5 h-5" /> : <Check className="w-5 h-5" />}
               {busy ? 'Saving…' : submitLabel}
             </button>
-            <p className="tl-eva-note">{submitNote}</p>
+            <p className="tl-eva-note"><Clock className="w-4 h-4" aria-hidden="true" /> {submitNote}</p>
           </>
         ) : (
           <>
@@ -324,17 +334,17 @@ export default function AdminEventApprovals() {
   };
 
   return (
-    <div className="tl-eva">
-      <header className="tl-eva-head">
-        <div>
-          <p className="tl-eva-crumbs"><span>Admin console</span><span>Event approvals</span></p>
-          <h1>Event approvals</h1>
-          <p className="tl-eva-intro">Review the event details, then choose a decision.</p>
-        </div>
-        <button type="button" className="tl-eva-refresh" onClick={load} disabled={loading}>
-          <RefreshCw className={`w-5 h-5${loading ? ' tl-dash-spin' : ''}`} /> Refresh
-        </button>
-      </header>
+    <div className="tl-aov tl-aov-sec tl-eva">
+      <PageHero
+        icon={CalendarCheck}
+        title="Event Approvals"
+        intro="Review the event details, then choose a decision."
+        aside={(
+          <button type="button" className="tl-aov-refresh" onClick={load} disabled={loading}>
+            <RefreshCw className={`w-4 h-4${loading ? ' tl-dash-spin' : ''}`} /> Refresh
+          </button>
+        )}
+      />
 
       <div className="tl-eva-bar">
         {!QUEUES.includes(type) ? (
@@ -390,6 +400,7 @@ export default function AdminEventApprovals() {
             : <ReviewCard key={ev.id} event={ev} onReviewed={reviewed} />))}
         </div>
       )}
+
     </div>
   );
 }

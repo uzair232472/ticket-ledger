@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { connectSocket } from '../lib/socket';
-import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X, GitCompareArrows, Archive, Wifi, AlertTriangle } from 'lucide-react';
+import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X, GitCompareArrows, Archive, Wifi, AlertTriangle, CalendarDays, Eye, EyeOff, Lock, Unlock, RotateCcw, KeyRound, UploadCloud, Clock } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { PageHero, SectionTabs, AovFooter } from './AdminOverview';
 import api from '../utils/api';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
 import { AttendanceInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
@@ -41,6 +43,9 @@ const SYNC = {
 };
 
 export default function GateManagement() {
+  const { user } = useAuth();
+  // Super admins see the page on the dark admin console; organizers keep the studio look
+  const dark = user?.role === 'SUPER_ADMIN';
   const [params, setParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const eventId = params.get('event') || '';
@@ -103,6 +108,71 @@ export default function GateManagement() {
     { value: 'checkins', label: 'Check-ins', icon: ListChecks },
     { value: 'report', label: 'Reports', icon: FileBarChart },
   ];
+
+  const body = data && (
+    <>
+      {tab === 'live' && <Live data={data} eventId={eventId} onTab={setTab} />}
+      {tab === 'live' && <GateLoadPlan eventId={eventId} onTab={setTab} />}
+      {/* Step 6: rule estimates (with the experimental model muted beside them). Admission never uses them. */}
+      {tab === 'live' && (
+        <InsightBoundary>
+          <div className="space-y-6" style={{ marginTop: 24 }}>
+            <AttendanceInsightPanel eventId={eventId} />
+            {/* The arrivals panel (with the crowd-flow chart) and the 3D view share one data load and one selection */}
+            <CrowdFlowSection eventId={eventId} />
+          </div>
+        </InsightBoundary>
+      )}
+      {tab === 'gates' && <Gates data={data} eventId={eventId} run={run} />}
+      {tab === 'staff' && <Staff data={data} eventId={eventId} run={run} />}
+      {tab === 'devices' && (dark ? <DeviceRows eventId={eventId} flash={flash} /> : <Devices eventId={eventId} flash={flash} />)}
+      {tab === 'exceptions' && <Exceptions eventId={eventId} flash={flash} onChange={load} />}
+      {tab === 'conflicts' && <Conflicts eventId={eventId} flash={flash} onChange={load} />}
+      {tab === 'evidence' && <Evidence eventId={eventId} flash={flash} />}
+      {tab === 'checkins' && <CheckIns data={data} eventId={eventId} flash={flash} onChange={load} dark={dark} />}
+      {tab === 'report' && <Report eventId={eventId} />}
+    </>
+  );
+
+  if (dark) {
+    return (
+      <div className="tl-aov tl-aov-sec tl-gm">
+        <PageHero
+          icon={DoorOpen}
+          title="Gate Management"
+          intro="Set up gates, assign staff to them, watch the load and handle problems at the gate."
+          aside={(
+            <div className="tl-gm-pick">
+              <label className="tl-gm-event">
+                <CalendarDays className="w-5 h-5" aria-hidden="true" />
+                <span className="sr-only">Event</span>
+                <select value={eventId} onChange={(e) => setParams({ event: e.target.value, tab })}>
+                  <option value="">Choose an event…</option>
+                  {events.map((e) => <option key={e.id} value={e.id}>{e.name} · {new Date(e.date).toLocaleDateString()}</option>)}
+                </select>
+              </label>
+              {eventId && (
+                <button type="button" className="tl-aov-iconbtn" onClick={load} aria-label="Refresh" title="Refresh">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+        />
+        {eventId && <SectionTabs tabs={tabs} value={tab} onChange={setTab} label="Gate sections" />}
+        {notice && <Notice tone={notice.tone} onDismiss={() => setNotice(null)}>{notice.text}</Notice>}
+        {!eventId && (
+          <div className="tl-gm-empty">
+            <span className="tl-gm-empty-icon" aria-hidden="true"><DoorOpen /></span>
+            <h2>Choose an event</h2>
+            <p>Pick an event at the top right to see its gates, staff, scanner devices and live load.</p>
+          </div>
+        )}
+        {eventId && !data && <DashState icon={RefreshCw} title="Loading…" />}
+        {body}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -460,6 +530,205 @@ function Devices({ eventId, flash }) {
   );
 }
 
+// Status pill tones for the dark device rows
+const TONE_OF = { ACTIVE: 'good', PENDING: 'warn', FAILED: 'bad', REJECTED: 'neutral', INACTIVE: 'neutral' };
+const HEALTH_ICON = { HEALTHY: Check, ATTENTION: AlertTriangle, CRITICAL: X, REVOKED: Lock };
+const dayTime = (v) => {
+  if (!v) return ['—', ''];
+  const x = new Date(v);
+  return [x.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }), x.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })];
+};
+
+/**
+ * Scanner devices on the dark admin console, laid out like Approvals: one row per device with its health,
+ * sync, waiting scans and last contact; Details opens the device panel, Revoke asks for a reason.
+ */
+function DeviceRows({ eventId, flash }) {
+  const [devices, setDevices] = useState(null);
+  const [auth, setAuth] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [revoke, setRevoke] = useState(null); // { device, reason, reset }
+  const [filter, setFilter] = useState('ALL');
+  const load = useCallback(() => api.get(`/checkin/manage/events/${eventId}/devices`).then((r) => { setDevices(r.data.data.devices); setAuth(r.data.data.auth || null); }).catch((e) => flash('bad', errText(e))), [eventId]);
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 30000);
+    return () => clearInterval(id);
+  }, [load]);
+  const update = async (d, body) => {
+    try {
+      const r = await api.patch(`/checkin/manage/events/${eventId}/devices/${d.id}`, body);
+      flash('good', r.data.message);
+      load();
+      return true;
+    } catch (e) {
+      flash('bad', errText(e));
+      return false;
+    }
+  };
+  const list = devices || [];
+  const legacy = list.filter((d) => d.status === 'ACTIVE' && !d.enrolled && d.legacyRequests > 0);
+  const counts = {
+    ALL: list.length,
+    ONLINE: list.filter((d) => d.connection === 'ONLINE').length,
+    ATTENTION: list.filter((d) => d.health === 'ATTENTION' || d.health === 'CRITICAL').length,
+    REVOKED: list.filter((d) => d.status === 'REVOKED').length,
+  };
+  const shown = list.filter((d) => filter === 'ALL'
+    || (filter === 'ONLINE' && d.connection === 'ONLINE')
+    || (filter === 'ATTENTION' && (d.health === 'ATTENTION' || d.health === 'CRITICAL'))
+    || (filter === 'REVOKED' && d.status === 'REVOKED'));
+  const FILTERS = [['ALL', 'All devices'], ['ONLINE', 'Online'], ['ATTENTION', 'Need attention'], ['REVOKED', 'Revoked']];
+
+  return (
+    <>
+      <div className="tl-apv-bar">
+        <div className="tl-apv-filters" role="group" aria-label="Filter devices">
+          {FILTERS.map(([v, label]) => (
+            <button key={v} type="button" className={`tl-apv-filter${filter === v ? ' is-active' : ''}`} aria-pressed={filter === v} onClick={() => setFilter(v)}>
+              {label} <span>{counts[v]}</span>
+            </button>
+          ))}
+        </div>
+        <button type="button" className="tl-apv-filterbtn" onClick={load}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Refresh</button>
+      </div>
+
+      {auth && (
+        <p className="tl-gm-note">
+          <KeyRound className="w-4 h-4" aria-hidden="true" />
+          <span>
+            {AUTH_MODE[auth.mode]}{auth.mode !== 'enforce' ? ` ${when(auth.deadline)}.` : ''}
+            {legacy.length > 0 && auth.mode !== 'enforce' && ` ${legacy.length} device${legacy.length === 1 ? ' has' : 's have'} not enrolled yet: open the scanner on ${legacy.length === 1 ? 'it' : 'them'} while online.`}
+            {' '}Updates every 30 seconds.
+          </span>
+        </p>
+      )}
+
+      <section className="tl-apv-table tl-gm-devices" aria-label="Scanner devices">
+        <div className="tl-apv-row tl-apv-row--head" aria-hidden="true">
+          <span>Device</span>
+          <span>Sync</span>
+          <span>Last seen</span>
+          <span>Waiting scans</span>
+          <span>Health</span>
+          <span className="is-right">Actions</span>
+        </div>
+        {!devices ? (
+          <div className="tl-dash-state"><RefreshCw className="w-6 h-6 tl-dash-spin" /><p>Loading devices…</p></div>
+        ) : !shown.length ? (
+          <div className="tl-dash-state"><Smartphone className="w-7 h-7" /><p>{list.length ? 'No devices match this filter.' : 'No devices yet. Phones and tablets register the first time they scan.'}</p></div>
+        ) : shown.map((d) => {
+          const [healthStatus, healthLabel] = HEALTH[d.health] || ['INACTIVE', d.health];
+          const healthTone = TONE_OF[healthStatus] || 'neutral';
+          const HealthIcon = HEALTH_ICON[d.health] || Check;
+          const [syncStatus, syncLabel] = SYNC[d.sync] || ['INACTIVE', d.sync];
+          const [seenDay, seenTime] = dayTime(d.lastSeenAt);
+          const revoked = d.status === 'REVOKED';
+          const isOpen = open === d.id;
+          return (
+            <article key={d.id} className={`tl-apv-row${isOpen ? ' is-open' : ''}`}>
+              <div className="tl-apv-co">
+                <span className={`tl-fw-tile is-${healthTone === 'neutral' ? 'warn' : healthTone}`} aria-hidden="true"><Smartphone /></span>
+                <div>
+                  <h3>{d.name}</h3>
+                  <p>{d.lastUser ? `Used by ${d.lastUser}` : `Registered by ${d.registeredBy || '—'}`}</p>
+                  <span className={`tl-apv-tag${d.enrolled ? '' : ' tl-gm-tag--warn'}`}>{revoked ? 'Revoked' : d.enrolled ? 'Enrolled' : 'Not enrolled'}</span>
+                </div>
+              </div>
+
+              <div className="tl-gm-sync">
+                <span className="tl-gm-dot" data-tone={TONE_OF[syncStatus] || 'neutral'} aria-hidden="true" />
+                <div>
+                  <strong>{syncLabel}</strong>
+                  <span>{CONNECTION[d.connection]}{d.atThisEvent && d.lastGate ? ` · ${d.lastGate}` : ''}</span>
+                </div>
+              </div>
+
+              <div className="tl-apv-when">
+                <Clock className="w-5 h-5" aria-hidden="true" />
+                <div><strong>{seenDay}</strong><span>{seenTime}{d.lastSyncAt ? ` · upload ${clock(d.lastSyncAt)}` : ''}</span></div>
+              </div>
+
+              <div className="tl-gm-waiting">
+                <UploadCloud className="w-5 h-5" aria-hidden="true" />
+                <div>
+                  <strong>{d.pendingScans ?? 0}</strong>
+                  <span>{d.authFailures > 0 ? `${d.authFailures} rejected credential${d.authFailures === 1 ? '' : 's'}` : 'waiting to upload'}</span>
+                </div>
+              </div>
+
+              <div className="tl-apv-state">
+                <span className="tl-apv-status" data-tone={healthTone}><span className="tl-apv-status-dot" aria-hidden="true"><HealthIcon strokeWidth={3} /></span>{healthLabel}</span>
+                {d.reasons?.[0] && <small className={d.reasons[0].severity === 'critical' ? '' : 'tl-gm-warn'} title={d.reasons.map((r) => r.message).join(' · ')}>{d.reasons[0].message}</small>}
+              </div>
+
+              <div className="tl-apv-actions">
+                <button type="button" className="tl-apv-btn is-view" onClick={() => setOpen(isOpen ? null : d.id)} aria-expanded={isOpen}>
+                  {isOpen ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />} {isOpen ? 'Hide' : 'Details'}
+                </button>
+                {revoked ? (
+                  <button type="button" className="tl-apv-btn is-primary" onClick={() => update(d, { status: 'ACTIVE' })} title={`${d.revokeReason || ''}${d.revokedBy ? ` · ${d.revokedBy}` : ''}`}>
+                    <Unlock className="w-4 h-4" aria-hidden="true" /> Restore
+                  </button>
+                ) : (
+                  <button type="button" className="tl-apv-btn" onClick={() => setRevoke({ device: d, reason: '', reset: false })}>
+                    <Lock className="w-4 h-4" aria-hidden="true" /> Revoke
+                  </button>
+                )}
+              </div>
+
+              {isOpen && (
+                <div className="tl-gm-details">
+                  <label className="tl-gm-rename">
+                    <span>Device name</span>
+                    <input className="tl-dash-input" defaultValue={d.name} onBlur={(e) => e.target.value.trim() && e.target.value !== d.name && update(d, { name: e.target.value.trim() })} />
+                  </label>
+                  {d.enrolled && !revoked && (
+                    <button type="button" className="tl-apv-btn" title="Deletes the device credential; the device enrolls again on its next connection" onClick={() => setRevoke({ device: d, reason: '', reset: true })}>
+                      <RotateCcw className="w-4 h-4" aria-hidden="true" /> Reset enrollment
+                    </button>
+                  )}
+                  <DeviceDetails eventId={eventId} deviceId={d.id} flash={flash} onChange={load} />
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </section>
+
+      {revoke && (
+        <div className="tl-dash-dialog-backdrop" onClick={(e) => e.target === e.currentTarget && setRevoke(null)}>
+          <form
+            className="tl-dash-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tl-gm-revoke-title"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const ok = await update(revoke.device, revoke.reset ? { resetEnrollment: true, reason: revoke.reason } : { status: 'REVOKED', reason: revoke.reason });
+              if (ok) setRevoke(null);
+            }}
+          >
+            <h3 id="tl-gm-revoke-title">{revoke.reset ? 'Reset enrollment' : 'Revoke device'}</h3>
+            <p>
+              <strong>{revoke.device.name}</strong>
+              {revoke.reset
+                ? ': its credential is deleted and it enrolls again on its next connection.'
+                : ': it can no longer scan, upload or download ticket lists.'}
+            </p>
+            <label htmlFor="tl-gm-revoke-reason">Reason</label>
+            <textarea id="tl-gm-revoke-reason" rows={3} className="tl-dash-textarea" value={revoke.reason} onChange={(e) => setRevoke({ ...revoke, reason: e.target.value })} placeholder="e.g. Lost at gate 3" />
+            <div className="tl-dash-dialog-actions">
+              <button type="button" className="tl-dash-btn" onClick={() => setRevoke(null)}>Cancel</button>
+              <button type="submit" className="tl-dash-btn tl-dash-btn--danger">{revoke.reset ? 'Reset enrollment' : 'Revoke device'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
+  );
+}
+
 const ACTIONS = [['PING', 'Test connection'], ['SYNC', 'Upload now'], ['RETRY_FAILED', 'Retry failed uploads'], ['SEND_PENDING', 'Show pending scans']];
 
 /** One device: health, details, actions sent to the scanner, upload history, recent errors, pending scans. */
@@ -781,7 +1050,7 @@ function Exceptions({ eventId, flash, onChange }) {
 
 // ── Check-ins ──────────────────────────────────────────────────────────────────────────────────────────
 
-function CheckIns({ data, eventId, flash, onChange }) {
+function CheckIns({ data, eventId, flash, onChange, dark }) {
   const [filters, setFilters] = useState({ gateId: '', result: '', q: '', page: 1 });
   const [rows, setRows] = useState(null);
   const [reversing, setReversing] = useState(null);
@@ -801,6 +1070,115 @@ function CheckIns({ data, eventId, flash, onChange }) {
     }
   };
   const pages = rows ? Math.max(1, Math.ceil(rows.total / rows.limit)) : 1;
+
+  // Admin console: filters bar and one card per scan (Approvals layout), wrapping on narrow screens
+  if (dark) {
+    const TONE = { GREEN: 'good', YELLOW: 'warn', RED: 'bad' };
+    const ICON = { GREEN: Check, YELLOW: AlertTriangle, RED: X };
+    return (
+      <>
+        <div className="tl-apv-bar tl-gm-ci-bar">
+          <div className="tl-gm-ci-filters">
+            <select className="tl-dash-select" value={filters.gateId} onChange={(e) => setFilters({ ...filters, gateId: e.target.value, page: 1 })} aria-label="Gate">
+              <option value="">Every gate</option>
+              {data.gates.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+            <select className="tl-dash-select" value={filters.result} onChange={(e) => setFilters({ ...filters, result: e.target.value, page: 1 })} aria-label="Result">
+              <option value="">Every result</option>
+              <option value="GREEN">Admitted / exited</option>
+              <option value="YELLOW">Already used</option>
+              <option value="RED">Turned away</option>
+            </select>
+          </div>
+          <label className="tl-apv-search">
+            <ListChecks className="w-4 h-4" aria-hidden="true" />
+            <span className="sr-only">Search check-ins</span>
+            <input type="search" placeholder="Ticket code or holder…" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value, page: 1 })} />
+          </label>
+        </div>
+        <p className="tl-gm-note"><Undo2 className="w-4 h-4" aria-hidden="true" /><span>Every scan at the gates. A supervisor can reverse an admission made by mistake; the ticket becomes valid again.</span></p>
+
+        <section className="tl-apv-table tl-gm-ci" aria-label="Check-ins">
+          <div className="tl-apv-row tl-apv-row--head" aria-hidden="true">
+            <span>Ticket</span>
+            <span>Gate</span>
+            <span>When</span>
+            <span>Result</span>
+            <span>Staff</span>
+            <span className="is-right">Actions</span>
+          </div>
+          {!rows ? (
+            <div className="tl-dash-state"><RefreshCw className="w-6 h-6 tl-dash-spin" /><p>Loading scans…</p></div>
+          ) : !rows.items.length ? (
+            <div className="tl-dash-state"><ListChecks className="w-7 h-7" /><p>No scans match these filters.</p></div>
+          ) : rows.items.map((c) => {
+            const tone = TONE[c.result] || 'neutral';
+            const Icon = ICON[c.result] || Check;
+            const [day, time] = dayTime(c.scannedAt);
+            const canReverse = c.result === 'GREEN' && c.direction === 'ENTRY' && !c.reversedAt;
+            return (
+              <article key={c.id} className={`tl-apv-row${c.reversedAt ? ' is-reversed' : ''}`}>
+                <div className="tl-apv-co">
+                  <span className={`tl-fw-tile is-${tone === 'neutral' ? 'warn' : tone}`} aria-hidden="true"><Icon /></span>
+                  <div>
+                    <h3>{c.ticket?.holder || 'Unknown ticket'}</h3>
+                    <p>{c.ticket?.type || '—'}</p>
+                    {c.ticket?.code && <span className="tl-apv-tag tl-fw-session">{c.ticket.code}</span>}
+                  </div>
+                </div>
+                <div className="tl-gm-sync">
+                  <DoorOpen className="w-5 h-5 tl-gm-ico" aria-hidden="true" />
+                  <div>
+                    <strong>{c.gate || '—'}</strong>
+                    <span>{c.direction === 'EXIT' ? 'Exit' : c.reentry ? 'Re-entry' : 'Entry'}{c.offline ? ' · offline' : ''}</span>
+                  </div>
+                </div>
+                <div className="tl-apv-when">
+                  <CalendarDays className="w-5 h-5" aria-hidden="true" />
+                  <div><strong>{day}</strong><span>{time}</span></div>
+                </div>
+                <div className="tl-apv-state">
+                  <span className="tl-apv-status tl-gm-result" data-tone={tone}><span className="tl-apv-status-dot" aria-hidden="true"><Icon strokeWidth={3} /></span><span>{c.reason}</span></span>
+                  {c.conflict && <small>Admitted twice offline</small>}
+                  {c.exceptionId && <small className="tl-gm-warn">By exception</small>}
+                  {c.reversedAt && <small className="tl-gm-warn">Reversed: {c.reversalReason}</small>}
+                </div>
+                <div className="tl-apv-who">
+                  <span className="tl-av" aria-hidden="true">{(c.staff || '?').trim()[0]?.toUpperCase()}</span>
+                  <div><strong>{c.staff || '—'}</strong></div>
+                </div>
+                <div className="tl-apv-actions">
+                  {canReverse && (reversing === c.id ? (
+                    <div className="tl-gm-reverse">
+                      <input className="tl-dash-input" placeholder="Why?" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Reversal reason" autoFocus />
+                      <div>
+                        <button type="button" className="tl-apv-btn is-primary" onClick={() => reverse(c)}>Reverse</button>
+                        <button type="button" className="tl-apv-btn" onClick={() => setReversing(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" className="tl-apv-btn" onClick={() => { setReversing(c.id); setReason(''); }}><Undo2 className="w-4 h-4" aria-hidden="true" /> Reverse</button>
+                  ))}
+                </div>
+              </article>
+            );
+          })}
+        </section>
+
+        {rows && rows.total > 0 && (
+          <nav className="tl-apv-pager" aria-label="Pages">
+            <p>Page <strong>{filters.page}</strong> of <strong>{pages}</strong> · <strong>{rows.total}</strong> scans</p>
+            <div>
+              <button type="button" disabled={filters.page <= 1} onClick={() => setFilters({ ...filters, page: filters.page - 1 })} aria-label="Previous page">‹</button>
+              <button type="button" className="is-active" aria-current="page">{filters.page}</button>
+              <button type="button" disabled={filters.page >= pages} onClick={() => setFilters({ ...filters, page: filters.page + 1 })} aria-label="Next page">›</button>
+            </div>
+          </nav>
+        )}
+      </>
+    );
+  }
+
   return (
     <DashCard title="Check-ins" sub="Every scan at the gates. A supervisor can reverse an admission made by mistake; the ticket becomes valid again." icon={ListChecks}>
       <div className="grid gap-3 sm:grid-cols-3 mb-4">

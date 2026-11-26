@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, ChevronDown, TrendingDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,11 @@ import '../events/events.css';
 import './dash.css';
 import './studio.css';
 import { insightPath } from '../../lib/insightPaths';
+import AdminSidebar, { ICONS as SIDEBAR_ICONS } from './AdminSidebar';
+import ThemedSelectLayer from './ThemedSelect';
+import { PageHero, AovFooter } from '../../pages/AdminOverview';
+import { BadgeCheck, Brain, CalendarCheck, DoorOpen, LayoutGrid, Wallet, ShieldAlert } from 'lucide-react';
+import './admin-overview.css';
 
 // Console areas per role (same routes and role rules as App.jsx)
 const CONSOLES = {
@@ -173,6 +178,33 @@ function usePendingCounts(enabled, pathname) {
   return counts;
 }
 
+// Admin console pages shown on the dark layout (super admins only; organizers keep the studio look)
+const ADMIN_DARK = /^\/(admin\/|organizer\/(team|gates)\/?$|support\/desk|scanner\/?$)/;
+/** True inside an admin console page on the dark layout: page headings render the stadium hero. */
+export const AdminDarkContext = createContext(false);
+export const useAdminDark = () => useContext(AdminDarkContext);
+
+// Icon tile for each admin page's heading
+const PAGE_ICONS = {
+  ...SIDEBAR_ICONS,
+  '/admin/dashboard': LayoutGrid,
+  '/admin/companies': BadgeCheck,
+  '/admin/event-approvals': CalendarCheck,
+  '/admin/finance': Wallet,
+  '/admin/fraud-watchlist': ShieldAlert,
+  '/organizer/gates': DoorOpen,
+};
+const iconForPath = (pathname) => {
+  const key = Object.keys(PAGE_ICONS).sort((a, b) => b.length - a.length).find((p) => pathname.startsWith(p));
+  return key ? PAGE_ICONS[key] : Brain; // the AI pages
+};
+
+/** Stadium heading for the dark admin pages: role badge, icon tile and green title, intro, tools on the right. */
+export function DarkHero({ title, intro, aside }) {
+  const { pathname } = useLocation();
+  return <PageHero icon={iconForPath(pathname)} title={title} intro={intro} aside={aside} />;
+}
+
 /**
  * Static console layout for organizers, super admins and gate staff: the site header and footer around the
  * paper background, a slash-separated nav of the role's console areas, then the page. `.tl-dash-skin`
@@ -187,6 +219,8 @@ export default function DashShell({ children }) {
   const console_ = consoleFor(user);
   const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
   const current = Object.entries(aliasesFor(user?.role)).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
+  // Admin console pages on the dark layout (sidebar instead of the console nav), see ADMIN_DARK
+  const bare = user?.role === 'SUPER_ADMIN' && ADMIN_DARK.test(pathname);
   const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit|manage)))\/?$/.test(pathname);
 
   useEffect(() => {
@@ -209,7 +243,27 @@ export default function DashShell({ children }) {
       window.removeEventListener('resize', update);
       delete header.dataset.atFooter;
     };
-  }, []);
+  }, [bare]);
+
+  if (bare) {
+    return (
+      <div className="tl-home tl-dash tl-aov-root">
+        <HomeHeader pageRef={pageRef} onCategories={() => navigate('/events')} tone="dark" />
+        <div ref={pageRef} className="tl-aov-shell">
+          <AdminSidebar console={console_} pending={pending} />
+          <ThemedSelectLayer />
+          <main className="tl-aov-main">
+            <AdminDarkContext.Provider value>
+              <div className="tl-aov-page tl-aov-sec">
+                {children}
+                <AovFooter />
+              </div>
+            </AdminDarkContext.Provider>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`tl-home tl-dash${studio ? ' tl-dash--studio' : ''}`}>
@@ -251,6 +305,15 @@ export default function DashShell({ children }) {
  * an event picker, laid out like the Explore heading and its filter bar.
  */
 export function DashHead({ eyebrow, title, intro, segment, actions, note }) {
+  const dark = useAdminDark();
+  if (dark) {
+    return (
+      <>
+        <DarkHero title={title} intro={note || intro} aside={actions && <div className="tl-dk-tools">{actions}</div>} />
+        {segment && <div className="tl-dk-seg">{segment}</div>}
+      </>
+    );
+  }
   if (note) {
     // Resale market head: title on the left, a short note on the right
     return (
