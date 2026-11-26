@@ -53,3 +53,48 @@
 .tl-ml-vs-grid span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--st-faint, #8a978f); }
 .tl-ml-vs-grid strong { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--st-ink, #0b1a10); }
 .tl-ml-vs-note { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--st-muted, #5b6b61); }
+
+/* Model card (pages/ModelCard.jsx) and its charts (components/ml/charts.jsx) */
+.tl-mc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; margin-top: 16px; }
+.tl-mc-chart { position: relative; width: 100%; overflow: hidden; }
+.tl-mc-chart svg { display: block; font-family: inherit; }
+.tl-mc-tip { position: absolute; z-index: 2; min-width: 160px; padding: 8px 10px; border-radius: 8px; background: #fff; border: 1px solid #e2e8e1; box-shadow: 0 6px 20px rgba(15, 30, 20, 0.12); font-size: 12px; pointer-events: none; display: grid; gap: 3px; color: #191919; }
+.tl-mc-tip span { display: flex; align-items: center; gap: 6px; color: #666; }
+.tl-mc-tip i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.tl-mc-tip em { margin-left: auto; font-style: normal; font-weight: 600; color: #191919; font-variant-numeric: tabular-nums; }
+.tl-mc-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: #666; margin-bottom: 4px; }
+.tl-mc-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tl-mc-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.tl-mc-table { margin-top: 8px; font-size: 13px; }
+.tl-mc-table summary { cursor: pointer; color: var(--st-muted, #5b6b61); font-size: 12px; }
+.tl-mc-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.tl-mc-bars li { position: relative; display: grid; grid-template-columns: minmax(110px, 38%) 1fr 56px; align-items: center; gap: 8px; font-size: 12px; padding: 2px 0; }
+.tl-mc-bars li[data-hover] { background: #f6f8f5; border-radius: 4px; }
+.tl-mc-bars-l { color: #191919; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-mc-bars-t { display: block; height: 10px; }
+.tl-mc-bars-t i { display: block; height: 10px; border-radius: 0 4px 4px 0; }
+.tl-mc-bars b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: #191919; }
+.tl-mc-bars-n { position: absolute; right: 64px; top: -18px; font-style: normal; font-size: 11px; color: #666; background: #fff; padding: 0 4px; }
+.tl-mc-reasons { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+.tl-mc-reasons li { display: grid; grid-template-columns: minmax(120px, 1.2fr) 1fr auto; gap: 8px; align-items: baseline; }
+.tl-mc-reasons li[data-dir='up'] b { color: #1b64be; }
+.tl-mc-reasons li[data-dir='down'] b { color: #46524a; }
+.tl-mc-reasons em { color: #8a978f; font-style: normal; }
+.tl-mc-eff { font-variant-numeric: tabular-nums; font-weight: 600; color: #191919; }
+.tl-mc-example + .tl-mc-example { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--st-line-soft, #edf1ec); }
+.tl-mc-example p { margin: 0 0 4px; font-size: 13px; }
+.tl-mc-h { margin: 16px 0 6px; font-size: 13px; font-weight: 600; }
+@media (max-width: 640px) {
+  .tl-mc-reasons li { grid-template-columns: 1fr auto; }
+  .tl-mc-reasons li span:nth-child(2) { grid-column: 1 / -1; order: 3; }
+}
+.tl-ml-range { margin-top: 12px; }
+.tl-ml-range-track { position: relative; height: 14px; border-radius: 7px; background: #eef1ed; }
+.tl-ml-range-band { position: absolute; top: 0; bottom: 0; border-radius: 7px; background: #b6d5f8; }
+.tl-ml-range-pt { position: absolute; top: -3px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px; background: #257de0; }
+.tl-ml-range-rule { position: absolute; top: -3px; width: 0; height: 20px; border-left: 2px dashed #46524a; }
+.tl-ml-range-axis { display: flex; justify-content: space-between; font-size: 11px; color: #8a978f; margin-top: 2px; }
+.tl-ml-range-key { display: inline-block; width: 12px; height: 8px; vertical-align: middle; border-radius: 2px; }
+.tl-ml-range-key--band { background: #b6d5f8; }
+.tl-ml-range-key--pt { width: 4px; height: 12px; background: #257de0; }
+.tl-ml-range-key--rule { width: 0; height: 12px; border-left: 2px dashed #46524a; border-radius: 0; }

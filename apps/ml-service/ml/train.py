@@ -177,7 +177,9 @@ def write_registry(artifact_dir, reports, manifest):
             "trained_rows": art["trained_rows"], "created_at": art["created_at"],
             "features": art["features"],      # exact inputs; the API's feature builders are tested against this
             "evaluation": {"main_measure": r["main_measure"], "higher_is_better": r["higher_is_better"],
-                           **r.get("result", {}), "reasons": r.get("reasons", [])},
+                           **r.get("result", {}), "reasons": r.get("reasons", []),
+                           # demand: how often the 80% range held the real number in the offline test
+                           **({"range_coverage": r["diagnostics"]["range"]["coverage"]} if (r.get("diagnostics") or {}).get("range") else {})},
         })
     with open(os.path.join(artifact_dir, "registry.json"), "w") as f:
         json.dump({"data_source": manifest.get("source"), "data_generator": manifest.get("generator_version"),
@@ -270,7 +272,7 @@ def main(argv=None):
         for reason in report.get("reasons", []):
             print(f"   - {reason}")
         reports.append(report)
-    if args.models == "all" and manifest.get("source") != "db-export":
+    if set(SPECS) <= set(names) and manifest.get("source") != "db-export":
         with open(os.path.join(args.reports, "README.md"), "w", encoding="utf-8") as f:
             f.write(summary(reports, manifest))
     if os.path.isdir(args.artifacts):

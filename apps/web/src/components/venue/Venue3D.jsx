@@ -333,7 +333,7 @@ function startsLowDetail(layout) {
   return Boolean(weak || (phone && seats > 15000));
 }
 
-function buildScene(host, layout, { low = false, board = null, kind = 'stadium' } = {}) {
+export function buildScene(host, layout, { low = false, board = null, kind = 'stadium' } = {}) {
   const hall = kind === 'hall'; // theatre / auditorium / conference room instead of a ground
   const renderer = new THREE.WebGLRenderer({ antialias: !low });
   renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 2));

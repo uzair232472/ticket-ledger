@@ -26,7 +26,7 @@ share of actual buyers among the top 10% scored visitors (higher is better), new
 |---|---|---|---|
 | train AUC - test AUC (memorising) | 0.0071 | <= 0.05 | pass |
 | calibration error (ECE) | 0.0080 | <= 0.05 | pass |
-| first-time visitors: top-10% share vs rule | 0.0232 | >= 0 (not worse) | pass |
+| first-time customers/visitors: top-10% share vs rule | 0.0232 | >= 0 (not worse) | pass |
 
 ## Known vs unseen customers / events, segments
 | Group | Rows | Model | Baseline |
@@ -36,6 +36,7 @@ share of actual buyers among the top 10% scored visitors (higher is better), new
 | events_known | 940 | 0.8241 | 0.8135 |
 | events_unseen | 14,060 | 0.8282 | 0.7906 |
 | first_time_visitors | 1,845 | 0.7821 | 0.7590 |
+| returning_visitors | 13,155 | 0.8301 | 0.7948 |
 
 ## Learning curve (test AUC (higher is better))
 | Share of training data | Rows | Value |
@@ -47,6 +48,12 @@ share of actual buyers among the top 10% scored visitors (higher is better), new
 
 Reading: score has levelled off: more data of the same kind adds little.
 
+## Compared with the deployed model
+NO_DEPLOYED_MODEL
+
+## Recommendation (not acted on automatically)
+KEEP_CURRENT: trained on synthetic data
+
 ## Details
 ```json
 {
@@ -56,4 +63,4 @@ Reading: score has levelled off: more data of the same kind adds little.
 }
 ```
 
-_Duration 16.7 s._
+_Duration 64.5 s._

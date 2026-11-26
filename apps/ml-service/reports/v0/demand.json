@@ -52,6 +52,7 @@
     "min_test_events_demand": 100,
     "min_test_events_attendance": 30,
     "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
     "max_calibration_error": 0.05,
     "max_false_flag_rate": 0.01,
     "min_range_coverage": 0.75,
@@ -165,8 +166,208 @@
     "still_improving": false,
     "note": "score has levelled off: more data of the same kind adds little"
   },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-15T05:00:00+00:00",
+        "to": "2025-08-17T12:00:00+00:00",
+        "rows": 151,
+        "model": 0.3683,
+        "rule": 0.4327,
+        "range_coverage": 0.8212
+      },
+      {
+        "from": "2025-08-17T16:00:00+00:00",
+        "to": "2025-09-16T13:00:00+00:00",
+        "rows": 150,
+        "model": 0.3474,
+        "rule": 0.4122,
+        "range_coverage": 0.7867
+      },
+      {
+        "from": "2025-09-16T17:00:00+00:00",
+        "to": "2025-10-17T04:00:00+00:00",
+        "rows": 150,
+        "model": 0.3524,
+        "rule": 0.4175,
+        "range_coverage": 0.7867
+      },
+      {
+        "from": "2025-10-17T12:00:00+00:00",
+        "to": "2025-11-17T08:00:00+00:00",
+        "rows": 150,
+        "model": 0.3392,
+        "rule": 0.3787,
+        "range_coverage": 0.7733
+      },
+      {
+        "from": "2025-11-17T14:00:00+00:00",
+        "to": "2025-12-19T13:00:00+00:00",
+        "rows": 150,
+        "model": 0.3708,
+        "rule": 0.4254,
+        "range_coverage": 0.8333
+      }
+    ],
+    "importance": {
+      "measure": "increase in average error when shuffled",
+      "rows": 751,
+      "features": [
+        {
+          "feature": "venue_capacity",
+          "label": "venue capacity",
+          "importance": 1763.70398
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 426.81599
+        },
+        {
+          "feature": "organizer_past_sell_through_48h",
+          "label": "organizer's past 48-hour sell-through",
+          "importance": 259.22596
+        },
+        {
+          "feature": "avg_price_rel",
+          "label": "average price vs typical",
+          "importance": 54.49324
+        },
+        {
+          "feature": "max_price_rel",
+          "label": "dearest ticket vs typical",
+          "importance": 46.07115
+        },
+        {
+          "feature": "day_of_week",
+          "label": "day of the week",
+          "importance": 37.93318
+        },
+        {
+          "feature": "min_price_rel",
+          "label": "cheapest ticket vs typical",
+          "importance": 12.93825
+        },
+        {
+          "feature": "lead_days",
+          "label": "days on sale before the event",
+          "importance": 6.28098
+        },
+        {
+          "feature": "start_hour",
+          "label": "start time",
+          "importance": 3.46376
+        },
+        {
+          "feature": "start_month",
+          "label": "month",
+          "importance": 2.94306
+        },
+        {
+          "feature": "organizer_past_events",
+          "label": "organizer's past events",
+          "importance": 2.74851
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "sales_open_hour",
+          "label": "hour sales open",
+          "importance": -0.28377
+        },
+        {
+          "feature": "tier_count",
+          "label": "number of ticket types",
+          "importance": -1.5965
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": -4.17478
+        }
+      ]
+    },
+    "range": {
+      "level": 0.8,
+      "width_share_of_capacity": 0.1559,
+      "coverage": 0.8003,
+      "baseline_coverage": 0.7656
+    },
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 17978.5039,
+        "actual": 10281,
+        "reasons": [
+          {
+            "feature": "venue_capacity",
+            "label": "venue capacity",
+            "value": 30800,
+            "typical": 9700.0,
+            "effect": 12177.29,
+            "direction": "up"
+          },
+          {
+            "feature": "organizer_past_sell_through_48h",
+            "label": "organizer's past 48-hour sell-through",
+            "value": 0.3587,
+            "typical": 0.27,
+            "effect": 3253.42,
+            "direction": "up"
+          },
+          {
+            "feature": "avg_price_rel",
+            "label": "average price vs typical",
+            "value": 0.422,
+            "typical": 0.979,
+            "effect": 3047.63,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 2608.4858,
+        "actual": 4692,
+        "reasons": [
+          {
+            "feature": "venue_capacity",
+            "label": "venue capacity",
+            "value": 7400,
+            "typical": 9700.0,
+            "effect": -810.75,
+            "direction": "down"
+          },
+          {
+            "feature": "max_price_rel",
+            "label": "dearest ticket vs typical",
+            "value": 5.2,
+            "typical": 1.356,
+            "effect": -566.48,
+            "direction": "down"
+          },
+          {
+            "feature": "organizer_past_sell_through_48h",
+            "label": "organizer's past 48-hour sell-through",
+            "value": 0.3753,
+            "typical": 0.27,
+            "effect": 369.13,
+            "direction": "up"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (tickets) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+  },
   "status": "PASSED",
   "reasons": [],
-  "duration_seconds": 3.9,
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "duration_seconds": 5.3,
+  "recommendation": "KEEP_CURRENT: trained on synthetic data",
   "artifact": "models/v0/demand.joblib"
 }

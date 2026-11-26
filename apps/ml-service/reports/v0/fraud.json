@@ -23,14 +23,17 @@
       "orders_last_24h",
       "failed_payments_30d",
       "prior_resale_listings",
-      "hours_since_sales_open"
+      "hours_since_sales_open",
+      "linked_accounts",
+      "linked_accounts_confirmed_fraud",
+      "linked_orders_same_event_24h"
     ]
   },
   "data": {
     "dataset": "fraud_purchases.csv",
     "rows": 51500,
     "source": "synthetic-v0",
-    "sha256": "365780303caf838a8e3c8c4eac558ec901764b916bca5375cbc14c8c7ce37730",
+    "sha256": "2d2bba7ba166d723ce62ccb263278fd6d1f8bf5bc6b5d93e7edc7d96ab07741a",
     "from": "2023-01-01T11:07:00+00:00",
     "to": "2025-12-31T17:25:00+00:00"
   },
@@ -73,46 +76,46 @@
     "levels": [
       {
         "level": "flexible",
-        "validation_score": 0.9802,
-        "train_vs_validation": 0.0163,
+        "validation_score": 0.9898,
+        "train_vs_validation": 0.0096,
         "not_memorising": true
       },
       {
         "level": "moderate",
-        "validation_score": 0.9818,
-        "train_vs_validation": 0.0114,
+        "validation_score": 0.9895,
+        "train_vs_validation": 0.009,
         "not_memorising": true
       },
       {
         "level": "simple",
-        "validation_score": 0.9797,
-        "train_vs_validation": 0.0082,
+        "validation_score": 0.9886,
+        "train_vs_validation": 0.0073,
         "not_memorising": true
       }
     ],
-    "chosen": "moderate"
+    "chosen": "flexible"
   },
   "result": {
-    "model": 0.8063,
+    "model": 0.877,
     "baseline": 0.9938,
-    "improvement": -0.1874,
+    "improvement": -0.1168,
     "improvement_95ci": [
-      -0.224,
-      -0.1486
+      -0.1482,
+      -0.0879
     ]
   },
   "details": {
-    "test_auc": 0.9775,
-    "test_brier": 0.0162,
+    "test_auc": 0.9907,
+    "test_brier": 0.007,
     "baseline_auc": 0.6806,
-    "threshold": 0.1727,
+    "threshold": 0.1136,
     "sampling_weighted": false,
     "baseline_is_logged_rule_decision": false,
     "model_flags": {
-      "precision": 0.8063,
-      "false_flag_rate": 0.0127,
-      "recall": 0.8046,
-      "flag_rate": 0.0615
+      "precision": 0.877,
+      "false_flag_rate": 0.0086,
+      "recall": 0.9286,
+      "flag_rate": 0.0652
     },
     "rule_flags": {
       "precision": 0.9938,
@@ -124,19 +127,19 @@
   "guards": [
     {
       "name": "train AUC - test AUC (memorising)",
-      "value": 0.015,
+      "value": 0.0083,
       "limit": "<= 0.05",
       "passed": true
     },
     {
       "name": "false flags among legitimate orders",
-      "value": 0.0127,
+      "value": 0.0086,
       "limit": "<= 0.01",
-      "passed": false
+      "passed": true
     },
     {
       "name": "share of frauds caught vs rules",
-      "value": 0.4706,
+      "value": 0.5945,
       "limit": ">= 0 (not worse)",
       "passed": true
     }
@@ -144,12 +147,12 @@
   "segments": {
     "customers_known": {
       "rows": 4930,
-      "model": 0.867,
+      "model": 0.9189,
       "baseline": 0.9934
     },
     "customers_unseen": {
       "rows": 2795,
-      "model": 0.7549,
+      "model": 0.8327,
       "baseline": 1.0
     },
     "events_known": {
@@ -158,22 +161,22 @@
     },
     "events_unseen": {
       "rows": 7401,
-      "model": 0.8065,
+      "model": 0.8785,
       "baseline": 0.9938
     },
     "human_speed": {
       "rows": 7552,
-      "model": 0.6987,
+      "model": 0.8157,
       "baseline": 0.0
     },
     "first_time_customers": {
       "rows": 1684,
-      "model": 0.5315,
+      "model": 0.6321,
       "baseline": 0.0
     },
     "returning_customers": {
       "rows": 6041,
-      "model": 0.8901,
+      "model": 0.9422,
       "baseline": 0.9938
     }
   },
@@ -183,31 +186,300 @@
       {
         "train_fraction": 0.1,
         "train_rows": 3187,
-        "value": 0.9472
+        "value": 0.9834
       },
       {
         "train_fraction": 0.25,
         "train_rows": 7968,
-        "value": 0.9686
+        "value": 0.9894
       },
       {
         "train_fraction": 0.5,
         "train_rows": 15936,
-        "value": 0.9766
+        "value": 0.9911
       },
       {
         "train_fraction": 1.0,
         "train_rows": 31872,
-        "value": 0.9782
+        "value": 0.9911
       }
     ],
     "still_improving": false,
     "note": "score has levelled off: more data of the same kind adds little"
   },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-08-02T17:50:00+00:00",
+        "to": "2025-09-02T13:19:00+00:00",
+        "rows": 1545,
+        "model": 0.899,
+        "rule": 1.0
+      },
+      {
+        "from": "2025-09-02T13:35:00+00:00",
+        "to": "2025-10-02T23:43:00+00:00",
+        "rows": 1545,
+        "model": 0.8716,
+        "rule": 1.0
+      },
+      {
+        "from": "2025-10-02T23:50:00+00:00",
+        "to": "2025-10-31T03:51:00+00:00",
+        "rows": 1545,
+        "model": 0.8931,
+        "rule": 0.9792
+      },
+      {
+        "from": "2025-10-31T04:01:00+00:00",
+        "to": "2025-11-28T01:32:00+00:00",
+        "rows": 1545,
+        "model": 0.8673,
+        "rule": 1.0
+      },
+      {
+        "from": "2025-11-28T01:38:00+00:00",
+        "to": "2025-12-31T17:25:00+00:00",
+        "rows": 1545,
+        "model": 0.8358,
+        "rule": 1.0
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 4000,
+      "features": [
+        {
+          "feature": "linked_accounts",
+          "label": "accounts sharing a phone or browser",
+          "importance": 0.03092
+        },
+        {
+          "feature": "hours_since_sales_open",
+          "label": "hours since sales opened",
+          "importance": 0.01264
+        },
+        {
+          "feature": "customer_prior_orders",
+          "label": "earlier orders",
+          "importance": 0.0054
+        },
+        {
+          "feature": "tickets_requested",
+          "label": "tickets in the order",
+          "importance": 0.00349
+        },
+        {
+          "feature": "rapid_seat_attempts",
+          "label": "rapid seat attempts",
+          "importance": 0.00242
+        },
+        {
+          "feature": "account_age_days",
+          "label": "account age",
+          "importance": 0.00239
+        },
+        {
+          "feature": "prior_resale_listings",
+          "label": "earlier resale listings",
+          "importance": 0.00202
+        },
+        {
+          "feature": "clicks_per_minute",
+          "label": "clicks per minute",
+          "importance": 0.00168
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.00127
+        },
+        {
+          "feature": "checkout_duration_seconds",
+          "label": "checkout speed",
+          "importance": 0.0012
+        },
+        {
+          "feature": "failed_payments_30d",
+          "label": "failed payments (30 days)",
+          "importance": 0.00109
+        },
+        {
+          "feature": "orders_last_24h",
+          "label": "orders in the last 24 h",
+          "importance": 0.00104
+        },
+        {
+          "feature": "device_switches",
+          "label": "device switches",
+          "importance": 0.00097
+        },
+        {
+          "feature": "time_on_seatmap_seconds",
+          "label": "time on the seat map",
+          "importance": 0.00089
+        },
+        {
+          "feature": "payment_method",
+          "label": "payment method",
+          "importance": 0.00037
+        },
+        {
+          "feature": "unit_price_rel",
+          "label": "price vs typical",
+          "importance": 0.00022
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "linked_accounts_confirmed_fraud",
+          "label": "linked accounts with confirmed fraud",
+          "importance": 0.0
+        },
+        {
+          "feature": "linked_orders_same_event_24h",
+          "label": "linked accounts' orders for this event (24 h)",
+          "importance": 0.0
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": -0.0004
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0005,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0028,
+        "actual": 0.0,
+        "rows": 772
+      },
+      {
+        "predicted": 0.0051,
+        "actual": 0.0078,
+        "rows": 772
+      },
+      {
+        "predicted": 0.0051,
+        "actual": 0.0052,
+        "rows": 772
+      },
+      {
+        "predicted": 0.0081,
+        "actual": 0.0194,
+        "rows": 772
+      },
+      {
+        "predicted": 0.5958,
+        "actual": 0.5842,
+        "rows": 772
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 1.0,
+        "actual": 1,
+        "reasons": [
+          {
+            "feature": "tickets_requested",
+            "label": "tickets in the order",
+            "value": 8,
+            "typical": 2.0,
+            "effect": 0.77,
+            "direction": "up"
+          },
+          {
+            "feature": "device_switches",
+            "label": "device switches",
+            "value": 5,
+            "typical": 0.0,
+            "effect": 0.77,
+            "direction": "up"
+          },
+          {
+            "feature": "hours_since_sales_open",
+            "label": "hours since sales opened",
+            "value": 1.54,
+            "typical": 205.835,
+            "effect": 0.77,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.0019,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "customer_prior_orders",
+            "label": "earlier orders",
+            "value": 9,
+            "typical": 1.0,
+            "effect": -0.48,
+            "direction": "down"
+          },
+          {
+            "feature": "tickets_requested",
+            "label": "tickets in the order",
+            "value": 1,
+            "typical": 2.0,
+            "effect": -0.31,
+            "direction": "down"
+          },
+          {
+            "feature": "event_type",
+            "label": "event type",
+            "value": "MUSIC_CONCERT",
+            "typical": "CRICKET_MATCH",
+            "effect": 0.19,
+            "direction": "up"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "without_link_features": {
+      "precision": 0.8228,
+      "rule_precision": 0.9938,
+      "test_auc": 0.9793,
+      "false_flag_rate": 0.0112,
+      "recall": 0.7899,
+      "flag_rate": 0.0592
+    }
+  },
   "status": "REJECTED",
   "reasons": [
-    "not clearly better than the baseline: 95% interval of the improvement is [-0.2240, -0.1486]",
-    "guard failed: false flags among legitimate orders = 0.0127 (needs <= 0.01)"
+    "not clearly better than the baseline: 95% interval of the improvement is [-0.1482, -0.0879]"
   ],
   "deployed_model": {
     "status": "NO_DEPLOYED_MODEL"
@@ -226,7 +498,7 @@
     "trained_from": "2023-01-01T11:07:00+00:00",
     "trained_to": "2025-12-31T17:25:00+00:00"
   },
-  "duration_seconds": 26.9,
+  "duration_seconds": 33.0,
   "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
-  "artifact": "C:/Users/Qasim/AppData/Local/Temp/claude/d9edbd5b55e766ef/7cf8cc8a-eaaf-4bdf-937a-e40ceba83431/scratchpad/art22\\fraud.joblib"
+  "artifact": "models/v0/fraud.joblib"
 }

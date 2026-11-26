@@ -176,12 +176,244 @@
     "still_improving": true,
     "note": "more data would likely still help"
   },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-31T09:00:00+00:00",
+        "to": "2025-09-01T09:00:00+00:00",
+        "rows": 4500,
+        "model": 320.5851,
+        "rule": 366.1272
+      },
+      {
+        "from": "2025-09-01T14:00:00+00:00",
+        "to": "2025-09-30T09:00:00+00:00",
+        "rows": 4500,
+        "model": 505.0403,
+        "rule": 491.2751
+      },
+      {
+        "from": "2025-09-30T15:00:00+00:00",
+        "to": "2025-11-03T09:00:00+00:00",
+        "rows": 4500,
+        "model": 422.3135,
+        "rule": 444.8861
+      },
+      {
+        "from": "2025-11-03T13:00:00+00:00",
+        "to": "2025-11-27T14:00:00+00:00",
+        "rows": 4500,
+        "model": 430.5728,
+        "rule": 505.849
+      },
+      {
+        "from": "2025-11-27T15:00:00+00:00",
+        "to": "2025-12-29T16:00:00+00:00",
+        "rows": 4500,
+        "model": 463.4381,
+        "rule": 584.7082
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 4000,
+      "features": [
+        {
+          "feature": "customer_prior_no_shows",
+          "label": "earlier no-shows",
+          "importance": 0.09613
+        },
+        {
+          "feature": "days_before_event_purchased",
+          "label": "days bought in advance",
+          "importance": 0.04162
+        },
+        {
+          "feature": "ticket_price_rel",
+          "label": "price vs typical",
+          "importance": 0.03234
+        },
+        {
+          "feature": "customer_prior_attended",
+          "label": "earlier events attended",
+          "importance": 0.02817
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.0108
+        },
+        {
+          "feature": "tickets_in_order",
+          "label": "tickets in the order",
+          "importance": 0.00751
+        },
+        {
+          "feature": "start_hour",
+          "label": "start time",
+          "importance": 0.00265
+        },
+        {
+          "feature": "is_resold",
+          "label": "resold ticket",
+          "importance": 0.00182
+        },
+        {
+          "feature": "day_of_week",
+          "label": "day of the week",
+          "importance": 0.00128
+        },
+        {
+          "feature": "is_transferred",
+          "label": "transferred ticket",
+          "importance": 0.00125
+        },
+        {
+          "feature": "customer_prior_tickets",
+          "label": "earlier tickets",
+          "importance": 0.00016
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "tier_rank",
+          "label": "ticket tier",
+          "importance": -0.00097
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": -0.00114
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.6672,
+        "actual": 0.6422,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.7609,
+        "actual": 0.7618,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8023,
+        "actual": 0.7911,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8398,
+        "actual": 0.8289,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8581,
+        "actual": 0.8618,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8826,
+        "actual": 0.8844,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8927,
+        "actual": 0.892,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.9106,
+        "actual": 0.9147,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.9283,
+        "actual": 0.9244,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.9561,
+        "actual": 0.9498,
+        "rows": 2250
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 1.0,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "customer_prior_attended",
+            "label": "earlier events attended",
+            "value": 30,
+            "typical": 3.0,
+            "effect": 4.57,
+            "direction": "up"
+          },
+          {
+            "feature": "tier_rank",
+            "label": "ticket tier",
+            "value": 1,
+            "typical": 0.0,
+            "effect": 0.65,
+            "direction": "up"
+          },
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 3.156,
+            "typical": 0.756,
+            "effect": 0.65,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.8653,
+        "actual": 1,
+        "reasons": [
+          {
+            "feature": "tickets_in_order",
+            "label": "tickets in the order",
+            "value": 1,
+            "typical": 2.0,
+            "effect": -5.54,
+            "direction": "down"
+          },
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 0.8,
+            "typical": 0.756,
+            "effect": 0.79,
+            "direction": "up"
+          },
+          {
+            "feature": "days_before_event_purchased",
+            "label": "days bought in advance",
+            "value": 16.7,
+            "typical": 21.2,
+            "effect": 0.79,
+            "direction": "up"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+  },
   "status": "PASSED",
   "reasons": [],
   "deployed_model": {
     "status": "NO_DEPLOYED_MODEL"
   },
-  "duration_seconds": 42.9,
+  "duration_seconds": 42.8,
   "recommendation": "KEEP_CURRENT: trained on synthetic data",
-  "artifact": "C:/Users/Qasim/AppData/Local/Temp/claude/d9edbd5b55e766ef/7cf8cc8a-eaaf-4bdf-937a-e40ceba83431/scratchpad/art22\\attendance.joblib"
+  "artifact": "models/v0/attendance.joblib"
 }

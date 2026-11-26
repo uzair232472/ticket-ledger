@@ -22,6 +22,12 @@ crowd_flow stay byte-identical to 2.1.0:
   * checkout_abandonment.csv and demand_hourly.csv, shaped exactly like the database export (pseudonymous
     ids, feature_source "snapshot").
 
+Version 2.3.0 adds three account-link columns to fraud_purchases on a third random stream (seed + 2000), so every
+other file stays byte-identical to 2.2.0: linked_accounts (other accounts that shared a phone number or browser
+before the order), linked_accounts_confirmed_fraud (of those, accounts with fraud confirmed by then) and
+linked_orders_same_event_24h. ASSUMPTION: bot rings often share devices and wallets (65% of bot accounts are in
+a ring); 6% of legitimate customers share a family phone or browser; 2% of orders get an unrelated link.
+
 Rules this generator follows:
   * Every feature column is something the app can compute from its own tables at prediction time
     ("as of" the row's `ts`). Nothing from after `ts` leaks into a feature.
@@ -50,7 +56,7 @@ from math import erf
 import numpy as np
 import pandas as pd
 
-GENERATOR_VERSION = "2.2.0"
+GENERATOR_VERSION = "2.3.0"
 SOURCE_TAG = "synthetic-v0"
 
 # Global-ready columns. The platform launches in Pakistan, so v0 data is Pakistan-only, but every row
@@ -702,6 +708,69 @@ class World:
         out["order_id"] = [f"O{i + 1:07d}" for i in range(len(out))]
         return out
 
+    def account_links(self, fp, rng):
+        """2.3.0: account-link inputs. Accounts are linked when they shared a phone number or a browser before
+        the order. Assumptions (synthetic, stated in the README): bot / scalper accounts are run in rings that
+        often (not always) share devices and wallets; some legitimate customers share a family phone or a
+        browser. Every value is as of the order: links, confirmed frauds (known 14 days after the order, the
+        review window) and the ring's orders for the same event in the previous 24 h."""
+        fp = fp.copy()
+        ts = pd.to_datetime(fp["ts"], utc=True).astype("int64").to_numpy() / 1e9
+        cust = fp["customer_id"].to_numpy()
+        is_bot = np.char.startswith(cust.astype(str), "B")
+        group = {}
+        # Bot rings: 3-12 accounts; 35% of bot accounts run alone on clean devices (no links at all)
+        bots = np.unique(cust[is_bot])
+        rng.shuffle(bots)
+        alone = rng.random(len(bots)) < 0.35
+        ringed = bots[~alone]
+        k, g = 0, 0
+        while k < len(ringed):
+            size = int(rng.integers(3, 13))
+            for c in ringed[k:k + size]:
+                group[c] = f"R{g}"
+            k += size
+            g += 1
+        # Families / shared browsers: 6% of legitimate customers, in pairs or threes
+        legit = np.unique(cust[~is_bot])
+        shared = legit[rng.random(len(legit)) < 0.06]
+        rng.shuffle(shared)
+        k = 0
+        while k < len(shared):
+            size = int(rng.choice([2, 3], p=[0.75, 0.25]))
+            for c in shared[k:k + size]:
+                group[c] = f"F{g}"
+            k += size
+            g += 1
+        grp = np.array([group.get(c, "") for c in cust], dtype=object)
+        fraud = fp["is_fraud"].to_numpy() == 1
+        ev = fp["event_id"].to_numpy()
+        linked = np.zeros(len(fp), dtype=int)
+        linked_fraud = np.zeros(len(fp), dtype=int)
+        same_event = np.zeros(len(fp), dtype=int)
+        df_g = pd.DataFrame({"g": grp, "c": cust, "t": ts, "f": fraud, "e": ev})
+        for gid, rows in df_g[df_g["g"] != ""].groupby("g").groups.items():
+            rows = np.asarray(rows)
+            sub = df_g.loc[rows]
+            first = sub.groupby("c")["t"].min()                     # a member is known once it has ordered
+            fraud_known = sub[sub["f"]].groupby("c")["t"].min() + 14 * DAY
+            for i in rows:
+                me, t, e = cust[i], ts[i], ev[i]
+                others = first.drop(me, errors="ignore")
+                linked[i] = int((others <= t).sum())
+                fk = fraud_known.drop(me, errors="ignore")
+                linked_fraud[i] = int((fk <= t).sum())
+                m = (sub["c"] != me) & (sub["e"] == e) & (sub["t"] < t) & (sub["t"] >= t - DAY)
+                same_event[i] = int(m.sum())
+        # A few unrelated links (shared office / cafe network), so no input is a giveaway
+        noise = rng.random(len(fp)) < 0.02
+        linked[noise] += rng.integers(1, 3, int(noise.sum()))
+        fp["linked_accounts"] = linked
+        fp["linked_accounts_confirmed_fraud"] = linked_fraud
+        fp["linked_orders_same_event_24h"] = same_event
+        cols = [c for c in fp.columns if c != "is_fraud"] + ["is_fraud"]     # label last, as the exporter writes it
+        return fp[cols]
+
     @staticmethod
     def _pseudo(kind, values):
         return [kind + hashlib.sha256(f"synthetic:{kind}:{v}".encode()).hexdigest()[:16] for v in values]
@@ -825,6 +894,9 @@ def main():
     datasets["attendance_no_show"] = world.attendance(int(150_000 * s), rng=rng2, must_include=world.attendance_events)
     datasets["checkout_abandonment"] = world.checkout_abandonment(datasets["behavior_sequences"], rng2)
     datasets["demand_hourly"] = world.demand_hourly(datasets["event_demand"], rng2)
+    # 2.3.0: account-link inputs on a third stream (every other file is unchanged)
+    rng3 = np.random.default_rng(args.seed + 2000)
+    datasets["fraud_purchases"] = world.account_links(datasets["fraud_purchases"], rng3)
 
     manifest = {
         "source": SOURCE_TAG,

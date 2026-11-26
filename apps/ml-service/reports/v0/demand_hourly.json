@@ -163,6 +163,206 @@
     "still_improving": true,
     "note": "more data would likely still help"
   },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-18T01:00:00+00:00",
+        "to": "2025-09-01T11:00:00+00:00",
+        "rows": 1800,
+        "model": 0.1931,
+        "rule": 0.7726
+      },
+      {
+        "from": "2025-09-01T11:00:00+00:00",
+        "to": "2025-10-02T20:00:00+00:00",
+        "rows": 1800,
+        "model": 0.1582,
+        "rule": 0.7064
+      },
+      {
+        "from": "2025-10-02T20:00:00+00:00",
+        "to": "2025-11-02T14:00:00+00:00",
+        "rows": 1800,
+        "model": 0.1718,
+        "rule": 0.7406
+      },
+      {
+        "from": "2025-11-02T14:00:00+00:00",
+        "to": "2025-12-01T17:00:00+00:00",
+        "rows": 1800,
+        "model": 0.1992,
+        "rule": 0.6411
+      },
+      {
+        "from": "2025-12-01T17:00:00+00:00",
+        "to": "2025-12-29T17:00:00+00:00",
+        "rows": 1800,
+        "model": 0.221,
+        "rule": 0.4821
+      }
+    ],
+    "importance": {
+      "measure": "increase in average error when shuffled",
+      "rows": 4000,
+      "features": [
+        {
+          "feature": "sold_last_24h",
+          "label": "tickets sold in the last 24 h",
+          "importance": 173.63078
+        },
+        {
+          "feature": "days_until_event",
+          "label": "days until the event",
+          "importance": 47.10375
+        },
+        {
+          "feature": "hours_since_sales_open",
+          "label": "hours since sales opened",
+          "importance": 43.76867
+        },
+        {
+          "feature": "sold_so_far",
+          "label": "tickets sold so far",
+          "importance": 37.2347
+        },
+        {
+          "feature": "venue_capacity",
+          "label": "venue capacity",
+          "importance": 25.78237
+        },
+        {
+          "feature": "sell_through_so_far",
+          "label": "share sold so far",
+          "importance": 2.08715
+        },
+        {
+          "feature": "organizer_past_sell_through_48h",
+          "label": "organizer's past 48-hour sell-through",
+          "importance": 1.6664
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 1.00546
+        },
+        {
+          "feature": "max_price_rel",
+          "label": "dearest ticket vs typical",
+          "importance": 0.72921
+        },
+        {
+          "feature": "avg_price_rel",
+          "label": "average price vs typical",
+          "importance": 0.33822
+        },
+        {
+          "feature": "organizer_past_events",
+          "label": "organizer's past events",
+          "importance": 0.09662
+        },
+        {
+          "feature": "tier_count",
+          "label": "number of ticket types",
+          "importance": 0.07345
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": -0.14149
+        },
+        {
+          "feature": "start_month",
+          "label": "month",
+          "importance": -0.15816
+        },
+        {
+          "feature": "start_hour",
+          "label": "start time",
+          "importance": -0.17204
+        },
+        {
+          "feature": "min_price_rel",
+          "label": "cheapest ticket vs typical",
+          "importance": -0.30827
+        },
+        {
+          "feature": "day_of_week",
+          "label": "day of the week",
+          "importance": -0.46733
+        }
+      ]
+    },
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 10924.3332,
+        "actual": 9371,
+        "reasons": [
+          {
+            "feature": "sold_last_24h",
+            "label": "tickets sold in the last 24 h",
+            "value": 7417,
+            "typical": 93.0,
+            "effect": 10754.16,
+            "direction": "up"
+          },
+          {
+            "feature": "hours_since_sales_open",
+            "label": "hours since sales opened",
+            "value": 8.0,
+            "typical": 290.0,
+            "effect": 9400.12,
+            "direction": "up"
+          },
+          {
+            "feature": "venue_capacity",
+            "label": "venue capacity",
+            "value": 28100,
+            "typical": 10000.0,
+            "effect": 6718.3,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 112.4782,
+        "actual": 91,
+        "reasons": [
+          {
+            "feature": "sold_last_24h",
+            "label": "tickets sold in the last 24 h",
+            "value": 112,
+            "typical": 93.0,
+            "effect": 18.78,
+            "direction": "up"
+          },
+          {
+            "feature": "venue_capacity",
+            "label": "venue capacity",
+            "value": 22800,
+            "typical": 10000.0,
+            "effect": 7.34,
+            "direction": "up"
+          },
+          {
+            "feature": "hours_since_sales_open",
+            "label": "hours since sales opened",
+            "value": 911.0,
+            "typical": 290.0,
+            "effect": -3.57,
+            "direction": "down"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (scans) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+  },
   "status": "REJECTED",
   "reasons": [
     "guard failed: train error / test error (memorising) = 0.6384 (needs >= 0.7)"
@@ -184,7 +384,7 @@
     "trained_from": "2023-01-01T19:00:00+00:00",
     "trained_to": "2025-12-29T17:00:00+00:00"
   },
-  "duration_seconds": 19.2,
+  "duration_seconds": 24.1,
   "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
-  "artifact": "C:/Users/Qasim/AppData/Local/Temp/claude/d9edbd5b55e766ef/7cf8cc8a-eaaf-4bdf-937a-e40ceba83431/scratchpad/art22h\\demand_hourly.joblib"
+  "artifact": "models/v0/demand_hourly.joblib"
 }

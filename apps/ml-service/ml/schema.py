@@ -60,7 +60,9 @@ SPECS = {
         num=("tickets_requested", "unit_price_rel", "checkout_duration_seconds", "clicks_per_minute",
              "rapid_seat_attempts", "time_on_seatmap_seconds", "device_switches", "account_age_days",
              "customer_prior_orders", "orders_last_24h", "failed_payments_30d", "prior_resale_listings",
-             "hours_since_sales_open"),
+             "hours_since_sales_open",
+             # Account links (generator 2.3.0 / features.js): accounts that shared a phone number or browser
+             "linked_accounts", "linked_accounts_confirmed_fraud", "linked_orders_same_event_24h"),
         label_horizon_days=14,   # reviewers decide within two weeks
         holdout_group="customer_id", known_groups=("customer_id", "event_id"),
         segments={"human_speed": lambda d: (d["checkout_duration_seconds"] > 4) & (d["clicks_per_minute"] < 140),

@@ -31,6 +31,7 @@ from sklearn.isotonic import IsotonicRegression
 
 from . import baselines, metrics
 from .gates import GATES
+from .explain import LABELS, explanation_note, reasons, reference_profile
 from .models import COMPLEXITY, WeightedCalibrated, build, feature_frame, predict, target
 from .schema import ModelSpec
 from .splits import assert_no_leakage, time_split
@@ -382,6 +383,125 @@ def _learning_curve(spec, df, split, ctx_full, seed=0):
 
 
 # ---------------------------------------------------------------------------------------------
+# Diagnostics for the model card (AI monitor). All on the test period, after the decision inputs above were
+# fixed: none of this changes the status, a threshold or a setting.
+# ---------------------------------------------------------------------------------------------
+LINK_FEATURES = ("linked_accounts", "linked_accounts_confirmed_fraud", "linked_orders_same_event_24h")
+TIME_SLICES = 5
+IMPORTANCE_ROWS = 4000
+
+
+def _calibration(y, p, w=None, bins=10):
+    order = np.argsort(p, kind="stable")
+    out = []
+    for chunk in np.array_split(order, bins):
+        if not len(chunk):
+            continue
+        ww = None if w is None else w[chunk]
+        out.append({"predicted": round(float(np.average(p[chunk], weights=ww)), 4),
+                    "actual": round(float(np.average(y[chunk], weights=ww)), 4), "rows": int(len(chunk))})
+    return out
+
+
+def _over_time(spec, df, idx, out, base, ctx):
+    """The main measure for the model and the rule in consecutive slices of the test period."""
+    slices = []
+    for chunk in np.array_split(idx, TIME_SLICES):
+        if len(chunk) < 20:
+            continue
+        item = {"from": df["ts"].iloc[chunk[0]].isoformat(), "to": df["ts"].iloc[chunk[-1]].isoformat(), "rows": int(len(chunk))}
+        try:
+            m, b = main_measure(spec, df, chunk, out, base, ctx)
+            item.update(model=None if not np.isfinite(m) else round(float(m), 4), rule=None if not np.isfinite(b) else round(float(b), 4))
+        except Exception as e:                      # a slice with no flags / no positives: shown as a gap
+            item.update(model=None, rule=None, note=str(e)[:80])
+        if spec.name == "demand":
+            y = df[spec.label].to_numpy()[chunk]
+            item["range_coverage"] = round(metrics.coverage(y, out["lo"][chunk], out["hi"][chunk]), 4)
+        slices.append(item)
+    return slices
+
+
+def _importance(spec, model, df, idx, seed=0):
+    """Permutation importance on (a sample of) the test period: how much worse the model gets when one input
+    is shuffled. Binary: AUC drop (raw scores); others: increase in average error."""
+    rng = np.random.default_rng(seed)
+    if len(idx) > IMPORTANCE_ROWS:
+        idx = np.sort(rng.choice(idx, size=IMPORTANCE_ROWS, replace=False))
+    d = df.iloc[idx].reset_index(drop=True)
+    y = df[spec.label].to_numpy()[idx]
+    score = (lambda p: metrics.auc(y, p)) if spec.kind == "binary" else (lambda p: -metrics.mae(y, p))
+    ref = score(predict(model, d, spec))
+    if not np.isfinite(ref):
+        return {"measure": None, "features": []}
+    res = []
+    for c in list(spec.cat) + list(spec.num):
+        drops = []
+        for _ in range(2):
+            s = d.copy()
+            s[c] = s[c].to_numpy()[rng.permutation(len(s))]
+            drops.append(ref - score(predict(model, s, spec)))
+        res.append({"feature": c, "label": LABELS.get(c, c), "importance": round(float(np.mean(drops)), 5)})
+    res.sort(key=lambda r: -r["importance"])
+    return {"measure": "drop in test AUC when shuffled" if spec.kind == "binary" else "increase in average error when shuffled",
+            "rows": int(len(idx)), "features": res}
+
+
+def _examples(spec, model, df, split, out, ctx):
+    """Two test rows with their reasons: the highest prediction and a middle one."""
+    test = split.test
+    key = out["p"] if spec.kind == "binary" else out["pred"]
+    order = test[np.argsort(-key[test], kind="stable")]
+    picks = [("highest prediction", order[0]), ("middle prediction", order[len(order) // 2])]
+    ref = reference_profile(df.iloc[split.train], spec)
+    cal = ctx.get("calibrator")
+    transform = (lambda p, _d: cal.predict(p)) if cal is not None else None
+    rows = df.iloc[[i for _, i in picks]]
+    why = reasons(model, rows, spec, ref, transform=transform)
+    return [{"which": label, "prediction": round(float(key[i]), 4), "actual": _plain(df[spec.label].iloc[i]), "reasons": r}
+            for (label, i), r in zip(picks, why)]
+
+
+def _plain(v):
+    return v.item() if hasattr(v, "item") else v
+
+
+def _without_links(spec, df, split, base, seed=0, complexity=None):
+    """Fraud only: the same pipeline without the account-link inputs (what they add)."""
+    from dataclasses import replace
+    s2 = replace(spec, num=tuple(c for c in spec.num if c not in LINK_FEATURES))
+    model = _fit(s2, df, split.train, seed=seed, complexity=complexity)
+    ctx = _prepare_context(s2, model, df, split)
+    out = _outputs(s2, model, df, ctx)
+    y_t = df[spec.label].to_numpy()[split.test]
+    w_t = _sub(weights(spec, df), split.test)
+    m, b = main_measure(s2, df, split.test, out, base, ctx)
+    flags = metrics.flag_stats(y_t, out["p"][split.test] >= ctx["threshold"], w_t)
+    return {"precision": round(m, 4), "rule_precision": round(b, 4), "test_auc": round(metrics.auc(y_t, out["p"][split.test], w_t), 4),
+            **{k: round(v, 4) for k, v in flags.items()}}
+
+
+def _diagnostics(spec, model, df, split, out, base, ctx, seed=0):
+    test = split.test
+    y_t = df[spec.label].to_numpy()[test]
+    d = {"over_time": _over_time(spec, df, test, out, base, ctx), "importance": _importance(spec, model, df, test, seed=seed)}
+    if spec.kind == "binary":
+        d["calibration"] = _calibration(y_t.astype(float), out["p"][test], _sub(weights(spec, df), test))
+    if spec.name == "demand":
+        d["range"] = {"level": 0.80, "width_share_of_capacity": round(ctx["conformal_q"], 4),
+                      "coverage": round(metrics.coverage(y_t, out["lo"][test], out["hi"][test]), 4),
+                      "baseline_coverage": round(metrics.coverage(y_t, base["lo"][test], base["hi"][test]), 4)}
+    try:
+        d["examples"] = _examples(spec, model, df, split, out, ctx)
+        d["explanation_note"] = explanation_note(spec)
+    except Exception as e:
+        d["examples_error"] = str(e)[:200]
+    if spec.name == "fraud" and all(c in spec.num for c in LINK_FEATURES):
+        d["without_link_features"] = _without_links(spec, df, split, base, seed=seed, complexity=ctx.get("complexity"))
+    return d
+
+
+# ---------------------------------------------------------------------------------------------
 def _deployed_comparison(spec, df, split, out, ctx, deployed, seed=0):
     """The candidate vs the currently deployed model, on test rows newer than everything the deployed model
     was trained on (otherwise it would be judged on rows it has seen). deployed: {artifact, sha256, file}."""
@@ -522,6 +642,7 @@ def evaluate(spec: ModelSpec, data_dir: str, manifest: dict, seed=0, final=True,
     report["guards"] = _guards(spec, df, split, out, base, ctx, train_out)
     report["segments"] = _known_unseen(spec, df, split, out, base, ctx)
     report["learning_curve"] = _learning_curve(spec, df, split, ctx, seed=seed)
+    report["diagnostics"] = _diagnostics(spec, model, df, split, out, base, ctx, seed=seed)
 
     reasons = []
     if lo <= 0:
@@ -567,6 +688,8 @@ def _final_artifact(spec, df, ctx, report, manifest, seed):
         "features": {"categorical": list(spec.cat), "numeric": list(spec.num)}, "kind": spec.kind,
         "thresholds": {k: ctx[k] for k in ("threshold", "conformal_q") if k in ctx},
         "calibration": calibration, "complexity": ctx["complexity"],
+        # Typical values (for per-prediction reasons) and training distributions (for drift checks)
+        "reference": reference_profile(df, spec),
         "trained_rows": int(len(df)), "trained_from": df["ts"].min().isoformat(), "trained_to": df["ts"].max().isoformat(),
         "data_source": manifest.get("source"), "data_sha256": report["data"]["sha256"],
         "evaluation": {"status": report["status"], "result": report["result"], "reasons": report.get("reasons", [])},

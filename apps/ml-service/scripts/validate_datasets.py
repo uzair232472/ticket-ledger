@@ -48,7 +48,8 @@ SCHEMA = {
                         "checkout_duration_seconds", "clicks_per_minute", "rapid_seat_attempts",
                         "time_on_seatmap_seconds", "device_switches", "account_age_days", "customer_prior_orders",
                         "orders_last_24h", "failed_payments_30d", "prior_resale_listings",
-                        "hours_since_sales_open", "is_fraud"],
+                        "hours_since_sales_open", "linked_accounts", "linked_accounts_confirmed_fraud",
+                        "linked_orders_same_event_24h", "is_fraud"],
     "event_demand": ["event_id", "organizer_id", "ts", "event_start", "event_type", "city", "country", "timezone",
                      "venue_capacity", "tier_count", "currency", "min_price", "avg_price", "max_price",
                      "min_price_rel", "avg_price_rel", "max_price_rel", "day_of_week", "start_hour",
@@ -316,6 +317,8 @@ def main():
     r.check((fp["orders_last_24h"] <= fp["customer_prior_orders"]).all() and (fp["orders_last_24h"] >= 0).all(),
             "orders: last-24h count within prior orders")
     r.check((fp["account_age_days"] >= 0).all(), "orders: account exists before the order")
+    r.check((fp["linked_accounts_confirmed_fraud"] <= fp["linked_accounts"]).all() and (fp["linked_accounts"] >= 0).all(),
+            "orders: linked accounts with confirmed fraud are among the linked accounts")
 
     # ---- one sign-up date per customer across sessions and orders (ts - account age)
     signup = pd.concat([

@@ -140,6 +140,27 @@ export function AbandonmentInsightPanel({ eventId, data: given }) {
 // ---------------------------------------------------------------------------------------------
 // F. Demand (with the organizer's what-if price; never saved, never applied)
 // ---------------------------------------------------------------------------------------------
+/** The 80% range on a 0..capacity track, the model's forecast and the rule's estimate. Numbers are also shown as text. */
+function RangeBand({ current, rule }) {
+  const cap = Number(current.capacity) || Math.max(current.high || 0, rule || 0, 1);
+  const at = (v) => `${Math.max(0, Math.min(100, (Number(v) / cap) * 100))}%`;
+  const cov = current.range_offline_coverage;
+  return (
+    <div className="tl-ml-range" aria-label={`80% range ${num(current.low)} to ${num(current.high)} of ${num(cap)} seats; forecast ${num(current.sales_48h)}; rule ${num(rule)}`} role="img">
+      <div className="tl-ml-range-track">
+        <span className="tl-ml-range-band" style={{ left: at(current.low), width: `calc(${at(current.high)} - ${at(current.low)})` }} />
+        <span className="tl-ml-range-pt" style={{ left: at(current.sales_48h) }} title={`Model ${num(current.sales_48h)}`} />
+        {Number.isFinite(rule) && <span className="tl-ml-range-rule" style={{ left: at(rule) }} title={`Rule ${num(rule)}`} />}
+      </div>
+      <div className="tl-ml-range-axis"><span>0</span><span>{num(cap)} seats</span></div>
+      <p className="tl-pn-sub" style={{ margin: '4px 0 0' }}>
+        <i className="tl-ml-range-key tl-ml-range-key--band" /> 80% range · <i className="tl-ml-range-key tl-ml-range-key--pt" /> model · <i className="tl-ml-range-key tl-ml-range-key--rule" /> rule.
+        {Number.isFinite(cov) ? ` In the offline test this range held the real 48-hour sales ${Math.round(cov * 100)}% of the time.` : ''}
+      </p>
+    </div>
+  );
+}
+
 export function DemandInsightPanel({ eventId, price, data: given }) {
   const [debounced, setDebounced] = useState(price);
   useEffect(() => { const t = setTimeout(() => setDebounced(price), 600); return () => clearTimeout(t); }, [price]);
@@ -156,6 +177,18 @@ export function DemandInsightPanel({ eventId, price, data: given }) {
           <>
             <p>Model reading now, at the saved prices (live call, not saved, not applied):</p>
             <Figures items={[['Model: first 48 h', num(v.current.sales_48h)], ['Range low', num(v.current.low)], ['Range high', num(v.current.high)], ['Rule estimate', num(data.rules.projected_48h_sales)]]} />
+            <RangeBand current={v.current} rule={data.rules.projected_48h_sales} />
+            {v.current.reasons?.length > 0 && (
+              <>
+                <p style={{ marginTop: 10 }}>Why the model says this (each input compared with a typical event):</p>
+                <ul className="tl-ml-sens">
+                  {v.current.reasons.map((r) => (
+                    <li key={r.feature}><span>{r.label}: {String(r.value)} <em className="tl-pn-sub">(typical {String(r.typical)})</em></span><b className={r.effect > 0 ? 'up' : 'down'}>{r.effect > 0 ? '+' : ''}{num(r.effect)} tickets</b></li>
+                  ))}
+                </ul>
+                <p className="tl-pn-sub">One input at a time: the effects do not add up to the forecast.</p>
+              </>
+            )}
           </>
         )}
         {v?.sensitivity?.length > 0 && (

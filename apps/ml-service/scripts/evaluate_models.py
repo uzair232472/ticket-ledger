@@ -5,7 +5,7 @@ Evaluates trained models against the 15% unseen test sets:
 2. Fraud Detection & Anti-Scalping Model (Calibrated Random Forest)
 3. Event Demand Forecasting Model (Gradient Boosting + Random Forest Classifier)
 
-Outputs metrics summary table and saves `apps/ml-service/models/model_metrics.json`.
+Outputs metrics summary table and saves `apps/ml-service/dev/legacy-synthetic/legacy_model_metrics.json` (legacy models only; not served).
 """
 
 import os
@@ -24,7 +24,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Legacy formula-generated data (superseded by data/ v0 datasets; replaced in Step 2)
 DATA_DIR = os.path.join(BASE_DIR, "dev", "legacy-synthetic", "data")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
-METRICS_JSON_PATH = os.path.join(MODELS_DIR, "model_metrics.json")
+# Legacy formula-generated data: the models learn the formulas back, so these scores are near-perfect and mean
+# nothing about real performance. Written under dev/ (never shown by the service). The gated reports are in reports/v0/.
+METRICS_JSON_PATH = os.path.join(BASE_DIR, "dev", "legacy-synthetic", "legacy_model_metrics.json")
 
 def evaluate_all():
     print("=" * 80)

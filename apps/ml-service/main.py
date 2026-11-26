@@ -5,6 +5,7 @@ import os
 import sys
 import threading
 import time
+from dataclasses import replace
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import joblib
@@ -23,6 +24,7 @@ if BASE_DIR not in sys.path:
 from scripts.train_intent_model import train_intent
 from scripts.train_fraud_model import train_fraud
 from scripts.train_demand_model import train_demand
+from ml.explain import reasons as explain_reasons
 from ml.models import predict as ml_predict
 from ml.schema import ALL_SPECS, NULLABLE_FEATURES, SPECS
 
@@ -65,7 +67,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 FRAUD_MODEL_PATH = os.path.join(MODELS_DIR, "fraud_model.joblib")
 DEMAND_MODEL_PATH = os.path.join(MODELS_DIR, "demand_model.joblib")
 INTENT_MODEL_PATH = os.path.join(MODELS_DIR, "intent_model.joblib")
-METRICS_PATH = os.path.join(MODELS_DIR, "model_metrics.json")
+REPORTS_DIR = os.environ.get("ML_REPORTS_DIR", os.path.join(BASE_DIR, "reports", "v0"))
 
 fraud_pkg = None
 demand_pkg = None
@@ -420,13 +422,27 @@ def health_check():
         }
     }
 
+def _report(name):
+    path = os.path.join(REPORTS_DIR, f"{name}.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 @app.get("/models/metrics")
 def get_model_metrics():
-    if os.path.exists(METRICS_PATH):
-        import json
-        with open(METRICS_PATH, "r") as f:
-            return json.load(f)
-    return {"message": "Metrics not yet generated. Run scripts/evaluate_models.py."}
+    """The gated evaluation of every model (reports/v0): model vs the current rule on the newest, unseen period,
+    with the 95% interval of the improvement. The old near-perfect legacy scores are no longer served."""
+    models = {}
+    for name in ALL_SPECS:
+        r = _report(name)
+        if r:
+            models[name] = {"title": r.get("title"), "status": r.get("status"), "main_measure": r.get("main_measure"),
+                            "higher_is_better": r.get("higher_is_better"), **(r.get("result") or {}),
+                            "reasons": r.get("reasons", []), "data_source": (r.get("data") or {}).get("source")}
+    return {"source": "gated evaluation (python -m ml.train)", "reports_dir": os.path.basename(os.path.normpath(REPORTS_DIR)),
+            "models": models, "note": "Synthetic data. Every model runs in shadow only; none serves decisions."}
 
 # -----------------
 # Module 15 Endpoints: Inference
@@ -573,6 +589,8 @@ def _load_artifact(name, sha256):
 class ShadowRequest(BaseModel):
     sha256: str = Field(..., min_length=64, max_length=64)
     rows: List[Dict[str, Any]]
+    # Add the top-3 reasons to each prediction (ml/explain.py). Logged with the shadow row; never used to decide.
+    explain: bool = False
 
 
 @app.get("/v2/models")
@@ -587,8 +605,9 @@ def shadow_predict(name: str, req: ShadowRequest):
         raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
     if not req.rows or len(req.rows) > MAX_SHADOW_ROWS:
         raise HTTPException(status_code=422, detail=f"send 1 to {MAX_SHADOW_ROWS} rows")
-    spec = ALL_SPECS[name]
     artifact = _load_artifact(name, req.sha256)
+    # The inputs are the ones this artifact was trained with (an older registered model may have fewer)
+    spec = replace(ALL_SPECS[name], cat=tuple(artifact["features"]["categorical"]), num=tuple(artifact["features"]["numeric"]))
     needed = list(artifact["features"]["categorical"]) + list(artifact["features"]["numeric"])
     if name == "demand":
         needed = sorted(set(needed) | {"venue_capacity"})
@@ -603,6 +622,12 @@ def shadow_predict(name: str, req: ShadowRequest):
     if bad:
         raise HTTPException(status_code=422, detail=f"non-numeric or empty values in: {bad}")
     out = ml_predict(artifact["model"], df, spec)
+    why = None
+    if req.explain and artifact.get("reference"):
+        try:
+            why = explain_reasons(artifact["model"], df, spec, artifact["reference"], base=out)
+        except Exception as e:          # an explanation problem never loses the prediction
+            print(f"[shadow] {name}: reasons failed: {e}")
     th = artifact.get("thresholds", {})
     preds = []
     for i, v in enumerate(out):
@@ -620,8 +645,42 @@ def shadow_predict(name: str, req: ShadowRequest):
             item = {"sales_next_24h": round(v, 1)}
         else:
             item = {"scans": round(v, 2)}
+        if why is not None:
+            item["reasons"] = why[i]
         preds.append(item)
     return {"model": name, "sha256": req.sha256, "role": "SHADOW", "may_serve_decisions": False, "predictions": preds}
+
+
+@app.get("/v2/reference/{name}")
+def reference_profile(name: str, sha256: str):
+    """The registered artifact's training distributions (for the API's drift check) and typical values."""
+    if name not in ALL_SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    artifact = _load_artifact(name, sha256)
+    ref = artifact.get("reference")
+    if not ref:
+        raise HTTPException(status_code=404, detail=f"model '{name}' was built before reference profiles existed")
+    return {"model": name, "sha256": sha256, "trained_from": artifact.get("trained_from"), "trained_to": artifact.get("trained_to"),
+            "features": artifact["features"], "reference": ref}
+
+
+CARD_KEYS = ("model", "title", "kind", "label", "status", "reasons", "main_measure", "higher_is_better", "result", "details",
+             "guards", "segments", "learning_curve", "diagnostics", "complexity_selection", "split", "test_size", "features",
+             "shadow_decision", "recommendation", "duration_seconds")
+
+
+@app.get("/v2/model-card/{name}")
+def model_card(name: str):
+    """The offline evaluation report of a model, for the AI monitor's model card. Read-only."""
+    if name not in ALL_SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    r = _report(name)
+    if not r:
+        raise HTTPException(status_code=404, detail=f"no evaluation report for '{name}'")
+    data = r.get("data") or {}
+    entry = _registry().get(name) or {}
+    return {**{k: r.get(k) for k in CARD_KEYS}, "data": {k: data.get(k) for k in ("dataset", "rows", "source", "from", "to")},
+            "gates": r.get("gates"), "registry_sha256": entry.get("sha256"), "may_serve_decisions": False}
 
 
 # -----------------

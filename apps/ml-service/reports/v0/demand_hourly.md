@@ -72,4 +72,4 @@ Kept in shadow only. On synthetic 2.2.0 data it is far more accurate than the ru
 ## Final model
 Refitted with the same settings on all 60,000 rows (2023-01-01 to 2025-12-29). Calibration: n/a. It starts in shadow mode: it must also beat the rules on live data before an admin can promote it.
 
-_Duration 19.2 s._
+_Duration 24.1 s._

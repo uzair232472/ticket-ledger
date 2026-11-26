@@ -39,6 +39,7 @@ import PixelLoader from './components/events/PixelLoader';
 import SplashScreen from './components/motion/SplashScreen';
 import BehaviourReport from './pages/BehaviourReport';
 import AiMonitor from './pages/AiMonitor';
+import ModelCard from './pages/ModelCard';
 import PurchaseIntentAnalytics from './pages/PurchaseIntentAnalytics';
 import AbandonedIntentDashboard from './pages/AbandonedIntentDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
@@ -115,10 +116,11 @@ function SiteChrome({ children }) {
   return pathname === '/suspended' || customerOnly || accountSignedOut || legal ? children : null;
 }
 
-/** Site header for pages without their own: light, except on dark pages (Help & support). */
+/** Site header for pages without their own: light, except on the dark pages (Help & support, legal, About, Contact). */
+const DARK_CHROME = ['/support', '/terms', '/privacy', '/about', '/contact'];
 function ChromeHeader() {
   const { pathname } = useLocation();
-  const dark = pathname.replace(/\/+$/, '') === '/support';
+  const dark = DARK_CHROME.includes(pathname.replace(/\/+$/, ''));
   return <div className="tl-home tl-chrome"><HomeHeader tone={dark ? 'dark' : 'light'} /></div>;
 }
 
@@ -297,6 +299,7 @@ export default function App() {
               <Route path="/demand-forecast" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'event.pricing'}>{soon('demandForecast', 'Demand forecast', <DemandForecast />)}</ProtectedRoute>} />
               <Route path="/admin/behavior-profile" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}>{soon('behaviorAnalysis', 'Behavioral analysis', <BehaviourReport />)}</ProtectedRoute>} />
               <Route path="/admin/ai-monitor" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AiMonitor /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/ai-models" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><ModelCard /></ProtectedRoute></DashShell>} />
               <Route path="/admin/purchase-intent" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}><AdminInsightRoute page="intent">{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</AdminInsightRoute></ProtectedRoute>} />
               <Route path="/organizer/purchase-intent" element={<ProtectedRoute allowedRoles={['ORGANIZER', 'SUPER_ADMIN']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />
               <Route path="/analytics/intent/:id" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ORGANIZER']} permission={'attendee.view'}>{soon('purchaseIntent', 'Purchase intent', <PurchaseIntentAnalytics />)}</ProtectedRoute>} />

@@ -75,6 +75,7 @@ function ModelCard({ m }) {
         </ul>
       )}
       <EvaluationLine evaluation={m.evaluation} />
+      <Link className="tl-st-btn tl-st-btn--light" style={{ marginTop: 10 }} to={`/admin/ai-models?model=${m.name}`}>Open model card: charts, reasons, drift</Link>
     </Panel>
   );
 }

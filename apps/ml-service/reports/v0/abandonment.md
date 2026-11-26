@@ -26,7 +26,7 @@ share of actual abandons among the top 10% scored checkouts (higher is better), 
 |---|---|---|---|
 | train AUC - test AUC (memorising) | 0.0066 | <= 0.05 | pass |
 | calibration error (ECE) | 0.0239 | <= 0.05 | pass |
-| first-time visitors: top-10% share vs rule | 0.1179 | >= 0 (not worse) | pass |
+| first-time customers/visitors: top-10% share vs rule | 0.1179 | >= 0 (not worse) | pass |
 
 ## Known vs unseen customers / events, segments
 | Group | Rows | Model | Baseline |
@@ -36,6 +36,7 @@ share of actual abandons among the top 10% scored checkouts (higher is better), 
 | events_known | 194 | 0.5579 | 0.3419 |
 | events_unseen | 2,704 | 0.5131 | 0.3473 |
 | first_time_visitors | 299 | 0.5132 | 0.3953 |
+| returning_visitors | 2,599 | 0.5158 | 0.3408 |
 
 ## Learning curve (test AUC (higher is better))
 | Share of training data | Rows | Value |
@@ -47,6 +48,12 @@ share of actual abandons among the top 10% scored checkouts (higher is better), 
 
 Reading: more data would likely still help.
 
+## Compared with the deployed model
+NO_DEPLOYED_MODEL
+
+## Recommendation (not acted on automatically)
+KEEP_CURRENT: trained on synthetic data
+
 ## Details
 ```json
 {
@@ -56,4 +63,4 @@ Reading: more data would likely still help.
 }
 ```
 
-_Duration 5.5 s._
+_Duration 14.0 s._

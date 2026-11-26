@@ -6,6 +6,7 @@ import api from '../utils/api';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
 import { AttendanceInsightPanel, CrowdInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
 import GateLoadPlan from '../components/gates/GateLoadPlan';
+import CrowdHall3D from '../components/gates/CrowdHall3D';
 
 /*
  * Gate management for supervisors (gate.supervise): live load per gate, the gates themselves (type, ticket
@@ -129,6 +130,7 @@ export default function GateManagement() {
               <div className="space-y-6" style={{ marginTop: 24 }}>
                 <AttendanceInsightPanel eventId={eventId} />
                 <CrowdInsightPanel eventId={eventId} />
+                <CrowdHall3D eventId={eventId} />
               </div>
             </InsightBoundary>
           )}

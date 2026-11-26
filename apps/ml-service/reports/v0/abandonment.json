@@ -51,6 +51,7 @@
     "min_test_events_demand": 100,
     "min_test_events_attendance": 30,
     "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
     "max_calibration_error": 0.05,
     "max_false_flag_rate": 0.01,
     "min_range_coverage": 0.75,
@@ -117,7 +118,7 @@
       "passed": true
     },
     {
-      "name": "first-time visitors: top-10% share vs rule",
+      "name": "first-time customers/visitors: top-10% share vs rule",
       "value": 0.1179,
       "limit": ">= 0 (not worse)",
       "passed": true
@@ -148,6 +149,11 @@
       "rows": 299,
       "model": 0.5132,
       "baseline": 0.3953
+    },
+    "returning_visitors": {
+      "rows": 2599,
+      "model": 0.5158,
+      "baseline": 0.3408
     }
   },
   "learning_curve": {
@@ -177,8 +183,236 @@
     "still_improving": true,
     "note": "more data would likely still help"
   },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-31T13:11:00+00:00",
+        "to": "2025-09-01T05:12:00+00:00",
+        "rows": 580,
+        "model": 0.5234,
+        "rule": 0.343
+      },
+      {
+        "from": "2025-09-01T08:38:00+00:00",
+        "to": "2025-09-29T10:05:00+00:00",
+        "rows": 580,
+        "model": 0.4982,
+        "rule": 0.3401
+      },
+      {
+        "from": "2025-09-29T10:35:00+00:00",
+        "to": "2025-10-29T04:36:00+00:00",
+        "rows": 580,
+        "model": 0.5325,
+        "rule": 0.3551
+      },
+      {
+        "from": "2025-10-29T06:52:00+00:00",
+        "to": "2025-11-22T19:33:00+00:00",
+        "rows": 579,
+        "model": 0.4919,
+        "rule": 0.3583
+      },
+      {
+        "from": "2025-11-22T21:04:00+00:00",
+        "to": "2025-12-24T16:09:00+00:00",
+        "rows": 579,
+        "model": 0.5369,
+        "rule": 0.3366
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 2898,
+      "features": [
+        {
+          "feature": "ticket_price_rel",
+          "label": "price vs typical",
+          "importance": 0.10619
+        },
+        {
+          "feature": "event_views",
+          "label": "event page views",
+          "importance": 0.02224
+        },
+        {
+          "feature": "customer_prior_purchases",
+          "label": "earlier purchases",
+          "importance": 0.00564
+        },
+        {
+          "feature": "session_duration_seconds",
+          "label": "time on site",
+          "importance": 0.00273
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.00143
+        },
+        {
+          "feature": "account_age_days",
+          "label": "account age",
+          "importance": 0.00106
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": 0.00053
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "tier_count",
+          "label": "number of ticket types",
+          "importance": 0.0
+        },
+        {
+          "feature": "prior_sessions_this_event",
+          "label": "earlier visits to this event",
+          "importance": 0.0
+        },
+        {
+          "feature": "seat_selections",
+          "label": "seats selected",
+          "importance": -0.0001
+        },
+        {
+          "feature": "customer_prior_sessions",
+          "label": "earlier visits",
+          "importance": -0.00017
+        },
+        {
+          "feature": "hours_since_sales_open",
+          "label": "hours since sales opened",
+          "importance": -0.00042
+        },
+        {
+          "feature": "days_until_event",
+          "label": "days until the event",
+          "importance": -0.0017
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.1654,
+        "actual": 0.1448,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2145,
+        "actual": 0.2103,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2145,
+        "actual": 0.169,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2411,
+        "actual": 0.2379,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2579,
+        "actual": 0.3,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2829,
+        "actual": 0.2414,
+        "rows": 290
+      },
+      {
+        "predicted": 0.3172,
+        "actual": 0.3517,
+        "rows": 290
+      },
+      {
+        "predicted": 0.3964,
+        "actual": 0.4103,
+        "rows": 290
+      },
+      {
+        "predicted": 0.4084,
+        "actual": 0.3875,
+        "rows": 289
+      },
+      {
+        "predicted": 0.4923,
+        "actual": 0.5052,
+        "rows": 289
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 0.6552,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 2.356,
+            "typical": 0.523,
+            "effect": 28.68,
+            "direction": "up"
+          },
+          {
+            "feature": "event_type",
+            "label": "event type",
+            "value": "MUSIC_CONCERT",
+            "typical": "CRICKET_MATCH",
+            "effect": 15.8,
+            "direction": "up"
+          },
+          {
+            "feature": "event_views",
+            "label": "event page views",
+            "value": 1,
+            "typical": 2.0,
+            "effect": 15.8,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.2579,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 0.689,
+            "typical": 0.523,
+            "effect": 4.34,
+            "direction": "up"
+          },
+          {
+            "feature": "event_views",
+            "label": "event page views",
+            "value": 6,
+            "typical": 2.0,
+            "effect": -3.64,
+            "direction": "down"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions."
+  },
   "status": "PASSED",
   "reasons": [],
-  "duration_seconds": 5.5,
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "duration_seconds": 14.0,
+  "recommendation": "KEEP_CURRENT: trained on synthetic data",
   "artifact": "models/v0/abandonment.joblib"
 }

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Search, FolderOpen, ArrowLeft, RefreshCw, Plus, Ban, CheckCircle2 } from 'lucide-react';
 import api from '../utils/api';
 import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
+import AccountGraph from '../components/ml/AccountGraph';
 
 /*
  * Suspicious account investigations: open a case on an account, add notes and evidence, act on the account
@@ -122,6 +123,7 @@ function CaseView({ id }) {
               </form>
             )}
           </DashCard>
+          {acct?.id && <AccountGraph userId={acct.id} />}
         </div>
         <aside className="space-y-6">
           <DashCard title="Account">

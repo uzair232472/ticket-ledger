@@ -45,6 +45,12 @@ weighted % error of 48-hour sales (lower is better), newest 15% of the data:
 
 Reading: score has levelled off: more data of the same kind adds little.
 
+## Compared with the deployed model
+NO_DEPLOYED_MODEL
+
+## Recommendation (not acted on automatically)
+KEEP_CURRENT: trained on synthetic data
+
 ## Details
 ```json
 {
@@ -54,4 +60,4 @@ Reading: score has levelled off: more data of the same kind adds little.
 }
 ```
 
-_Duration 3.9 s._
+_Duration 5.3 s._
