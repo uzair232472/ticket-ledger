@@ -2,10 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { connectSocket } from '../lib/socket';
 import { Activity, DoorOpen, Users, Smartphone, ShieldAlert, ListChecks, FileBarChart, Plus, Save, RefreshCw, Download, Undo2, Check, X, GitCompareArrows, Archive, Wifi, AlertTriangle, CalendarDays, Eye, EyeOff, Lock, Unlock, RotateCcw, KeyRound, UploadCloud, Clock } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { PageHero, SectionTabs, AovFooter } from './AdminOverview';
 import api from '../utils/api';
-import { DashCard, DashHead, DashState, Notice, Segmented, Status } from '../components/dash/DashShell';
+import { DashCard, DashHead, DashState, Notice, Segmented, Status, useAdminDark } from '../components/dash/DashShell';
 import { AttendanceInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
 import GateLoadPlan from '../components/gates/GateLoadPlan';
 import CrowdFlowSection from '../components/gates/CrowdFlowSection';
@@ -43,9 +42,8 @@ const SYNC = {
 };
 
 export default function GateManagement() {
-  const { user } = useAuth();
-  // Super admins see the page on the dark admin console; organizers keep the studio look
-  const dark = user?.role === 'SUPER_ADMIN';
+  // On the dark console layout (admins, and organizers on this shared page) the page uses the console design
+  const dark = useAdminDark();
   const [params, setParams] = useSearchParams();
   const [events, setEvents] = useState([]);
   const eventId = params.get('event') || '';

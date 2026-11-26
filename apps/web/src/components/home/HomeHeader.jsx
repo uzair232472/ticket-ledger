@@ -21,8 +21,8 @@ function useMenuGroups(onCategories) {
 
   const discover = [
     { label: 'Explore Events', to: '/events' },
-    { label: 'Categories', onClick: onCategories },
-    { label: 'All Categories', to: '/categories' },
+    // One entry: the categories page (it lists every category)
+    { label: 'Categories', to: '/categories' },
   ];
   if (!isAuthenticated || role === 'CUSTOMER' || role === 'SUPER_ADMIN') discover.push({ label: 'Fan Resale', to: '/resale' });
   groups.push({ title: 'Discover', items: discover });
