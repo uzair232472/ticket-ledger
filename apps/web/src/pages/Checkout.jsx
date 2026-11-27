@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Tag, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Tag, Trash2, X } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useDialog } from '../components/ui/DialogProvider';
@@ -539,7 +539,6 @@ function CheckoutContent() {
       <BookingShell dark>
         {header}
         <section className="tl-bk-panel tl-co-status" aria-labelledby="co-empty">
-          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
           <h2 id="co-empty" className="tl-co-status-title">{status === 'error' ? 'Checkout unavailable' : 'No reserved tickets'}</h2>
           <p>{status === 'error' ? loadError : 'Your reservation may have expired, or no seats have been selected yet. Choose seats to start a new order.'}</p>
           <div className="tl-co-actions">

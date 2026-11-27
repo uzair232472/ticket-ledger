@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Calendar, Check, Clock, MapPin, QrCode, RefreshCw } from 'lucide-react';
+import { ArrowRight, Calendar, Check, Clock, MapPin, QrCode, RefreshCw } from 'lucide-react';
 import api from '../utils/api';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
@@ -102,7 +102,6 @@ export default function BookingSuccess() {
       <BookingShell>
         {head('Order unavailable')}
         <section className="tl-bk-panel tl-co-status is-error" role="alert">
-          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
           <p>{error}</p>
           <div className="tl-co-actions">
             <button type="button" className="tl-bk-btn" onClick={fetchOrder} disabled={checking}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try again</button>
@@ -153,7 +152,6 @@ export default function BookingSuccess() {
       <BookingShell>
         {head('Order not completed', 'checkout')}
         <section className="tl-bk-panel tl-co-status is-error" aria-labelledby="failed-title">
-          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
           <h2 id="failed-title" className="tl-co-status-title">No tickets were issued</h2>
           <p>
             This order for {event?.name} was cancelled or its reservation expired before payment was confirmed, so the seats were released and nothing was charged for it.

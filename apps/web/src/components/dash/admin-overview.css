@@ -92,7 +92,11 @@
   .tl-aov-root:has(.tl-aov-side.is-collapsed) .tl-header-logo .tl-brand-text { max-width: 0; opacity: 0; }
   /* Centre the mark over the 76px rail (header padding is clamp(16px, 2.4vw, 32px), the mark ~38px wide) */
   .tl-aov-root .tl-header-logo { transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, visibility 0s; }
-  .tl-aov-root:has(.tl-aov-side.is-collapsed) .tl-header-logo { transform: translateX(calc(38px - clamp(16px, 2.4vw, 32px) - 19px)); }
+  /* Open sidebar: the logo fits inside it (232px) and starts on the same line as the menu icons (x = 30px) */
+  .tl-aov-root .tl-header-logo .tl-brand { font-size: 20px; }
+  .tl-aov-root .tl-header-logo { transform: translateX(calc(30px - clamp(16px, 2.4vw, 32px))); }
+  /* Collapsed: the mark (about 32px wide at this size) centred over the 76px rail */
+  .tl-aov-root:has(.tl-aov-side.is-collapsed) .tl-header-logo { transform: translateX(calc(38px - clamp(16px, 2.4vw, 32px) - 16px)); }
 }
 
 .tl-aov-side-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

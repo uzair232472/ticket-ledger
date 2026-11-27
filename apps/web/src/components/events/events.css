@@ -210,7 +210,7 @@
 .tl-tile-flag.is-soldout { background: #f4f4f1; color: #0b0b0b; }
 .tl-tile-date { position: absolute; left: 12px; bottom: 12px; z-index: 1; max-width: calc(100% - 24px); padding: 6px 10px; border-radius: 8px; background: rgba(5, 13, 28, 0.82); font: 600 12.5px/1.2 'Plus Jakarta Sans', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.tl-tile-caption { position: relative; flex: 1; display: grid; align-content: start; gap: 8px; padding: 16px 64px 18px 16px; }
+.tl-tile-caption { position: relative; flex: 1; display: grid; align-content: start; gap: 8px; padding: 16px 16px 18px; }
 .tl-tile-title { font: 800 17px/1.25 'Plus Jakarta Sans', sans-serif; text-transform: uppercase; letter-spacing: -0.005em; }
 .tl-tile-meta { display: flex; align-items: flex-start; gap: 6px; font-size: 14px; line-height: 1.4; color: rgba(244, 244, 241, 0.78); }
 .tl-tile-meta svg { flex: 0 0 auto; margin-top: 2px; }
@@ -232,7 +232,7 @@
 /* List view: photo left, details right */
 .tl-ex-grid.is-list { grid-template-columns: 1fr; gap: 16px; }
 .tl-ex-grid.is-list .tl-tile-link { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); }
-.tl-ex-grid.is-list .tl-tile-caption { align-content: center; padding: 20px 76px 20px 22px; }
+.tl-ex-grid.is-list .tl-tile-caption { align-content: center; padding: 20px 22px; }
 .tl-ex-grid.is-list .tl-tile-go { top: 50%; bottom: auto; transform: translateY(-50%); }
 .tl-ex-grid.is-list .tl-tile-link:hover .tl-tile-go { transform: translate(2px, -50%); }
 .tl-ex-grid.is-list .tl-tile-fav { right: auto; left: calc(min(300px, 100%) - 50px); }
@@ -240,7 +240,7 @@
   .tl-ex-grid.is-list .tl-tile-link { grid-template-columns: 130px minmax(0, 1fr); }
   .tl-ex-grid.is-list .tl-tile-media { aspect-ratio: auto; min-height: 100%; }
   .tl-ex-grid.is-list .tl-tile-date, .tl-ex-grid.is-list .tl-tile-flags { display: none; }
-  .tl-ex-grid.is-list .tl-tile-caption { padding: 14px 56px 14px 14px; }
+  .tl-ex-grid.is-list .tl-tile-caption { padding: 14px; }
   .tl-ex-grid.is-list .tl-tile-title { font-size: 15px; }
   .tl-ex-grid.is-list .tl-tile-go { right: 12px; width: 32px; height: 32px; }
   .tl-ex-grid.is-list .tl-tile-fav { left: 86px; top: 0; }
@@ -508,3 +508,6 @@
   .tl-ex-dark .tl-wl-filters .tl-ex-select { flex: 0 0 auto; min-width: 0; padding: 10px 16px; border-left: 0; border-top: 1px solid rgba(244, 244, 241, 0.12); }
   .tl-ex-dark .tl-wl-filters .tl-ex-select > *:last-child { width: 100%; }
 }
+
+/* Cards open the event when clicked anywhere */
+.tl-tile-link { cursor: pointer; }

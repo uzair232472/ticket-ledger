@@ -8,7 +8,7 @@
   --dt-panel: rgba(9, 28, 36, 0.78);
   --dt-panel-line: rgba(74, 222, 128, 0.28);
   --dt-green: #22e06b;
-  --dt-wrap: 1240px;
+  --dt-wrap: none; /* edge to edge like Explore; side gutter below */
   --dt-ink: #f4f4f1;
   --dt-dim: rgba(244, 244, 241, 0.6);
   --dt-line: rgba(244, 244, 241, 0.14);
@@ -81,7 +81,7 @@
 .tl-dt-cta:disabled:not(.tl-dt-cta--done) { opacity: 0.6; }
 
 /* ---------- Body: small label column + content, as the reference "Overview" ---------- */
-.tl-dt-body { max-width: var(--dt-wrap); margin: 0 auto; padding: 40px 24px 24px; }
+.tl-dt-body { max-width: var(--dt-wrap); margin: 0 auto; padding: 40px clamp(16px, 2.4vw, 32px) 24px; }
 .tl-dt-body:empty { display: none; }
 .tl-dt-row {
   display: grid;
@@ -212,8 +212,8 @@
     linear-gradient(0deg, rgba(5, 13, 28, 0.92) 0%, rgba(5, 13, 28, 0) 45%);
 }
 .tl-dt-hero--skeleton { background: linear-gradient(90deg, #0a1628 0%, #11233a 50%, #0a1628 100%); background-size: 200% 100%; animation: tl-ex-shimmer 1.4s linear infinite; }
-.tl-dt-hero-top { position: absolute; top: calc(var(--tl-header-h) + 12px); left: 0; right: 0; z-index: 2; max-width: var(--dt-wrap); margin: 0 auto; padding: 0 24px; }
-.tl-dt-hero-inner { position: relative; z-index: 1; width: 100%; max-width: var(--dt-wrap); margin: 0 auto; padding: 150px 24px 96px; }
+.tl-dt-hero-top { position: absolute; top: calc(var(--tl-header-h) + 12px); left: 0; right: 0; z-index: 2; max-width: var(--dt-wrap); margin: 0 auto; padding: 0 clamp(16px, 2.4vw, 32px); }
+.tl-dt-hero-inner { position: relative; z-index: 1; width: 100%; max-width: var(--dt-wrap); margin: 0 auto; padding: 150px clamp(16px, 2.4vw, 32px) 96px; }
 
 .tl-dt-badge {
   display: inline-flex;
@@ -245,8 +245,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
   gap: 14px;
-  max-width: calc(var(--dt-wrap) - 48px);
-  margin: -28px auto 0;
+  max-width: none;
+  margin: -28px clamp(16px, 2.4vw, 32px) 0;
   padding: 12px;
   border: 1px solid var(--dt-panel-line);
   border-radius: 20px;
@@ -339,7 +339,7 @@
 .tl-dt-ov-panel .tl-dt-change { max-width: none; background: rgba(5, 13, 28, 0.45); }
 
 /* ---------- Section heads (gallery, other events) ---------- */
-.tl-dt-section { max-width: var(--dt-wrap); margin: 0 auto; padding: 32px 24px; }
+.tl-dt-section { max-width: var(--dt-wrap); margin: 0 auto; padding: 32px clamp(16px, 2.4vw, 32px); }
 .tl-dt-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 .tl-dt-section-title { position: relative; padding-left: 20px; font: 700 clamp(22px, 2vw, 26px)/1.2 'Plus Jakarta Sans', sans-serif; }
 .tl-dt-section-title::before { content: ''; position: absolute; left: 0; top: 2px; bottom: 2px; width: 4px; border-radius: 2px; background: var(--dt-green); }

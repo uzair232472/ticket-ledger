@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Heart, MapPin } from 'lucide-react';
+import { Heart, MapPin } from 'lucide-react';
 import { getEventVisual } from '../../utils/eventMedia';
 import markUrl from '../../assets/ticketledger-mark.svg';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
@@ -20,7 +20,7 @@ const minPrice = (event) => {
 
 /**
  * Event card: 3:2 photo (the organizer's card image) with the date chip, featured / availability
- * flags and a save heart, then the name, place, starting price and an arrow.
+ * flags and a save heart, then the name, place and starting price. The whole card opens the event.
  */
 export default function EventTile({ event, index, isFavorite, onToggleFavorite, onOpen, linkState }) {
   const visual = getEventVisual(event, index);
@@ -58,7 +58,6 @@ export default function EventTile({ event, index, isFavorite, onToggleFavorite, 
               {price === 'Free' ? <b>Free</b> : <>From <b>{price}</b></>}
             </p>
           )}
-          <span className="tl-tile-go" aria-hidden="true"><ArrowRight className="w-5 h-5" /></span>
         </div>
       </Link>
       <button
