@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { connectSocket } from '../lib/socket';
 import {
@@ -1328,47 +1329,54 @@ export default function GateScanner() {
         </div>
       )}
 
-      {/* Full-screen camera */}
-      {scanning && (
-        <div className="tl-gs-camera" role="dialog" aria-modal="true" aria-label="Scan tickets">
-          <div className="tl-gs-camera-top">
-            <span>
-              <strong>{event?.name}</strong>
-              <small>{gate}{dir === 'EXIT' ? ' · exits' : ''} · {online ? 'Online' : 'Offline'} · {entered}/{sold} entered</small>
-            </span>
-            <button type="button" onClick={() => setScanning(false)} aria-label="Close the camera"><X className="w-6 h-6" /></button>
-          </div>
-          <QrCamera onDecode={check} paused={Boolean(verdict) || checking || locked} />
-          {checking && <p className="tl-gs-checking" role="status"><RefreshCw className="w-5 h-5 tl-dash-spin" aria-hidden="true" /> Checking…</p>}
-          <div className="tl-gs-camera-bottom">
-            <p>Hold the QR inside the frame. Ask the guest to turn their screen brightness up.</p>
-            <ImageScan compact disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
-            {manualForm(true)}
-          </div>
-          {verdictEl}
-        </div>
-      )}
-      {!scanning && verdictEl}
+      {/* Camera, scan result and lock screens cover the whole window: rendered on <body>, outside the console
+          layout (its header, sidebar and containers would otherwise paint over them or clip them) */}
+      {createPortal(
+        <div className="tl-gs tl-gs-portal">
+          {/* Full-screen camera */}
+          {scanning && (
+            <div className="tl-gs-camera" role="dialog" aria-modal="true" aria-label="Scan tickets">
+              <div className="tl-gs-camera-top">
+                <span>
+                  <strong>{event?.name}</strong>
+                  <small>{gate}{dir === 'EXIT' ? ' · exits' : ''} · {online ? 'Online' : 'Offline'} · {entered}/{sold} entered</small>
+                </span>
+                <button type="button" onClick={() => setScanning(false)} aria-label="Close the camera"><X className="w-6 h-6" /></button>
+              </div>
+              <QrCamera onDecode={check} paused={Boolean(verdict) || checking || locked} />
+              {checking && <p className="tl-gs-checking" role="status"><RefreshCw className="w-5 h-5 tl-dash-spin" aria-hidden="true" /> Checking…</p>}
+              <div className="tl-gs-camera-bottom">
+                <p>Hold the QR inside the frame. Ask the guest to turn their screen brightness up.</p>
+                <ImageScan compact disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
+                {manualForm(true)}
+              </div>
+              {verdictEl}
+            </div>
+          )}
+          {!scanning && verdictEl}
 
-      {revoked && (
-        <div className="tl-gs-lock" role="alertdialog" aria-modal="true" aria-labelledby="gs-revoked-title">
-          <ShieldOff className="w-12 h-12" aria-hidden="true" />
-          <h2 id="gs-revoked-title">{revoked.device ? 'This scanner device was revoked' : 'Your access to this event was removed'}</h2>
-          <p>
-            {revoked.device ? 'A supervisor revoked this device, so it can no longer scan or download ticket lists, and its device credential was deleted.' : `You can no longer scan tickets for ${event?.name || 'this event'}.`} Its offline ticket list was deleted from this device.
-            {revoked.kept ? ` ${revoked.kept} scan${revoked.kept === 1 ? '' : 's'} that hadn’t uploaded yet ${revoked.kept === 1 ? 'is' : 'are'} kept on this device as a record for your supervisor. Don’t clear this browser’s data.` : ''} Contact your organizer if this is a mistake.
-          </p>
-          <button type="button" onClick={() => navigate('/scanner')}><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to my events</button>
-        </div>
-      )}
+          {revoked && (
+            <div className="tl-gs-lock" role="alertdialog" aria-modal="true" aria-labelledby="gs-revoked-title">
+              <ShieldOff className="w-12 h-12" aria-hidden="true" />
+              <h2 id="gs-revoked-title">{revoked.device ? 'This scanner device was revoked' : 'Your access to this event was removed'}</h2>
+              <p>
+                {revoked.device ? 'A supervisor revoked this device, so it can no longer scan or download ticket lists, and its device credential was deleted.' : `You can no longer scan tickets for ${event?.name || 'this event'}.`} Its offline ticket list was deleted from this device.
+                {revoked.kept ? ` ${revoked.kept} scan${revoked.kept === 1 ? '' : 's'} that hadn’t uploaded yet ${revoked.kept === 1 ? 'is' : 'are'} kept on this device as a record for your supervisor. Don’t clear this browser’s data.` : ''} Contact your organizer if this is a mistake.
+              </p>
+              <button type="button" onClick={() => navigate('/scanner')}><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to my events</button>
+            </div>
+          )}
 
-      {locked && (
-        <div className="tl-gs-lock" role="alertdialog" aria-modal="true" aria-labelledby="gs-lock-title">
-          <CloudOff className="w-12 h-12" aria-hidden="true" />
-          <h2 id="gs-lock-title">Reconnect to keep scanning</h2>
-          <p>This device has been offline since {lastOnline() ? clock(lastOnline()) : 'a while'}, more than 2 hours. Connect to the internet so the ticket list and the scans made here can sync.</p>
-          <button type="button" onClick={() => { refreshPack(); syncQueue({ manual: true }); }}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try to reconnect</button>
-        </div>
+          {locked && (
+            <div className="tl-gs-lock" role="alertdialog" aria-modal="true" aria-labelledby="gs-lock-title">
+              <CloudOff className="w-12 h-12" aria-hidden="true" />
+              <h2 id="gs-lock-title">Reconnect to keep scanning</h2>
+              <p>This device has been offline since {lastOnline() ? clock(lastOnline()) : 'a while'}, more than 2 hours. Connect to the internet so the ticket list and the scans made here can sync.</p>
+              <button type="button" onClick={() => { refreshPack(); syncQueue({ manual: true }); }}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try to reconnect</button>
+            </div>
+          )}
+        </div>,
+        document.body,
       )}
     </div>
   );
