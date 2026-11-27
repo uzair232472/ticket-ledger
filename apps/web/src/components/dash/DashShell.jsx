@@ -209,9 +209,10 @@ const iconForPath = (pathname) => {
 };
 
 /** Stadium heading for the dark admin pages: role badge, icon tile and green title, intro, tools on the right. */
-export function DarkHero({ title, intro, aside }) {
+export function DarkHero({ title, intro, aside, icon }) {
   const { pathname } = useLocation();
-  return <PageHero icon={iconForPath(pathname)} title={title} intro={intro} aside={aside} />;
+  // `icon={null}` leaves the icon tile out; otherwise the page's own icon
+  return <PageHero icon={icon === undefined ? iconForPath(pathname) : icon} title={title} intro={intro} aside={aside} />;
 }
 
 /**
@@ -319,12 +320,12 @@ export default function DashShell({ children }) {
  * Page heading: eyebrow + title (actions on the right), then an optional filter row underneath for tabs or
  * an event picker, laid out like the Explore heading and its filter bar.
  */
-export function DashHead({ eyebrow, title, intro, segment, actions, note }) {
+export function DashHead({ eyebrow, title, intro, segment, actions, note, icon }) {
   const dark = useAdminDark();
   if (dark) {
     return (
       <>
-        <DarkHero title={title} intro={note || intro} aside={actions && <div className="tl-dk-tools">{actions}</div>} />
+        <DarkHero title={title} intro={note || intro} icon={icon} aside={actions && <div className="tl-dk-tools">{actions}</div>} />
         {segment && <div className="tl-dk-seg">{segment}</div>}
       </>
     );

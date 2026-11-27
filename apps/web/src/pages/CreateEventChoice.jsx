@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Info } from 'lucide-react';
+import { ArrowRight, Info } from 'lucide-react';
 import { DashHead, useAdminDark } from '../components/dash/DashShell';
 import './createEventChoice.css';
 
@@ -129,11 +129,7 @@ export default function CreateEventChoice() {
         <DashHead
           title="Create event"
           note="Launch your next experience now, or reserve the dates and venue first and add tickets later."
-          actions={(
-            <Link to="/organizer/dashboard" className="tl-aov-pill tl-cc-back-pill">
-              <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to dashboard
-            </Link>
-          )}
+          icon={null}
         />
       ) : (
       <header className="tl-cc-head">
@@ -142,9 +138,6 @@ export default function CreateEventChoice() {
             <span>Organizer studio</span>
             <span>Create</span>
           </p>
-          <Link to="/organizer/dashboard" className="tl-cc-back">
-            <ArrowLeft className="w-4 h-4" /> Back to dashboard
-          </Link>
         </div>
         <h1 className="tl-sh-title tl-cc-title">
           Make it <span>happen.</span>
