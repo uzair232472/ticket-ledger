@@ -1,9 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { AlertTriangle, CheckCircle2, CircleDashed, FileText, Lock, Printer, RefreshCw, XCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, FileText, Lock, Printer, RefreshCw, XCircle } from 'lucide-react';
 import api from '../utils/api';
 import { StudioHead, Panel, Badge } from '../components/dash/Studio';
 import { RuleTag } from '../components/ml/InsightPanels';
+import HomeHeader from '../components/home/HomeHeader';
+import SiteFooter from '../components/home/SiteFooter';
+import '../components/home/home.css';
+import '../components/events/events.css';
+import logoUrl from '../assets/ticketledger-logo.png';
 import '../components/ml/ml.css';
 
 /*
@@ -85,19 +90,35 @@ export default function AiReadiness() {
 /** Printable governance report: one page per section, Save as PDF from the browser's print dialog. */
 export function AiReport() {
   const { data, state } = useGovernance();
+  const navigate = useNavigate();
+  const pageRef = useRef(null);
   const when = data ? new Date(data.generated_at).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }) : '';
   return (
-    <div className="tl-gv-report">
-      <div className="tl-gv-bar">
-        <Link to="/admin/ai-readiness">← Back to readiness</Link>
-        <button type="button" className="tl-st-btn tl-st-btn--green" onClick={() => window.print()} disabled={state !== 'ok'}><Printer className="w-4 h-4" /> Print / save as PDF</button>
+    // Same look as Explore Events: site header, big two-tone title over the glow, dark page, site footer
+    <div className="tl-home tl-explore tl-ex-dark tl-gv-page">
+      <HomeHeader pageRef={pageRef} onCategories={() => navigate('/categories')} tone="dark" />
+      <div ref={pageRef}>
+      <main className="tl-ex-main">
+      <div className="tl-ex-head tl-ex-hero tl-gv-hero">
+        <div className="tl-ex-hero-bg" aria-hidden="true"><span /><span /><span /><i /></div>
+        <div className="tl-ex-hero-copy">
+          <span className="tl-ex-hero-line" aria-hidden="true" />
+          <h1 className="tl-ex-title"><span>Governance</span> <span className="is-accent">Report</span></h1>
+          <p className="tl-ex-sub">How the AI is tested, and why it decides nothing. Print it or save it as a PDF.</p>
+        </div>
+        <div className="tl-gv-bar">
+          <Link to="/admin/ai-readiness" className="tl-gv-btn"><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to readiness</Link>
+          <button type="button" className="tl-gv-btn is-primary" onClick={() => window.print()} disabled={state !== 'ok'}><Printer className="w-4 h-4" aria-hidden="true" /> Print / save as PDF</button>
+        </div>
       </div>
-      {state === 'loading' && <p>Loading…</p>}
-      {state === 'failed' && <p>The report could not be loaded (is the ML service running?).</p>}
+      {state === 'loading' && <div className="tl-dash-state"><RefreshCw className="w-6 h-6 tl-dash-spin" /><p>Loading…</p></div>}
+      {state === 'failed' && <div className="tl-ml-warn" role="status"><AlertTriangle className="w-4 h-4" aria-hidden="true" />The report could not be loaded (is the ML service running?).</div>}
+      {state === 'off' && <div className="tl-ml-warn" role="status"><AlertTriangle className="w-4 h-4" aria-hidden="true" />AI insights are switched off (ML_INSIGHTS_ENABLED).</div>}
       {state === 'ok' && data && (
-        <article>
+        <article className="tl-gv-report">
           <header className="tl-gv-cover">
-            <p className="tl-gv-eyebrow">TicketLedger · AI governance report</p>
+            <img className="tl-gv-logo" src={logoUrl} alt="TicketLedger" />
+            <p className="tl-gv-eyebrow">AI governance report</p>
             <h1>How the AI is tested, and why it decides nothing</h1>
             <p>Generated {when}. Decision source for every customer, payment, ticket and gate: <b>the rules</b>.</p>
           </header>
@@ -165,9 +186,15 @@ export function AiReport() {
               ))}</tbody>
             </table>
           </section>
-          <footer className="tl-gv-foot">TicketLedger AI governance report · generated {when} · every model shadow-only (may_serve_decisions: false)</footer>
+          <footer className="tl-gv-foot">
+            <img className="tl-gv-logo tl-gv-logo--sm" src={logoUrl} alt="TicketLedger" />
+            <span>AI governance report · generated {when} · every model shadow-only (may_serve_decisions: false)</span>
+          </footer>
         </article>
       )}
+      </main>
+      <SiteFooter onCategories={() => navigate('/categories')} />
+      </div>
     </div>
   );
 }
