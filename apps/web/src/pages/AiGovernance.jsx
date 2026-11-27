@@ -8,7 +8,7 @@ import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
 import '../components/home/home.css';
 import '../components/events/events.css';
-import logoUrl from '../assets/ticketledger-logo.png';
+import BrandLogo from '../components/brand/BrandLogo';
 import '../components/ml/ml.css';
 
 /*
@@ -117,7 +117,7 @@ export function AiReport() {
       {state === 'ok' && data && (
         <article className="tl-gv-report">
           <header className="tl-gv-cover">
-            <img className="tl-gv-logo" src={logoUrl} alt="TicketLedger" />
+            <BrandLogo className="tl-gv-logo" />
             <p className="tl-gv-eyebrow">AI governance report</p>
             <h1>How the AI is tested, and why it decides nothing</h1>
             <p>Generated {when}. Decision source for every customer, payment, ticket and gate: <b>the rules</b>.</p>
@@ -187,7 +187,7 @@ export function AiReport() {
             </table>
           </section>
           <footer className="tl-gv-foot">
-            <img className="tl-gv-logo tl-gv-logo--sm" src={logoUrl} alt="TicketLedger" />
+            <BrandLogo className="tl-gv-logo tl-gv-logo--sm" />
             <span>AI governance report · generated {when} · every model shadow-only (may_serve_decisions: false)</span>
           </footer>
         </article>

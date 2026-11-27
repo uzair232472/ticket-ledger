@@ -114,9 +114,10 @@
 .tl-gv-btn.is-primary { border-color: transparent; background: var(--ex-green); color: #04210f; font-weight: 700; box-shadow: 0 0 24px rgba(34, 224, 107, 0.3); }
 .tl-gv-btn.is-primary:hover { background: #4ade80; }
 .tl-gv-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.tl-gv-report { position: relative; z-index: 1; max-width: 1100px; padding: clamp(20px, 3vw, 40px); border-radius: 22px; border: 1px solid var(--ex-line, rgba(74, 222, 128, 0.3)); background: rgba(9, 28, 36, 0.72); backdrop-filter: blur(8px); color: rgba(244, 244, 241, 0.86); font-size: 15px; line-height: 1.6; }
-.tl-gv-logo { display: block; height: 36px; width: auto; filter: invert(1) hue-rotate(180deg); }
-.tl-gv-logo--sm { height: 20px; }
+.tl-gv-report { position: relative; z-index: 1; width: 100%; box-sizing: border-box; padding: clamp(20px, 3vw, 40px); border-radius: 22px; border: 1px solid var(--ex-line, rgba(74, 222, 128, 0.3)); background: rgba(9, 28, 36, 0.72); backdrop-filter: blur(8px); color: rgba(244, 244, 241, 0.86); font-size: 15px; line-height: 1.6; }
+/* The coloured logo (blue ticket mark + name): navy parts turn white on the dark card, navy again on paper */
+.tl-gv-report .tl-gv-logo { --brand-navy: #fff; font-size: 30px; }
+.tl-gv-report .tl-gv-logo--sm { font-size: 16px; }
 .tl-gv-cover { border-bottom: 2px solid rgba(34, 224, 107, 0.55); padding-bottom: 18px; margin-bottom: 24px; }
 .tl-gv-eyebrow { margin: 18px 0 0; text-transform: uppercase; letter-spacing: 0.12em; font: 700 12px 'JetBrains Mono', monospace; color: var(--ex-green, #22e06b); }
 .tl-gv-cover h1 { margin: 6px 0 8px; font: 800 clamp(24px, 2.6vw, 34px)/1.15 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.01em; color: var(--ex-ink, #fff); }
@@ -130,7 +131,7 @@
 .tl-gv-report th, .tl-gv-report td { border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding: 9px 10px; text-align: left; vertical-align: top; }
 .tl-gv-report th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: rgba(244, 244, 241, 0.55); }
 .tl-gv-report section { overflow-x: auto; }
-.tl-gv-page > div > .tl-ex-main > :is(.tl-ml-warn, .tl-dash-state) { position: relative; z-index: 1; max-width: 1100px; }
+.tl-gv-page > div > .tl-ex-main > :is(.tl-ml-warn, .tl-dash-state) { position: relative; z-index: 1; }
 .tl-gv-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 32px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.12); font-size: 12px; color: rgba(244, 244, 241, 0.55); }
 @media (max-width: 760px) {
   .tl-gv-hero { grid-template-columns: minmax(0, 1fr); }
@@ -144,8 +145,8 @@
   .tl-gv-page::before { display: none; }
   .tl-gv-page .tl-ex-main { padding: 0 !important; }
   .tl-gv-report { max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #fff; backdrop-filter: none; color: #191919; font-size: 11.5px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .tl-gv-logo { filter: none; height: 30px; }
-  .tl-gv-logo--sm { height: 16px; }
+  .tl-gv-report .tl-gv-logo { --brand-navy: #051a3d; font-size: 26px; }
+  .tl-gv-report .tl-gv-logo--sm { font-size: 13px; }
   .tl-gv-cover { border-bottom-color: #0f3a23; }
   .tl-gv-eyebrow { color: #15803d; }
   .tl-gv-cover h1, .tl-gv-report b { color: #191919; }
