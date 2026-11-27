@@ -2468,7 +2468,7 @@ a.tl-apv-btn { text-decoration: none; }
 /* ===== Themed dropdown list (ThemedSelect.jsx) ===== */
 .tl-tsel {
   position: fixed;
-  z-index: 4000;
+  z-index: 2147483000;
   margin: 0;
   padding: 6px;
   list-style: none;

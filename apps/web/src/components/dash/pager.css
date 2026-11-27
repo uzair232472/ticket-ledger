@@ -1,0 +1,7 @@
+/* Previous / next pager under a list (dark console pages) */
+.tl-pager { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.tl-pager p { margin: 0; font-size: 13px; color: rgba(226, 236, 232, 0.7); }
+.tl-pager div { display: flex; align-items: center; gap: 12px; }
+.tl-pager .tl-aov-pill { min-height: 36px; }
+.tl-pager .tl-aov-pill:disabled { opacity: 0.4; cursor: default; border-color: rgba(255, 255, 255, 0.22); }
+.tl-pager-page { font-size: 13px; color: rgba(242, 246, 244, 0.85); white-space: nowrap; }

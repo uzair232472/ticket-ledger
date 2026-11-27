@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { WizardHero } from '../components/dash/Studio';
 import {
   AlertCircle, ArrowLeft, Armchair, CalendarDays, CheckCircle2, ChevronRight, Clock, ExternalLink, Eye,
   Layers, MapPin, MessageSquareWarning, Pencil, RefreshCw, Send, ShieldCheck, Ticket, XCircle,
@@ -172,24 +173,26 @@ export default function EventSubmit() {
 
   return (
     <div>
-      <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
-        <Link to="/organizer/dashboard">Dashboard</Link>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <span>{event.name}</span>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <span aria-current="page">Review &amp; submit</span>
-      </nav>
+      <WizardHero>
+        <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
+          <Link to="/organizer/dashboard">Dashboard</Link>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <span>{event.name}</span>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <span aria-current="page">Review &amp; submit</span>
+        </nav>
 
-      <header className="tl-wz-head">
-        <div>
-          <h1 className="tl-wz-title">Review &amp; submit</h1>
-          <p className="tl-wz-step-text">
-            {inSetup ? 'Step 5 of 5 · ' : ''}
-            {reservedDate ? 'Check your reserved date with its tickets and seating, then send it for final approval.' : 'Check how your event looks, then send it to TicketLedger for approval.'}
-          </p>
-        </div>
-        {inSetup && <SetupStepper current={4} />}
-      </header>
+        <header className="tl-wz-head">
+          <div>
+            <h1 className="tl-wz-title">Review &amp; submit</h1>
+            <p className="tl-wz-step-text">
+              {inSetup ? 'Step 5 of 5 · ' : ''}
+              {reservedDate ? 'Check your reserved date with its tickets and seating, then send it for final approval.' : 'Check how your event looks, then send it to TicketLedger for approval.'}
+            </p>
+          </div>
+          {inSetup && <SetupStepper current={4} />}
+        </header>
+      </WizardHero>
 
       {notice && <div className="tl-rv-banner is-ok" role="status"><CheckCircle2 className="w-5 h-5" aria-hidden="true" />{notice}</div>}
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}

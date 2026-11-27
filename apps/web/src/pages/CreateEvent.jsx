@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation, Link } from 'react-router-dom';
+import { WizardHero } from '../components/dash/Studio';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { getEventVisual } from '../utils/eventMedia';
@@ -734,39 +735,41 @@ export default function CreateEvent() {
 
   return (
     <div>
-      <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
-        <Link to="/organizer/dashboard">Dashboard</Link>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        {isEdit ? <Link to={`/events/${editId}`}>{eventData.name}</Link> : <Link to="/organizer/events/new" style={{ color: 'var(--st-green)' }}>Create event</Link>}
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <span aria-current="page">{isEdit ? 'Edit event' : STEPS[step].label}</span>
-      </nav>
+      <WizardHero>
+        <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
+          <Link to="/organizer/dashboard">Dashboard</Link>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          {isEdit ? <Link to={`/events/${editId}`}>{eventData.name}</Link> : <Link to="/organizer/events/new" style={{ color: 'var(--st-green)' }}>Create event</Link>}
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <span aria-current="page">{isEdit ? 'Edit event' : STEPS[step].label}</span>
+        </nav>
 
-      {isEdit ? (
-        <>
-          {/* Edit: title, event name and a way to the live page; the stepper sits in a mint band */}
-          <header className="tl-ed-head">
-            <div>
-              <h1 className="tl-wz-title">Edit event</h1>
-              <p className="tl-ed-sub">{eventData.name}</p>
+        {isEdit ? (
+          <>
+            {/* Edit: title, event name and a way to the live page; the stepper sits in a mint band */}
+            <header className="tl-ed-head">
+              <div>
+                <h1 className="tl-wz-title">Edit event</h1>
+                <p className="tl-ed-sub">{eventData.name}</p>
+              </div>
+              <Link to={`/events/${editId}`} className="tl-ed-view">
+                <span className="tl-ed-view-eye"><Eye className="w-4 h-4" /></span> View event <ArrowUpRight className="w-4 h-4" />
+              </Link>
+            </header>
+            <div className="tl-ed-band">
+              <SetupStepper steps={STEPS} current={step} onSelect={goTo} isSelectable={(i) => i !== step && i < 3} />
             </div>
-            <Link to={`/events/${editId}`} className="tl-ed-view">
-              <span className="tl-ed-view-eye"><Eye className="w-4 h-4" /></span> View event <ArrowUpRight className="w-4 h-4" />
-            </Link>
-          </header>
-          <div className="tl-ed-band">
+          </>
+        ) : (
+          <header className="tl-wz-head">
+            <div>
+              <h1 className="tl-wz-title">Create event</h1>
+              <p className="tl-wz-step-text">Step {step + 1} of {STEPS.length} · {STEP_TEXT[step]}</p>
+            </div>
             <SetupStepper steps={STEPS} current={step} onSelect={goTo} isSelectable={(i) => i !== step && i < 3} />
-          </div>
-        </>
-      ) : (
-        <header className="tl-wz-head">
-          <div>
-            <h1 className="tl-wz-title">Create event</h1>
-            <p className="tl-wz-step-text">Step {step + 1} of {STEPS.length} · {STEP_TEXT[step]}</p>
-          </div>
-          <SetupStepper steps={STEPS} current={step} onSelect={goTo} isSelectable={(i) => i !== step && i < 3} />
-        </header>
-      )}
+          </header>
+        )}
+      </WizardHero>
 
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
       {isEdit && underReview && (

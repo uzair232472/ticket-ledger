@@ -37,6 +37,7 @@ const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null
       city: true,
       venue: true,
       date: true,
+      endsAt: true,
       status: true,
       bannerUrl: true,
       cardImageUrl: true,

@@ -8,6 +8,21 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
  */
 
 /** Breadcrumb + large title + intro, then a row with page controls (left) and actions (right). */
+/**
+ * Heading block of the event setup wizard (breadcrumb, title, stepper). On the dark console it sits in the
+ * stadium heading band like every other console page; on the light studio it renders as before.
+ */
+export function WizardHero({ children }) {
+  const dark = useAdminDark();
+  if (!dark) return <>{children}</>;
+  return (
+    <div className="tl-wzh">
+      <div className="tl-apv-hero-bg" aria-hidden="true" />
+      {children}
+    </div>
+  );
+}
+
 export function StudioHead({ crumbs = [], title, intro, controls, actions }) {
   // Admin console (dark layout): the stadium heading, with the pickers and actions on the right
   const dark = useAdminDark();

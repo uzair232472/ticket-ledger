@@ -15,8 +15,10 @@ import './studio.css';
 import { insightPath } from '../../lib/insightPaths';
 import AdminSidebar, { ICONS as SIDEBAR_ICONS } from './AdminSidebar';
 import ThemedSelectLayer from './ThemedSelect';
+import ThemedDateLayer from './ThemedDate';
 import { PageHero, AovFooter } from '../../pages/AdminOverview';
 import { BadgeCheck, Brain, CalendarCheck, DoorOpen, LayoutGrid, Wallet, ShieldAlert } from 'lucide-react';
+import './studio-dark.css';
 import './admin-overview.css';
 
 // Console areas per role (same routes and role rules as App.jsx)
@@ -60,7 +62,8 @@ const CONSOLES = {
       { to: '/organizer/dashboard', label: 'Overview', permission: 'event.view' },
       { to: '/organizer/events/new', label: 'Create event', permission: 'event.create' },
       { to: '/organizer/prebook', label: 'Prebookings', permission: 'event.create' },
-      { to: '/organizer/team', label: 'Team', permission: ['staff.view', 'audit.view'] },
+      // Team page (members, invitations, roles, gate staff, activity), opened on its Gate staff tab
+      { to: '/organizer/team?tab=gate', label: 'Gate staff', permission: ['staff.view', 'audit.view'] },
       { to: '/organizer/organization', label: 'Organization', permission: ORG_PAGE_PERMISSIONS },
       { to: '/organizer/discounts', label: 'Discount codes', permission: 'discount.manage' },
       { to: '/organizer/purchase-intent', label: 'Purchase intent', permission: 'attendee.view' },
@@ -179,10 +182,13 @@ function usePendingCounts(enabled, pathname) {
 }
 
 // Admin console pages shown on the dark layout (super admins only; organizers keep the studio look)
-const ADMIN_DARK = /^\/(admin\/|organizer\/(team|gates)\/?$|support\/desk|scanner\/?$)/;
+const ADMIN_DARK = /^\/(admin\/|organizer\/(team|gates|dashboard)\/?$|support\/desk|scanner\/?$)/;
 /** True inside an admin console page on the dark layout: page headings render the stadium hero. */
 // Organizer pages that are the same screens admins or gate staff use: shown on the same dark design
-const ORG_SHARED = /^\/(organizer\/(team|gates|purchase-intent|demand-forecast|abandoned-intents)|demand-forecast|analytics\/intent|support\/desk|scanner|staff\/events)\/?$/;
+const ORG_SHARED = /^\/(organizer\/(dashboard|team|gates|purchase-intent|demand-forecast|abandoned-intents)|demand-forecast|analytics\/intent|support\/desk|scanner|staff\/events)\/?$/;
+// Organizer studio pages on the same dark design: creating and editing events (and every step of their setup),
+// prebookings and the organization profile. Admins open the same screens on the same look.
+const STUDIO_DARK = /^\/organizer\/(organization|events\/new|create-event|prebook(\/[^/]+)?|events\/[^/]+\/(edit|submit|manage|changes|venue))\/?$/;
 export const AdminDarkContext = createContext(false);
 export const useAdminDark = () => useContext(AdminDarkContext);
 
@@ -226,9 +232,9 @@ export default function DashShell({ children }) {
   // ...the gate team's console (My events, Scanner), and for organizers the pages they share with admins or
   // gate staff (Team, Gates, Scanner, My events, Support desk, the insight pages)
   const orgConsole = Boolean(console_) && user?.role !== 'SUPER_ADMIN' && console_ !== CONSOLES.GATE_STAFF;
-  const bare = (user?.role === 'SUPER_ADMIN' && ADMIN_DARK.test(pathname))
+  const bare = (user?.role === 'SUPER_ADMIN' && (ADMIN_DARK.test(pathname) || STUDIO_DARK.test(pathname)))
     || (console_ === CONSOLES.GATE_STAFF && /^\/(staff\/events|scanner)\/?$/.test(pathname))
-    || (orgConsole && ORG_SHARED.test(pathname));
+    || (orgConsole && (ORG_SHARED.test(pathname) || STUDIO_DARK.test(pathname)));
   const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit|manage)))\/?$/.test(pathname);
 
   useEffect(() => {
@@ -260,6 +266,7 @@ export default function DashShell({ children }) {
         <div ref={pageRef} className="tl-aov-shell">
           <AdminSidebar console={console_} pending={pending} isAdmin={user?.role === 'SUPER_ADMIN'} />
           <ThemedSelectLayer />
+          <ThemedDateLayer />
           <main className="tl-aov-main">
             <AdminDarkContext.Provider value>
               <div className="tl-aov-page tl-aov-sec">

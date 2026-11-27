@@ -64,6 +64,7 @@ export const ICONS = {
   '/organizer/abandoned-intents': ShoppingCart,
   '/organizer/support': LifeBuoy,
   '/organizer/checkout-settings': Settings,
+  '/organizer/team?tab=gate': ScanLine,
 };
 
 // Fans with raised hands and flags at the foot of the sidebar (fixed seed, so it never changes between renders)
@@ -119,6 +120,16 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
   const onPage = pathname.startsWith('/admin/dashboard');
   const links = (consoleNav?.links || []).filter((l) => l.to !== '/admin/dashboard');
   const flat = links.filter((l) => !l.children);
+  // A link with a query (Team page > Gate staff tab) is active on the whole page unless a plain link to that
+  // page is also listed (then it is active on its own tab only, and the plain link on the rest)
+  const isActive = (to) => {
+    const [path, query] = to.split('?');
+    if (!pathname.startsWith(path)) return false;
+    if (!query) return !flat.some((l) => l.to !== to && l.to.startsWith(`${path}?`) && isActive(l.to));
+    if (!flat.some((l) => l.to === path)) return true;
+    const params = new URLSearchParams(search);
+    return [...new URLSearchParams(query)].every(([k, v]) => params.get(k) === v);
+  };
   const groups = links.filter((l) => l.children);
 
   const badge = (key) => (key && pending[key] > 0 ? (
@@ -163,7 +174,7 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
             <ul className="tl-aov-side-list">
               {flat.map((l) => {
                 const Icon = ICONS[l.to] || Settings;
-                const active = pathname.startsWith(l.to);
+                const active = isActive(l.to);
                 return (
                   <li key={l.to}>
                     <Link to={l.to} className={`tl-aov-side-link${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined} title={collapsed ? l.label : undefined}>

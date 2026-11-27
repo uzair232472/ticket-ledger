@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { WizardHero } from '../components/dash/Studio';
 import {
   AlertCircle, AlertTriangle, ArrowLeft, Ban, CalendarClock, CheckCircle2, ChevronRight, Clock, History, Loader2, PauseCircle,
   Receipt, Send, Tag, Ticket, Undo2, Users,
@@ -203,20 +204,22 @@ export default function EventChanges() {
 
   return (
     <div>
-      <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
-        <Link to="/organizer/dashboard">Dashboard</Link>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <Link to={`/events/${id}`}>{event.name}</Link>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <span aria-current="page">Cancel or change date</span>
-      </nav>
-      <header className="tl-wz-head">
-        <div>
-          <h1 className="tl-wz-title">Cancel or change date</h1>
-          <p className="tl-wz-step-text">{event.name} · {slot(event.startsAt || event.date, event.venue, event.city)}</p>
-        </div>
-        <Link to="/organizer/dashboard" className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> Back to dashboard</Link>
-      </header>
+      <WizardHero>
+        <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
+          <Link to="/organizer/dashboard">Dashboard</Link>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <Link to={`/events/${id}`}>{event.name}</Link>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <span aria-current="page">Cancel or change date</span>
+        </nav>
+        <header className="tl-wz-head">
+          <div>
+            <h1 className="tl-wz-title">Cancel or change date</h1>
+            <p className="tl-wz-step-text">{event.name} · {slot(event.startsAt || event.date, event.venue, event.city)}</p>
+          </div>
+          <Link to="/organizer/dashboard" className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> Back to dashboard</Link>
+        </header>
+      </WizardHero>
 
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
 

@@ -5,6 +5,7 @@ import { API_URL } from '../lib/session';
 import { validateEmail } from '../lib/validation';
 import { Plus, Send, RefreshCw, XCircle, UserX, UserCheck, Mail, AlertCircle, CheckCircle2, Users, UserPlus, CalendarDays, Info } from 'lucide-react';
 import { DashCard, Notice, Status } from './dash/DashShell';
+import Pager, { pageOf } from './dash/Pager';
 
 const Badge = ({ status }) => <Status value={status} />;
 
@@ -15,7 +16,7 @@ const formatDate = (value) => new Date(value).toLocaleDateString(undefined, { da
  * organizers see their own events and staff; the Super Admin sees everything with a company filter.
  * The API enforces the same scoping, so this only shapes the UI.
  */
-export default function StaffManager({ layout } = {}) {
+export default function StaffManager({ layout, showInvite = true, reloadKey = 0 } = {}) {
   const dialog = useDialog();
   const { user, token } = useAuth();
   const isAdmin = user?.role === 'SUPER_ADMIN';
@@ -32,6 +33,8 @@ export default function StaffManager({ layout } = {}) {
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [staffPage, setStaffPage] = useState(0);
+  const [invitePage, setInvitePage] = useState(0);
 
   const request = useCallback(
     async (path, options = {}) => {
@@ -69,9 +72,10 @@ export default function StaffManager({ layout } = {}) {
     }
   }, [request, isAdmin, companyFilter]);
 
+  // Reloads when the page sends an invite from its own dialog (reloadKey changes)
   useEffect(() => {
     if (token) load();
-  }, [token, load]);
+  }, [token, load, reloadKey]);
 
   // Take one event away from a staff member: their scanner stops working for it, online and offline
   const revokeEvent = async (s, ev) => {
@@ -290,7 +294,7 @@ export default function StaffManager({ layout } = {}) {
   return (
     <DashCard
       title="Gate staff"
-      sub="Invite staff to scan at an event's gates"
+      sub={showInvite ? "Invite staff to scan at an event's gates" : 'People who scan tickets at your events’ gates'}
       aside={isAdmin && (
         <select value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)} className="tl-dash-select" aria-label="Filter by company">
           <option value="">All companies</option>
@@ -303,7 +307,8 @@ export default function StaffManager({ layout } = {}) {
       {error && <Notice tone="bad" icon={AlertCircle}>{error}</Notice>}
       {notice && !error && <Notice tone="good" icon={CheckCircle2}>{notice}</Notice>}
 
-      {/* Invite form */}
+      {/* Invite form (pages with their own invite dialog hide it) */}
+      {showInvite && (
       <form onSubmit={handleInvite} className="tl-staff-form" noValidate>
         <div className="tl-dash-search">
           <Mail className="w-4 h-4" aria-hidden="true" />
@@ -322,7 +327,8 @@ export default function StaffManager({ layout } = {}) {
           Invite staff
         </button>
       </form>
-      {!loading && events.length === 0 && (
+      )}
+      {showInvite && !loading && events.length === 0 && (
         <p className="tl-dash-card-sub">No events yet. Create an event first, then invite staff to it.</p>
       )}
 
@@ -335,7 +341,7 @@ export default function StaffManager({ layout } = {}) {
             {staff.length === 0 ? (
               <p className="tl-dash-card-sub">No gate staff yet.</p>
             ) : (
-              staff.map((s) => (
+              pageOf(staff, staffPage).rows.map((s) => (
                 <div key={s.id} className="tl-staff-row">
                   <span className="tl-staff-avatar" aria-hidden="true">{initials(s.name)}</span>
                   <div style={{ minWidth: 0 }}>
@@ -393,6 +399,7 @@ export default function StaffManager({ layout } = {}) {
                 </div>
               ))
             )}
+            <Pager page={pageOf(staff, staffPage).page} total={staff.length} onPage={setStaffPage} label="Gate staff" />
           </section>
 
           <section className="tl-staff-group" aria-labelledby="tl-staff-invites">
@@ -400,7 +407,7 @@ export default function StaffManager({ layout } = {}) {
             {invites.length === 0 ? (
               <p className="tl-dash-card-sub">No invites sent yet.</p>
             ) : (
-              invites.map((inv) => (
+              pageOf(invites, invitePage).rows.map((inv) => (
                 <div key={inv.id} className="tl-staff-row">
                   <span className="tl-staff-avatar" aria-hidden="true"><Send className="w-4 h-4" /></span>
                   <div style={{ minWidth: 0 }}>
@@ -438,6 +445,7 @@ export default function StaffManager({ layout } = {}) {
                 </div>
               ))
             )}
+            <Pager page={pageOf(invites, invitePage).page} total={invites.length} onPage={setInvitePage} label="Invites" />
           </section>
         </>
       )}
