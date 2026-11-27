@@ -89,3 +89,12 @@
 .tl-aov-page .tl-sp-pill[data-s='ESCALATED'] { border-color: rgba(251, 113, 133, 0.5); background: rgba(251, 113, 133, 0.12); color: #fda4af; }
 .tl-aov-page .tl-sp-pill[data-s='RESOLVED'] { border-color: rgba(34, 224, 107, 0.5); background: rgba(34, 224, 107, 0.14); color: #86efac; }
 .tl-aov-page .tl-sp-pill[data-s='CLOSED'] { color: rgba(226, 236, 232, 0.7); }
+
+/* Gate staff and invites (Team > Gate staff) as tables */
+.tl-staff-table { margin-top: 8px; }
+.tl-staff-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tl-staff-who > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.tl-staff-who .tl-staff-avatar { flex: 0 0 auto; }
+.tl-staff-mail { overflow-wrap: anywhere; }
+.tl-staff-table .tl-staff-events { margin: 0; }
+.tl-staff-group + .tl-staff-group { margin-top: 26px; }

@@ -6,6 +6,7 @@ import { validateEmail } from '../lib/validation';
 import { Plus, Send, RefreshCw, XCircle, UserX, UserCheck, Mail, AlertCircle, CheckCircle2, Users, UserPlus, CalendarDays, Info } from 'lucide-react';
 import { DashCard, Notice, Status } from './dash/DashShell';
 import Pager, { pageOf } from './dash/Pager';
+import './dash/discounts.css';
 
 const Badge = ({ status }) => <Status value={status} />;
 
@@ -117,8 +118,6 @@ export default function StaffManager({ layout, showInvite = true, reloadKey = 0 
     setSending(false);
     setEmail('');
   };
-
-  const openInvites = invites.filter((i) => i.status !== 'ACCEPTED');
 
   const initials = (name = '') => name.replace(/\(.*?\)/g, '').trim().split(/\s+/).map((n) => n[0]).slice(0, 2).join('').toUpperCase() || '?';
 
@@ -337,113 +336,107 @@ export default function StaffManager({ layout, showInvite = true, reloadKey = 0 
       ) : (
         <>
           <section className="tl-staff-group" aria-labelledby="tl-staff-active">
-            <h3 id="tl-staff-active">Active staff ({staff.filter((s) => s.status === 'ACTIVE').length})</h3>
+            <h3 id="tl-staff-active">Gate staff ({staff.filter((s) => s.status === 'ACTIVE').length} active)</h3>
             {staff.length === 0 ? (
               <p className="tl-dash-card-sub">No gate staff yet.</p>
             ) : (
-              pageOf(staff, staffPage).rows.map((s) => (
-                <div key={s.id} className="tl-staff-row">
-                  <span className="tl-staff-avatar" aria-hidden="true">{initials(s.name)}</span>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="tl-staff-name"><span>{s.name}</span><Badge status={s.status} /></div>
-                    <p>{s.email}{isAdmin && s.memberOfCompany ? ` · ${s.memberOfCompany.companyName}` : ''}</p>
-                    {s.staffAssignments.length ? (
-                      <ul className="tl-staff-events" aria-label={`Events ${s.name} can scan`}>
-                        {s.staffAssignments.map((a) => (
-                          <li key={a.event.id}>
-                            {a.event.name}
-                            <button
-                              type="button"
-                              onClick={() => revokeEvent(s, a.event)}
-                              disabled={busyId === `${s.id}:${a.event.id}`}
-                              aria-label={`Revoke ${s.name}'s access to ${a.event.name}`}
-                              title="Revoke access to this event"
-                            >
-                              <XCircle className="w-3.5 h-3.5" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p>Gate staff · No events</p>
-                    )}
-                  </div>
-                  {s.status === 'ACTIVE' && (
-                    <div className="tl-staff-actions">
-                      <button
-                        type="button"
-                        disabled={busyId === s.id}
-                        onClick={() => run(s.id, () => request(`/${s.id}/deactivate`, { method: 'PATCH' }))}
-                        className="tl-staff-icon is-danger"
-                        aria-label={`Deactivate ${s.name}`}
-                        title="Deactivate"
-                      >
-                        <UserX className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                  {s.status === 'DEACTIVATED' && (
-                    <div className="tl-staff-actions">
-                      <button
-                        type="button"
-                        disabled={busyId === s.id}
-                        onClick={() => run(s.id, () => request(`/${s.id}/reactivate`, { method: 'PATCH' }))}
-                        className="tl-staff-icon is-good"
-                        aria-label={`Reactivate ${s.name}`}
-                        title="Reactivate"
-                      >
-                        <UserCheck className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
+              <div className="tl-dash-table-wrap">
+                <table className="tl-dash-table tl-dc-table tl-staff-table">
+                  <thead><tr><th>Staff member</th><th>Events they scan</th><th>Status</th><th className="is-num">Actions</th></tr></thead>
+                  <tbody>
+                    {pageOf(staff, staffPage).rows.map((s) => (
+                      <tr key={s.id}>
+                        <td>
+                          <div className="tl-staff-who">
+                            <span className="tl-staff-avatar" aria-hidden="true">{initials(s.name)}</span>
+                            <span>
+                              <strong className="tl-dc-value">{s.name}</strong>
+                              <span className="tl-dc-note">{s.email}{isAdmin && s.memberOfCompany ? ` · ${s.memberOfCompany.companyName}` : ''}</span>
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          {s.staffAssignments.length ? (
+                            <ul className="tl-staff-events" aria-label={`Events ${s.name} can scan`}>
+                              {s.staffAssignments.map((a) => (
+                                <li key={a.event.id}>
+                                  {a.event.name}
+                                  <button
+                                    type="button"
+                                    onClick={() => revokeEvent(s, a.event)}
+                                    disabled={busyId === `${s.id}:${a.event.id}`}
+                                    aria-label={`Revoke ${s.name}'s access to ${a.event.name}`}
+                                    title="Revoke access to this event"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : <span className="tl-dc-note">No events</span>}
+                        </td>
+                        <td><Badge status={s.status} /></td>
+                        <td className="is-num">
+                          <div className="tl-dc-actions">
+                            {s.status === 'ACTIVE' && (
+                              <button type="button" className="tl-st-btn tl-st-btn--sm tl-dc-del" disabled={busyId === s.id} onClick={() => run(s.id, () => request(`/${s.id}/deactivate`, { method: 'PATCH' }))} aria-label={`Deactivate ${s.name}`}>
+                                <UserX className="w-3.5 h-3.5" aria-hidden="true" /> Deactivate
+                              </button>
+                            )}
+                            {s.status === 'DEACTIVATED' && (
+                              <button type="button" className="tl-st-btn tl-st-btn--sm" disabled={busyId === s.id} onClick={() => run(s.id, () => request(`/${s.id}/reactivate`, { method: 'PATCH' }))} aria-label={`Reactivate ${s.name}`}>
+                                <UserCheck className="w-3.5 h-3.5" aria-hidden="true" /> Reactivate
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             <Pager page={pageOf(staff, staffPage).page} total={staff.length} onPage={setStaffPage} label="Gate staff" />
           </section>
 
           <section className="tl-staff-group" aria-labelledby="tl-staff-invites">
-            <h3 id="tl-staff-invites">Invites ({openInvites.length} open)</h3>
+            <h3 id="tl-staff-invites">Invites ({invites.filter((i) => i.status === 'PENDING').length} open)</h3>
             {invites.length === 0 ? (
               <p className="tl-dash-card-sub">No invites sent yet.</p>
             ) : (
-              pageOf(invites, invitePage).rows.map((inv) => (
-                <div key={inv.id} className="tl-staff-row">
-                  <span className="tl-staff-avatar" aria-hidden="true"><Send className="w-4 h-4" /></span>
-                  <div style={{ minWidth: 0 }}>
-                    <div className="tl-staff-name"><span>{inv.email}</span><Badge status={inv.status} /></div>
-                    <p>{inv.event.name}</p>
-                    <p>
-                      Invited by {inv.invitedBy.name}
-                      {inv.status === 'PENDING' ? ` · expires ${formatDate(inv.expiresAt)}` : ''}
-                    </p>
-                  </div>
-                  {['PENDING', 'EXPIRED'].includes(inv.status) && (
-                    <div className="tl-staff-actions">
-                      <button
-                        type="button"
-                        disabled={busyId === inv.id}
-                        onClick={() => run(inv.id, () => request(`/invites/${inv.id}/resend`, { method: 'POST' }))}
-                        className="tl-staff-icon"
-                        aria-label={`Resend invite to ${inv.email}`}
-                        title="Resend"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === inv.id}
-                        onClick={() => run(inv.id, () => request(`/invites/${inv.id}`, { method: 'DELETE' }), 'Invite cancelled.')}
-                        className="tl-staff-icon is-danger"
-                        aria-label={`Cancel invite to ${inv.email}`}
-                        title="Cancel invite"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
+              <div className="tl-dash-table-wrap">
+                <table className="tl-dash-table tl-dc-table tl-staff-table">
+                  <thead><tr><th>Email</th><th>Event</th><th>Invited by</th><th>Expires</th><th>Status</th><th className="is-num">Actions</th></tr></thead>
+                  <tbody>
+                    {pageOf(invites, invitePage).rows.map((inv) => (
+                      <tr key={inv.id}>
+                        <td>
+                          <div className="tl-staff-who">
+                            <span className="tl-staff-avatar" aria-hidden="true"><Send className="w-4 h-4" /></span>
+                            <strong className="tl-dc-value tl-staff-mail">{inv.email}</strong>
+                          </div>
+                        </td>
+                        <td>{inv.event.name}</td>
+                        <td>{inv.invitedBy.name}</td>
+                        <td className="tl-dc-window">{inv.status === 'PENDING' ? formatDate(inv.expiresAt) : '—'}</td>
+                        <td><Badge status={inv.status} /></td>
+                        <td className="is-num">
+                          {['PENDING', 'EXPIRED'].includes(inv.status) ? (
+                            <div className="tl-dc-actions">
+                              <button type="button" className="tl-st-btn tl-st-btn--sm" disabled={busyId === inv.id} onClick={() => run(inv.id, () => request(`/invites/${inv.id}/resend`, { method: 'POST' }))} aria-label={`Resend invite to ${inv.email}`}>
+                                <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" /> Resend
+                              </button>
+                              <button type="button" className="tl-st-btn tl-st-btn--sm tl-dc-del" disabled={busyId === inv.id} onClick={() => run(inv.id, () => request(`/invites/${inv.id}`, { method: 'DELETE' }), 'Invite cancelled.')} aria-label={`Cancel invite to ${inv.email}`}>
+                                <XCircle className="w-3.5 h-3.5" aria-hidden="true" /> Cancel
+                              </button>
+                            </div>
+                          ) : <span className="tl-dc-note">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
             <Pager page={pageOf(invites, invitePage).page} total={invites.length} onPage={setInvitePage} label="Invites" />
           </section>
