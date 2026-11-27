@@ -460,6 +460,8 @@
 /* ================= Purchase intent ================= */
 .tl-pi-row { display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr); gap: 14px; margin-bottom: 14px; align-items: stretch; }
 @media (max-width: 1099px) { .tl-pi-row { grid-template-columns: 1fr; } }
+.tl-pi-row.tl-pi-row--single { grid-template-columns: minmax(0, 1fr); }
+.tl-pi-pager { padding: 0 18px 16px; }
 .tl-funnel { display: grid; gap: 4px; }
 .tl-funnel-step { display: grid; grid-template-columns: 32px minmax(0, 1fr) 60px 56px; align-items: center; gap: 8px 12px; padding: 8px 0; }
 .tl-funnel-num { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--st-mint); color: var(--st-green); font-size: 13px; font-weight: 800; grid-row: span 2; }

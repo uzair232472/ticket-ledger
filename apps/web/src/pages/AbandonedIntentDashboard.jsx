@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StatCard, Panel, Badge, Avatar } from '../components/dash/Studio';
 import { AbandonmentInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
+import Pager, { pageOf } from '../components/dash/Pager';
 import { useDialog } from '../components/ui/DialogProvider';
 import api from '../utils/api';
 import { can } from '../lib/permissions';
@@ -132,6 +133,7 @@ export default function AbandonedIntentDashboard() {
   const [sendingUserId, setSendingUserId] = useState(null);
   const [batchSending, setBatchSending] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState(null);
+  const [page, setPage] = useState(0); // prospect directory: 10 rows a page
   // The offer each reminder carries: a personal single-use code (made per person), an existing code, or none
   const [offer, setOffer] = useState({ kind: 'personal', percent: 10, code: '' });
   const offerBody = () => (offer.kind === 'personal' ? { discountPercent: Number(offer.percent) || 10 } : offer.kind === 'code' ? { discountCode: offer.code.trim() } : {});
@@ -262,6 +264,9 @@ export default function AbandonedIntentDashboard() {
 
   const summary = data?.summary || {};
   const rows = data?.abandonedUsers || [];
+  // Back to the first page whenever the filters change; stay on a valid page after a refresh
+  useEffect(() => { setPage(0); }, [selectedEventId, minScore, selectedReason]);
+  const shown = pageOf(rows, page, 10);
 
   return (
     <div>
@@ -409,7 +414,7 @@ export default function AbandonedIntentDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((item) => {
+                {shown.rows.map((item) => {
                   const reason = reasonOf(item.likelyReason);
                   const intent = intentOf(item.intentScore);
                   const isSent = sentReminders[`${item.user.id}_${item.event.id}`];
@@ -477,6 +482,7 @@ export default function AbandonedIntentDashboard() {
             </table>
           </div>
         )}
+        {!loading && rows.length > 0 && <div className="tl-pi-pager"><Pager page={shown.page} total={rows.length} onPage={setPage} label="Abandoned prospects" /></div>}
       </Panel>
 
       <div className="tl-note-strip">

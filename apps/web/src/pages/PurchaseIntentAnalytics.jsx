@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
-import { StudioHead, StudioSelect, StatCard, Panel, Badge, Avatar, Pager, ScoreBar } from '../components/dash/Studio';
+import { StudioHead, StudioSelect, StatCard, Panel, Badge, Avatar, ScoreBar } from '../components/dash/Studio';
+import Pager, { pageOf } from '../components/dash/Pager';
 import { InsightBoundary, IntentInsightPanel } from '../components/ml/InsightPanels';
 import {
   Users,
@@ -17,13 +18,10 @@ import {
   Mail,
   Check,
   User,
-  Armchair,
-  CreditCard,
-  ChevronRight,
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 5; // rows per page in both tables
 
 const levelTone = (level = '') => (/high/i.test(level) ? 'green' : /moderate|medium/i.test(level) ? 'green' : 'grey');
 const stageLabel = (stage = '') => stage.replace(/_/g, ' ').toLowerCase();
@@ -44,7 +42,8 @@ export default function PurchaseIntentAnalytics() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0); // users likely to buy
+  const [recoveryPage, setRecoveryPage] = useState(0); // cart recovery table
 
   // Reminder status per user ID
   const [sentReminders, setSentReminders] = useState({});
@@ -81,7 +80,8 @@ export default function PurchaseIntentAnalytics() {
       const json = await res.json();
       if (res.ok && json.success) {
         setAnalytics(json.data);
-        setPage(1);
+        setPage(0);
+        setRecoveryPage(0);
       } else {
         setError(json.message || 'Failed to fetch purchase intent analytics');
       }
@@ -159,9 +159,9 @@ export default function PurchaseIntentAnalytics() {
   const funnel = analytics?.funnel || [];
   const likely = analytics?.usersLikelyToBuy || [];
   const abandoned = analytics?.abandonedUsers || [];
-  const pageRows = likely.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const seatStage = abandoned.filter((a) => /seat/i.test(a.abandonmentStage)).length;
-  const checkoutStage = abandoned.filter((a) => /checkout/i.test(a.abandonmentStage)).length;
+  const likelyPage = pageOf(likely, page, PAGE_SIZE);
+  const pageRows = likelyPage.rows;
+  const recoveryRows = pageOf(abandoned, recoveryPage, PAGE_SIZE);
 
   const reminderButton = (userId, type, tone = 'green') => {
     if (!userId) return <span className="tl-guest">Guest session</span>;
@@ -249,7 +249,7 @@ export default function PurchaseIntentAnalytics() {
           {/* Step 6: totals from the background visit scoring; the experimental model is display-only */}
           <InsightBoundary><div style={{ marginTop: 16 }}><IntentInsightPanel eventId={selectedEventId} /></div></InsightBoundary>
 
-          <div className="tl-pi-row">
+          <div className="tl-pi-row tl-pi-row--single">
             <Panel
               icon={BarChart3}
               title="Event conversion funnel"
@@ -280,41 +280,6 @@ export default function PurchaseIntentAnalytics() {
               )}
             </Panel>
 
-            <Panel
-              tone="mint"
-              icon={ShoppingCart}
-              title="Cart recovery summary"
-              sub={`${abandoned.length} ${abandoned.length === 1 ? 'person' : 'people'} chose seats or started checkout and have not bought yet`}
-            >
-              <div className="tl-recovery">
-                <div className="tl-recovery-item is-lead">
-                  <span className="tl-recovery-icon"><ShoppingCart className="w-5 h-5" /></span>
-                  <span className="tl-recovery-num">{summary.abandonedUsersCount || abandoned.length}</span>
-                  <span className="tl-recovery-text"><strong>People to recover</strong><span>Left at seat choice or checkout and never bought</span></span>
-                </div>
-                <div className="tl-recovery-item">
-                  <span className="tl-recovery-icon"><Armchair className="w-5 h-5" /></span>
-                  <span className="tl-recovery-num">{seatStage}</span>
-                  <span className="tl-recovery-text"><strong>Seat selection stage</strong><span>Added seats but didn't start checkout</span></span>
-                  <ChevronRight className="w-4 h-4 tl-chev" aria-hidden="true" />
-                </div>
-                <div className="tl-recovery-item">
-                  <span className="tl-recovery-icon"><CreditCard className="w-5 h-5" /></span>
-                  <span className="tl-recovery-num">{checkoutStage}</span>
-                  <span className="tl-recovery-text"><strong>Checkout stage</strong><span>Started checkout but didn't complete</span></span>
-                  <ChevronRight className="w-4 h-4 tl-chev" aria-hidden="true" />
-                </div>
-                <button
-                  type="button"
-                  className="tl-st-btn tl-st-btn--green"
-                  onClick={() => handleBatchReminder('ABANDONED')}
-                  disabled={Boolean(batchSending) || !abandoned.some((u) => u.userId)}
-                >
-                  {batchSending === 'ABANDONED' ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />}
-                  {batchSending === 'ABANDONED' ? 'Sending…' : 'Send recovery reminders'}
-                </button>
-              </div>
-            </Panel>
           </div>
 
           {/* Users likely to buy */}
@@ -393,7 +358,7 @@ export default function PurchaseIntentAnalytics() {
                     </tbody>
                   </table>
                 </div>
-                <Pager page={page} pageSize={PAGE_SIZE} total={likely.length} onPage={setPage} noun="attendees" />
+                <div className="tl-pi-pager"><Pager page={likelyPage.page} total={likely.length} onPage={setPage} label="Users likely to buy" size={PAGE_SIZE} /></div>
               </>
             )}
           </Panel>
@@ -407,6 +372,17 @@ export default function PurchaseIntentAnalytics() {
             badge={`${abandoned.length} dropouts`}
             badgeTone="amber"
             sub="Attendees who selected seats or reached checkout but left without completing payment"
+            action={
+              <button
+                type="button"
+                className="tl-st-btn tl-st-btn--green"
+                onClick={() => handleBatchReminder('ABANDONED')}
+                disabled={Boolean(batchSending) || !abandoned.some((u) => u.userId)}
+              >
+                {batchSending === 'ABANDONED' ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />}
+                {batchSending === 'ABANDONED' ? 'Sending…' : 'Send recovery reminders'}
+              </button>
+            }
           >
             {abandoned.length === 0 ? (
               <p className="tl-empty-row">
@@ -427,7 +403,7 @@ export default function PurchaseIntentAnalytics() {
                     </tr>
                   </thead>
                   <tbody>
-                    {abandoned.map((a) => (
+                    {recoveryRows.rows.map((a) => (
                       <tr key={a.identifier}>
                         <td>
                           <div className="tl-who-name">{a.userName}</div>
@@ -450,6 +426,7 @@ export default function PurchaseIntentAnalytics() {
                 </table>
               </div>
             )}
+            {abandoned.length > 0 && <div className="tl-pi-pager"><Pager page={recoveryRows.page} total={abandoned.length} onPage={setRecoveryPage} label="Cart recovery" size={PAGE_SIZE} /></div>}
           </Panel>
         </>
       )}
