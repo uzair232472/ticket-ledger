@@ -2109,7 +2109,16 @@ a.tl-apv-btn { text-decoration: none; }
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.tl-gm-event select:focus { outline: none; }
+/* One box only: the label is the pill, the select inside it has no border, fill or ring of its own */
+.tl-aov-root .tl-gm-event select,
+.tl-aov-root .tl-gm-event select:focus,
+.tl-aov-root .tl-gm-event select:hover {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 .tl-gm-event:focus-within { border-color: var(--aov-green); box-shadow: 0 0 0 1px var(--aov-green), 0 0 26px rgba(34, 224, 107, 0.3); }
 
 .tl-gm-empty { display: grid; justify-items: center; gap: 10px; padding: 64px 20px; border-radius: 20px; border: 1px dashed rgba(34, 224, 107, 0.4); background: rgba(7, 20, 26, 0.6); text-align: center; }
