@@ -188,7 +188,7 @@ const ADMIN_DARK = /^\/(admin\/|organizer\/(team|gates|dashboard)\/?$|support\/d
 const ORG_SHARED = /^\/(organizer\/(dashboard|team|gates|purchase-intent|demand-forecast|abandoned-intents)|demand-forecast|analytics\/intent|support\/desk|scanner|staff\/events)\/?$/;
 // Organizer studio pages on the same dark design: creating and editing events (and every step of their setup),
 // prebookings and the organization profile. Admins open the same screens on the same look.
-const STUDIO_DARK = /^\/organizer\/(organization|discounts|events\/new|create-event|prebook(\/[^/]+)?|events\/[^/]+\/(edit|submit|manage|changes|venue))\/?$/;
+const STUDIO_DARK = /^\/organizer\/(organization|discounts|checkout-settings|support(\/[^/]+)?|events\/new|create-event|prebook(\/[^/]+)?|events\/[^/]+\/(edit|submit|manage|changes|venue))\/?$/;
 export const AdminDarkContext = createContext(false);
 export const useAdminDark = () => useContext(AdminDarkContext);
 
