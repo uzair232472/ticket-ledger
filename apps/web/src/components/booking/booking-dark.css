@@ -1,0 +1,137 @@
+/* =====================================================================
+ * Booking pages on the app's dark theme (BookingShell `dark`, used by Checkout): the Explore / console
+ * look. Part 1 is hand-written (tokens, frame, title, panels, buttons, fields, payment methods);
+ * part 2 re-colours the remaining light surfaces, generated from booking.css (colours only).
+ * ===================================================================== */
+.tl-book.tl-book--dark {
+  --bk-bg: #050d1c;
+  --bk-surface: rgba(10, 30, 34, 0.82);
+  --bk-ink: #f2f6f4;
+  --bk-dim: rgba(226, 236, 232, 0.72);
+  --bk-faint: rgba(226, 236, 232, 0.5);
+  --bk-line: rgba(255, 255, 255, 0.12);
+  --bk-accent: #22e06b;
+  --bk-ok: #4ade80;
+  --bk-warn: #facc15;
+  --bk-error: #fb7185;
+  --bk-mono: 'Plus Jakarta Sans', sans-serif;
+  background: radial-gradient(1100px 520px at 75% 0%, rgba(16, 80, 60, 0.55) 0%, rgba(5, 13, 28, 0) 70%), #050d1c;
+  color: var(--bk-ink);
+  color-scheme: dark;
+}
+.tl-book--dark :focus-visible { outline-color: #22e06b; }
+
+/* Frame: edge to edge with the header's side gutter, like Explore */
+.tl-book--dark .tl-bk-main { max-width: none; margin: 0; padding-left: clamp(16px, 2.4vw, 32px); padding-right: clamp(16px, 2.4vw, 32px); }
+.tl-book--dark .tl-bk-back { color: rgba(242, 246, 244, 0.85); font: 600 13px/1 'Plus Jakarta Sans', sans-serif; text-transform: none; letter-spacing: 0; }
+.tl-book--dark .tl-bk-back:hover { color: #22e06b; }
+
+/* Heading: green kicker line, two-tone uppercase title, steps as pills */
+.tl-book--dark .tl-bk-head { border-bottom-color: rgba(255, 255, 255, 0.1); }
+.tl-book--dark .tl-bk-kicker { display: inline-flex; align-items: center; gap: 10px; color: #22e06b; font: 700 12px/1 'Plus Jakarta Sans', sans-serif; letter-spacing: 0.12em; }
+.tl-book--dark .tl-bk-kicker::before { content: ''; width: 34px; height: 3px; border-radius: 2px; background: #22e06b; }
+.tl-book--dark .tl-bk-title { font: 800 clamp(40px, 5.4vw, 74px)/0.95 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.02em; text-transform: uppercase; color: #22e06b; text-shadow: 0 0 36px rgba(34, 224, 107, 0.35); }
+.tl-book--dark .tl-bk-steps { gap: 8px; font: 600 12.5px/1 'Plus Jakarta Sans', sans-serif; text-transform: none; }
+.tl-book--dark .tl-bk-steps li { min-height: 34px; padding: 0 14px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 999px; color: rgba(226, 236, 232, 0.6); }
+.tl-book--dark .tl-bk-steps li::before, .tl-book--dark .tl-bk-steps li::after { display: none; }
+.tl-book--dark .tl-bk-steps li.is-done { border-color: rgba(34, 224, 107, 0.4); color: #86efac; }
+.tl-book--dark .tl-bk-steps li[aria-current='step'] { border-color: transparent; background: linear-gradient(180deg, #2ee07a, #16a34a); color: #04210f; text-decoration: none; box-shadow: 0 0 18px rgba(34, 224, 107, 0.35); }
+
+/* Panels: the console's glass cards */
+.tl-book--dark .tl-bk-panel {
+  border: 1px solid rgba(34, 224, 107, 0.28);
+  border-radius: 18px;
+  background: linear-gradient(160deg, rgba(14, 40, 38, 0.78), rgba(7, 20, 26, 0.86));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.tl-book--dark .tl-bk-h2 { color: #fff; font-weight: 700; }
+.tl-book--dark .tl-bk-label { font: 600 12px/1.2 'Plus Jakarta Sans', sans-serif; text-transform: none; letter-spacing: 0; color: rgba(242, 246, 244, 0.85); }
+.tl-book--dark .tl-bk-link { color: #22e06b; }
+
+/* Buttons: green gradient pills, outlined ghost pills */
+.tl-book--dark .tl-bk-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(134, 239, 172, 0.55);
+  background: linear-gradient(180deg, #2ee07a, #16a34a);
+  color: #04210f;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: 0 0 22px rgba(34, 224, 107, 0.35);
+}
+.tl-book--dark .tl-bk-btn:hover:not(:disabled) { background: linear-gradient(180deg, #4ade80, #22c55e); box-shadow: 0 0 28px rgba(34, 224, 107, 0.5); }
+.tl-book--dark .tl-bk-btn--ghost { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.24); color: #fff; box-shadow: none; }
+.tl-book--dark .tl-bk-btn--ghost:hover:not(:disabled) { background: rgba(34, 224, 107, 0.08); border-color: #22e06b; box-shadow: none; }
+
+/* Fields */
+.tl-book--dark .tl-co-field input,
+.tl-book--dark .tl-co-code-row input,
+.tl-book--dark .tl-stripe-element-wrapper {
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.16);
+  background-color: rgba(3, 10, 14, 0.6);
+  color: #fff;
+}
+.tl-book--dark .tl-co-field input::placeholder, .tl-book--dark .tl-co-code-row input::placeholder { color: rgba(226, 236, 232, 0.45); }
+.tl-book--dark .tl-co-field input:focus,
+.tl-book--dark .tl-co-code-row input:focus,
+.tl-book--dark .tl-stripe-element-wrapper.is-focused { border-color: #22e06b; box-shadow: 0 0 0 1px #22e06b, 0 0 16px rgba(34, 224, 107, 0.2); }
+.tl-book--dark .tl-co-field input[readonly] { background: transparent; color: rgba(226, 236, 232, 0.7); }
+
+/* Payment methods: selectable glass tiles with a green check */
+.tl-book--dark .tl-co-method { border-radius: 14px; border-color: rgba(255, 255, 255, 0.14); background: rgba(3, 10, 14, 0.45); }
+.tl-book--dark .tl-co-method:hover { border-color: rgba(34, 224, 107, 0.55); }
+.tl-book--dark .tl-co-method:has(input:checked) { border-color: #22e06b; background: rgba(34, 224, 107, 0.08); box-shadow: 0 0 0 1px #22e06b, 0 0 20px rgba(34, 224, 107, 0.15); }
+.tl-book--dark .tl-co-method:has(input:checked) .tl-co-radio::after { background: #22e06b; }
+.tl-book--dark .tl-co-radio { border-color: rgba(255, 255, 255, 0.35); }
+
+/* Reservation timer, notices and the sandbox note */
+.tl-book--dark .tl-co-reserve { border-radius: 14px; }
+.tl-book--dark .tl-stripe-badge { border-radius: 10px; color: #bfdbfe; }
+.tl-book--dark .tl-bk-notice { border-radius: 12px; }
+
+/* ---------- Generated: light booking surfaces re-coloured for the dark page ---------- */
+/* from components/booking/booking.css */
+.tl-book--dark .tl-bk-notice.is-warn { background-color: rgba(250, 204, 21, 0.1); }
+.tl-book--dark .tl-bk-notice.is-error { background-color: rgba(251, 113, 133, 0.1); }
+.tl-book--dark .tl-vb-stepper { background-color: rgba(255, 255, 255, 0.06); }
+.tl-book--dark .tl-vb-timer.is-urgent { background-color: rgba(251, 113, 133, 0.1); }
+.tl-book--dark .tl-vb .tl-vm-concourse path { stroke: #ffffff; }
+.tl-book--dark .tl-vb .tl-vm-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-vb .tl-vm-btn:hover { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-vb-fit { background-color: rgba(255, 255, 255, 0.06); }
+.tl-book--dark .tl-vb-skeleton { background-image: none; background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-vb-pop .tl-bk-btn { background-color: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.14); }
+.tl-book--dark .tl-vb-pop .tl-bk-btn:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.06); }
+.tl-book--dark .tl-vb-pop .tl-bk-btn--ghost { border-color: rgba(255, 255, 255, 0.14); }
+.tl-book--dark .tl-vb-pop .tl-bk-btn--ghost:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.14); }
+.tl-book--dark .tl-co-event img,
+.tl-book--dark .tl-co-event-ph { background-color: rgba(255, 255, 255, 0.06); }
+.tl-book--dark .tl-co-field input { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-co-method { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-stripe-element-wrapper { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-stripe-badge { background-color: rgba(96, 165, 250, 0.1); color: rgba(226, 236, 232, 0.78); }
+.tl-book--dark .tl-co-code-row input { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-co-code-applied { background-color: rgba(34, 224, 107, 0.1); }
+.tl-book--dark .tl-co-reserve { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-co-reserve.is-urgent { background-color: rgba(251, 113, 133, 0.1); }
+.tl-book--dark .tl-co-reserve.is-expired { background-color: rgba(251, 113, 133, 0.1); }
+.tl-book--dark .tl-co-ticket { background-color: rgba(255, 255, 255, 0.04); }
+.tl-book--dark .tl-cart-delete-btn:hover { background-color: rgba(251, 113, 133, 0.1); color: #fb7185; }
+.tl-book--dark .tl-co-remove:hover:not(:disabled) { color: #fb7185; border-color: rgba(251, 113, 133, 0.45); }
+.tl-book--dark .tl-co-discard { color: #fb7185; }
+.tl-book--dark .tl-vb-panel { background-color: rgba(255, 255, 255, 0.04); color: #93c5fd; }
+.tl-book--dark .tl-vb-panel small { color: rgba(226, 236, 232, 0.78); }
+.tl-book--dark .tl-vb-panel .tl-vb-panel-head { border-bottom-color: rgba(96, 165, 250, 0.45); }
+.tl-book--dark .tl-vb-panel .tl-vb-timer { background-color: rgba(250, 204, 21, 0.1); color: #facc15; }
+.tl-book--dark .tl-vb-panel .tl-vb-timer.is-urgent { background-color: rgba(251, 113, 133, 0.1); color: #fb7185; }
+.tl-book--dark .tl-vb-panel .tl-vb-icon { color: rgba(226, 236, 232, 0.78); }
+.tl-book--dark .tl-vb-panel .tl-vb-icon:hover:not(:disabled) { background-color: rgba(96, 165, 250, 0.1); }
+.tl-book--dark .tl-vb-panel .tl-vb-group + .tl-vb-group { border-top-color: rgba(96, 165, 250, 0.45); }
+.tl-book--dark .tl-vb-panel .tl-vb-group-name { color: #93c5fd; }
+.tl-book--dark .tl-vb-panel .tl-vb-group-name b { color: rgba(226, 236, 232, 0.78); }
+.tl-book--dark .tl-vb-remove { color: #fb7185; }
+.tl-book--dark .tl-vb-remove:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
+.tl-book--dark .tl-vb-panel .tl-vb-panel-foot { border-top-color: rgba(96, 165, 250, 0.45); }
+.tl-book--dark .tl-vb-panel .tl-vb-muted { color: rgba(226, 236, 232, 0.78); }

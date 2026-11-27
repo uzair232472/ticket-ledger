@@ -493,3 +493,18 @@
   .tl-ex-dark .tl-ex-hero .tl-ex-cats { justify-self: start; margin-top: 14px; }
   .tl-ex-dark .tl-ex-cats-btn { width: auto; gap: 8px; }
 }
+
+/* Wishlist search bar: space under it, a clear button, and on phones search and Sort stacked full width */
+.tl-ex-dark .tl-wl-filters { margin-bottom: 24px; }
+.tl-ex-dark .tl-wl-filters .tl-ex-search { position: relative; min-width: 0; }
+.tl-ex-dark .tl-wl-filters .tl-ex-search input { width: 100%; min-width: 0; padding-right: 36px; }
+.tl-ex-dark .tl-wl-filters .tl-ex-search input::-webkit-search-cancel-button { display: none; }
+.tl-wl-clear { position: absolute; right: 10px; display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: rgba(244, 244, 241, 0.7); cursor: pointer; }
+.tl-wl-clear:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.tl-ex-dark .tl-wl-filters .tl-ex-select { min-width: 200px; }
+@media (max-width: 640px) {
+  .tl-ex-dark .tl-wl-filters { flex-direction: column; padding: 6px; }
+  .tl-ex-dark .tl-wl-filters .tl-ex-search { flex: 0 0 auto; min-height: 48px; }
+  .tl-ex-dark .tl-wl-filters .tl-ex-select { flex: 0 0 auto; min-width: 0; padding: 10px 16px; border-left: 0; border-top: 1px solid rgba(244, 244, 241, 0.12); }
+  .tl-ex-dark .tl-wl-filters .tl-ex-select > *:last-child { width: 100%; }
+}

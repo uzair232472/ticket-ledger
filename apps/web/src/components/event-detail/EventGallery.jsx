@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, X } from 'lucide-react';
 import { EVENT_VISUALS, resolveMediaUrl } from '../../utils/eventMedia';
 import { CATEGORIES } from '../home/homeData';
@@ -62,8 +63,10 @@ export function GalleryLightbox({ photos, index, onClose, onIndex }) {
     };
   }, [onClose, step]);
 
-  return (
-    <div className="tl-dt-lightbox" role="dialog" aria-modal="true" aria-label={`Photo ${index + 1} of ${count}`} onClick={onClose}>
+  // Rendered on <body>: inside the page it shared a layer with the content, so the site header (menu,
+  // notifications, cart) showed on top of the photo. Its colours come with it.
+  return createPortal(
+    <div className="tl-dt-lightbox" style={{ '--dt-ink': '#f4f4f1', '--dt-green': '#22e06b' }} role="dialog" aria-modal="true" aria-label={`Photo ${index + 1} of ${count}`} onClick={onClose}>
       <button ref={closeRef} type="button" className="tl-dt-lightbox-close" onClick={onClose} aria-label="Close photos">
         <X className="w-6 h-6" aria-hidden="true" />
       </button>
@@ -79,7 +82,8 @@ export function GalleryLightbox({ photos, index, onClose, onIndex }) {
           <p className="tl-dt-lightbox-count">{index + 1} / {count}</p>
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

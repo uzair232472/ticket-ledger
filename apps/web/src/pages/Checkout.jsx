@@ -536,7 +536,7 @@ function CheckoutContent() {
 
   if (!eventId || status === 'error' || (status === 'ready' && mine.length === 0)) {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {header}
         <section className="tl-bk-panel tl-co-status" aria-labelledby="co-empty">
           <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
@@ -554,7 +554,7 @@ function CheckoutContent() {
 
   if (status === 'loading' || authLoading) {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {header}
         <div className="tl-co-grid" aria-busy="true">
           <div className="tl-vb-skeleton" style={{ height: 520 }} />
@@ -566,7 +566,7 @@ function CheckoutContent() {
   }
 
   return (
-    <BookingShell>
+    <BookingShell dark>
       {header}
       <form ref={formRef} onSubmit={submit} noValidate className="tl-co-grid">
         <div className="tl-bk-rise">
@@ -691,11 +691,12 @@ function CheckoutContent() {
                         style: {
                           base: {
                             fontSize: '15px',
-                            color: '#0f172a',
-                            fontFamily: 'Inter, system-ui, sans-serif',
-                            '::placeholder': { color: '#94a3b8' },
+                            color: '#f2f6f4',
+                            iconColor: '#22e06b',
+                            fontFamily: 'Plus Jakarta Sans, Inter, system-ui, sans-serif',
+                            '::placeholder': { color: 'rgba(226, 236, 232, 0.45)' },
                           },
-                          invalid: { color: '#ef4444' },
+                          invalid: { color: '#fb7185', iconColor: '#fb7185' },
                         },
                       }}
                     />

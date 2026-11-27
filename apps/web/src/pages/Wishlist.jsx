@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Heart, RefreshCw, Search } from 'lucide-react';
+import { Heart, RefreshCw, Search, X } from 'lucide-react';
 import api from '../utils/api';
 import { useWishlist } from '../context/WishlistContext';
 import HomeHeader from '../components/home/HomeHeader';
@@ -67,11 +67,12 @@ export default function Wishlist() {
             </p>
           </div>
 
-          <div className="tl-ex-filters" role="search" aria-label="Search your wishlist">
+          <div className="tl-ex-filters tl-wl-filters" role="search" aria-label="Search your wishlist">
             <label className="tl-ex-search">
               <Search className="w-4 h-4" aria-hidden="true" />
               <span className="sr-only">Search saved events</span>
               <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search saved events, venues, cities" />
+              {search && <button type="button" className="tl-wl-clear" onClick={() => setSearch('')} aria-label="Clear search"><X className="w-4 h-4" aria-hidden="true" /></button>}
             </label>
             <div className="tl-ex-select">
               <span id="tl-wl-lbl-sort">Sort</span>
