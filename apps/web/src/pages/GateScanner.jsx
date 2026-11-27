@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { connectSocket } from '../lib/socket';
 import {
   AlertTriangle, ArrowLeft, Armchair, Camera, Check, ChevronRight, Clock, ShieldOff, CheckCircle2, CloudOff, CloudUpload, ImageUp, Info, Keyboard, MapPin,
-  RefreshCw, ScanLine, ShieldCheck, Tag, Ticket, User, Users, Wifi, X, Activity, CalendarDays, ExternalLink, HardDrive, Zap,
+  RefreshCw, ScanLine, Search, ShieldCheck, Tag, Ticket, User, Users, Wifi, X, Activity, CalendarDays, ExternalLink, HardDrive, Zap,
 } from 'lucide-react';
 import { useAdminDark } from '../components/dash/DashShell';
 import api from '../utils/api';
@@ -270,7 +270,18 @@ function DeviceScans({ eventId, counts, online, onSync, onChange }) {
   );
 }
 
+/** Matches an event by name, venue, city or date (e.g. "psl", "gaddafi", "lahore", "12 dec"). */
+function eventMatches(ev, query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const day = new Date(ev.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const text = [ev.name, ev.venue, ev.city, day].filter(Boolean).join(' ').toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
 function EventPicker({ events, loading, onPick }) {
+  const [query, setQuery] = useState('');
+  const shown = useMemo(() => events.filter((ev) => eventMatches(ev, query)), [events, query]);
   return (
     <section className="tl-gs-card">
       <h2 className="tl-gs-h2">Choose your event</h2>
@@ -280,8 +291,34 @@ function EventPicker({ events, loading, onPick }) {
       ) : events.length === 0 ? (
         <p className="tl-gs-empty">You aren’t assigned to any events yet. Ask your organizer to add you to one.</p>
       ) : (
+        <>
+        <div className="tl-gs-search" role="search">
+          <Search className="w-4 h-4" aria-hidden="true" />
+          <label htmlFor="gs-event-search" className="sr-only">Search your events</label>
+          <input
+            id="gs-event-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter opens the only match straight away; Escape clears the search
+              if (e.key === 'Enter' && shown.length === 1) onPick(shown[0].id);
+              if (e.key === 'Escape') setQuery('');
+            }}
+            placeholder="Search by event, venue, city or date"
+            autoComplete="off"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} aria-label="Clear search"><X className="w-4 h-4" aria-hidden="true" /></button>
+          )}
+        </div>
+        {query && (
+          <p className="tl-gs-search-count" aria-live="polite">
+            {shown.length ? `${shown.length} of ${events.length} events` : `No events match “${query}”.`}
+          </p>
+        )}
         <ul className="tl-gs-events">
-          {events.map((ev) => (
+          {shown.map((ev) => (
             <li key={ev.id}>
               <button type="button" onClick={() => onPick(ev.id)}>
                 <span>
@@ -293,6 +330,7 @@ function EventPicker({ events, loading, onPick }) {
             </li>
           ))}
         </ul>
+        </>
       )}
     </section>
   );

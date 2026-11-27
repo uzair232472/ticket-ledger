@@ -19,6 +19,14 @@
 .tl-gs-empty { margin-top: 10px; font-size: 14px; color: var(--gs-dim); }
 .tl-gs-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--gs-dim); }
 
+.tl-gs-search { position: relative; display: flex; align-items: center; margin-top: 14px; }
+.tl-gs-search > svg { position: absolute; left: 14px; color: var(--gs-dim); pointer-events: none; }
+.tl-gs-search input { width: 100%; min-height: 46px; padding: 0 44px 0 42px; border: 1px solid var(--gs-line); border-radius: 999px; background: #fff; font: 500 15px 'Plus Jakarta Sans', sans-serif; color: var(--gs-ink); outline: none; }
+.tl-gs-search input::-webkit-search-cancel-button { display: none; }
+.tl-gs-search input:focus { border-color: var(--gs-green); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
+.tl-gs-search button { position: absolute; right: 8px; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--gs-dim); cursor: pointer; }
+.tl-gs-search button:hover { background: rgba(0, 0, 0, 0.06); color: var(--gs-ink); }
+.tl-gs-search-count { margin-top: 8px; font-size: 13px; color: var(--gs-dim); }
 .tl-gs-events { display: grid; gap: 10px; margin-top: 14px; }
 .tl-gs-events button { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 16px; border: 1px solid var(--gs-line); border-radius: 12px; background: #fff; text-align: left; cursor: pointer; transition: border-color 0.2s ease, background-color 0.2s ease; }
 .tl-gs-events button:hover { border-color: var(--gs-green); background: #f0fdf4; }

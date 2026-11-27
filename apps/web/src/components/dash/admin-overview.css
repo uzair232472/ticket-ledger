@@ -2751,6 +2751,11 @@ a.tl-aov-refresh { text-decoration: none; }
 
 /* Scanner page on the console: wider column, picker cards in the theme */
 .tl-aov-page .tl-gs { max-width: 1100px; }
+.tl-aov-page .tl-gs-search { max-width: 560px; }
+.tl-aov-page .tl-gs-search input { border-radius: 999px; border-color: rgba(255, 255, 255, 0.16); background-color: rgba(3, 10, 14, 0.6); color: #fff; }
+.tl-aov-page .tl-gs-search > svg { color: var(--aov-green); }
+.tl-aov-page .tl-gs-search button { color: var(--aov-dim); }
+.tl-aov-page .tl-gs-search button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .tl-aov-page .tl-gs-events { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
 .tl-aov-page .tl-gs-events button { min-height: 72px; border-color: rgba(255, 255, 255, 0.12); }
 .tl-aov-page .tl-gs-events button svg { color: var(--aov-green); }
