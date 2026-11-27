@@ -511,3 +511,19 @@
 
 /* Cards open the event when clicked anywhere */
 .tl-tile-link { cursor: pointer; }
+
+/* Phones: "Explore Events" on one line */
+@media (max-width: 767px) {
+  .tl-ex-dark .tl-ex-title { display: flex; flex-wrap: nowrap; gap: 0.28em; white-space: nowrap; font-size: clamp(26px, 8.6vw, 44px); }
+}
+
+/* "Explore Events" on one line at every width (the words were stacked) */
+.tl-ex-dark .tl-ex-title { display: flex; flex-wrap: nowrap; gap: 0.28em; white-space: nowrap; }
+.tl-ex-hero-copy { max-width: none; }
+/* Mid widths: keep the one-line title clear of the photo collage */
+@media (min-width: 768px) {
+  .tl-ex-dark .tl-ex-title { font-size: clamp(36px, 4.6vw, 74px); }
+}
+@media (min-width: 768px) and (max-width: 1200px) {
+  .tl-ex-collage { width: 42%; }
+}

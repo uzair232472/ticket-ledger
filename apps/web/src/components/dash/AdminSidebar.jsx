@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   AlertTriangle,
+  Menu,
+  X,
   BadgeCheck,
   Banknote,
   Brain,
@@ -116,6 +118,25 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
   useEffect(() => {
     try { localStorage.setItem(KEY, collapsed ? '1' : '0'); } catch { /* private mode */ }
   }, [collapsed]);
+  // Phones and small tablets: the sidebar is a drawer that slides in from the left
+  const [mobile, setMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches);
+  const [drawer, setDrawer] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 900px)');
+    const on = () => { setMobile(mq.matches); if (!mq.matches) setDrawer(false); };
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  useEffect(() => { setDrawer(false); }, [pathname, search]);
+  useEffect(() => {
+    if (!drawer) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setDrawer(false); };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; document.removeEventListener('keydown', onKey); };
+  }, [drawer]);
+  const rail = collapsed && !mobile;
   const tab = new URLSearchParams(search).get('tab');
   const onPage = pathname.startsWith('/admin/dashboard');
   const links = (consoleNav?.links || []).filter((l) => l.to !== '/admin/dashboard');
@@ -137,7 +158,20 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
   ) : null);
 
   return (
-    <aside className={`tl-aov-side${collapsed ? ' is-collapsed' : ''}`} aria-label="Admin console">
+    <>
+    {mobile && (
+      <button type="button" className="tl-aov-side-mobbtn" onClick={() => setDrawer(true)} aria-expanded={drawer} aria-controls="tl-aov-side">
+        <Menu className="w-5 h-5" aria-hidden="true" /> Menu
+      </button>
+    )}
+    {mobile && drawer && <div className="tl-aov-side-scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
+    <aside id="tl-aov-side" className={`tl-aov-side${rail ? ' is-collapsed' : ''}${drawer ? ' is-open' : ''}`} aria-label={consoleNav?.label || 'Console'}>
+      {mobile && (
+        <div className="tl-aov-side-drawhead">
+          <span>{consoleNav?.label || 'Console'}</span>
+          <button type="button" onClick={() => setDrawer(false)} aria-label="Close menu"><X className="w-5 h-5" aria-hidden="true" /></button>
+        </div>
+      )}
       <button
         type="button"
         className="tl-aov-side-toggle"
@@ -158,7 +192,7 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
                   to={t ? `/admin/dashboard?tab=${t}` : '/admin/dashboard'}
                   className={`tl-aov-side-link${active ? ' is-active' : ''}`}
                   aria-current={active ? 'page' : undefined}
-                  title={collapsed ? label : undefined}
+                  title={rail ? label : undefined}
                 >
                   <Icon className="tl-aov-side-icon" aria-hidden="true" />
                   <span className="tl-aov-side-text">{label}</span>
@@ -177,7 +211,7 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
                 const active = isActive(l.to);
                 return (
                   <li key={l.to}>
-                    <Link to={l.to} className={`tl-aov-side-link${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined} title={collapsed ? l.label : undefined}>
+                    <Link to={l.to} className={`tl-aov-side-link${active ? ' is-active' : ''}`} aria-current={active ? 'page' : undefined} title={rail ? l.label : undefined}>
                       <Icon className="tl-aov-side-icon" aria-hidden="true" />
                       <span className="tl-aov-side-text">{l.label}</span>
                       {badge(l.badge)}
@@ -190,8 +224,8 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
         )}
 
         {groups.map((g) => (
-          <details key={g.key} className="tl-aov-side-group" onToggle={(e) => { if (e.currentTarget.open && collapsed) setCollapsed(false); }}>
-            <summary className="tl-aov-side-link" title={collapsed ? g.label : undefined}>
+          <details key={g.key} className="tl-aov-side-group" onToggle={(e) => { if (e.currentTarget.open && rail) setCollapsed(false); }}>
+            <summary className="tl-aov-side-link" title={rail ? g.label : undefined}>
               <Brain className="tl-aov-side-icon" aria-hidden="true" />
               <span className="tl-aov-side-text">{g.label}</span>
               <ChevronDown className="tl-aov-side-chev" aria-hidden="true" />
@@ -206,5 +240,6 @@ export default function AdminSidebar({ console: consoleNav, pending = {}, isAdmi
       </nav>
       <Crowd />
     </aside>
+    </>
   );
 }

@@ -311,5 +311,5 @@
   .tl-gsx-zone { min-height: 220px; }
   .tl-gsx-alts { grid-template-columns: minmax(0, 1fr); }
   .tl-gsx-card { padding: 16px; }
-  .tl-gsx-toasts { top: auto; bottom: 16px; }
+  .tl-gsx-toasts { top: auto; bottom: 76px; }
 }
