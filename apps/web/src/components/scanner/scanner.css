@@ -27,6 +27,20 @@
 .tl-gs-search button { position: absolute; right: 8px; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--gs-dim); cursor: pointer; }
 .tl-gs-search button:hover { background: rgba(0, 0, 0, 0.06); color: var(--gs-ink); }
 .tl-gs-search-count { margin-top: 8px; font-size: 13px; color: var(--gs-dim); }
+.tl-gs-list { display: grid; margin-top: 14px; border: 1px solid var(--gs-line); border-radius: 12px; overflow: hidden; list-style: none; padding: 0; }
+.tl-gs-list li + li { border-top: 1px solid var(--gs-line); }
+.tl-gs-list button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 14px; border: 0; background: #fff; text-align: left; cursor: pointer; transition: background-color 0.15s ease; }
+.tl-gs-list button:hover { background: #f0fdf4; }
+.tl-gs-list-date { display: grid; place-items: center; flex: 0 0 48px; height: 48px; border-radius: 10px; border: 1px solid var(--gs-line); font: 600 10.5px/1 'Plus Jakarta Sans', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gs-dim); }
+.tl-gs-list-date b { font-size: 18px; line-height: 1; color: var(--gs-ink); letter-spacing: 0; }
+.tl-gs-list-main { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.tl-gs-list-main strong { font-size: 15px; font-weight: 700; color: var(--gs-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-gs-list-main small { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 13px; color: var(--gs-dim); }
+.tl-gs-list-main small svg { color: var(--gs-green); }
+.tl-gs-list-sep { margin: 0 2px; }
+.tl-gs-list-go { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--gs-green); color: var(--gs-green); font-size: 13px; font-weight: 700; }
+.tl-gs-list button:hover .tl-gs-list-go { background: var(--gs-green); color: #fff; }
+@media (max-width: 520px) { .tl-gs-list-go { padding: 0 10px; } .tl-gs-list-date { flex-basis: 42px; height: 42px; } }
 .tl-gs-events { display: grid; gap: 10px; margin-top: 14px; }
 .tl-gs-events button { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 16px; border: 1px solid var(--gs-line); border-radius: 12px; background: #fff; text-align: left; cursor: pointer; transition: border-color 0.2s ease, background-color 0.2s ease; }
 .tl-gs-events button:hover { border-color: var(--gs-green); background: #f0fdf4; }
@@ -190,3 +204,8 @@
 .tl-gv-exception label { font-size: 13px; font-weight: 700; }
 .tl-gv-exception input { width: 100%; padding: 12px 14px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; font: inherit; font-size: 15px; background: #fff; color: #0b0b0b; }
 .tl-gv-exception small { font-size: 12.5px; color: #991b1b; }
+/* Event list pager on the light layout (the dark console styles it in admin-overview.css) */
+.tl-gs .tl-pager { border-top-color: var(--gs-line); }
+.tl-gs .tl-pager p, .tl-gs .tl-pager-page { color: var(--gs-dim); }
+.tl-gs .tl-pager .tl-aov-pill { border-color: var(--gs-line); background: #fff; color: var(--gs-ink); }
+.tl-gs .tl-pager .tl-aov-pill:hover:not(:disabled) { border-color: var(--gs-green); }

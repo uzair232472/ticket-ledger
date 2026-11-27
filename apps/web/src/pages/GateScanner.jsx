@@ -3,9 +3,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { connectSocket } from '../lib/socket';
 import {
   AlertTriangle, ArrowLeft, Armchair, Camera, Check, ChevronRight, Clock, ShieldOff, CheckCircle2, CloudOff, CloudUpload, ImageUp, Info, Keyboard, MapPin,
-  RefreshCw, ScanLine, Search, ShieldCheck, Tag, Ticket, User, Users, Wifi, X, Activity, CalendarDays, ExternalLink, HardDrive, Zap,
+  RefreshCw, ScanLine, Search, ShieldCheck, QrCode, Bell, Tag, Ticket, User, Users, Wifi, X, CalendarDays, ExternalLink, HardDrive, Zap,
 } from 'lucide-react';
 import { useAdminDark } from '../components/dash/DashShell';
+import Pager, { pageOf } from '../components/dash/Pager';
+import { getEventVisual } from '../utils/eventMedia';
+import '../components/scanner/scanner-console.css';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import QrCamera from '../components/scanner/QrCamera';
@@ -211,6 +214,40 @@ function ImageScan({ disabled, busy, onCode, onError, compact }) {
   );
 }
 
+/** "Upload QR image" button (console layout): reads the QR from a picture and checks it like a camera scan. */
+function ImageButton({ disabled, busy, onCode, onError }) {
+  const inputRef = useRef(null);
+  const [reading, setReading] = useState(false);
+  const read = async (file) => {
+    if (!file || disabled) return;
+    setReading(true);
+    try {
+      onCode(await decodeQrFromFile(file));
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setReading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+  return (
+    <>
+      <button type="button" className="tl-gsx-alt" onClick={() => inputRef.current?.click()} disabled={disabled || reading || busy}>
+        <ImageUp className="w-5 h-5" aria-hidden="true" /> {reading || busy ? 'Reading the QR…' : 'Upload QR image'}
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" hidden onChange={(e) => read(e.target.files?.[0])} />
+    </>
+  );
+}
+
+const waiting = (c) => (c ? c.PENDING + c.UPLOADING : 0);
+
+// "Lahore Qalandars vs Karachi Kings – PSL 2026 Final" → title and a green second line (after the last dash or colon)
+function splitTitle(name = '') {
+  const m = /^(.*\S)\s*(?:[–—-]|:)\s+(.+)$/.exec(name);
+  return m && m[1].length > 3 ? [m[1], m[2]] : [name, ''];
+}
+
 const STATE_LABEL = { PENDING: 'Waiting to upload', UPLOADING: 'Uploading', SYNCED: 'Uploaded', FAILED: 'Upload failed', CONFLICT: 'Conflict: supervisor review', QUARANTINED: 'Kept for supervisor review (not admitted)' };
 const STATE_TONE = { PENDING: 'yellow', UPLOADING: 'yellow', SYNCED: 'green', FAILED: 'red', CONFLICT: 'red', QUARANTINED: 'yellow' };
 
@@ -281,7 +318,11 @@ function eventMatches(ev, query) {
 
 function EventPicker({ events, loading, onPick }) {
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
   const shown = useMemo(() => events.filter((ev) => eventMatches(ev, query)), [events, query]);
+  // Ten events a page; a new search starts again at the first page
+  useEffect(() => { setPage(0); }, [query]);
+  const { rows, page: pageNow } = pageOf(shown, page);
   return (
     <section className="tl-gs-card">
       <h2 className="tl-gs-h2">Choose your event</h2>
@@ -317,19 +358,33 @@ function EventPicker({ events, loading, onPick }) {
             {shown.length ? `${shown.length} of ${events.length} events` : `No events match “${query}”.`}
           </p>
         )}
-        <ul className="tl-gs-events">
-          {shown.map((ev) => (
-            <li key={ev.id}>
-              <button type="button" onClick={() => onPick(ev.id)}>
-                <span>
-                  <strong>{ev.name}</strong>
-                  <small><MapPin className="w-3.5 h-3.5 inline -mt-0.5" aria-hidden="true" /> {ev.venue}, {ev.city} · {new Date(ev.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}{ev.time ? ` · ${ev.time}` : ''}</small>
-                </span>
-                <ScanLine className="w-5 h-5" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
+        {shown.length > 0 && (
+          <ul className="tl-gs-list" aria-label="Your events">
+            {rows.map((ev) => {
+              const when = new Date(ev.date);
+              return (
+                <li key={ev.id}>
+                  <button type="button" onClick={() => onPick(ev.id)}>
+                    <span className="tl-gs-list-date" aria-hidden="true">
+                      <b>{when.toLocaleDateString(undefined, { day: 'numeric' })}</b>
+                      {when.toLocaleDateString(undefined, { month: 'short' })}
+                    </span>
+                    <span className="tl-gs-list-main">
+                      <strong>{ev.name}</strong>
+                      <small>
+                        <MapPin className="w-3.5 h-3.5" aria-hidden="true" /> {ev.venue}, {ev.city}
+                        <span className="tl-gs-list-sep" aria-hidden="true">·</span>
+                        {when.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}{ev.time ? ` · ${ev.time}` : ''}
+                      </small>
+                    </span>
+                    <span className="tl-gs-list-go"><ScanLine className="w-4 h-4" aria-hidden="true" /> Scan</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <Pager page={pageNow} total={shown.length} onPage={setPage} label="Your events" />
         </>
       )}
     </section>
@@ -380,6 +435,8 @@ export default function GateScanner() {
   const lastSyncErrorRef = useRef(null); // reported with the heartbeat until an upload succeeds
   const [recovery, setRecovery] = useState(null); // { recovered, nextAt, failures, error } shown under “Scans on this device”
   const [connTest, setConnTest] = useState(null); // result of “Test connection”
+  const [showManual, setShowManual] = useState(false); // console layout: manual code entry under the scan area
+  const [dismissed, setDismissed] = useState(() => new Set()); // console layout: notifications closed by the user
 
   const event = events.find((e) => e.id === eventId) || pack?.event || null;
   const companyId = event?.companyId || pack?.event?.companyId || null;
@@ -872,6 +929,46 @@ export default function GateScanner() {
   const entered = stats?.entered ?? 0;
   const sold = stats?.sold ?? pack?.tickets?.length ?? 0;
   const pct = sold ? Math.round((entered / sold) * 100) : 0;
+  // Gate chooser (and entry / exit at gates that take both), shared by both layouts
+  const gatePicker = (
+    <>
+      {configured.length > 0 ? (
+        <div className="tl-gs-gates" role="radiogroup" aria-label="Gate">
+          {mine.map((g) => (
+            <button key={g.id} type="button" role="radio" aria-checked={gate === g.name} className={gate === g.name ? 'is-on' : ''} onClick={() => chooseGate(g.name)}>
+              {g.name}<small style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{g.type === 'ENTRY' ? 'Entry' : g.type === 'EXIT' ? 'Exit' : 'Entry & exit'}{g.allowedTierIds?.length ? ' · some ticket types' : ''}</small>
+            </button>
+          ))}
+          {!mine.length && <p className="tl-gs-muted">You aren't assigned to an open gate at this event. Ask your supervisor.</p>}
+        </div>
+      ) : (
+      <div className="tl-gs-gates" role="radiogroup" aria-label="Gate">
+        {GATES.map((g) => (
+          <button key={g} type="button" role="radio" aria-checked={gate === g} className={gate === g ? 'is-on' : ''} onClick={() => chooseGate(g)}>{g}</button>
+        ))}
+        <form
+          className="tl-gs-gate-custom"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (customGate.trim()) chooseGate(customGate.trim());
+            setCustomGate('');
+          }}
+        >
+          <input value={customGate} onChange={(e) => setCustomGate(e.target.value)} placeholder="Other gate" maxLength={40} aria-label="Other gate name" />
+        </form>
+      </div>
+      )}
+      {!gateOk && <p className="tl-gs-muted">Choose the gate you’re standing at before scanning.</p>}
+      {gateOk && (!gateRow || gateRow.type === 'ENTRY_EXIT') && (
+        <div className="tl-gs-gates" role="radiogroup" aria-label="Scanning" style={{ marginTop: 12 }}>
+          {[['ENTRY', 'Scanning entries'], ['EXIT', 'Scanning exits']].map(([v, l]) => (
+            <button key={v} type="button" role="radio" aria-checked={direction === v} className={direction === v ? 'is-on' : ''} onClick={() => setDirection(v)}>{l}</button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
   const manualForm = (dark) => (
     <form className={`tl-gs-manual${dark ? ' is-dark' : ''}`} onSubmit={submitManual}>
       <label htmlFor={dark ? 'gs-code-cam' : 'gs-code'} className="tl-gs-label"><Keyboard className="w-4 h-4" aria-hidden="true" /> Camera can’t read it? Type the code under the QR</label>
@@ -891,261 +988,345 @@ export default function GateScanner() {
     </form>
   );
 
+  // ---------- Console layout (dark pages): hero, figures, scan area, actions, gate, recent scans ----------
+  const consoleView = dark && (() => {
+    const d = event?.date ? new Date(event.date) : null;
+    const today = new Date();
+    const isToday = d && d.toDateString() === today.toDateString();
+    const ended = d && !isToday && d < today;
+    const results = stats?.scans || {};
+    const scanned = (results.GREEN || 0) + (results.YELLOW || 0) + (results.RED || 0);
+    const refused = (results.YELLOW || 0) + (results.RED || 0);
+    const waiting = counts ? counts.PENDING + counts.UPLOADING : 0;
+    const [queueLabel, queueTone] = !online ? ['Offline', 'warn'] : counts?.FAILED ? ['Upload failed', 'bad'] : waiting ? [`${waiting} waiting`, 'warn'] : ['Normal', 'good'];
+    const gateEntered = stats?.gates?.find((g) => g.gate === gate)?.entered || 0;
+    const gateShare = entered ? Math.round((gateEntered / entered) * 100) : 0;
+    const banner = event ? getEventVisual(event, 0).bannerImage : null;
+    const [title, subtitle] = splitTitle(event?.name || 'Event');
+    const ring = 2 * Math.PI * 22;
+    return (
+      <div className="tl-gsx">
+        <header className="tl-gsx-hero">
+          {banner && <img className="tl-gsx-hero-img" src={banner} alt="" onError={(e) => e.currentTarget.remove()} />}
+          <div className="tl-gsx-hero-copy">
+            <nav className="tl-gsx-crumbs" aria-label="Breadcrumb">
+              <Link to="/scanner"><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to my events</Link>
+              <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+              <span aria-current="page">Gate scanner</span>
+            </nav>
+            <span className={`tl-gsx-live${ended ? ' is-ended' : isToday ? '' : ' is-soon'}`}><i aria-hidden="true" />{ended ? 'Ended' : isToday ? 'Live event' : 'Upcoming'}</span>
+            <h1 className="tl-gsx-title">{title}{subtitle && <em>{subtitle}</em>}</h1>
+            <p className="tl-gsx-meta">
+              <span><CalendarDays className="w-4 h-4" aria-hidden="true" /> {d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—'}{event?.time ? ` • ${event.time}` : ''}</span>
+              <span><MapPin className="w-4 h-4" aria-hidden="true" /> {[event?.venue, event?.city].filter(Boolean).join(', ') || '—'}</span>
+            </p>
+          </div>
+          <div className="tl-gsx-total">
+            <span className="tl-gsx-total-icon" aria-hidden="true"><Users /></span>
+            <span>
+              <small>Total attendees</small>
+              <strong>{entered.toLocaleString()}</strong>
+              <em>of {sold.toLocaleString()} tickets · {pct}%</em>
+            </span>
+          </div>
+        </header>
+
+        <div className="tl-gsx-kpis">
+          <section className="tl-gsx-kpi">
+            <span className="tl-gsx-kpi-icon" aria-hidden="true"><Ticket /></span>
+            <div><h2>Tickets scanned</h2><p>{scanned.toLocaleString()}</p><small>{(results.GREEN || 0).toLocaleString()} admitted</small></div>
+          </section>
+          <section className="tl-gsx-kpi">
+            <span className="tl-gsx-kpi-icon" aria-hidden="true"><Users /></span>
+            <div><h2>Entry rate</h2><p>{pct}%</p><small>{stats?.inside != null ? `${stats.inside.toLocaleString()} inside now` : 'of tickets sold'}</small></div>
+            <svg className="tl-gsx-ring" width="56" height="56" viewBox="0 0 56 56" aria-hidden="true">
+              <circle cx="28" cy="28" r="22" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+              <circle cx="28" cy="28" r="22" fill="none" stroke="#22e06b" strokeWidth="6" strokeLinecap="round" strokeDasharray={`${Math.max(0.001, (ring * pct) / 100)} ${ring}`} transform="rotate(-90 28 28)" />
+            </svg>
+          </section>
+          <section className="tl-gsx-kpi">
+            <span className="tl-gsx-kpi-icon is-warn" aria-hidden="true"><ShieldOff /></span>
+            <div><h2>Turned away</h2><p>{refused.toLocaleString()}</p><small>{results.YELLOW || 0} already used · {results.RED || 0} not valid</small></div>
+          </section>
+          <section className="tl-gsx-kpi">
+            <span className={`tl-gsx-kpi-icon is-${queueTone}`} aria-hidden="true"><CloudUpload /></span>
+            <div><h2>Queue status</h2><p className={`is-${queueTone}`}>{queueLabel}</p><small>{pack?.tickets ? `Offline list · ${pack.tickets.length.toLocaleString()} tickets` : 'Offline list downloading'}</small></div>
+          </section>
+        </div>
+
+        <div className={`tl-gsx-main${gateOk ? '' : ' is-needs-gate'}`}>
+          <section className="tl-gsx-card tl-gsx-scan">
+            <div className="tl-gsx-head">
+              <h2><Camera className="w-6 h-6" aria-hidden="true" /> Scan tickets</h2>
+              <span className={`tl-gsx-pill${gateOk && !locked ? '' : ' is-off'}`}><i aria-hidden="true" />{locked ? 'Locked' : gateOk ? 'Camera ready' : 'Choose a gate'}</span>
+            </div>
+            <button type="button" className="tl-gsx-zone" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
+              <span className="tl-gsx-corners" aria-hidden="true"><i /><i /><i /><i /></span>
+              <span className="tl-gsx-qr" aria-hidden="true"><QrCode /></span>
+              <strong>{gateOk ? (dir === 'EXIT' ? 'Tap to start scanning exits' : 'Tap to start scanning') : 'Choose your gate first'}</strong>
+              <small>{gateOk ? `${gate}${dir === 'EXIT' ? ' · exits' : ''} · allow camera access to scan QR codes` : 'Pick it under Gate status, then the camera opens here'}</small>
+            </button>
+            <p className="tl-gsx-alt-label">Alternative options</p>
+            <div className="tl-gsx-alts">
+              <ImageButton disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
+              <button type="button" className={`tl-gsx-alt${showManual ? ' is-on' : ''}`} onClick={() => setShowManual((v) => !v)} aria-expanded={showManual} disabled={!gateOk || locked}>
+                <Keyboard className="w-5 h-5" aria-hidden="true" /> Manual entry
+              </button>
+            </div>
+            {showManual && manualForm(false)}
+          </section>
+
+          <div className="tl-gsx-side">
+            <section className="tl-gsx-card">
+              <div className="tl-gsx-head"><h2><Zap className="w-6 h-6" aria-hidden="true" /> Quick actions</h2></div>
+              <div className="tl-gsx-actions">
+                <button type="button" className="tl-gsx-action is-primary" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
+                  <ScanLine className="w-5 h-5" aria-hidden="true" /> {gateOk ? 'Open scanner' : 'Choose a gate first'} <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+                <a href={`/events/${eventId}`} target="_blank" rel="noreferrer" className="tl-gsx-action"><Info className="w-5 h-5" aria-hidden="true" /> View event details <ExternalLink className="w-4 h-4" aria-hidden="true" /></a>
+                <button type="button" className="tl-gsx-action" onClick={() => setShowScans((v) => !v)} aria-expanded={showScans}>
+                  <HardDrive className="w-5 h-5" aria-hidden="true" /> {showScans ? 'Hide scans on this device' : 'Scans on this device'}
+                </button>
+                <button type="button" className="tl-gsx-action" onClick={testConnection} disabled={connTest?.state === 'testing'}>
+                  <Wifi className="w-5 h-5" aria-hidden="true" /> {connTest?.state === 'testing' ? 'Testing…' : 'Test connection'}
+                </button>
+              </div>
+            </section>
+
+            <section className="tl-gsx-card tl-gsx-gate">
+              <div className="tl-gsx-head">
+                <h2><CheckCircle2 className="w-6 h-6" aria-hidden="true" /> Gate status</h2>
+                <span className={`tl-gsx-pill${gateOk ? '' : ' is-off'}`}><i aria-hidden="true" />{gateOk ? 'Active' : 'Not set'}</span>
+              </div>
+              {gateOk && (
+                <>
+                  <p className="tl-gsx-gate-name">{gate} · {dir === 'EXIT' ? 'Exits' : gateRow?.type === 'ENTRY_EXIT' ? 'Entry & exit' : 'Entries'}</p>
+                  <div className="tl-gsx-bar" role="img" aria-label={`${gateShare}% of entries came through this gate`}><i style={{ width: `${gateShare}%` }} /></div>
+                  <p className="tl-gsx-gate-figs"><span>{gateShare}% of entries</span><span>{gateEntered.toLocaleString()} / {entered.toLocaleString()}</span></p>
+                </>
+              )}
+              <p className="tl-gsx-gate-label">{gateOk ? 'Change gate' : 'Choose the gate you’re standing at'}</p>
+              {gatePicker}
+            </section>
+          </div>
+        </div>
+
+        <section className="tl-gsx-card tl-gsx-recent">
+          <div className="tl-gsx-head">
+            <h2><Clock className="w-6 h-6" aria-hidden="true" /> Recent scans</h2>
+            <button type="button" className="tl-gsx-link" onClick={loadStats}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Refresh</button>
+          </div>
+          {recent.length === 0 ? (
+            <p className="tl-gsx-muted">No scans yet at this event. They appear here as tickets are checked.</p>
+          ) : (
+            <div className="tl-gsx-table-wrap">
+              <table className="tl-gsx-table">
+                <thead><tr><th scope="col">Time</th><th scope="col">Ticket</th><th scope="col">Status</th><th scope="col">Gate</th></tr></thead>
+                <tbody>
+                  {recent.slice(0, 5).map((r) => {
+                    const label = r.result === 'GREEN' ? (r.direction === 'EXIT' ? 'Exit' : r.reentry ? 'Re-entry' : 'Allowed') : r.result === 'YELLOW' ? 'Already scanned' : 'Rejected';
+                    return (
+                      <tr key={r.id}>
+                        <td className="is-nowrap">{clock(r.scannedAt)}</td>
+                        <td>
+                          <strong>{r.holder || (r.result === 'GREEN' ? 'Ticket holder' : 'Unknown ticket')}</strong>
+                          <small>{r.result === 'GREEN' ? r.type || 'Ticket' : r.reason}{r.offline ? ' · offline' : ''}{r.conflict ? ' · conflict' : ''}</small>
+                        </td>
+                        <td>
+                          <span className={`tl-gsx-status is-${r.result.toLowerCase()}`}>
+                            {r.result === 'GREEN' ? <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" /> : r.result === 'YELLOW' ? <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> : <X className="w-3.5 h-3.5" aria-hidden="true" />}
+                            {label}
+                          </span>
+                        </td>
+                        <td className="is-nowrap">{r.gate || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        {showScans && (
+          <section className="tl-gs-card">
+            <div className="tl-gs-recent-head">
+              <h2 className="tl-gs-h2">Scans on this device</h2>
+              <button type="button" className="tl-gs-icon" onClick={() => setShowScans(false)}>Hide</button>
+            </div>
+            <p className="tl-gs-muted">
+              {counts ? `${counts.unsynced} not uploaded · ${counts.SYNCED} uploaded · ${counts.CONFLICT} conflicts${counts.QUARANTINED ? ` · ${counts.QUARANTINED} handed in for review` : ''}` : 'Loading…'}
+              {storeInfo && !storeInfo.error && ` · storage ${storeInfo.persisted ? 'kept by the browser' : 'may be cleared by the browser if the device runs low on space'}`}
+            </p>
+            <DeviceScans eventId={eventId} counts={counts} online={online} onSync={syncQueue} onChange={refreshQueue} />
+          </section>
+        )}
+      </div>
+    );
+  })();
+
+  // Console layout: warnings and results show as notifications (top right) that can be closed
+  const notices = dark ? [
+    !online && { key: 'offline', tone: 'warn', icon: CloudOff, title: 'You’re offline', text: 'Tickets are checked on this device and upload when you reconnect.' },
+    !pack?.tickets && { key: `pack-${packError || 'loading'}`, tone: 'warn', icon: AlertTriangle, title: 'Offline list not ready', text: packError || 'Downloading the offline list…', action: ['Refresh', () => refreshPack()] },
+    counts?.FAILED > 0 && { key: `failed-${counts.FAILED}`, tone: 'bad', icon: AlertTriangle, title: `${counts.FAILED} scan${counts.FAILED === 1 ? '' : 's'} failed to upload`, text: 'Open the scans on this device to retry.', action: ['Open', () => setShowScans(true)] },
+    counts?.CONFLICT > 0 && { key: `conflict-${counts.CONFLICT}`, tone: 'bad', icon: Users, title: `${counts.CONFLICT} conflict${counts.CONFLICT === 1 ? '' : 's'} for the supervisor`, text: 'The same ticket was admitted on two devices.', action: ['Open', () => setShowScans(true)] },
+    recovery?.error && queueCount > 0 && { key: `upload-${recovery.error}`, tone: 'bad', icon: CloudOff, title: 'Upload problem', text: recovery.error, action: ['Retry', () => syncQueue({ manual: true })] },
+    waiting(counts) > 0 && { key: `queue-${waiting(counts)}`, tone: 'info', icon: CloudUpload, title: `${waiting(counts)} scan${waiting(counts) === 1 ? '' : 's'} waiting to upload`, text: counts.UPLOADING ? 'Uploading now…' : 'They upload automatically when online.' },
+    storeInfo?.error && { key: 'store', tone: 'bad', icon: AlertTriangle, title: 'Offline scans can’t be saved here', text: `${storeInfo.error}. Don’t scan offline on this device; use another one.` },
+    storeInfo?.migration && !storeInfo.migration.verified && (storeInfo.migration.imported > 0 || storeInfo.migration.error) && { key: 'migration', tone: 'warn', icon: AlertTriangle, title: 'Some older scans need checking', text: 'Export them from “Scans on this device” and give the file to your supervisor.' },
+    deviceAuth?.state === 'needs-reset' && { key: 'device', tone: 'bad', icon: ShieldOff, title: 'Device credential missing', text: 'Ask a supervisor to reset this device (Gate management → Devices).' },
+    syncNote && { key: `sync-${syncNote}`, tone: 'info', icon: Bell, title: 'Sync', text: syncNote, onClose: () => setSyncNote('') },
+    connTest && connTest.state !== 'testing' && { key: `conn-${connTest.state}-${connTest.ms || connTest.message}`, tone: connTest.state === 'ok' ? 'good' : 'bad', icon: Wifi, title: connTest.state === 'ok' ? `Connected · ${connTest.ms} ms` : 'Connection test failed', text: connTest.state === 'ok' ? `Device ${connTest.device.enrolled ? 'enrolled' : 'not enrolled yet'}${Math.abs(connTest.skew) > 60 ? ` · clock ${Math.round(Math.abs(connTest.skew) / 60)} min ${connTest.skew > 0 ? 'ahead' : 'behind'}` : ''}` : connTest.message },
+  ].filter((n) => n && !dismissed.has(n.key)) : [];
+  const closeNotice = (n) => { n.onClose?.(); setDismissed((set) => new Set(set).add(n.key)); };
+
   return (
-    <div className="tl-gs">
-      <header className="tl-gs-head">
-        <Link to="/scanner" className="tl-gs-back"><ArrowLeft className="w-4 h-4" aria-hidden="true" /> All events</Link>
-        <p className="tl-gs-eyebrow">Gate scanner · {user?.name}</p>
-        <h1 className="tl-gs-title">{event?.name || 'Event'}</h1>
-        <div className="tl-gs-badges">
-          <span className={`tl-gs-badge ${online ? 'is-online' : 'is-offline'}`}>
-            {online ? <><Wifi className="w-4 h-4" aria-hidden="true" /> Online</> : <><CloudOff className="w-4 h-4" aria-hidden="true" /> Offline · checking on this device</>}
-          </span>
-          <span className="tl-gs-badge">
-            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-            {pack?.tickets ? `Offline list: ${pack.tickets.length} tickets · ${ago(pack.savedAt)}` : packError || 'Downloading offline list…'}
-          </span>
-          {counts && counts.PENDING + counts.UPLOADING > 0 && (
-            <button type="button" className="tl-gs-badge is-queue" onClick={() => setShowScans(true)}>
-              <CloudUpload className="w-4 h-4" aria-hidden="true" /> {counts.PENDING + counts.UPLOADING} scan{counts.PENDING + counts.UPLOADING === 1 ? '' : 's'} waiting to upload{counts.UPLOADING ? ' · uploading' : ''}
-            </button>
-          )}
-          {counts?.FAILED > 0 && (
-            <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)}>
-              <AlertTriangle className="w-4 h-4" aria-hidden="true" /> {counts.FAILED} scan{counts.FAILED === 1 ? '' : 's'} failed to upload
-            </button>
-          )}
-          {recovery?.error && queueCount > 0 && (
-            <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)} title={recovery.error}>
-              <CloudOff className="w-4 h-4" aria-hidden="true" /> Upload problem: {recovery.error}
-            </button>
-          )}
-          {counts?.CONFLICT > 0 && (
-            <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)}>
-              <Users className="w-4 h-4" aria-hidden="true" /> {counts.CONFLICT} conflict{counts.CONFLICT === 1 ? '' : 's'} for the supervisor
-            </button>
-          )}
-        </div>
-      </header>
-
-      {storeInfo?.error && (
-        <p className="tl-gs-note" role="alert"><AlertTriangle className="w-4 h-4 inline" aria-hidden="true" /> Offline scans can’t be saved on this device ({storeInfo.error}). Don’t scan offline here; use another device.</p>
-      )}
-      {storeInfo?.migration && !storeInfo.migration.verified && (storeInfo.migration.imported > 0 || storeInfo.migration.error) && (
-        <p className="tl-gs-note" role="alert"><AlertTriangle className="w-4 h-4 inline" aria-hidden="true" /> Some scans from the previous scanner version could not be checked after moving them. They are kept in both places; export them from “Scans on this device” and give the file to your supervisor.</p>
-      )}
-
-      {deviceAuth?.state === 'needs-reset' && (
-        <p className="tl-gs-note" role="alert"><ShieldOff className="w-4 h-4 inline" aria-hidden="true" /> This device’s credential is missing. Ask a supervisor to reset its enrollment (Gate management → Devices); scans made offline stay on this device meanwhile.</p>
-      )}
-      {syncNote && <p className="tl-gs-note" role="status">{syncNote} <button type="button" onClick={() => setSyncNote('')} aria-label="Dismiss"><X className="w-4 h-4" /></button></p>}
-
-      {dark && (() => {
-        // Overview (console layout only): event details, quick actions, gate activity, status
-        const d = event?.date ? new Date(event.date) : null;
-        const today = new Date();
-        const isToday = d && d.toDateString() === today.toDateString();
-        const ended = d && !isToday && d < today;
-        const gates = stats?.gates || [];
-        const maxGate = Math.max(1, ...gates.map((g) => g.entered || 0));
-        const results = stats?.scans || {};
-        const problems = [
-          !online && 'offline',
-          counts?.FAILED > 0 && `${counts.FAILED} failed upload${counts.FAILED === 1 ? '' : 's'}`,
-          counts?.CONFLICT > 0 && `${counts.CONFLICT} conflict${counts.CONFLICT === 1 ? '' : 's'}`,
-          recovery?.error && 'upload problem',
-          !pack?.tickets && 'offline list not ready',
-        ].filter(Boolean);
-        return (
-          <div className="tl-sx">
-            <section className="tl-sx-card tl-sx-details">
-              <h2 className="tl-sx-title"><Info className="w-5 h-5" aria-hidden="true" /> Event details</h2>
-              <dl>
-                <div><dt>Event name</dt><dd>{event?.name || '—'}</dd></div>
-                <div><dt>Date &amp; time</dt><dd>{d ? d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '—'}{event?.time ? ` • ${event.time}` : ''}</dd></div>
-                <div><dt>Location</dt><dd>{[event?.venue, event?.city].filter(Boolean).join(', ') || '—'}</dd></div>
-                <div><dt>Tickets sold</dt><dd>{sold.toLocaleString()}</dd></div>
-                <div>
-                  <dt>Entered</dt>
-                  <dd>
-                    {entered.toLocaleString()} ({pct}%){stats?.inside != null ? ` · ${stats.inside} inside` : ''}
-                    <span className="tl-sx-meter"><i style={{ width: `${pct}%` }} /></span>
-                  </dd>
-                </div>
-              </dl>
-              <a href={`/events/${eventId}`} target="_blank" rel="noreferrer" className="tl-sx-link">View event page <ExternalLink className="w-4 h-4" aria-hidden="true" /></a>
-            </section>
-
-            <section className="tl-sx-card tl-sx-actions">
-              <h2 className="tl-sx-title"><Zap className="w-5 h-5" aria-hidden="true" /> Quick actions</h2>
-              <button type="button" className="tl-sx-btn is-primary" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
-                <ScanLine className="w-5 h-5" aria-hidden="true" /> {gateOk ? 'Open scanner' : 'Choose a gate first'}
-              </button>
-              <button type="button" className="tl-sx-btn" onClick={() => setShowScans((v) => !v)} aria-expanded={showScans}>
-                <HardDrive className="w-5 h-5" aria-hidden="true" /> {showScans ? 'Hide scans on this device' : 'Scans on this device'}
-              </button>
-              <button type="button" className="tl-sx-btn" onClick={testConnection} disabled={connTest?.state === 'testing'}>
-                <Wifi className="w-5 h-5" aria-hidden="true" /> {connTest?.state === 'testing' ? 'Testing…' : 'Test connection'}
-              </button>
-              <Link to="/staff/events" className="tl-sx-btn"><CalendarDays className="w-5 h-5" aria-hidden="true" /> My events</Link>
-            </section>
-
-            <section className="tl-sx-card tl-sx-activity">
-              <div className="tl-sx-head">
-                <h2 className="tl-sx-title"><Activity className="w-5 h-5" aria-hidden="true" /> Scan activity</h2>
-                <span className={`tl-sx-live${online ? '' : ' is-off'}`}><i aria-hidden="true" />{online ? 'Live' : 'Offline'}</span>
-              </div>
-              {gates.length ? (
-                <ul className="tl-sx-bars" aria-label="Entries per gate">
-                  {gates.map((g) => (
-                    <li key={g.gate}>
-                      <span>{g.gate}</span>
-                      <span className="tl-sx-bar"><i style={{ width: `${Math.max(2, ((g.entered || 0) / maxGate) * 100)}%` }} /></span>
-                      <b>{g.entered || 0}</b>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p className="tl-sx-muted">No entries yet. Gate counts appear here as people enter.</p>}
-              <div className="tl-sx-chips">
-                <span className="is-good"><CheckCircle2 className="w-4 h-4" aria-hidden="true" /> {results.GREEN ?? 0} admitted</span>
-                <span className="is-warn"><AlertTriangle className="w-4 h-4" aria-hidden="true" /> {results.YELLOW ?? 0} already used</span>
-                <span className="is-bad"><X className="w-4 h-4" aria-hidden="true" /> {results.RED ?? 0} turned away</span>
-              </div>
-            </section>
-
-            <section className="tl-sx-card tl-sx-status">
-              <h2 className="tl-sx-title"><ShieldCheck className="w-5 h-5" aria-hidden="true" /> Event status</h2>
-              <span className={`tl-sx-state${ended ? ' is-ended' : isToday ? '' : ' is-soon'}`} aria-hidden="true">
-                {ended ? <Clock /> : isToday ? <Check /> : <CalendarDays />}
+    <div className={`tl-gs${dark ? ' tl-gs--console' : ''}`}>
+      {dark ? consoleView : (
+        <>
+          <header className="tl-gs-head">
+            <Link to="/scanner" className="tl-gs-back"><ArrowLeft className="w-4 h-4" aria-hidden="true" /> All events</Link>
+            <p className="tl-gs-eyebrow">Gate scanner · {user?.name}</p>
+            <h1 className="tl-gs-title">{event?.name || 'Event'}</h1>
+            <div className="tl-gs-badges">
+              <span className={`tl-gs-badge ${online ? 'is-online' : 'is-offline'}`}>
+                {online ? <><Wifi className="w-4 h-4" aria-hidden="true" /> Online</> : <><CloudOff className="w-4 h-4" aria-hidden="true" /> Offline · checking on this device</>}
               </span>
-              <strong>{ended ? 'Ended' : isToday ? 'Active' : 'Upcoming'}</strong>
-              <p>{ended ? 'This event has ended.' : isToday ? (online ? 'Event is live and accepting scans.' : 'Event is live; scans are checked on this device.') : 'Gates open on the event day.'}</p>
-            </section>
+              <span className="tl-gs-badge">
+                <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+                {pack?.tickets ? `Offline list: ${pack.tickets.length} tickets · ${ago(pack.savedAt)}` : packError || 'Downloading offline list…'}
+              </span>
+              {counts && counts.PENDING + counts.UPLOADING > 0 && (
+                <button type="button" className="tl-gs-badge is-queue" onClick={() => setShowScans(true)}>
+                  <CloudUpload className="w-4 h-4" aria-hidden="true" /> {counts.PENDING + counts.UPLOADING} scan{counts.PENDING + counts.UPLOADING === 1 ? '' : 's'} waiting to upload{counts.UPLOADING ? ' · uploading' : ''}
+                </button>
+              )}
+              {counts?.FAILED > 0 && (
+                <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)}>
+                  <AlertTriangle className="w-4 h-4" aria-hidden="true" /> {counts.FAILED} scan{counts.FAILED === 1 ? '' : 's'} failed to upload
+                </button>
+              )}
+              {recovery?.error && queueCount > 0 && (
+                <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)} title={recovery.error}>
+                  <CloudOff className="w-4 h-4" aria-hidden="true" /> Upload problem: {recovery.error}
+                </button>
+              )}
+              {counts?.CONFLICT > 0 && (
+                <button type="button" className="tl-gs-badge is-offline" onClick={() => setShowScans(true)}>
+                  <Users className="w-4 h-4" aria-hidden="true" /> {counts.CONFLICT} conflict{counts.CONFLICT === 1 ? '' : 's'} for the supervisor
+                </button>
+              )}
+            </div>
+          </header>
 
-            <section className={`tl-sx-system${problems.length ? ' is-warn' : ''}`} role="status">
-              <span className="tl-sx-system-icon" aria-hidden="true">{problems.length ? <AlertTriangle /> : <ShieldCheck />}</span>
-              <div>
-                <strong>{problems.length ? `Needs attention: ${problems.join(' · ')}` : 'All systems are running smoothly'}</strong>
-                <span>{pack?.savedAt ? `Offline list updated ${ago(pack.savedAt)}` : 'Downloading the offline list…'}{connTest?.state === 'ok' ? ` · connected in ${connTest.ms} ms` : ''}</span>
-              </div>
-              <button type="button" className="tl-sx-refresh" onClick={loadStats}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Refresh</button>
-            </section>
-          </div>
-        );
-      })()}
+          {storeInfo?.error && (
+            <p className="tl-gs-note" role="alert"><AlertTriangle className="w-4 h-4 inline" aria-hidden="true" /> Offline scans can’t be saved on this device ({storeInfo.error}). Don’t scan offline here; use another device.</p>
+          )}
+          {storeInfo?.migration && !storeInfo.migration.verified && (storeInfo.migration.imported > 0 || storeInfo.migration.error) && (
+            <p className="tl-gs-note" role="alert"><AlertTriangle className="w-4 h-4 inline" aria-hidden="true" /> Some scans from the previous scanner version could not be checked after moving them. They are kept in both places; export them from “Scans on this device” and give the file to your supervisor.</p>
+          )}
 
-      {/* Gate */}
-      <section className="tl-gs-card">
-        <h2 className="tl-gs-h2">Your gate</h2>
-        {configured.length > 0 ? (
-          <div className="tl-gs-gates" role="radiogroup" aria-label="Gate">
-            {mine.map((g) => (
-              <button key={g.id} type="button" role="radio" aria-checked={gate === g.name} className={gate === g.name ? 'is-on' : ''} onClick={() => chooseGate(g.name)}>
-                {g.name}<small style={{ display: 'block', fontSize: 11, opacity: 0.7 }}>{g.type === 'ENTRY' ? 'Entry' : g.type === 'EXIT' ? 'Exit' : 'Entry & exit'}{g.allowedTierIds?.length ? ' · some ticket types' : ''}</small>
-              </button>
-            ))}
-            {!mine.length && <p className="tl-gs-muted">You aren't assigned to an open gate at this event. Ask your supervisor.</p>}
-          </div>
-        ) : (
-        <div className="tl-gs-gates" role="radiogroup" aria-label="Gate">
-          {GATES.map((g) => (
-            <button key={g} type="button" role="radio" aria-checked={gate === g} className={gate === g ? 'is-on' : ''} onClick={() => chooseGate(g)}>{g}</button>
+          {deviceAuth?.state === 'needs-reset' && (
+            <p className="tl-gs-note" role="alert"><ShieldOff className="w-4 h-4 inline" aria-hidden="true" /> This device’s credential is missing. Ask a supervisor to reset its enrollment (Gate management → Devices); scans made offline stay on this device meanwhile.</p>
+          )}
+          {syncNote && <p className="tl-gs-note" role="status">{syncNote} <button type="button" onClick={() => setSyncNote('')} aria-label="Dismiss"><X className="w-4 h-4" /></button></p>}
+
+
+          {/* Gate */}
+          <section className="tl-gs-card">
+            <h2 className="tl-gs-h2">Your gate</h2>
+            {gatePicker}
+          </section>
+
+          {/* Big scan button + counter */}
+          <section className="tl-gs-hero">
+            <button type="button" className="tl-gs-scan" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
+              <Camera className="w-7 h-7" aria-hidden="true" />
+              <span>{gateOk ? (dir === 'EXIT' ? 'Scan exits' : 'Scan tickets') : 'Choose a gate first'}</span>
+              <small>{gateOk ? `${gate}${dir === 'EXIT' ? ' · exits' : ''} · camera opens` : 'Then the camera opens'}</small>
+            </button>
+            <div className="tl-gs-count" aria-live="polite">
+              <p><strong>{entered}</strong> / {sold} entered{stats?.inside != null && stats.inside !== entered ? ` · ${stats.inside} inside now` : ''}</p>
+              <div className="tl-gs-meter"><i style={{ width: `${pct}%` }} /></div>
+              <p className="tl-gs-muted">{stats?.gates?.length ? stats.gates.map((g) => `${g.gate}: ${g.entered}`).join(' · ') : 'Live · updates as people enter'}</p>
+            </div>
+          </section>
+
+          <section className="tl-gs-card">
+            <h2 className="tl-gs-h2">Scan from an image</h2>
+            <p className="tl-gs-muted">For demos and testing: drop a screenshot of a ticket QR, or choose the file. It’s checked and marked used exactly like a camera scan.</p>
+            <ImageScan disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
+          </section>
+
+          <section className="tl-gs-card">{manualForm(false)}</section>
+
+          <section className="tl-gs-card">
+            <div className="tl-gs-recent-head">
+              <h2 className="tl-gs-h2">Scans on this device</h2>
+              <button type="button" className="tl-gs-icon" onClick={() => setShowScans((v) => !v)} aria-expanded={showScans}>{showScans ? 'Hide' : 'Show'}</button>
+            </div>
+            <p className="tl-gs-muted">
+              {counts ? `${counts.unsynced} not uploaded · ${counts.SYNCED} uploaded · ${counts.CONFLICT} conflicts${counts.QUARANTINED ? ` · ${counts.QUARANTINED} handed in for review` : ''}` : 'Loading…'}
+              {storeInfo && !storeInfo.error && ` · storage ${storeInfo.persisted ? 'kept by the browser' : 'may be cleared by the browser if the device runs low on space'}`}
+            </p>
+            <div className="tl-gs-gates" style={{ marginTop: 8 }}>
+              <button type="button" onClick={testConnection} disabled={connTest?.state === 'testing'}><Wifi className="w-4 h-4 inline" aria-hidden="true" /> {connTest?.state === 'testing' ? 'Testing…' : 'Test connection'}</button>
+            </div>
+            {connTest && connTest.state !== 'testing' && (
+              <p className="tl-gs-muted" role="status">
+                {connTest.state === 'ok'
+                  ? `Connected · ${connTest.ms} ms · device ${connTest.device.enrolled ? 'enrolled' : 'not enrolled yet'}${Math.abs(connTest.skew) > 60 ? ` · this device's clock is ${Math.round(Math.abs(connTest.skew) / 60)} min ${connTest.skew > 0 ? 'ahead' : 'behind'}` : ''}`
+                  : `Connection test failed: ${connTest.message}`}
+              </p>
+            )}
+            {recovery && (recovery.failures > 0 || recovery.recovered > 0) && (
+              <p className="tl-gs-muted" role="status">
+                {recovery.recovered > 0 && `Recovered ${recovery.recovered} interrupted upload${recovery.recovered === 1 ? '' : 's'}; they are sent again. `}
+                {recovery.failures > 0 && recovery.nextAt && `${recovery.failures} upload attempt${recovery.failures === 1 ? '' : 's'} failed${recovery.error ? ` (${recovery.error})` : ''}. Next automatic try at ${clock(recovery.nextAt)}; “Upload now” tries at once.`}
+              </p>
+            )}
+            {showScans && <DeviceScans eventId={eventId} counts={counts} online={online} onSync={syncQueue} onChange={refreshQueue} />}
+          </section>
+
+          {/* Recent scans */}
+          <section className="tl-gs-card">
+            <div className="tl-gs-recent-head">
+              <h2 className="tl-gs-h2">Recent scans</h2>
+              <button type="button" className="tl-gs-icon" onClick={loadStats} aria-label="Refresh"><RefreshCw className="w-4 h-4" /></button>
+            </div>
+            {recent.length === 0 ? (
+              <p className="tl-gs-empty">No scans yet at this event.</p>
+            ) : (
+              <ul className="tl-gs-recent">
+                {recent.map((r) => (
+                  <li key={r.id} className={`is-${r.result.toLowerCase()}`}>
+                    <i aria-hidden="true" />
+                    <span>
+                      <strong>{r.result === 'GREEN' && r.direction === 'EXIT' ? 'Exit' : r.result === 'GREEN' && r.reentry ? 'Re-entry' : TITLES[r.result]}{r.holder ? ` · ${r.holder}` : ''}</strong>
+                      <small>{r.result === 'GREEN' ? r.type || 'Ticket' : r.reason}{r.offline ? ' · offline' : ''}{r.conflict ? ' · conflict' : ''}</small>
+                    </span>
+                    <time>{clock(r.scannedAt)}{r.gate ? ` · ${r.gate}` : ''}</time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
+
+      {notices.length > 0 && (
+        <div className="tl-gsx-toasts" role="region" aria-label="Notifications" aria-live="polite">
+          {notices.map((n) => (
+            <div key={n.key} className={`tl-gsx-toast is-${n.tone}`} role={n.tone === 'bad' ? 'alert' : 'status'}>
+              <span className="tl-gsx-toast-icon" aria-hidden="true"><n.icon /></span>
+              <span className="tl-gsx-toast-copy"><strong>{n.title}</strong><small>{n.text}</small></span>
+              {n.action && <button type="button" className="tl-gsx-toast-act" onClick={n.action[1]}>{n.action[0] === 'Refresh' && <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />}{n.action[0]}</button>}
+              <button type="button" className="tl-gsx-toast-x" onClick={() => closeNotice(n)} aria-label={`Dismiss: ${n.title}`}><X className="w-4 h-4" aria-hidden="true" /></button>
+            </div>
           ))}
-          <form
-            className="tl-gs-gate-custom"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (customGate.trim()) chooseGate(customGate.trim());
-              setCustomGate('');
-            }}
-          >
-            <input value={customGate} onChange={(e) => setCustomGate(e.target.value)} placeholder="Other gate" maxLength={40} aria-label="Other gate name" />
-          </form>
         </div>
-        )}
-        {!gateOk && <p className="tl-gs-muted">Choose the gate you’re standing at before scanning.</p>}
-        {gateOk && (!gateRow || gateRow.type === 'ENTRY_EXIT') && (
-          <div className="tl-gs-gates" role="radiogroup" aria-label="Scanning" style={{ marginTop: 12 }}>
-            {[['ENTRY', 'Scanning entries'], ['EXIT', 'Scanning exits']].map(([v, l]) => (
-              <button key={v} type="button" role="radio" aria-checked={direction === v} className={direction === v ? 'is-on' : ''} onClick={() => setDirection(v)}>{l}</button>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Big scan button + counter */}
-      <section className="tl-gs-hero">
-        <button type="button" className="tl-gs-scan" onClick={() => setScanning(true)} disabled={!gateOk || locked}>
-          <Camera className="w-7 h-7" aria-hidden="true" />
-          <span>{gateOk ? (dir === 'EXIT' ? 'Scan exits' : 'Scan tickets') : 'Choose a gate first'}</span>
-          <small>{gateOk ? `${gate}${dir === 'EXIT' ? ' · exits' : ''} · camera opens` : 'Then the camera opens'}</small>
-        </button>
-        <div className="tl-gs-count" aria-live="polite">
-          <p><strong>{entered}</strong> / {sold} entered{stats?.inside != null && stats.inside !== entered ? ` · ${stats.inside} inside now` : ''}</p>
-          <div className="tl-gs-meter"><i style={{ width: `${pct}%` }} /></div>
-          <p className="tl-gs-muted">{stats?.gates?.length ? stats.gates.map((g) => `${g.gate}: ${g.entered}`).join(' · ') : 'Live · updates as people enter'}</p>
-        </div>
-      </section>
-
-      <section className="tl-gs-card">
-        <h2 className="tl-gs-h2">Scan from an image</h2>
-        <p className="tl-gs-muted">For demos and testing: drop a screenshot of a ticket QR, or choose the file. It’s checked and marked used exactly like a camera scan.</p>
-        <ImageScan disabled={!gateOk || locked} busy={checking} onCode={check} onError={imageError} />
-      </section>
-
-      <section className="tl-gs-card">{manualForm(false)}</section>
-
-      <section className="tl-gs-card">
-        <div className="tl-gs-recent-head">
-          <h2 className="tl-gs-h2">Scans on this device</h2>
-          <button type="button" className="tl-gs-icon" onClick={() => setShowScans((v) => !v)} aria-expanded={showScans}>{showScans ? 'Hide' : 'Show'}</button>
-        </div>
-        <p className="tl-gs-muted">
-          {counts ? `${counts.unsynced} not uploaded · ${counts.SYNCED} uploaded · ${counts.CONFLICT} conflicts${counts.QUARANTINED ? ` · ${counts.QUARANTINED} handed in for review` : ''}` : 'Loading…'}
-          {storeInfo && !storeInfo.error && ` · storage ${storeInfo.persisted ? 'kept by the browser' : 'may be cleared by the browser if the device runs low on space'}`}
-        </p>
-        <div className="tl-gs-gates" style={{ marginTop: 8 }}>
-          <button type="button" onClick={testConnection} disabled={connTest?.state === 'testing'}><Wifi className="w-4 h-4 inline" aria-hidden="true" /> {connTest?.state === 'testing' ? 'Testing…' : 'Test connection'}</button>
-        </div>
-        {connTest && connTest.state !== 'testing' && (
-          <p className="tl-gs-muted" role="status">
-            {connTest.state === 'ok'
-              ? `Connected · ${connTest.ms} ms · device ${connTest.device.enrolled ? 'enrolled' : 'not enrolled yet'}${Math.abs(connTest.skew) > 60 ? ` · this device's clock is ${Math.round(Math.abs(connTest.skew) / 60)} min ${connTest.skew > 0 ? 'ahead' : 'behind'}` : ''}`
-              : `Connection test failed: ${connTest.message}`}
-          </p>
-        )}
-        {recovery && (recovery.failures > 0 || recovery.recovered > 0) && (
-          <p className="tl-gs-muted" role="status">
-            {recovery.recovered > 0 && `Recovered ${recovery.recovered} interrupted upload${recovery.recovered === 1 ? '' : 's'}; they are sent again. `}
-            {recovery.failures > 0 && recovery.nextAt && `${recovery.failures} upload attempt${recovery.failures === 1 ? '' : 's'} failed${recovery.error ? ` (${recovery.error})` : ''}. Next automatic try at ${clock(recovery.nextAt)}; “Upload now” tries at once.`}
-          </p>
-        )}
-        {showScans && <DeviceScans eventId={eventId} counts={counts} online={online} onSync={syncQueue} onChange={refreshQueue} />}
-      </section>
-
-      {/* Recent scans */}
-      <section className="tl-gs-card">
-        <div className="tl-gs-recent-head">
-          <h2 className="tl-gs-h2">Recent scans</h2>
-          <button type="button" className="tl-gs-icon" onClick={loadStats} aria-label="Refresh"><RefreshCw className="w-4 h-4" /></button>
-        </div>
-        {recent.length === 0 ? (
-          <p className="tl-gs-empty">No scans yet at this event.</p>
-        ) : (
-          <ul className="tl-gs-recent">
-            {recent.map((r) => (
-              <li key={r.id} className={`is-${r.result.toLowerCase()}`}>
-                <i aria-hidden="true" />
-                <span>
-                  <strong>{r.result === 'GREEN' && r.direction === 'EXIT' ? 'Exit' : r.result === 'GREEN' && r.reentry ? 'Re-entry' : TITLES[r.result]}{r.holder ? ` · ${r.holder}` : ''}</strong>
-                  <small>{r.result === 'GREEN' ? r.type || 'Ticket' : r.reason}{r.offline ? ' · offline' : ''}{r.conflict ? ' · conflict' : ''}</small>
-                </span>
-                <time>{clock(r.scannedAt)}{r.gate ? ` · ${r.gate}` : ''}</time>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      )}
 
       {/* Full-screen camera */}
       {scanning && (
