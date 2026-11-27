@@ -31,7 +31,7 @@
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  padding: calc(var(--tl-header-h) + 22px) 14px 0;
+  padding: calc(var(--tl-header-h) + 2px) 14px 0;
   box-sizing: border-box;
   background: linear-gradient(180deg, #06141a 0%, #061a17 60%, #0a3a1f 100%);
   border-right: 1px solid rgba(34, 224, 107, 0.22);
@@ -100,6 +100,8 @@
 }
 
 .tl-aov-side-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+/* The first heading (e.g. "… studio") sits right under the logo */
+.tl-aov-side-nav > .tl-aov-side-label:first-child { margin-top: 6px; }
 .tl-aov-side-label {
   margin: 22px 12px 8px;
   font: 600 11px/1 'JetBrains Mono', monospace;
