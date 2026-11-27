@@ -1,6 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react';
 import './dialog.css';
 
@@ -8,22 +7,14 @@ const DialogContext = createContext(null);
 
 const ICONS = { success: CheckCircle2, error: XCircle, warning: AlertTriangle, info: Info };
 
-/** Visual theme from the page: organizer/admin consoles, the booking flow, or the dark site pages. */
-function themeFor(pathname) {
-  if (/^\/(admin|organizer|scanner|staff|demand-forecast|analytics)(\/|$)/.test(pathname)) return 'studio';
-  if (/^\/(checkout|bookings|booking-success)(\/|$)|^\/events\/[^/]+\/(seats|checkout)/.test(pathname)) return 'paper';
-  return 'dark';
-}
-
 /**
- * In-app replacement for the browser's alert() and confirm(): a designed, responsive dialog that
- * follows the current page's theme.
+ * In-app replacement for the browser's alert() and confirm(): a designed, responsive dialog in the app's
+ * console theme (dark glass, green accents) on every page.
  *   const dialog = useDialog();
  *   await dialog.alert({ tone: 'success', title: 'Saved', message: '…' });
  *   if (await dialog.confirm({ title: 'Cancel listing?', message: '…', confirmLabel: 'Cancel listing', tone: 'warning' })) …
  */
 export function DialogProvider({ children }) {
-  const { pathname } = useLocation();
   const [queue, setQueue] = useState([]);
   const current = queue[0];
 
@@ -45,12 +36,12 @@ export function DialogProvider({ children }) {
   return (
     <DialogContext.Provider value={{ alert, confirm }}>
       {children}
-      {current && <Dialog key={current.id} dialog={current} theme={themeFor(pathname)} onClose={close} />}
+      {current && <Dialog key={current.id} dialog={current} onClose={close} />}
     </DialogContext.Provider>
   );
 }
 
-function Dialog({ dialog, theme, onClose }) {
+function Dialog({ dialog, onClose }) {
   const tone = dialog.tone || (dialog.kind === 'confirm' ? 'warning' : 'info');
   const Icon = ICONS[tone] || Info;
   const primaryRef = useRef(null);
@@ -81,7 +72,7 @@ function Dialog({ dialog, theme, onClose }) {
   }, []);
 
   return createPortal(
-    <div className={`tl-dlg-overlay tl-dlg--${theme}`} onMouseDown={(e) => e.target === e.currentTarget && onClose(dialog.kind === 'confirm' ? false : true)}>
+    <div className="tl-dlg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose(dialog.kind === 'confirm' ? false : true)}>
       <div className={`tl-dlg is-${tone}`} role={dialog.kind === 'confirm' ? 'alertdialog' : 'dialog'} aria-modal="true" aria-labelledby="tl-dlg-title" aria-describedby="tl-dlg-msg">
         <span className="tl-dlg-icon" aria-hidden="true"><Icon className="w-6 h-6" /></span>
         <h2 id="tl-dlg-title" className="tl-dlg-title">
