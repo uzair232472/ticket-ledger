@@ -1,5 +1,6 @@
 import { boxesOverlap, bounds, pointInPolygon, shapePolygon } from './geometry.js';
 import { LIMITS, gaOf, generateSection, tablesOf } from './generate.js';
+import { validateView3d } from './view3d.js';
 
 const BOOKINGS = ['seats', 'ga', 'tables'];
 const finite = (...vals) => vals.every((v) => typeof v === 'number' && Number.isFinite(v));
@@ -111,6 +112,8 @@ export function validateLayout(layout, { tierIds = null, requireTiers = false } 
     }
   }
   if (totals.positions > LIMITS.totalPositions) err(`The venue has ${totals.positions} positions; the maximum is ${LIMITS.totalPositions}.`);
+  // 3D stadium settings (team name and colours): see view3d.js
+  for (const i of validateView3d(layout)) (i.level === 'error' ? errors : warnings).push({ message: i.message });
 
   return { errors, warnings, generated, totals };
 }

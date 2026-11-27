@@ -1,0 +1,149 @@
+/*
+ * Dark theme for Terms, Privacy, About and Contact (same look as Help & support / Notifications):
+ * navy page with green glows, frosted glass cards with green rims. Opt-in with .tl-page--dark on the
+ * page's <main>; selectors are doubled-up so legal.css / info.css can't win on load order.
+ */
+
+/* Page background: under the fixed site header too */
+.tl-chrome + main:has(> .tl-page--dark) {
+  background:
+    radial-gradient(380px 340px at 82% 12%, rgba(34, 197, 94, 0.42), rgba(6, 16, 29, 0) 70%),
+    radial-gradient(520px 460px at 6% 46%, rgba(34, 197, 94, 0.22), rgba(6, 16, 29, 0) 70%),
+    radial-gradient(460px 420px at 88% 70%, rgba(34, 197, 94, 0.2), rgba(6, 16, 29, 0) 70%),
+    #06101d;
+}
+
+.tl-legal.tl-page--dark {
+  --lg-ink: #f4f4f1;
+  --lg-dim: rgba(244, 244, 241, 0.75);
+  --lg-line: rgba(244, 244, 241, 0.12);
+  --lg-green: #22e06b;
+  --pg-card: rgba(28, 42, 52, 0.62);
+  --pg-rim: rgba(34, 224, 107, 0.3);
+  color: #f4f4f1;
+  padding-top: 40px;
+}
+.tl-page--dark .tl-legal-head h1,
+.tl-page--dark h2,
+.tl-page--dark h3 { color: #f4f4f1; }
+.tl-page--dark .tl-legal-head h1 .is-accent { color: #22e06b; text-shadow: 0 0 36px rgba(34, 224, 107, 0.35); }
+.tl-page--dark .tl-legal-eyebrow { color: #22e06b; letter-spacing: 0.16em; }
+.tl-page--dark .tl-legal-intro { color: rgba(244, 244, 241, 0.8); }
+.tl-page--dark .tl-legal-updated { color: rgba(244, 244, 241, 0.6); }
+.tl-page--dark .tl-legal-head { border-bottom-color: rgba(244, 244, 241, 0.12); }
+.tl-page--dark a:focus-visible { outline-color: #22e06b; }
+
+/* Shared glass card */
+.tl-page--dark .tl-legal-toc,
+.tl-page--dark .tl-legal-body section,
+.tl-page--dark .tl-info-prose,
+.tl-page--dark .tl-info-cards li,
+.tl-page--dark .tl-info-steps li,
+.tl-page--dark .tl-info-list li,
+.tl-page--dark .tl-info-cta,
+.tl-page--dark .tl-info-ways > div,
+.tl-page--dark .tl-info-formcard {
+  border: 1px solid rgba(244, 244, 241, 0.14);
+  border-radius: 14px;
+  background: var(--pg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------- Terms / Privacy ---------- */
+.tl-page--dark .tl-legal-grid { grid-template-columns: 250px minmax(0, 1fr); gap: 24px; }
+.tl-page--dark .tl-legal-toc { padding: 16px 10px 18px; }
+.tl-page--dark .tl-legal-toc > p { padding: 0 10px; color: rgba(244, 244, 241, 0.55); }
+.tl-page--dark .tl-legal-toc ol { gap: 2px; }
+.tl-page--dark .tl-legal-toc a { padding: 8px 10px; border-radius: 8px; color: rgba(244, 244, 241, 0.75); transition: background-color 0.2s ease, color 0.2s ease; }
+.tl-page--dark .tl-legal-toc a:hover { background: rgba(244, 244, 241, 0.06); color: #fff; }
+.tl-page--dark .tl-legal-toc a.is-active { background: linear-gradient(90deg, rgba(34, 224, 107, 0.2), rgba(34, 224, 107, 0)); color: #22e06b; font-weight: 600; }
+.tl-page--dark .tl-legal-toc .tl-legal-switch { padding: 0 10px; }
+.tl-page--dark .tl-legal-body { max-width: none; display: grid; gap: 14px; }
+.tl-page--dark .tl-legal-body section { margin: 0; padding: 22px 24px; border-bottom: 1px solid rgba(244, 244, 241, 0.14); }
+.tl-page--dark .tl-legal-body h2 { font-size: 20px; }
+.tl-page--dark .tl-legal-body p,
+.tl-page--dark .tl-legal-body li { color: rgba(244, 244, 241, 0.78); font-size: 15px; }
+.tl-page--dark .tl-legal-body a { color: #22e06b; }
+.tl-page--dark .tl-legal-foot { padding: 0 4px; }
+
+/* ---------- About ---------- */
+.tl-page--dark .tl-info-head h1 { max-width: 16ch; }
+.tl-page--dark .tl-info-section { border-bottom: 1px solid rgba(244, 244, 241, 0.1); }
+.tl-page--dark .tl-info-prose { padding: 20px 22px; border-color: var(--pg-rim); }
+.tl-page--dark .tl-info-prose p { color: rgba(244, 244, 241, 0.85); font-size: 16px; }
+.tl-page--dark .tl-info-cards li,
+.tl-page--dark .tl-info-steps li { border-color: var(--pg-rim); box-shadow: 0 0 26px rgba(34, 224, 107, 0.1), 0 18px 40px rgba(0, 0, 0, 0.3); }
+.tl-page--dark .tl-info-cards p,
+.tl-page--dark .tl-info-steps p { color: rgba(244, 244, 241, 0.72); }
+.tl-page--dark .tl-info-icon { border: 1px solid rgba(34, 224, 107, 0.5); background: rgba(34, 224, 107, 0.1); color: #22e06b; box-shadow: 0 0 14px rgba(34, 224, 107, 0.25); }
+.tl-page--dark .tl-info-steps span { display: block; font: 800 30px/1 'Plus Jakarta Sans', sans-serif; color: #22e06b; text-shadow: 0 0 18px rgba(34, 224, 107, 0.45); }
+.tl-page--dark .tl-info-steps h3 { margin-top: 10px; }
+.tl-page--dark .tl-info-list li { border-color: rgba(34, 224, 107, 0.4); color: #f4f4f1; font-size: 14px; }
+.tl-page--dark .tl-info-cta { position: relative; overflow: hidden; border-color: var(--pg-rim); background: linear-gradient(100deg, rgba(28, 42, 52, 0.75) 40%, rgba(34, 160, 90, 0.35) 100%); }
+.tl-page--dark .tl-info-cta::after { content: ''; position: absolute; right: 12%; top: 50%; width: 260px; height: 160px; transform: translateY(-50%); border-radius: 50%; background: rgba(34, 224, 107, 0.25); filter: blur(40px); pointer-events: none; }
+.tl-page--dark .tl-info-cta > * { position: relative; z-index: 1; }
+
+/* Buttons */
+.tl-page--dark .tl-info-btn { border-color: rgba(244, 244, 241, 0.55); background: transparent; color: #f4f4f1; }
+.tl-page--dark .tl-info-btn:hover { background: rgba(244, 244, 241, 0.08); }
+.tl-page--dark .tl-info-btn.is-primary { border-color: transparent; background: #22e06b; color: #04140a; box-shadow: 0 0 24px rgba(34, 224, 107, 0.45); }
+.tl-page--dark .tl-info-btn.is-primary:hover { background: #4ade80; }
+
+/* ---------- Contact ---------- */
+.tl-page--dark .tl-info-ways > div { border-color: var(--pg-rim); }
+.tl-page--dark .tl-info-ways p { color: rgba(244, 244, 241, 0.72); }
+.tl-page--dark .tl-info-ways strong { color: #fff; }
+.tl-page--dark .tl-info-ways a { color: #22e06b; }
+.tl-page--dark .tl-info-hours { color: rgba(244, 244, 241, 0.7); }
+.tl-page--dark .tl-info-formcard { border-color: rgba(244, 244, 241, 0.18); box-shadow: 0 0 60px rgba(34, 224, 107, 0.16), 0 24px 50px rgba(0, 0, 0, 0.4); }
+.tl-page--dark .tl-info-field > span { color: #f4f4f1; }
+.tl-page--dark .tl-info-field input,
+.tl-page--dark .tl-info-field select,
+.tl-page--dark .tl-info-field textarea { border-color: rgba(244, 244, 241, 0.18); background-color: rgba(70, 82, 92, 0.45); color: #f4f4f1; }
+.tl-page--dark .tl-info-field select { background-image: var(--sel-chev-light); }
+.tl-page--dark .tl-info-field input::placeholder,
+.tl-page--dark .tl-info-field textarea::placeholder { color: rgba(244, 244, 241, 0.45); }
+.tl-page--dark .tl-info-field input:focus,
+.tl-page--dark .tl-info-field select:focus,
+.tl-page--dark .tl-info-field textarea:focus { border-color: #22e06b; background-color: rgba(70, 82, 92, 0.6); box-shadow: 0 0 0 3px rgba(34, 224, 107, 0.2); }
+.tl-page--dark .tl-info-field [aria-invalid='true'] { border-color: #f87171; }
+.tl-page--dark .tl-info-field em { color: #fca5a5; }
+.tl-page--dark .tl-info-field small,
+.tl-page--dark .tl-info-fine { color: rgba(244, 244, 241, 0.6); }
+.tl-page--dark .tl-info-fine a { color: #22e06b; }
+.tl-page--dark .tl-info-error { background: rgba(248, 113, 113, 0.14); color: #fecaca; }
+.tl-page--dark .tl-info-sent { color: #f4f4f1; }
+.tl-page--dark .tl-info-sent svg { color: #22e06b; }
+.tl-page--dark .tl-info-sent p { color: rgba(244, 244, 241, 0.75); }
+
+@media (max-width: 879px) {
+  .tl-page--dark .tl-legal-grid { grid-template-columns: 1fr; }
+  .tl-page--dark .tl-legal-toc { position: static; }
+}
+@media (max-width: 559px) {
+  .tl-page--dark .tl-legal-body section { padding: 18px; }
+}
+
+/* ---------- About: big 3D logo that flies into the header logo (components/about/LogoFlight.jsx) ---------- */
+.tl-about { position: relative; }
+.tl-about-logo-anchor { position: absolute; top: 24px; right: 0; width: clamp(240px, 27vw, 360px); aspect-ratio: 1; pointer-events: none; }
+@media (max-width: 899px) { .tl-about-logo-anchor { display: none; } }
+.tl-flylogo {
+  --glow: 1;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 61; /* over the header bar, so it visibly lands in the logo slot */
+  visibility: hidden;
+  pointer-events: none;
+
+  will-change: transform;
+  filter: drop-shadow(0 0 calc(40px * var(--glow)) rgba(34, 224, 107, calc(0.55 * var(--glow))));
+}
+.tl-flylogo .tl-brand { --brand-navy: #fff; display: block; width: 100%; height: 100%; }
+.tl-flylogo .tl-brand-mark { display: block; width: 100%; height: 100%; }
+/* While the big logo is out, the header shows only the name; it keeps its place (not hidden on scroll) */
+html.tl-logo-flight .tl-header[data-scroll-hidden='true'] .tl-header-logo { transform: none; opacity: 1; pointer-events: auto; }
+html.tl-logo-flight:not(.tl-logo-docked) .tl-header-logo .tl-brand-mark { opacity: 0; }

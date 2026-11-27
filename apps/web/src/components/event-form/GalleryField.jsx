@@ -15,7 +15,7 @@ const newItem = (file) => ({ key: `new-${nextKey++}`, file, previewUrl: URL.crea
 const itemSrc = (item) => item.previewUrl || resolveMediaUrl(item.url);
 
 /**
- * Ordered "Scrolling Gallery Images": add several at once (wrong-ratio files go through the cropper one
+ * Ordered "Event Gallery Images": add several at once (wrong-ratio files go through the cropper one
  * by one), reorder with drag-and-drop or the arrow buttons, remove. Saved images are only deleted on save.
  */
 export default function GalleryField({ items, onChange, savedItems }) {
@@ -83,8 +83,8 @@ export default function GalleryField({ items, onChange, savedItems }) {
     <section className="tl-imf" aria-labelledby={`${id}-title`}>
       <header className="tl-imf-head">
         <div>
-          <h3 id={`${id}-title`}>Scrolling gallery</h3>
-          <p>Multiple square images for the event gallery.</p>
+          <h3 id={`${id}-title`}>Event gallery</h3>
+          <p>Landscape 3:2 photos for the event gallery carousel.</p>
         </div>
         <p className="tl-imf-spec" id={`${id}-help`}>
           <b>{items.length} / {spec.maxCount} images</b>
@@ -144,7 +144,7 @@ export default function GalleryField({ items, onChange, savedItems }) {
         </div>
       )}
       <p className="tl-imf-status">
-        {items.length === 0 ? 'Optional. Until you add some, attendees see category photos in the strip.' : changed ? 'Changes apply when you save. Drag or use the arrows to reorder.' : 'Drag or use the arrows to reorder.'}
+        {items.length === 0 ? 'Optional. Until you add some, attendees see category photos in the gallery.' : changed ? 'Changes apply when you save. Drag or use the arrows to reorder.' : 'Drag or use the arrows to reorder.'}
       </p>
 
       <div className="tl-imf-actions">

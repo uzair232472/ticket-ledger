@@ -61,3 +61,6 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+# Step 6: the v0 model artifacts are binary (exact bytes = registry fingerprints); never convert line endings
+apps/ml-service/models/v0/*.joblib binary

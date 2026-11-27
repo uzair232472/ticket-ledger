@@ -203,13 +203,18 @@ export default function Profile() {
     }
   }, []);
 
+  // The activity summary describes the signed-in person's own browsing, so only customers have it
+  const isCustomer = authUser?.role === 'CUSTOMER';
   useEffect(() => {
     if (token) {
       loadProfile();
       loadHistory();
-      loadBehaviorProfile();
+      if (isCustomer) loadBehaviorProfile();
     }
-  }, [token]);
+  }, [token, isCustomer]);
+  useEffect(() => {
+    if (!isCustomer && activeTab === 'intent') setActiveTab('overview');
+  }, [isCustomer, activeTab]);
 
   // Handle Avatar selection
   const handleAvatarFile = async (file) => {
@@ -413,18 +418,18 @@ export default function Profile() {
     ['my-data', 'My data', UserRound],
     ['security', 'Security', ShieldCheck],
     ['notifications', 'Notifications', Bell],
-    ['intent', 'AI Intent & Telemetry', BarChart3],
+    isCustomer && ['intent', 'Activity & interests', BarChart3],
     ['preferred-website', 'Preferred Website', Globe],
     ['api-keys', 'API keys', KeyRound],
     ['privacy', 'Privacy', FileText],
-  ];
+  ].filter(Boolean);
 
   const getBreadcrumbLabel = () => {
     switch (activeTab) {
       case 'my-data': return 'My data';
       case 'security': return 'Security';
       case 'notifications': return 'Notifications';
-      case 'intent': return 'AI Intent & Telemetry';
+      case 'intent': return 'Activity & interests';
       case 'preferred-website': return 'Preferred Website';
       case 'api-keys': return 'API keys';
       case 'privacy': return 'Privacy';
@@ -435,6 +440,7 @@ export default function Profile() {
 
   return (
     <BasicShell
+      theme="dark"
       eyebrow={<span className="tl-ov-crumbs">Account <span aria-hidden="true">/</span> <b>{getBreadcrumbLabel()}</b></span>}
       title={loading ? 'Account' : activeTab === 'overview' ? 'Account overview' : getBreadcrumbLabel()}
       intro={loading ? 'Loading your account…' : activeTab === 'overview' ? 'Manage your profile, tickets and connected wallet.' : `Signed in as ${profile?.name || profile?.email || 'you'}.`}
@@ -1010,12 +1016,12 @@ export default function Profile() {
           {/* ========================================================================= */}
           {/* TAB: AI INTENT & TELEMETRY                                                */}
           {/* ========================================================================= */}
-          {activeTab === 'intent' && (
+          {activeTab === 'intent' && isCustomer && (
             <div className="space-y-6 max-w-3xl">
               <div>
-                <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">AI Intent & Telemetry</h1>
+                <h1 className="text-2xl font-extrabold text-[#212b36] tracking-tight">Activity & interests</h1>
                 <p className="text-xs text-slate-500 mt-1">
-                  Machine learning telemetry continuously computes your purchase readiness, preferred event genres, and session engagement.
+                  A summary of your own activity on TicketLedger: the event types you interact with and how far you got towards booking. Worked out by simple fixed rules, not by an AI model, and never used to make decisions about you.
                 </p>
               </div>
 
@@ -1026,8 +1032,8 @@ export default function Profile() {
                       <Activity className="w-4 h-4" />
                     </span>
                     <div>
-                      <h3 className="font-extrabold text-[#212b36] text-base">Client Telemetry & Affinity Metrics</h3>
-                      <span className="text-[10px] font-bold text-[#008459]">Module 13 ML Inference</span>
+                      <h3 className="font-extrabold text-[#212b36] text-base">Your activity summary</h3>
+                      <span className="text-[10px] font-bold text-[#008459]">Rule-based summary</span>
                     </div>
                   </div>
 
@@ -1037,7 +1043,7 @@ export default function Profile() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${loadingBehavior ? 'animate-spin text-[#008459]' : ''}`} />
-                    <span>Refresh Telemetry</span>
+                    <span>Refresh</span>
                   </button>
                 </div>
 
@@ -1054,7 +1060,8 @@ export default function Profile() {
                     : scores.purchaseIntent?.description || 'Across all events you interacted with';
                   const totalActions = picked ? picked.actions : behaviorProfile?.totalEventsTracked ?? summary.totalActions ?? (behaviorProfile?.timeline?.length || 0);
                   const topCategory = summary.categoryAffinity?.[0]?.category || summary.topCategory || '';
-                  const riskLevel = scores.fraudRisk?.level || summary.riskLevel || 'LOW_RISK';
+                  const riskLevel = scores.fraudRisk?.level || summary.riskLevel || 'UNAVAILABLE';
+                  const riskScored = riskLevel !== 'UNAVAILABLE' && scores.fraudRisk?.available !== false;
 
                   return (
                     <>
@@ -1119,9 +1126,9 @@ export default function Profile() {
                         <span className="text-[10px] uppercase font-bold text-slate-400 block">Security Verification</span>
                         <div className="text-sm font-bold text-[#008459] flex items-center gap-1.5">
                           <ShieldCheck className="w-4 h-4 text-[#008459]" />
-                          <span>{riskLevel === 'LOW_RISK' ? 'Human Verified' : riskLevel}</span>
+                          <span>{!riskScored ? 'Checked at checkout' : riskLevel === 'LOW_RISK' ? 'Human Verified' : riskLevel}</span>
                         </div>
-                        <p className="text-[10px] text-slate-500">Anti-scalping score normal</p>
+                        <p className="text-[10px] text-slate-500">{!riskScored ? 'No profile score: anti-scalping checks run on each checkout' : 'Anti-scalping score normal'}</p>
                       </div>
                     </div>
 
@@ -1342,7 +1349,7 @@ export default function Profile() {
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                   <div className="font-bold text-slate-900">Telemetry Ingestion & Anti-Bot Screening</div>
                   <p className="text-slate-500 text-[11px]">
-                    Clickstream frequency and checkout speed are evaluated by our local scikit-learn ML engine to protect Pakistani sporting fans against bulk bot scalping.
+                    Checkout speed and click patterns are checked by automated security rules to protect fans against bulk bot scalping. No AI model makes this decision.
                   </p>
                 </div>
               </div>

@@ -1,0 +1,630 @@
+{
+  "model": "checkout_abandonment",
+  "title": "Abandoned checkout (checkout-based)",
+  "label": "abandoned",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "payment_method"
+    ],
+    "numeric": [
+      "tickets_requested",
+      "unit_price_rel",
+      "hours_since_sales_open",
+      "days_until_event",
+      "account_age_days",
+      "customer_prior_orders",
+      "customer_prior_purchases",
+      "customer_prior_expired_checkouts",
+      "first_time",
+      "visit_event_views",
+      "visit_seat_selections"
+    ]
+  },
+  "data": {
+    "dataset": "checkout_abandonment.csv",
+    "rows": 19318,
+    "source": "synthetic-v0",
+    "sha256": "b1e7db20f5206707a28ff2f8c1c4640c0371b528cc3543aaabb7b1a677d6bf91",
+    "from": "2023-01-01T19:12:00+00:00",
+    "to": "2025-12-24T16:09:00+00:00"
+  },
+  "split": {
+    "train_rows": 12265,
+    "val_rows": 2592,
+    "test_rows": 2898,
+    "val_start": "2025-02-15T02:08:54+00:00",
+    "test_start": "2025-07-31T13:01:39+00:00",
+    "purged_train_rows": 19,
+    "purged_val_rows": 12,
+    "holdout_groups": 900
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "share of actual abandons among the top 10% scored checkouts",
+  "higher_is_better": true,
+  "test_size": {
+    "positives (rare outcome)": 857,
+    "other outcome": 2041
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.6035,
+        "train_vs_validation": 0.1473,
+        "not_memorising": false
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.615,
+        "train_vs_validation": 0.0656,
+        "not_memorising": false
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.6179,
+        "train_vs_validation": 0.0351,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "simple"
+  },
+  "result": {
+    "model": 0.5075,
+    "baseline": 0.3468,
+    "improvement": 0.1606,
+    "improvement_95ci": [
+      0.1078,
+      0.2061
+    ]
+  },
+  "details": {
+    "test_auc": 0.6479,
+    "test_brier": 0.1968,
+    "baseline_auc": 0.5658,
+    "model_top10_false_predictions": {
+      "false_alarm_share": 0.4828,
+      "completed_checkouts_flagged": 0.0686,
+      "abandons_missed": 0.825
+    },
+    "rule_top10_false_predictions": {
+      "false_alarm_share": 0.6621,
+      "completed_checkouts_flagged": 0.0941,
+      "abandons_missed": 0.8856
+    },
+    "calibration_error_ece": 0.0271
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.0027,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "calibration error (ECE)",
+      "value": 0.0271,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "first-time customers/visitors: top-10% share vs rule",
+      "value": 0.1958,
+      "limit": ">= 0 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 1455,
+      "model": 0.4589,
+      "baseline": 0.3262
+    },
+    "customers_unseen": {
+      "rows": 1443,
+      "model": 0.572,
+      "baseline": 0.3661
+    },
+    "events_known": {
+      "rows": 193,
+      "model": 0.651,
+      "baseline": 0.3362
+    },
+    "events_unseen": {
+      "rows": 2705,
+      "model": 0.5034,
+      "baseline": 0.3477
+    },
+    "first_time_customers": {
+      "rows": 1186,
+      "model": 0.5697,
+      "baseline": 0.3739
+    },
+    "returning_customers": {
+      "rows": 1712,
+      "model": 0.4592,
+      "baseline": 0.3257
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 1226,
+        "value": 0.5
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 3066,
+        "value": 0.6338
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 6132,
+        "value": 0.6442
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 12265,
+        "value": 0.6502
+      }
+    ],
+    "still_improving": false,
+    "note": "score has levelled off: more data of the same kind adds little"
+  },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-31T13:11:00+00:00",
+        "to": "2025-09-01T05:12:00+00:00",
+        "rows": 580,
+        "model": 0.5378,
+        "rule": 0.343
+      },
+      {
+        "from": "2025-09-01T08:38:00+00:00",
+        "to": "2025-09-29T10:05:00+00:00",
+        "rows": 580,
+        "model": 0.4583,
+        "rule": 0.3401
+      },
+      {
+        "from": "2025-09-29T10:35:00+00:00",
+        "to": "2025-10-29T04:36:00+00:00",
+        "rows": 580,
+        "model": 0.4565,
+        "rule": 0.3551
+      },
+      {
+        "from": "2025-10-29T06:52:00+00:00",
+        "to": "2025-11-22T19:33:00+00:00",
+        "rows": 579,
+        "model": 0.5313,
+        "rule": 0.3583
+      },
+      {
+        "from": "2025-11-22T21:04:00+00:00",
+        "to": "2025-12-24T16:09:00+00:00",
+        "rows": 579,
+        "model": 0.5532,
+        "rule": 0.3366
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 2898,
+      "features": [
+        {
+          "feature": "unit_price_rel",
+          "label": "price vs typical",
+          "importance": 0.09684
+        },
+        {
+          "feature": "visit_event_views",
+          "label": "event views in this visit",
+          "importance": 0.02556
+        },
+        {
+          "feature": "customer_prior_orders",
+          "label": "earlier orders",
+          "importance": 0.01287
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.00231
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": 0.00146
+        },
+        {
+          "feature": "tickets_requested",
+          "label": "tickets in the order",
+          "importance": 0.0005
+        },
+        {
+          "feature": "hours_since_sales_open",
+          "label": "hours since sales opened",
+          "importance": 0.00045
+        },
+        {
+          "feature": "payment_method",
+          "label": "payment method",
+          "importance": 0.00012
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "customer_prior_expired_checkouts",
+          "label": "earlier expired checkouts",
+          "importance": 0.0
+        },
+        {
+          "feature": "first_time",
+          "label": "first-time customer",
+          "importance": 0.0
+        },
+        {
+          "feature": "visit_seat_selections",
+          "label": "seats selected in this visit",
+          "importance": 0.0
+        },
+        {
+          "feature": "account_age_days",
+          "label": "account age",
+          "importance": -4e-05
+        },
+        {
+          "feature": "days_until_event",
+          "label": "days until the event",
+          "importance": -6e-05
+        },
+        {
+          "feature": "customer_prior_purchases",
+          "label": "earlier purchases",
+          "importance": -0.0001
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.1713,
+        "actual": 0.131,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2042,
+        "actual": 0.231,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2141,
+        "actual": 0.1897,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2333,
+        "actual": 0.2207,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2847,
+        "actual": 0.2483,
+        "rows": 290
+      },
+      {
+        "predicted": 0.294,
+        "actual": 0.2655,
+        "rows": 290
+      },
+      {
+        "predicted": 0.3315,
+        "actual": 0.369,
+        "rows": 290
+      },
+      {
+        "predicted": 0.3608,
+        "actual": 0.3862,
+        "rows": 290
+      },
+      {
+        "predicted": 0.4311,
+        "actual": 0.4152,
+        "rows": 289
+      },
+      {
+        "predicted": 0.4783,
+        "actual": 0.5017,
+        "rows": 289
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 0.8,
+        "actual": 1,
+        "reasons": [
+          {
+            "feature": "unit_price_rel",
+            "label": "price vs typical",
+            "value": 1.956,
+            "typical": 0.522,
+            "effect": 41.76,
+            "direction": "up"
+          },
+          {
+            "feature": "event_type",
+            "label": "event type",
+            "value": "MUSIC_FESTIVAL",
+            "typical": "CRICKET_MATCH",
+            "effect": 27.06,
+            "direction": "up"
+          },
+          {
+            "feature": "hours_since_sales_open",
+            "label": "hours since sales opened",
+            "value": 9.1,
+            "typical": 216.0,
+            "effect": 27.06,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.2878,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "unit_price_rel",
+            "label": "price vs typical",
+            "value": 0.289,
+            "typical": 0.522,
+            "effect": -4.72,
+            "direction": "down"
+          },
+          {
+            "feature": "hours_since_sales_open",
+            "label": "hours since sales opened",
+            "value": 952.0,
+            "typical": 216.0,
+            "effect": -0.78,
+            "direction": "down"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 98,
+            "predicted_rate": 0.3725,
+            "actual_rate": 0.4388,
+            "gap": -0.0663,
+            "auc": 0.592,
+            "watch": true,
+            "why": "predicted rate off by more than 5%"
+          },
+          "Islamabad": {
+            "rows": 404,
+            "predicted_rate": 0.3263,
+            "actual_rate": 0.2698,
+            "gap": 0.0565,
+            "auc": 0.652,
+            "watch": true,
+            "why": "predicted rate off by more than 5%"
+          },
+          "Karachi": {
+            "rows": 946,
+            "predicted_rate": 0.2861,
+            "actual_rate": 0.278,
+            "gap": 0.0081,
+            "auc": 0.6712,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 843,
+            "predicted_rate": 0.2964,
+            "actual_rate": 0.3037,
+            "gap": -0.0073,
+            "auc": 0.6186,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 150,
+            "predicted_rate": 0.309,
+            "actual_rate": 0.3133,
+            "gap": -0.0043,
+            "auc": 0.6576,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 162,
+            "predicted_rate": 0.2906,
+            "actual_rate": 0.2901,
+            "gap": 0.0005,
+            "auc": 0.6615,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 3,
+            "note": "too few cases to measure"
+          },
+          "Rawalpindi": {
+            "rows": 292,
+            "predicted_rate": 0.2967,
+            "actual_rate": 0.3116,
+            "gap": -0.0149,
+            "auc": 0.6536,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 23,
+            "note": "too few cases to measure"
+          },
+          "CONFERENCE": {
+            "rows": 4,
+            "note": "too few cases to measure"
+          },
+          "CRICKET_MATCH": {
+            "rows": 2063,
+            "predicted_rate": 0.2878,
+            "actual_rate": 0.2821,
+            "gap": 0.0057,
+            "auc": 0.631,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 173,
+            "predicted_rate": 0.2802,
+            "actual_rate": 0.2428,
+            "gap": 0.0374,
+            "auc": 0.6638,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 72,
+            "note": "too few cases to measure"
+          },
+          "KABADDI": {
+            "rows": 146,
+            "predicted_rate": 0.2307,
+            "actual_rate": 0.2123,
+            "gap": 0.0184,
+            "auc": 0.6964,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 228,
+            "predicted_rate": 0.3709,
+            "actual_rate": 0.4123,
+            "gap": -0.0414,
+            "auc": 0.6321,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 144,
+            "predicted_rate": 0.4785,
+            "actual_rate": 0.4722,
+            "gap": 0.0063,
+            "auc": 0.5937,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 37,
+            "note": "too few cases to measure"
+          },
+          "THEATRE": {
+            "rows": 8,
+            "note": "too few cases to measure"
+          }
+        },
+        "payment_method": {
+          "EASYPAISA": {
+            "rows": 950,
+            "predicted_rate": 0.302,
+            "actual_rate": 0.3158,
+            "gap": -0.0138,
+            "auc": 0.6169,
+            "watch": false,
+            "why": null
+          },
+          "JAZZCASH": {
+            "rows": 1241,
+            "predicted_rate": 0.2986,
+            "actual_rate": 0.2788,
+            "gap": 0.0198,
+            "auc": 0.6668,
+            "watch": false,
+            "why": null
+          },
+          "STRIPE": {
+            "rows": 707,
+            "predicted_rate": 0.3007,
+            "actual_rate": 0.2984,
+            "gap": 0.0023,
+            "auc": 0.658,
+            "watch": false,
+            "why": null
+          }
+        },
+        "customer_history": {
+          "first_time_customers": {
+            "rows": 1186,
+            "predicted_rate": 0.316,
+            "actual_rate": 0.3204,
+            "gap": -0.0044,
+            "auc": 0.6556,
+            "watch": false,
+            "why": null
+          },
+          "returning_customers": {
+            "rows": 1712,
+            "predicted_rate": 0.2893,
+            "actual_rate": 0.2786,
+            "gap": 0.0107,
+            "auc": 0.6389,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [
+        "city: Faisalabad",
+        "city: Islamabad"
+      ],
+      "rule": "predicted rate off by more than 5%",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    }
+  },
+  "status": "PASSED",
+  "reasons": [],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "duration_seconds": 3.9,
+  "recommendation": "KEEP_CURRENT: trained on synthetic data",
+  "artifact": "models/v0/checkout_abandonment.joblib"
+}

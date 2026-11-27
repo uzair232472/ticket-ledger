@@ -2,15 +2,17 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useNavigationType, useSearchParams } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { Search, X, RefreshCw, ChevronDown, Check } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, LayoutGrid, List, MapPin, RefreshCw, Search, Tag, X } from 'lucide-react';
 import api, { trackClientBehavior } from '../utils/api';
 import HomeHeader from '../components/home/HomeHeader';
 import { useWishlist } from '../context/WishlistContext';
 import SiteFooter from '../components/home/SiteFooter';
 import EventTile from '../components/events/EventTile';
-import { ALL_CATEGORIES, categoryName } from '../components/home/homeData';
+import ThemedSelect from '../components/events/ThemedSelect';
+import { ALL_CATEGORIES, CATEGORIES, categoryName } from '../components/home/homeData';
 import '../components/home/home.css';
 import '../components/events/events.css';
+import RecommendedEvents from '../components/ml/RecommendedEvents';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -42,6 +44,18 @@ const SORT_OPTIONS = [
   { value: 'price-asc', label: 'Price: low to high' },
   { value: 'price-desc', label: 'Price: high to low' },
 ];
+
+// Header collage: category photos, tilted like a pinned wall (the third is highlighted)
+const COLLAGE_TYPES = ['MUSIC_CONCERT', 'CRICKET_MATCH', 'MUSIC_FESTIVAL', 'QAWWALI', 'FOOTBALL_MATCH', 'THEATRE'];
+const COLLAGE = COLLAGE_TYPES.map((t) => CATEGORIES.find((c) => c.type === t)?.image).filter(Boolean);
+const VIEW_KEY = 'tl-explore-view';
+const readView = () => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+};
 
 const FILTER_KEYS = ['search', 'type', 'city', 'maxPrice', 'when', 'sort'];
 const labelOf = (options, value) => options.find((o) => o.value === value)?.label || value;
@@ -86,6 +100,15 @@ export default function Events() {
   const [version, setVersion] = useState(0);
   const [visible, setVisible] = useState(saved?.visible || BATCH);
   const { isSaved, toggle: toggleFavorite } = useWishlist();
+  const [view, setViewState] = useState(readView); // grid | list (remembered on this device)
+  const setView = (v) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* private mode: just this visit */
+    }
+  };
 
   const setFilter = useCallback(
     (key, value) => {
@@ -163,6 +186,7 @@ export default function Events() {
     if (filters.city) set.add(filters.city);
     return [...set];
   }, [events, filters.city]);
+  const cityOptions = useMemo(() => [{ value: '', label: 'All cities' }, ...cities.map((c) => ({ value: c, label: c }))], [cities]);
 
   const activeChips = [
     filters.search && { key: 'search', label: `“${filters.search}”` },
@@ -186,33 +210,12 @@ export default function Events() {
     sessionStorage.setItem(RETURN_KEY, JSON.stringify({ query: searchParams.toString(), visible, y: Math.round(window.scrollY) }));
   };
 
-  // Categories: one button that opens the full list (there are too many for a single row)
-  const [catsOpen, setCatsOpen] = useState(false);
+  // Category is one of the filters in the search bar (same dropdown as When / City / Price / Sort)
+  const categoryOptions = useMemo(() => [{ value: '', label: 'All categories' }, ...ALL_CATEGORIES.map((c) => ({ value: c.type, label: c.name }))], []);
   const focusCategories = useCallback(() => {
-    categoriesRef.current?.querySelector('button')?.focus({ preventScroll: true });
     categoriesRef.current?.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-    setCatsOpen(true);
+    categoriesRef.current?.querySelector('button, select')?.focus({ preventScroll: true });
   }, []);
-  useEffect(() => {
-    if (!catsOpen) return undefined;
-    const onDown = (e) => !categoriesRef.current?.contains(e.target) && setCatsOpen(false);
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      setCatsOpen(false);
-      categoriesRef.current?.querySelector('button')?.focus();
-    };
-    document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [catsOpen]);
-  const pickCategory = (type) => {
-    setFilter('type', type);
-    setCatsOpen(false);
-    categoriesRef.current?.querySelector('button')?.focus({ preventScroll: true });
-  };
 
   // Footer: header logo steps aside; the footer lettering rises in (toggle actions, like the reference)
   useLayoutEffect(() => {
@@ -242,83 +245,62 @@ export default function Events() {
   }, [version, visible]);
 
   return (
-    <div ref={rootRef} className="tl-home tl-explore">
-      <HomeHeader pageRef={pageRef} onCategories={focusCategories} tone="light" />
+    <div ref={rootRef} className="tl-home tl-explore tl-ex-dark">
+      <HomeHeader pageRef={pageRef} onCategories={focusCategories} tone="dark" />
 
       <div ref={pageRef}>
         <main className="tl-ex-main">
-          <div className="tl-ex-head">
-            <h1 className="tl-ex-title">Explore Events</h1>
-            <div ref={categoriesRef} className="tl-ex-cats">
-              <button
-                type="button"
-                className={`tl-ex-cats-btn${catsOpen ? ' is-open' : ''}`}
-                aria-expanded={catsOpen}
-                aria-controls="tl-ex-cats-panel"
-                onClick={() => setCatsOpen((o) => !o)}
-              >
-                <span className="tl-ex-cats-btn-label">Category</span>
-                <span className="tl-ex-cats-btn-value">{filters.type ? categoryName(filters.type) : 'All'}</span>
-                <ChevronDown className="w-4 h-4" aria-hidden="true" />
-              </button>
-              {catsOpen && (
-                <div id="tl-ex-cats-panel" className="tl-ex-cats-panel" role="group" aria-label="Categories">
-                  {[{ type: '', name: 'All categories' }, ...ALL_CATEGORIES].map((c) => {
-                    const active = filters.type === c.type;
-                    return (
-                      <button
-                        key={c.type || 'all'}
-                        type="button"
-                        className={`tl-ex-cat${active ? ' is-active' : ''}`}
-                        aria-pressed={active}
-                        onClick={() => pickCategory(c.type)}
-                      >
-                        <span>{c.name}</span>
-                        {active && <Check className="w-4 h-4" aria-hidden="true" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+          <div className="tl-ex-head tl-ex-hero">
+            <div className="tl-ex-hero-bg" aria-hidden="true"><span /><span /><span /><i /></div>
+            <div className="tl-ex-hero-copy">
+              <span className="tl-ex-hero-line" aria-hidden="true" />
+              <h1 className="tl-ex-title"><span>Explore</span> <span className="is-accent">Events</span></h1>
+              <p className="tl-ex-sub">Discover, search, and book tickets for live events near you</p>
+            </div>
+            <div className="tl-ex-collage" aria-hidden="true">
+              {COLLAGE.map((src, i) => (
+                <span key={src} className={`tl-ex-collage-item is-${i + 1}`}><img src={src} alt="" decoding="async" /></span>
+              ))}
             </div>
           </div>
 
           <form className="tl-ex-filters" role="search" aria-label="Search and filter events" onSubmit={(e) => { e.preventDefault(); setFilter('search', searchText.trim()); }}>
             <label className="tl-ex-search">
-              <Search className="w-4 h-4" aria-hidden="true" />
+              <Search className="w-5 h-5" aria-hidden="true" />
               <span className="sr-only">Search events</span>
               <input type="search" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search events, venues, cities" />
             </label>
-            <label className="tl-ex-select">
-              <span>When</span>
-              <select value={filters.when} onChange={(e) => setFilter('when', e.target.value)}>
-                {WHEN_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
-            <label className="tl-ex-select">
-              <span>City</span>
-              <select value={filters.city} onChange={(e) => setFilter('city', e.target.value)}>
-                <option value="">All cities</option>
-                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
-            <label className="tl-ex-select">
-              <span>Price</span>
-              <select value={filters.maxPrice} onChange={(e) => setFilter('maxPrice', e.target.value)}>
-                {PRICE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
-            <label className="tl-ex-select">
-              <span>Sort</span>
-              <select value={filters.sort} onChange={(e) => setFilter('sort', e.target.value)}>
-                {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </label>
+            <div ref={categoriesRef} className="tl-ex-select">
+              <LayoutGrid className="tl-ex-select-icon w-5 h-5" aria-hidden="true" />
+              <span id="tl-ex-lbl-type">Category</span>
+              <ThemedSelect labelId="tl-ex-lbl-type" value={filters.type || ''} options={categoryOptions} onChange={(v) => setFilter('type', v)} />
+            </div>
+            <div className="tl-ex-select">
+              <CalendarDays className="tl-ex-select-icon w-5 h-5" aria-hidden="true" />
+              <span id="tl-ex-lbl-when">When</span>
+              <ThemedSelect labelId="tl-ex-lbl-when" value={filters.when} options={WHEN_OPTIONS} onChange={(v) => setFilter('when', v)} />
+            </div>
+            <div className="tl-ex-select">
+              <MapPin className="tl-ex-select-icon w-5 h-5" aria-hidden="true" />
+              <span id="tl-ex-lbl-city">City</span>
+              <ThemedSelect labelId="tl-ex-lbl-city" value={filters.city} options={cityOptions} onChange={(v) => setFilter('city', v)} />
+            </div>
+            <div className="tl-ex-select">
+              <Tag className="tl-ex-select-icon w-5 h-5" aria-hidden="true" />
+              <span id="tl-ex-lbl-maxPrice">Price</span>
+              <ThemedSelect labelId="tl-ex-lbl-maxPrice" value={filters.maxPrice} options={PRICE_OPTIONS} onChange={(v) => setFilter('maxPrice', v)} />
+            </div>
+            <div className="tl-ex-select">
+              <ArrowUpDown className="tl-ex-select-icon w-5 h-5" aria-hidden="true" />
+              <span id="tl-ex-lbl-sort">Sort</span>
+              <ThemedSelect labelId="tl-ex-lbl-sort" value={filters.sort} options={SORT_OPTIONS} onChange={(v) => setFilter('sort', v)} />
+            </div>
           </form>
 
           <div className="tl-ex-status">
-            <p aria-live="polite">
-              {status === 'loading' ? 'Loading events…' : status === 'error' ? '' : `${sorted.length} event${sorted.length === 1 ? '' : 's'}`}
+            <p className="tl-ex-count" aria-live="polite">
+              <CalendarDays className="w-5 h-5" aria-hidden="true" />
+              {status === 'loading' ? 'Loading events…' : status === 'error' ? '' : `${sorted.length} Event${sorted.length === 1 ? '' : 's'}`}
             </p>
             {activeChips.map((chip) => (
               <button key={chip.key} type="button" className="tl-ex-chip" onClick={() => (chip.key === 'search' ? (setSearchText(''), setFilter('search', '')) : setFilter(chip.key, ''))} aria-label={`Remove filter ${chip.label}`}>
@@ -328,6 +310,10 @@ export default function Events() {
             {hasFilters && (
               <button type="button" className="tl-ex-clear" onClick={clearFilters}>Clear filters</button>
             )}
+            <div className="tl-ex-view" role="group" aria-label="Layout">
+              <button type="button" aria-pressed={view === 'grid'} aria-label="Grid view" onClick={() => setView('grid')}><LayoutGrid className="w-4 h-4" aria-hidden="true" /></button>
+              <button type="button" aria-pressed={view === 'list'} aria-label="List view" onClick={() => setView('list')}><List className="w-4 h-4" aria-hidden="true" /></button>
+            </div>
           </div>
 
           {status === 'loading' && events.length === 0 && (
@@ -356,7 +342,7 @@ export default function Events() {
           )}
 
           {sorted.length > 0 && (
-            <div key={`${version}|${filters.sort}`} className={`tl-ex-grid${leaving ? ' is-leaving' : ''}`}>
+            <div key={`${version}|${filters.sort}`} className={`tl-ex-grid${view === 'list' ? ' is-list' : ''}${leaving ? ' is-leaving' : ''}`}>
               {shown.map((event, i) => (
                 <EventTile
                   key={event.id}
@@ -383,6 +369,8 @@ export default function Events() {
               <p className="tl-ex-progress">Showing {shown.length} of {sorted.length}</p>
             </div>
           )}
+          {/* Step 6: shown only when ML_REC_DISPLAY is on (renders nothing otherwise) */}
+          <RecommendedEvents surface="home" title="You might like" />
         </main>
 
         <SiteFooter onCategories={focusCategories} />

@@ -9,10 +9,14 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:status": "prisma migrate status",
     "prisma:studio": "prisma studio",
     "seed": "node prisma/seed.js",
     "create-admin": "node scripts/create-super-admin.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "gate:preflight": "node scripts/gate-preflight.mjs",
+    "gate:monitor": "node scripts/gate-preflight.mjs --monitor"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

@@ -1,9 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, ChevronDown, TrendingDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getEventVisual } from '../../utils/eventMedia';
 import api from '../../utils/api';
+import { activeOrg, can, ORG_PAGE_PERMISSIONS } from '../../lib/permissions';
 import markUrl from '../../assets/ticketledger-mark.svg';
 import HomeHeader from '../home/HomeHeader';
 import SiteFooter from '../home/SiteFooter';
@@ -11,33 +12,67 @@ import '../home/home.css';
 import '../events/events.css';
 import './dash.css';
 import './studio.css';
+import { insightPath } from '../../lib/insightPaths';
+import AdminSidebar, { ICONS as SIDEBAR_ICONS } from './AdminSidebar';
+import ThemedSelectLayer from './ThemedSelect';
+import ThemedDateLayer from './ThemedDate';
+import { PageHero, AovFooter } from '../../pages/AdminOverview';
+import { BadgeCheck, Brain, CalendarCheck, DoorOpen, LayoutGrid, Wallet, ShieldAlert } from 'lucide-react';
+import './studio-dark.css';
+import './admin-overview.css';
 
 // Console areas per role (same routes and role rules as App.jsx)
 const CONSOLES = {
   SUPER_ADMIN: {
     label: 'Admin console',
     links: [
-      { to: '/admin/dashboard', label: 'Overview' },
-      { to: '/admin/companies', label: 'Approvals', badge: 'companies' },
-      { to: '/admin/event-approvals', label: 'Event approvals', badge: 'eventApprovals' },
-      { to: '/admin/fraud-watchlist', label: 'Fraud watchlist' },
-      { to: '/admin/demand-forecast', label: 'Demand forecast' },
-      { to: '/admin/purchase-intent', label: 'Purchase intent' },
-      { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
-      { to: '/admin/behavior-profile', label: 'Behavior' },
+      { to: '/admin/dashboard', label: 'Overview', adminPermission: 'admin.view' },
+      { to: '/admin/companies', label: 'Approvals', badge: 'eventApprovals', adminPermission: 'admin.approvals' },
+      { to: '/admin/organizer-approvals', label: 'Organizer approvals', badge: 'companies', adminPermission: 'admin.approvals' },
+      { to: '/admin/finance', label: 'Finance', adminPermission: 'admin.finance' },
+      { to: '/admin/fraud-watchlist', label: 'Fraud watchlist', adminPermission: 'admin.fraud' },
+      { to: '/admin/fraud-review', label: 'Fraud review', adminPermission: 'admin.fraud' },
+      { to: '/admin/investigations', label: 'Investigations', adminPermission: 'admin.fraud' },
+      { to: '/organizer/team', label: 'Organization teams', adminPermission: 'admin.orgs' },
+      { to: '/admin/platform', label: 'Platform', adminPermission: 'admin.view' },
+      // AI: one dropdown in the nav (insights first, then the shadow models' monitoring and governance)
+      {
+        key: 'ai', label: 'AI', children: [
+          { to: '/admin/demand-forecast', label: 'Demand forecast' },
+          { to: '/admin/purchase-intent', label: 'Purchase intent' },
+          { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
+          { to: '/admin/behavior-profile', label: 'Behavior' },
+          { divider: true, label: 'Models' },
+          { to: '/admin/ai-monitor', label: 'AI monitor' },
+          { to: '/admin/ai-models', label: 'Model cards' },
+          { to: '/admin/ai-readiness', label: 'Go-live readiness' },
+          { to: '/admin/ai-report', label: 'Governance report' },
+        ],
+      },
+      { to: '/admin/payouts', label: 'Payouts', adminPermission: 'admin.finance' },
+      { to: '/support/desk', label: 'Support desk', adminPermission: 'admin.support' },
+      { to: '/organizer/gates', label: 'Gates' },
       { to: '/scanner', label: 'Scanner' },
     ],
   },
+  // Organization members (owners and employees of any account type): links filtered by permission
   ORGANIZER: {
     label: 'Organizer studio',
     links: [
-      { to: '/organizer/dashboard', label: 'Overview' },
-      { to: '/organizer/events/new', label: 'Create event' },
-      { to: '/organizer/prebook', label: 'Prebookings' },
-      { to: '/admin/purchase-intent', label: 'Purchase intent' },
-      { to: '/admin/demand-forecast', label: 'Demand forecast' },
-      { to: '/admin/abandoned-intents', label: 'Abandoned intents' },
-      { to: '/scanner', label: 'Scanner' },
+      { to: '/organizer/dashboard', label: 'Overview', permission: 'event.view' },
+      { to: '/organizer/events/new', label: 'Create event', permission: 'event.create' },
+      { to: '/organizer/prebook', label: 'Prebookings', permission: 'event.create' },
+      // Team page (members, invitations, roles, gate staff, activity), opened on its Gate staff tab
+      { to: '/organizer/team?tab=gate', label: 'Gate staff', permission: ['staff.view', 'audit.view'] },
+      { to: '/organizer/organization', label: 'Organization', permission: ORG_PAGE_PERMISSIONS },
+      { to: '/organizer/discounts', label: 'Discount codes', permission: 'discount.manage' },
+      { to: '/organizer/purchase-intent', label: 'Purchase intent', permission: 'attendee.view' },
+      { to: '/organizer/demand-forecast', label: 'Demand forecast', permission: 'event.pricing' },
+      { to: '/organizer/abandoned-intents', label: 'Abandoned intents', permission: 'attendee.view' },
+      { to: '/organizer/gates', label: 'Gates', permission: 'gate.supervise' },
+      { to: '/organizer/support', label: 'Support requests', permission: 'support.respond' },
+      { to: '/organizer/checkout-settings', label: 'Checkout settings', permission: ['finance.view', 'event.edit'] },
+      { to: '/scanner', label: 'Scanner', permission: 'gate.scan' },
     ],
   },
   GATE_STAFF: {
@@ -49,11 +84,75 @@ const CONSOLES = {
   },
 };
 
+/** The console for this person: by organization permissions for members, by account role otherwise. */
+function consoleFor(user) {
+  if (!user) return null;
+  // Admins see the console links their admin role allows
+  if (user.role === 'SUPER_ADMIN') {
+    const mine = new Set(user.adminPermissions || []);
+    return { ...CONSOLES.SUPER_ADMIN, links: CONSOLES.SUPER_ADMIN.links.filter((l) => !l.adminPermission || mine.has(l.adminPermission) || !user.adminPermissions) };
+  }
+  const org = activeOrg(user);
+  if (org) {
+    if (org.permissions.includes('event.view') || org.permissions.includes('staff.view')) {
+      const links = CONSOLES.ORGANIZER.links.filter((l) => can(user, l.permission));
+      return { label: org.name ? `${org.name} studio` : CONSOLES.ORGANIZER.label, links };
+    }
+    if (org.permissions.includes('gate.scan')) return CONSOLES.GATE_STAFF;
+    return user.isSupportAgent ? { label: 'Support desk', links: [{ to: '/support/desk', label: 'Queue' }] } : null;
+  }
+  // Support agents without an organization
+  if (user.isSupportAgent) return { label: 'Support desk', links: [{ to: '/support/desk', label: 'Queue' }] };
+  // Organizers before their company exists see the studio (its screens send them to registration)
+  return CONSOLES[user.role] || null;
+}
+
 // Paths that open the same screen as a console link (aliases in App.jsx)
-const ALIASES = { '/demand-forecast': '/admin/demand-forecast', '/analytics/intent': '/admin/purchase-intent' };
+// Neutral addresses of the shared insight pages, highlighted as the admin or organizer menu item
+const aliasesFor = (role) => ({ '/demand-forecast': insightPath(role, 'demand'), '/analytics/intent': insightPath(role, 'intent') });
+
+/**
+ * A nav entry that opens a small menu of links (the AI pages). Active when the current page is one of its links.
+ * Closes on a link click, Escape, a click outside or a page change; the menu is a plain list of links.
+ */
+function NavGroup({ group, current }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const links = group.children.filter((c) => c.to);
+  const active = links.find((c) => current.startsWith(c.to));
+  useEffect(() => { setOpen(false); }, [current]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const id = `tl-nav-menu-${group.key}`;
+  return (
+    <span ref={ref} className={`tl-dash-nav-link tl-dash-nav-group${active ? ' is-active' : ''}`}>
+      <button type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+        {group.label}{active ? `: ${active.label}` : ''}
+        <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }} />
+      </button>
+      {open && (
+        <ul id={id} className="tl-dash-nav-menu">
+          {group.children.map((c) => (c.divider
+            ? <li key={`d-${c.label}`} className="tl-dash-nav-menu-label" aria-hidden="true">{c.label}</li>
+            : (
+              <li key={c.to}>
+                <Link to={c.to} aria-current={current.startsWith(c.to) ? 'page' : undefined} className={current.startsWith(c.to) ? 'is-active' : undefined}>{c.label}</Link>
+              </li>
+            )))}
+        </ul>
+      )}
+    </span>
+  );
+}
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/scanner', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/organizer-approvals', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor', '/admin/ai-models', '/admin/ai-readiness', '/organizer/purchase-intent', '/organizer/demand-forecast', '/organizer/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
@@ -82,6 +181,41 @@ function usePendingCounts(enabled, pathname) {
   return counts;
 }
 
+// Admin console pages shown on the dark layout (super admins only; organizers keep the studio look)
+const ADMIN_DARK = /^\/(admin\/|organizer\/(team|gates|dashboard)\/?$|support\/desk|scanner\/?$)/;
+/** True inside an admin console page on the dark layout: page headings render the stadium hero. */
+// Organizer pages that are the same screens admins or gate staff use: shown on the same dark design
+const ORG_SHARED = /^\/(organizer\/(dashboard|team|gates|purchase-intent|demand-forecast|abandoned-intents)|demand-forecast|analytics\/intent|support\/desk|scanner|staff\/events)\/?$/;
+// Organizer studio pages on the same dark design: creating and editing events (and every step of their setup),
+// prebookings and the organization profile. Admins open the same screens on the same look.
+const STUDIO_DARK = /^\/organizer\/(organization|discounts|checkout-settings|support(\/[^/]+)?|events\/new|create-event|prebook(\/[^/]+)?|events\/[^/]+\/(edit|submit|manage|changes|venue))\/?$/;
+export const AdminDarkContext = createContext(false);
+export const useAdminDark = () => useContext(AdminDarkContext);
+
+// Icon tile for each admin page's heading
+const PAGE_ICONS = {
+  ...SIDEBAR_ICONS,
+  '/admin/dashboard': LayoutGrid,
+  '/admin/companies': BadgeCheck,
+  '/admin/organizer-approvals': SIDEBAR_ICONS['/admin/organizer-approvals'],
+  '/admin/event-approvals': CalendarCheck,
+  '/admin/finance': Wallet,
+  '/admin/fraud-watchlist': ShieldAlert,
+  '/organizer/gates': DoorOpen,
+  '/staff/events': CalendarCheck,
+};
+const iconForPath = (pathname) => {
+  const key = Object.keys(PAGE_ICONS).sort((a, b) => b.length - a.length).find((p) => pathname.startsWith(p));
+  return key ? PAGE_ICONS[key] : Brain; // the AI pages
+};
+
+/** Stadium heading for the dark admin pages: role badge, icon tile and green title, intro, tools on the right. */
+export function DarkHero({ title, intro, aside, icon }) {
+  const { pathname } = useLocation();
+  // `icon={null}` leaves the icon tile out; otherwise the page's own icon
+  return <PageHero icon={icon === undefined ? iconForPath(pathname) : icon} title={title} intro={intro} aside={aside} />;
+}
+
 /**
  * Static console layout for organizers, super admins and gate staff: the site header and footer around the
  * paper background, a slash-separated nav of the role's console areas, then the page. `.tl-dash-skin`
@@ -93,10 +227,17 @@ export default function DashShell({ children }) {
   const { pathname } = useLocation();
   const { user } = useAuth();
   const pageRef = useRef(null);
-  const console_ = CONSOLES[user?.role];
+  const console_ = consoleFor(user);
   const pending = usePendingCounts(user?.role === 'SUPER_ADMIN', pathname);
-  const current = Object.entries(ALIASES).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
-  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit)))\/?$/.test(pathname);
+  const current = Object.entries(aliasesFor(user?.role)).find(([from]) => pathname.startsWith(from))?.[1] || pathname;
+  // Admin console pages on the dark layout (sidebar instead of the console nav), see ADMIN_DARK
+  // ...the gate team's console (My events, Scanner), and for organizers the pages they share with admins or
+  // gate staff (Team, Gates, Scanner, My events, Support desk, the insight pages)
+  const orgConsole = Boolean(console_) && user?.role !== 'SUPER_ADMIN' && console_ !== CONSOLES.GATE_STAFF;
+  const bare = (user?.role === 'SUPER_ADMIN' && (ADMIN_DARK.test(pathname) || STUDIO_DARK.test(pathname)))
+    || (console_ === CONSOLES.GATE_STAFF && /^\/(staff\/events|scanner)\/?$/.test(pathname))
+    || (orgConsole && (ORG_SHARED.test(pathname) || STUDIO_DARK.test(pathname)));
+  const studio = STUDIO_ROUTES.some((r) => pathname.startsWith(r)) || /^\/organizer\/(create-event|prebook(\/.*)?|events\/(new|[^/]+\/(edit|submit|manage)))\/?$/.test(pathname);
 
   useEffect(() => {
     if (navigationType !== 'POP') window.scrollTo({ top: 0, behavior: 'instant' });
@@ -118,7 +259,28 @@ export default function DashShell({ children }) {
       window.removeEventListener('resize', update);
       delete header.dataset.atFooter;
     };
-  }, []);
+  }, [bare]);
+
+  if (bare) {
+    return (
+      <div className="tl-home tl-dash tl-aov-root">
+        <HomeHeader pageRef={pageRef} onCategories={() => navigate('/events')} tone="dark" />
+        <div ref={pageRef} className="tl-aov-shell">
+          <AdminSidebar console={console_} pending={pending} isAdmin={user?.role === 'SUPER_ADMIN'} />
+          <ThemedSelectLayer />
+          <ThemedDateLayer />
+          <main className="tl-aov-main">
+            <AdminDarkContext.Provider value>
+              <div className="tl-aov-page tl-aov-sec">
+                {children}
+                <AovFooter />
+              </div>
+            </AdminDarkContext.Provider>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`tl-home tl-dash${studio ? ' tl-dash--studio' : ''}`}>
@@ -129,7 +291,7 @@ export default function DashShell({ children }) {
             <nav className="tl-dash-nav" aria-label={console_.label}>
               <span className="tl-dash-nav-label">{console_.label}</span>
               <div className="tl-dash-nav-links">
-                {console_.links.map((l) => (
+                {console_.links.map((l) => (l.children ? <NavGroup key={l.key} group={l} current={current} /> : (
                   <NavLink
                     key={l.to}
                     to={l.to}
@@ -143,7 +305,7 @@ export default function DashShell({ children }) {
                       </span>
                     )}
                   </NavLink>
-                ))}
+                )))}
               </div>
             </nav>
           )}
@@ -159,7 +321,16 @@ export default function DashShell({ children }) {
  * Page heading: eyebrow + title (actions on the right), then an optional filter row underneath for tabs or
  * an event picker, laid out like the Explore heading and its filter bar.
  */
-export function DashHead({ eyebrow, title, intro, segment, actions, note }) {
+export function DashHead({ eyebrow, title, intro, segment, actions, note, icon }) {
+  const dark = useAdminDark();
+  if (dark) {
+    return (
+      <>
+        <DarkHero title={title} intro={note || intro} icon={icon} aside={actions && <div className="tl-dk-tools">{actions}</div>} />
+        {segment && <div className="tl-dk-seg">{segment}</div>}
+      </>
+    );
+  }
   if (note) {
     // Resale market head: title on the left, a short note on the right
     return (
@@ -354,8 +525,8 @@ export function TicketCard({ event, index = 0, badges = [], kicker, title, banne
 }
 
 const STATUS_TONES = {
-  good: ['ACTIVE', 'APPROVED', 'SUCCESSFUL', 'VALID_FIRST_SCAN', 'PUBLISHED', 'ACCEPTED', 'LOW'],
-  warn: ['SUSPENDED', 'PENDING', 'PENDING_VERIFICATION', 'ALREADY_SCANNED', 'SUSPICIOUS', 'DRAFT', 'MEDIUM', 'EXPIRED'],
+  good: ['ACTIVE', 'APPROVED', 'VERIFIED', 'SUCCESSFUL', 'VALID_FIRST_SCAN', 'PUBLISHED', 'ACCEPTED', 'LOW'],
+  warn: ['SUSPENDED', 'PENDING', 'UNVERIFIED', 'SCHEDULED', 'USED_UP', 'PENDING_VERIFICATION', 'ALREADY_SCANNED', 'SUSPICIOUS', 'DRAFT', 'MEDIUM', 'EXPIRED'],
   bad: ['BANNED', 'DEACTIVATED', 'REJECTED', 'FAILED', 'INVALID_SCAN', 'CRITICAL', 'HIGH', 'CANCELLED', 'ERROR'],
 };
 export const statusTone = (s) => Object.keys(STATUS_TONES).find((k) => STATUS_TONES[k].includes(s)) || 'neutral';

@@ -47,14 +47,16 @@ test('MODULE 17 - Pre-Launch Demand Forecast & Pricing Adjustment Tests', async 
 
     // 1. Predicted first 48-hour sales
     assert.ok(typeof f.predicted_48h_sales === 'number');
-    assert.ok(f.predicted_48h_sales > 0);
 
     // 2. Expected revenue
     assert.ok(typeof f.expected_revenue_pkr === 'number');
     assert.ok(f.expected_revenue_pkr > 0);
 
     // 3. Demand level
-    assert.ok(['LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH', 'VIRAL'].includes(f.demand_level));
+    assert.ok(['LOW', 'MODERATE', 'HIGH', 'VERY_HIGH'].includes(f.demand_level));
+    assert.ok(f.predicted_48h_sales <= f.venueCapacity, 'never more than the event has');
+    assert.ok(Array.isArray(f.factors) && f.factors.length === 4);
+    assert.ok(f.actuals && typeof f.actuals.sold_total === 'number');
 
     // 4. Suggested publish time
     assert.ok(f.suggested_publish_time);
@@ -79,7 +81,10 @@ test('MODULE 17 - Pre-Launch Demand Forecast & Pricing Adjustment Tests', async 
     const data = await res.json();
     assert.equal(res.status, 200);
     assert.equal(data.data.pricing_warning.level, 'HIGH_PRICE_WARNING');
-    assert.ok(data.data.pricing_warning.message.includes('above historical averages'));
+    assert.ok(data.data.pricing_warning.message.includes('above the fixed rule-of-thumb benchmark'));
+    assert.doesNotMatch(data.data.pricing_warning.message, /model|historical/i, 'a fixed rule must not claim a model or history');
+    assert.equal(data.data.prediction_source, 'rules');
+    assert.equal(data.data.validated, false);
   });
 
   await t.test('5. Pricing warning triggers UNDERPRICED_WARNING when demand is high and price is low', async () => {

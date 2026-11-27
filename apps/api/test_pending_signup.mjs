@@ -12,8 +12,8 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
   const api = `http://127.0.0.1:${server.address().port}/api/auth`;
   const run = Date.now();
 
-  const wrongEmail = `typo_${run}@exmaple.com`;
-  const rightEmail = `fixed_${run}@example.com`;
+  const wrongEmail = `typo.${run}@gmail.com`;
+  const rightEmail = `fixed.${run}@gmail.com`;
   const phone = `+92345${String(run).slice(-7)}`;
   let pendingCookie = '';
 
@@ -73,7 +73,7 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
     const forged = jwt.sign({ userId: user.id, typ: 'pending_signup' }, 'not-the-server-secret');
     assert.strictEqual((await call('GET', '/pending-signup', { cookie: `tl_pending_signup=${forged}` })).status, 401);
     // Knowing the email, phone or id is not enough to change the signup
-    const patch = await call('PATCH', '/pending-signup', { body: { name: 'Hijack', email: `hijack_${run}@example.com`, phone, userId: user.id } });
+    const patch = await call('PATCH', '/pending-signup', { body: { name: 'Hijack', email: `hijack.${run}@gmail.com`, phone, userId: user.id } });
     assert.strictEqual(patch.status, 401);
   });
 
@@ -128,26 +128,21 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
     assert.strictEqual(pendingAfter.status, 401, 'A verified account can no longer be edited through the old session');
   });
 
-  await t.test("8. Other accounts' phone numbers stay protected", async () => {
-    // A brand-new signup cannot reuse the now-verified account's phone
-    const fresh = await call('POST', '/signup', { body: { name: 'Copy Cat', email: `copycat_${run}@example.com`, phone, password: 'Password@123' } });
-    assert.strictEqual(fresh.status, 409);
-    assert.strictEqual(fresh.body.message, 'An account with this phone number already exists.');
+  await t.test("8. Phone numbers may be shared; other accounts' emails stay protected", async () => {
+    // One phone number may be used by several accounts (family members sharing a phone)
+    const fresh = await call('POST', '/signup', { body: { name: 'Copy Cat', email: `copycat.${run}@gmail.com`, phone, password: 'Password@123' } });
+    assert.strictEqual(fresh.status, 201, fresh.body?.message);
 
-    // A pending signup cannot take another account's phone either
-    const other = await call('POST', '/signup', { body: { name: 'Other Person', email: `other_${run}@example.com`, phone: `+92346${String(run).slice(-7)}`, password: 'Password@123' } });
+    const other = await call('POST', '/signup', { body: { name: 'Other Person', email: `other.${run}@gmail.com`, phone: `+92346${String(run).slice(-7)}`, password: 'Password@123' } });
     assert.strictEqual(other.status, 201);
-    const steal = await call('PATCH', '/pending-signup', { cookie: other.pendingCookie, body: { name: 'Other Person', email: `other_${run}@example.com`, phone, accountType: 'customer' } });
-    assert.strictEqual(steal.status, 409);
-    assert.strictEqual(steal.body.message, 'An account with this phone number already exists.');
 
     // ...or another account's email
-    const stealEmail = await call('PATCH', '/pending-signup', { cookie: other.pendingCookie, body: { name: 'Other Person', email: 'customer@ticketledger.pk', phone: `+92346${String(run).slice(-7)}`, accountType: 'customer' } });
+    const stealEmail = await call('PATCH', '/pending-signup', { cookie: other.pendingCookie, body: { name: 'Other Person', email: rightEmail, phone: `+92346${String(run).slice(-7)}`, accountType: 'customer' } });
     assert.strictEqual(stealEmail.status, 409);
   });
 
   await t.test('9. Expiry is enforced on the server; a resend after the cooldown resets the timer', async () => {
-    const email = `other_${run}@example.com`;
+    const email = `other.${run}@gmail.com`;
     const user = await prisma.user.findUnique({ where: { email } });
     const code = getLastSentEmail().otpCode;
     await prisma.otpCode.updateMany({
@@ -183,7 +178,7 @@ test('Pending signup: correct email after OTP, keep phone, server-driven OTP tim
   });
 
   // Clean up
-  const emails = [rightEmail, wrongEmail, `other_${run}@example.com`, `copycat_${run}@example.com`];
+  const emails = [rightEmail, wrongEmail, `other.${run}@gmail.com`, `copycat.${run}@gmail.com`];
   await prisma.behaviorEvent.deleteMany({ where: { user: { email: { in: emails } } } });
   await prisma.user.deleteMany({ where: { email: { in: emails } } });
 

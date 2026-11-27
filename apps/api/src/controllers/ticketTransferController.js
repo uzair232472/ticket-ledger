@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
+import { moveRefusal } from '../services/eventTiming.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
 const transferSchema = z.object({
@@ -41,6 +42,10 @@ export const transferTicketDirectly = async (req, res) => {
         message: `Cannot transfer ticket with status '${ticket.status}'. Only active, unscanned tickets can be transferred.`,
       });
     }
+
+    // Only before the event starts (eventTiming.js): an ended or started event's tickets can't change hands
+    const timing = moveRefusal(ticket.event, 'transferred');
+    if (timing) return res.status(409).json({ success: false, code: 'EVENT_STARTED_OR_ENDED', message: timing });
 
     // Lookup recipient in database
     const recipient = await prisma.user.findUnique({

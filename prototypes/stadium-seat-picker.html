@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>TicketLedger 3D Seat Picker</title>
+<!--
+  TicketLedger 3D seat picker: prototype (cricket ground). One file, Three.js from a CDN, everything drawn with code.
+  Seat data uses the same shape as the TicketLedger API (GET /seats/event/:id), so the app can feed real seats later:
+    { id, section, row, seatNumber, status: AVAILABLE | LOCKED | SOLD | BLOCKED, tier: { name, price } }
+  Here the seats are generated in the file (window.TicketLedgerSeatData). Rules shown: 10-minute seat holds,
+  up to 10 seats per booking, one entry gate per stand, sales close at the start, resale/transfer only before it.
+-->
+<style>
+  :root{--panel:rgba(255,255,255,.97);--ink:#14202b;--muted:#5b6b78;--line:#e3e8ec;--brand:#0f9d58;--blue:#1e66f5;--amber:#f5a524;--gold:#b8892b;--shadow:0 8px 28px rgba(10,25,40,.18)}
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{margin:0;height:100%;overflow:hidden;background:#9cc4e6;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+  canvas{display:block;touch-action:none;outline:none}
+  #ui{position:fixed;inset:0;pointer-events:none;z-index:2}
+  #ui>*{pointer-events:auto}
+  .btn{border:0;border-radius:10px;padding:9px 14px;font-family:inherit;font-weight:600;font-size:14px;line-height:1.1;cursor:pointer;background:#eef2f5;color:var(--ink);transition:background .15s,transform .1s}
+  .btn:hover{background:#e2e8ee}.btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--brand);color:#fff}.btn.primary:hover{background:#0c8a4c}
+  .btn.gold{background:linear-gradient(135deg,#d6a945,#a77a1f);color:#fff}
+  .btn.block{width:100%}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .topbar{position:absolute;top:12px;left:12px;right:12px;display:flex;align-items:center;gap:14px;background:var(--panel);border-radius:14px;padding:9px 12px;box-shadow:var(--shadow)}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--brand);white-space:nowrap}
+  .brand i{width:28px;height:28px;border-radius:8px;background:var(--brand);color:#fff;display:inline-grid;place-items:center;font-style:normal;font-size:12px;font-weight:800}
+  .match{display:flex;flex-direction:column;min-width:0;line-height:1.25;border-left:1px solid var(--line);padding-left:14px}
+  .match b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.match span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .spacer{flex:1}
+  .back{position:absolute;top:80px;left:12px;box-shadow:var(--shadow);background:var(--panel)}
+  .legend{position:absolute;left:12px;bottom:12px;background:var(--panel);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);font-size:12px;display:grid;grid-template-columns:auto auto;gap:6px 16px}
+  .legend div{display:flex;align-items:center;gap:7px;white-space:nowrap}
+  .sw{width:13px;height:13px;border-radius:4px;display:inline-block;flex:none}
+  .hint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:rgba(20,32,43,.82);color:#fff;padding:8px 14px;border-radius:999px;font-size:13px;white-space:nowrap;pointer-events:none}
+  .tip{position:fixed;z-index:5;pointer-events:none;background:rgba(14,22,30,.92);color:#fff;border-radius:10px;padding:8px 11px;font-size:13px;line-height:1.35;transform:translate(14px,14px);display:none;max-width:280px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .tip b{font-size:14px}.tip .p{color:#9ff0c6;font-weight:700}
+  .seatcard{position:absolute;top:130px;left:12px;width:300px;background:var(--panel);border-radius:14px;padding:14px;box-shadow:var(--shadow)}
+  .sc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+  .sc-head small,.k small{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .sc-head b{font-size:18px}
+  .timer{font-variant-numeric:tabular-nums;font-weight:700;background:#fff4dc;color:#8a5a00;padding:5px 8px;border-radius:8px;font-size:13px;white-space:nowrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+  .k b{font-size:14px}
+  .note{font-size:12px;color:var(--muted);margin:0 0 12px}
+  .row-btns{display:flex;gap:8px}.row-btns .btn{flex:1}
+  .link{background:none;border:0;color:#b42318;font-family:inherit;font-size:13px;padding:8px 0 0;cursor:pointer}
+  .ticket{position:absolute;top:80px;right:12px;width:348px;max-height:calc(100% - 160px);transform:translateX(calc(100% + 30px));transition:transform .5s cubic-bezier(.2,.8,.2,1);perspective:1400px}
+  .ticket.show{transform:none}
+  .ticket-inner{display:grid;transition:transform .8s cubic-bezier(.3,.7,.2,1);transform-style:preserve-3d}
+  .ticket-inner.flipped{transform:rotateY(180deg)}
+  .face{grid-area:1/1;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:14px;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:auto;max-height:calc(100vh - 160px)}
+  .face.back{transform:rotateY(180deg);background:linear-gradient(160deg,#fffaf0,#fff 45%)}
+  .tk-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .badge{font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;background:#e8f7ef;color:#0b7a45}
+  .badge.gold{background:#fbf0d6;color:#8a6212}
+  .tk-ev{margin:12px 0 4px;padding-bottom:12px;border-bottom:1px dashed #cfd6dc}
+  .tk-ev small{color:var(--muted);font-size:12px;display:block}.tk-ev b{font-size:19px;display:block;margin:2px 0}.tk-ev span{font-size:13px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+  .tk-qr{display:flex;gap:12px;align-items:center;background:#f6f8fa;border-radius:12px;padding:10px}
+  .tk-qr canvas{width:112px;height:112px;border-radius:6px;flex:none;image-rendering:pixelated}
+  .tk-qr p{font-size:11px;color:var(--muted);margin:4px 0 0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:16px;letter-spacing:.04em}
+  .tk-actions{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+  .mini-btn{background:none;border:0;font-family:inherit;font-size:12px;color:var(--muted);cursor:pointer;padding:4px}
+  .ticket.mini .collapsible{display:none}
+  .perks{margin:10px 0;padding-left:18px;font-size:13px;line-height:1.6}
+  .cartbtn{position:absolute;right:12px;bottom:12px;border:0;border-radius:14px;padding:12px 16px;background:var(--ink);color:#fff;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer;box-shadow:var(--shadow);display:flex;gap:10px;align-items:center}
+  .cartbtn .timer{background:rgba(255,255,255,.14);color:#ffd88a}
+  .cart{position:absolute;right:12px;bottom:70px;width:370px;max-height:calc(100% - 170px);overflow:auto;background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:14px;z-index:3}
+  .cart-head{display:flex;align-items:center;gap:10px}.cart-head b{flex:1;font-size:16px}
+  .x{background:#eef2f5;border:0;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;line-height:1;color:var(--ink);flex:none}
+  .together{margin:10px 0;font-size:13px;padding:8px 10px;border-radius:10px}
+  .together.ok{background:#e8f7ef;color:#0b7a45}.together.warn{background:#fff4dc;color:#8a5a00}
+  .grp{margin:10px 0}.grp-h{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .grp ul{list-style:none;margin:0;padding:0}
+  .grp li{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f3f5}
+  .grp li div{flex:1;min-width:0}.grp li b{font-size:13px;display:block}.grp li small{font-size:12px;color:var(--muted)}
+  .grp li .btn{padding:7px 10px;font-size:12px}
+  .total{display:flex;justify-content:space-between;align-items:center;margin:12px 0;font-size:15px}.total b{font-size:20px}
+  .empty{color:var(--muted);font-size:13px;margin:12px 0}
+  .modal{position:fixed;inset:0;background:rgba(10,20,30,.45);display:grid;place-items:center;z-index:10;padding:16px}
+  .sheet{background:#fff;border-radius:18px;max-width:560px;width:100%;max-height:calc(100vh - 32px);overflow:auto;padding:20px;box-shadow:var(--shadow)}
+  .sheet h2{margin:0 0 4px}.muted{color:var(--muted);font-size:13px;margin:0 0 14px}
+  table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600;font-size:12px}td.r,th.r{text-align:right}
+  .sum-lines{margin:12px 0;font-size:14px}.sum-lines div{display:flex;justify-content:space-between;padding:4px 0}.sum-lines .t{font-size:18px;font-weight:800;border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
+  .notice{background:#f6f8fa;border-radius:12px;padding:10px 12px;font-size:12.5px;color:#3c4a56;line-height:1.5;margin:12px 0}
+  .toast{position:fixed;left:50%;top:84px;transform:translate(-50%,-20px);opacity:0;background:var(--ink);color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:20;transition:all .3s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  #legendBtn{display:none}
+  @media (max-width:760px){
+    .topbar{top:8px;left:8px;right:8px;gap:8px;padding:7px 8px}
+    .brand span{display:none}
+    .match{padding-left:8px}
+    .btn{min-height:44px;font-size:15px}
+    #legendBtn{display:inline-block}
+    .long{display:none}
+    .legend{display:none;bottom:auto;top:66px;left:8px;right:8px;z-index:4}
+    .legend.open{display:grid}
+    .back{top:66px;left:8px}
+    .seatcard{top:118px;left:8px;right:8px;width:auto;padding:10px 12px}
+    .seatcard .grid2,.seatcard .note{display:none}
+    .seatcard .row-btns{margin-top:8px}
+    .ticket{top:auto;bottom:8px;left:8px;right:8px;width:auto;transform:translateY(calc(100% + 30px))}
+    .ticket.show{transform:none}
+    .face{max-height:52vh;padding:12px}
+    .tk-qr canvas{width:92px;height:92px}
+    .cartbtn{top:66px;right:8px;bottom:auto;padding:10px 12px;min-height:44px}
+    .cart{left:8px;right:8px;bottom:8px;width:auto;max-height:72vh;z-index:6}
+    .hint{bottom:10px;font-size:12px;white-space:normal;text-align:center;width:calc(100% - 32px)}
+    .ticket.show~.hint{display:none}
+    .grp li .btn{min-height:40px}
+  }
+</style>
+</head>
+<body>
+<div id="ui">
+  <header class="topbar">
+    <div class="brand"><i>TL</i><span>TicketLedger</span></div>
+    <div class="match"><b id="matchTitle"></b><span id="matchSub"></span></div>
+    <div class="spacer"></div>
+    <button class="btn" id="legendBtn">Legend</button>
+    <button class="btn" id="dayNight"><span>Night</span><span class="long"> match</span></button>
+  </header>
+  <button class="btn back" id="backBtn" hidden>← Back</button>
+  <div class="legend" id="legend"></div>
+  <div class="seatcard" id="seatCard" hidden></div>
+  <aside class="ticket" id="ticket">
+    <div class="ticket-inner" id="ticketInner">
+      <section class="face front" id="tkFront"></section>
+      <section class="face back" id="tkBack"></section>
+    </div>
+  </aside>
+  <div class="hint" id="hint"></div>
+  <button class="cartbtn" id="cartBtn" hidden></button>
+  <div class="cart" id="cart" hidden></div>
+  <div class="modal" id="summary" hidden><div class="sheet" id="summarySheet"></div></div>
+</div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ─── Event, ticket types and stands (prompt 6 replaces these with a real ground) ───────────────────────────
+const EVENT = { stadium: 'TicketLedger Cricket Ground', city: 'Lahore', match: 'Lahore vs Karachi', format: 'T20' };
+const HOLD_MIN = 10;      // TicketLedger holds a picked seat for 10 minutes
+const MAX_SEATS = 10;     // and allows up to 10 seats in one booking
+const TYPES = {
+  GENERAL: { name: 'General', price: 1500, color: '#d93838' },
+  PREMIUM: { name: 'Premium', price: 4000, color: '#8e3fd1' },
+  VIP: { name: 'VIP', price: 10000, color: '#0e9f8a' },
+  BOX: { name: 'Hospitality Box', price: 25000, color: '#b8892b' },
+};
+for (const t of Object.values(TYPES)) t.c = new THREE.Color(t.color);
+const STANDS = [
+  { name: 'Pavilion', code: 'PAV', lower: 'VIP', upper: 'PREMIUM', roof: true, boxes: true },
+  { name: 'Founders Stand', code: 'FDR', lower: 'PREMIUM', upper: 'GENERAL' },
+  { name: 'North End', code: 'NTH', lower: 'GENERAL', upper: 'GENERAL', screen: true },
+  { name: 'Riverside Stand', code: 'RVS', lower: 'GENERAL', upper: 'GENERAL' },
+  { name: 'Grand Stand', code: 'GRD', lower: 'PREMIUM', upper: 'GENERAL' },
+  { name: 'Garden Stand', code: 'GDN', lower: 'GENERAL', upper: 'GENERAL' },
+  { name: 'South End', code: 'STH', lower: 'GENERAL', upper: 'GENERAL', screen: true },
+  { name: 'Clock Tower Stand', code: 'CLK', lower: 'PREMIUM', upper: 'GENERAL' },
+];
+const TIERS = {
+  lower: { key: 'lower', label: 'Lower', r0: 80, d: 0.85, rows: 14, h0: 1.2, rise: 0.42, base: 0, parapet: 0.3 },
+  upper: { key: 'upper', label: 'Upper', r0: 92, d: 0.9, rows: 12, h0: 10.5, rise: 0.55, base: 10.3, parapet: 1.1 },
+};
+const BOX_FLOOR = 6.9, BOX_CEIL = 10.3, BOX_RI = 92, BOX_RO = 98.4, BOX_FOCUS = 4;
+
+const DEG = Math.PI / 180, SPAN = 45 * DEG, GAP = 0.12 * DEG, SEAT_W = 0.56, AISLE = 1.3;
+const PITCH_CENTER = new THREE.Vector3(0, 0.6, 0);
+const cart = []; // seats picked in this booking (declared early: seat colours depend on it)
+const fmt = (n) => 'Rs ' + Math.round(n).toLocaleString('en-US');
+const touch = matchMedia('(hover: none)').matches;
+function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const fnv = (s) => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
+const rng = mulberry32(20261124);
+const matchDate = (() => { const d = new Date(); d.setDate(d.getDate() + 21); d.setHours(19, 30, 0, 0); return d; })();
+const dateText = matchDate.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) + ' · 7:30 PM';
+
+// ─── Renderer, camera, controls, light ─────────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.prepend(renderer.domElement);
+const canvas = renderer.domElement;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.3, 3000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxPolarAngle = 1.47;
+controls.minDistance = 12; controls.maxDistance = 560; controls.screenSpacePanning = false;
+
+function gradientTex(top, bottom) {
+  const c = document.createElement('canvas'); c.width = 2; c.height = 256;
+  const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, top); gr.addColorStop(1, bottom); g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const SKY = { day: gradientTex('#3c82d4', '#d8e9f6'), night: gradientTex('#02050d', '#16263f') };
+scene.background = SKY.day;
+scene.fog = new THREE.Fog(0xd8e9f6, 420, 950);
+
+const hemi = new THREE.HemisphereLight(0xd3e8ff, 0x4d6b36, 0.95);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0d4, 2.7);
+sun.position.set(-150, 140, 95);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -170, right: 170, top: 170, bottom: -170, near: 10, far: 520 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05;
+scene.add(sun, sun.target);
+
+// ─── Geometry helpers ──────────────────────────────────────────────────────────────────────────────────────
+const P = (r, a, y) => [Math.cos(a) * r, y, Math.sin(a) * r];
+function geo(pos) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g; }
+function quad(pos, a, b, c, d) { pos.push(...a, ...b, ...c, ...a, ...c, ...d); }
+/** A curved block between two angles and two radii (floors, walls, roofs, glass). */
+function sectorSlab(a0, a1, ri, ro, y0, y1, segs = 24) {
+  const pos = [];
+  for (let s = 0; s < segs; s++) {
+    const aa = a0 + ((a1 - a0) * s) / segs, ab = a0 + ((a1 - a0) * (s + 1)) / segs;
+    quad(pos, P(ri, aa, y1), P(ro, aa, y1), P(ro, ab, y1), P(ri, ab, y1));
+    quad(pos, P(ri, aa, y0), P(ri, ab, y0), P(ro, ab, y0), P(ro, aa, y0));
+    quad(pos, P(ri, aa, y0), P(ri, aa, y1), P(ri, ab, y1), P(ri, ab, y0));
+    quad(pos, P(ro, aa, y0), P(ro, ab, y0), P(ro, ab, y1), P(ro, aa, y1));
+  }
+  quad(pos, P(ri, a0, y0), P(ro, a0, y0), P(ro, a0, y1), P(ri, a0, y1));
+  quad(pos, P(ri, a1, y0), P(ri, a1, y1), P(ro, a1, y1), P(ro, a1, y0));
+  return geo(pos);
+}
+/** Stepped terrace of one enclosure: front fascia, a tread and riser per row, back wall and side walls. */
+function stepsGeometry(a0, a1, T, segs = 40) {
+  const pos = [], rEnd = T.r0 + T.rows * T.d, top = T.h0 + (T.rows - 1) * T.rise;
+  for (let s = 0; s < segs; s++) {
+    const aa = a0 + ((a1 - a0) * s) / segs, ab = a0 + ((a1 - a0) * (s + 1)) / segs;
+    quad(pos, P(T.r0, aa, T.base), P(T.r0, ab, T.base), P(T.r0, ab, T.h0), P(T.r0, aa, T.h0));
+    for (let i = 0; i < T.rows; i++) {
+      const y = T.h0 + i * T.rise, rf = T.r0 + i * T.d, rb = rf + T.d;
+      quad(pos, P(rf, aa, y), P(rf, ab, y), P(rb, ab, y), P(rb, aa, y));
+      if (i < T.rows - 1) quad(pos, P(rb, aa, y), P(rb, ab, y), P(rb, ab, y + T.rise), P(rb, aa, y + T.rise));
+    }
+    quad(pos, P(rEnd, aa, top), P(rEnd, ab, top), P(rEnd, ab, top + T.parapet), P(rEnd, aa, top + T.parapet));
+    quad(pos, P(rEnd + 0.3, aa, 0), P(rEnd + 0.3, aa, top + T.parapet), P(rEnd + 0.3, ab, top + T.parapet), P(rEnd + 0.3, ab, 0));
+  }
+  for (const a of [a0, a1]) {
+    for (let i = 0; i < T.rows; i++) {
+      const y = T.h0 + i * T.rise, rf = T.r0 + i * T.d;
+      quad(pos, P(rf, a, T.base), P(rf + T.d, a, T.base), P(rf + T.d, a, y), P(rf, a, y));
+    }
+  }
+  return geo(pos);
+}
+function add(g, mat, { cast = true, receive = true } = {}) { const m = new THREE.Mesh(g, mat); m.castShadow = cast; m.receiveShadow = receive; scene.add(m); return m; }
+function canvasTex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; }
+
+const M = {
+  grass: new THREE.MeshStandardMaterial({ color: 0x5b8a42, roughness: 1 }),
+  paving: new THREE.MeshStandardMaterial({ color: 0xb8b1a3, roughness: 0.95 }),
+  concrete: new THREE.MeshStandardMaterial({ color: 0xc9ccd0, roughness: 0.92, side: THREE.DoubleSide }),
+  darkConcrete: new THREE.MeshStandardMaterial({ color: 0x8e949b, roughness: 0.9, side: THREE.DoubleSide }),
+  white: new THREE.MeshStandardMaterial({ color: 0xf5f7f9, roughness: 0.55, side: THREE.DoubleSide }),
+  line: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }),
+  metal: new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.45, metalness: 0.6 }),
+  wood: new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.6, side: THREE.DoubleSide }),
+  carpet: new THREE.MeshStandardMaterial({ color: 0x23344a, roughness: 0.95, side: THREE.DoubleSide }),
+  boxWall: new THREE.MeshStandardMaterial({ color: 0xe9e2d6, roughness: 0.8, side: THREE.DoubleSide }),
+  leather: new THREE.MeshStandardMaterial({ color: 0x5a3018, roughness: 0.42, metalness: 0.05 }),
+  glass: new THREE.MeshPhysicalMaterial({ color: 0xbfe3ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }),
+};
+
+// ─── Ground, outfield, pitch, boundary ─────────────────────────────────────────────────────────────────────
+add(new THREE.CircleGeometry(520, 64).rotateX(-Math.PI / 2).translate(0, -0.05, 0), M.grass, { cast: false });
+add(new THREE.RingGeometry(79, 124, 128).rotateX(-Math.PI / 2).translate(0, 0.005, 0), M.paving, { cast: false });
+const outfieldTex = canvasTex(1024, 1024, (g, w, h) => {
+  const n = 18; for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? '#3f9b3d' : '#48a944'; g.fillRect((i * w) / n, 0, w / n + 1, h); }
+  for (let k = 0; k < 9000; k++) { g.fillStyle = `rgba(${k % 2 ? '255,255,255' : '0,40,0'},0.035)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+});
+add(new THREE.CircleGeometry(80, 160).rotateX(-Math.PI / 2).translate(0, 0.01, 0), new THREE.MeshStandardMaterial({ map: outfieldTex, roughness: 0.95 }), { cast: false });
+function flat(w, l, x, z, y, mat) { return add(new THREE.PlaneGeometry(w, l).rotateX(-Math.PI / 2).translate(x, y, z), mat, { cast: false }); }
+flat(16, 26, 0, 0, 0.06, new THREE.MeshStandardMaterial({ color: 0x8fb05e, roughness: 0.95 }));   // the square
+flat(3.05, 22.6, 0, 0, 0.11, new THREE.MeshStandardMaterial({ color: 0xcdb27c, roughness: 1 }));  // the pitch
+const stumpMat = new THREE.MeshStandardMaterial({ color: 0xf1e4c6, roughness: 0.5 });
+for (const s of [-1, 1]) {
+  flat(2.64, 0.06, 0, s * 10.06, 0.15, M.line);                // bowling crease
+  flat(3.66, 0.06, 0, s * 8.84, 0.15, M.line);                 // popping crease
+  for (const x of [-1.32, 1.32]) flat(0.06, 2.44, x, s * 10.06, 0.15, M.line); // return creases
+  for (const x of [-0.114, 0, 0.114]) add(new THREE.CylinderGeometry(0.019, 0.019, 0.71, 8).translate(x, 0.465, s * 10.06), stumpMat);
+  for (const x of [-0.057, 0.057]) add(new THREE.BoxGeometry(0.11, 0.02, 0.02).translate(x, 0.83, s * 10.06), stumpMat);
+}
+add(new THREE.TorusGeometry(72, 0.14, 8, 256).rotateX(Math.PI / 2).translate(0, 0.14, 0), new THREE.MeshStandardMaterial({ color: 0xf3f3f3, roughness: 0.5 }));
+{ // 30-yard circle (dashes)
+  const n = 70, m = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.14, 1.3).rotateX(-Math.PI / 2), M.line, n), d = new THREE.Object3D();
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; d.position.set(Math.cos(a) * 27.43, 0.06, Math.sin(a) * 27.43); d.rotation.set(0, -a, 0); d.updateMatrix(); m.setMatrixAt(i, d.matrix); }
+  m.receiveShadow = true; scene.add(m);
+}
+{ // advertising boards along the boundary
+  const n = 84, m = new THREE.InstancedMesh(new THREE.BoxGeometry(5.5, 0.9, 0.12), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }), n), d = new THREE.Object3D();
+  const cols = ['#0f9d58', '#ffffff', '#14202b', '#f5a524'].map((c) => new THREE.Color(c));
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; d.position.set(Math.cos(a) * 75.5, 0.45, Math.sin(a) * 75.5); d.rotation.set(0, -a - Math.PI / 2, 0); d.updateMatrix(); m.setMatrixAt(i, d.matrix); m.setColorAt(i, cols[i % 4]); }
+  m.castShadow = true; m.receiveShadow = true; scene.add(m);
+}
+for (const a of [90 * DEG, 270 * DEG]) { // sight screens at both ends, in line with the pitch
+  const g = new THREE.BoxGeometry(22, 9, 0.6).translate(0, 4.6, 0).rotateY(-a - Math.PI / 2).translate(Math.cos(a) * 77.6, 0, Math.sin(a) * 77.6);
+  add(g, M.white);
+}
+
+// ─── Stands, enclosures and seats ──────────────────────────────────────────────────────────────────────────
+function makeSeatGeo() {
+  return mergeGeometries([
+    new THREE.BoxGeometry(0.48, 0.08, 0.42).translate(0, 0.42, 0.04),
+    new THREE.BoxGeometry(0.48, 0.5, 0.07).translate(0, 0.68, -0.18),
+    new THREE.BoxGeometry(0.07, 0.38, 0.28).translate(0, 0.19, 0),
+  ]);
+}
+function makeArmchairGeo() {
+  const armL = new THREE.BoxGeometry(0.12, 0.24, 0.66).translate(-0.3, 0.54, 0);
+  return mergeGeometries([
+    new THREE.BoxGeometry(0.72, 0.42, 0.7).translate(0, 0.21, 0),
+    new THREE.BoxGeometry(0.56, 0.1, 0.56).translate(0, 0.47, 0.04),
+    new THREE.BoxGeometry(0.72, 0.64, 0.16).translate(0, 0.63, -0.29),
+    armL, armL.clone().translate(0.6, 0, 0),
+  ]);
+}
+const seatGeo = makeSeatGeo();
+const COL = { SOLD: new THREE.Color('#9aa3ab'), LOCKED: new THREE.Color('#f5a524'), BLOCKED: new THREE.Color('#2a2f35'), MINE: new THREE.Color('#1e66f5') };
+const WHITE = new THREE.Color('#ffffff');
+const enclosures = [], seats = [], seatById = new Map(), stepMeshes = [];
+const dummy = new THREE.Object3D();
+
+STANDS.forEach((st, k) => {
+  st.theta = k * SPAN; st.gate = k + 1;
+  st.a0 = st.theta - SPAN / 2 + GAP; st.a1 = st.theta + SPAN / 2 - GAP;
+  for (const tier of [TIERS.lower, TIERS.upper]) {
+    const enc = { index: enclosures.length, stand: st, tier, theta: st.theta, a0: st.a0, a1: st.a1, gate: st.gate,
+      name: `${st.name} · ${tier.label}`, code: `${st.code}-${tier.label[0]}`, type: TYPES[tier.key === 'lower' ? st.lower : st.upper], seats: [] };
+    for (let i = 0; i < tier.rows; i++) {
+      const r = tier.r0 + i * tier.d + tier.d * 0.5, y = tier.h0 + i * tier.rise, row = String.fromCharCode(65 + i);
+      const a0 = enc.a0 + 0.9 / r, arc = (enc.a1 - 0.9 / r - a0) * r, n = Math.floor(arc / SEAT_W), pad = (arc - n * SEAT_W) / 2;
+      let num = 0;
+      for (let j = 0; j < n; j++) {
+        const s = pad + (j + 0.5) * SEAT_W;
+        if (Math.abs(s - arc / 2) < AISLE / 2) continue; // stairway in the middle of the enclosure
+        const a = a0 + s / r; num += 1;
+        const seat = { id: `${enc.code}-${row}-${num}`, enc, section: enc.name, row, rowIndex: i, seatNumber: num, side: s < arc / 2 ? 'L' : 'R',
+          pos: new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r), rot: -a - Math.PI / 2, type: enc.type, gate: enc.gate, status: 'AVAILABLE' };
+        const along = (a - st.theta) * r;
+        if (st.screen && tier.key === 'lower' && i < 7 && Math.abs(along) < 12) { seat.status = 'BLOCKED'; seat.blockReason = 'Behind the sight screen: not sold, so batters can see the ball'; }
+        else if (k === 4 && tier.key === 'upper' && (i === 8 || i === 9) && Math.abs(along) < 3.2) { seat.status = 'BLOCKED'; seat.blockReason = 'TV camera platform'; }
+        else { const x = rng(), sold = enc.type === TYPES.VIP ? 0.5 : 0.4; seat.status = x < sold ? 'SOLD' : x < sold + 0.04 ? 'LOCKED' : 'AVAILABLE'; }
+        seat.idx = enc.seats.length; enc.seats.push(seat); seats.push(seat); seatById.set(seat.id, seat);
+      }
+    }
+    const stepMat = M.concrete.clone();
+    const steps = add(stepsGeometry(enc.a0, enc.a1, tier), stepMat);
+    steps.userData.enc = enc; enc.stepMesh = steps; stepMeshes.push(steps);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    const mesh = new THREE.InstancedMesh(seatGeo, mat, enc.seats.length);
+    for (const s of enc.seats) { dummy.position.copy(s.pos); dummy.rotation.set(0, s.rot, 0); dummy.updateMatrix(); mesh.setMatrixAt(s.idx, dummy.matrix); mesh.setColorAt(s.idx, colorFor(s)); }
+    mesh.receiveShadow = true; mesh.computeBoundingSphere(); mesh.userData.enc = enc; enc.mesh = mesh; scene.add(mesh);
+    enclosures.push(enc);
+  }
+  if (!st.boxes) add(sectorSlab(st.a0, st.a1, 91.9, 92.6, 6.6, 10.5, 40), M.darkConcrete); // concourse front between the tiers
+});
+{ // dark crosses on seats that are not for sale
+  const blocked = seats.filter((s) => s.status === 'BLOCKED');
+  const cross = mergeGeometries([new THREE.BoxGeometry(0.36, 0.05, 0.02).rotateZ(Math.PI / 4), new THREE.BoxGeometry(0.36, 0.05, 0.02).rotateZ(-Math.PI / 4)]);
+  const m = new THREE.InstancedMesh(cross, new THREE.MeshStandardMaterial({ color: 0xe8ecef, roughness: 0.6 }), blocked.length);
+  blocked.forEach((s, i) => { const off = new THREE.Vector3(0, 0.68, -0.14).applyAxisAngle(new THREE.Vector3(0, 1, 0), s.rot); dummy.position.copy(s.pos).add(off); dummy.rotation.set(0, s.rot, 0); dummy.updateMatrix(); m.setMatrixAt(i, dummy.matrix); });
+  m.computeBoundingSphere(); scene.add(m);
+}
+
+// Pavilion: Hospitality Boxes between the tiers (glass front, leather seats), and a white roof
+const boxes = [];
+let boxLight;
+{
+  const st = STANDS[0], n = 8, w = (st.a1 - st.a0) / n;
+  add(sectorSlab(st.a0, st.a1, BOX_RI, BOX_RO, BOX_FLOOR - 0.25, BOX_FLOOR, 48), M.carpet);
+  add(sectorSlab(st.a0, st.a1, BOX_RI - 0.2, BOX_RO, BOX_CEIL, BOX_CEIL + 0.2, 48), M.white);
+  add(sectorSlab(st.a0, st.a1, BOX_RO, BOX_RO + 0.25, BOX_FLOOR, BOX_CEIL, 48), M.boxWall);
+  add(sectorSlab(st.a0, st.a1, BOX_RI, BOX_RI + 0.25, BOX_FLOOR, 7.65, 48), M.wood);
+  add(sectorSlab(st.a0, st.a1, BOX_RI + 0.06, BOX_RI + 0.1, 7.65, BOX_CEIL, 48), M.glass, { cast: false, receive: false });
+  const chairs = new THREE.InstancedMesh(makeArmchairGeo(), M.leather, n * 8);
+  let c = 0;
+  for (let b = 0; b <= n; b++) { const a = st.a0 + b * w; add(sectorSlab(a - 0.0012, a + 0.0012, BOX_RI, BOX_RO, BOX_FLOOR, BOX_CEIL, 1), M.boxWall); }
+  for (let b = 0; b < n; b++) {
+    const ac = st.a0 + (b + 0.5) * w;
+    add(sectorSlab(st.a0 + b * w + 0.0013, st.a0 + (b + 1) * w - 0.0013, 95.3, BOX_RO, BOX_FLOOR, BOX_FLOOR + 0.45, 6), M.carpet);
+    for (const [r, y] of [[93.8, BOX_FLOOR], [96.6, BOX_FLOOR + 0.45]]) {
+      for (const off of [-1.65, -0.55, 0.55, 1.65]) {
+        const a = ac + off / r; dummy.position.set(Math.cos(a) * r, y, Math.sin(a) * r); dummy.rotation.set(0, -a - Math.PI / 2, 0); dummy.updateMatrix(); chairs.setMatrixAt(c++, dummy.matrix);
+      }
+    }
+    add(new THREE.BoxGeometry(2.4, 1.0, 0.5).translate(0, 0.5, 0).rotateY(-ac - Math.PI / 2).translate(Math.cos(ac) * 97.9, BOX_FLOOR + 0.45, Math.sin(ac) * 97.9), M.wood);
+    boxes.push({ index: b + 1, name: `Box ${b + 1}`, theta: ac });
+  }
+  chairs.castShadow = true; chairs.receiveShadow = true; chairs.computeBoundingSphere(); scene.add(chairs);
+  const fb = boxes[BOX_FOCUS - 1];
+  boxLight = new THREE.PointLight(0xffe2b8, 9, 14, 2); boxLight.position.set(Math.cos(fb.theta) * 95.5, BOX_CEIL - 0.4, Math.sin(fb.theta) * 95.5); scene.add(boxLight);
+  // Roof over the Pavilion, on columns at the back
+  add(sectorSlab(st.a0 - 0.01, st.a1 + 0.01, 85, 106, 21.6, 22, 64), M.white);
+  add(sectorSlab(st.a0 - 0.01, st.a1 + 0.01, 85, 85.4, 20.5, 22, 64), M.white);
+  for (let i = 0; i <= 8; i++) { const a = st.a0 + ((st.a1 - st.a0) * i) / 8; add(new THREE.CylinderGeometry(0.35, 0.45, 21.6, 10).translate(Math.cos(a) * 105.6, 10.8, Math.sin(a) * 105.6), M.white); }
+}
+
+// Floodlight towers (switched on for a night match)
+const lampTex = canvasTex(256, 144, (g, w, h) => { g.fillStyle = '#1b1f24'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; for (let y = 0; y < 5; y++) for (let x = 0; x < 9; x++) { g.beginPath(); g.arc(16 + x * 28, 16 + y * 28, 10, 0, Math.PI * 2); g.fill(); } });
+const lampMat = new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xffffff, emissiveMap: lampTex, emissiveIntensity: 0.12 });
+const floods = [];
+for (let k = 0; k < 4; k++) {
+  const a = (22.5 + 90 * k) * DEG, x = Math.cos(a) * 114, z = Math.sin(a) * 114;
+  add(new THREE.CylinderGeometry(0.5, 0.9, 54, 10).translate(x, 27, z), M.metal);
+  const head = new THREE.Group(); head.position.set(x, 56, z); head.lookAt(0, 0, 0); scene.add(head);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(11, 6.5, 0.8), M.metal); frame.castShadow = true; head.add(frame);
+  const lamps = new THREE.Mesh(new THREE.PlaneGeometry(10, 5.6), lampMat); lamps.position.z = 0.42; head.add(lamps);
+  const spot = new THREE.SpotLight(0xf3f6ff, 0, 0, 0.62, 0.6, 0); spot.position.set(x, 56, z); spot.target.position.set(0, 0, 0);
+  scene.add(spot, spot.target); floods.push(spot);
+}
+
+// Trees around the ground
+{
+  const n = 190, trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.38, 3, 6).translate(0, 1.5, 0), new THREE.MeshStandardMaterial({ color: 0x6d4c33, roughness: 1 }), n);
+  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, flatShading: true }), n);
+  const greens = ['#2f6b2a', '#3b7d30', '#477f2c', '#2a5e2f', '#55893a'].map((c) => new THREE.Color(c));
+  const tr = mulberry32(7);
+  for (let i = 0; i < n; i++) {
+    let a, r, x, z;
+    do { a = tr() * Math.PI * 2; r = 128 + tr() * 80; x = Math.cos(a) * r; z = Math.sin(a) * r; } while (floods.some((f) => Math.hypot(f.position.x - x, f.position.z - z) < 9));
+    const s = 2 + tr() * 2.2;
+    dummy.position.set(x, 0, z); dummy.rotation.set(0, tr() * 6, 0); dummy.scale.set(1, 0.8 + s * 0.15, 1); dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix);
+    dummy.position.set(x, 2.6 + s * 0.9, z); dummy.scale.set(s, s * 1.15, s); dummy.updateMatrix(); crowns.setMatrixAt(i, dummy.matrix); crowns.setColorAt(i, greens[i % greens.length]);
+  }
+  dummy.scale.set(1, 1, 1);
+  for (const m of [trunks, crowns]) { m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); scene.add(m); }
+}
+
+// ─── State ─────────────────────────────────────────────────────────────────────────────────────────────────
+let mode = 'overview';          // overview | enclosure | seat | box
+let curEnc = null, focus = null, hoverEnc = null, hoverSeat = null, flight = null;
+let yaw = 0, pitch = 0, night = false;
+const eye = new THREE.Vector3(), look = new THREE.Vector3(), lookBase = PITCH_CENTER.clone();
+let holdUntil = null;
+const inCart = (s) => cart.includes(s);
+function colorFor(s, hover = false) {
+  const c = (cart.includes(s) ? COL.MINE : s.status === 'AVAILABLE' ? s.type.c : COL[s.status]).clone();
+  return hover ? c.lerp(WHITE, 0.45) : c;
+}
+function paint(s, hover = false) { s.enc.mesh.setColorAt(s.idx, colorFor(s, hover)); s.enc.mesh.instanceColor.needsUpdate = true; }
+const seatsLeft = (enc) => enc.seats.filter((s) => s.status === 'AVAILABLE' && !inCart(s)).length;
+
+window.TicketLedgerSeatData = {
+  event: { ...EVENT, startsAt: matchDate.toISOString() },
+  seats: seats.map((s) => ({ id: s.id, section: s.section, row: s.row, seatNumber: String(s.seatNumber), status: s.status, tier: { name: s.type.name, price: s.type.price }, gate: `Gate ${s.gate}` })),
+};
+
+// ─── Camera poses and flights ──────────────────────────────────────────────────────────────────────────────
+const portrait = () => innerWidth < innerHeight;
+function overviewPose() { const f = portrait() ? 1.75 : 1; return { pos: new THREE.Vector3(0, 235 * f, 190 * f), target: new THREE.Vector3(0, 0, 8) }; }
+function enclosurePose(enc) {
+  const T = enc.tier, rm = T.r0 + (T.rows * T.d) / 2, hm = T.h0 + (T.rows * T.rise) / 2, f = portrait() ? 1.6 : 1;
+  return { pos: new THREE.Vector3(Math.cos(enc.theta) * (rm - 40 * f), hm + 17 * f, Math.sin(enc.theta) * (rm - 40 * f)), target: new THREE.Vector3(Math.cos(enc.theta) * rm, hm - 1, Math.sin(enc.theta) * rm) };
+}
+const seatEye = (s) => s.pos.clone().add(new THREE.Vector3(0, 1.18, 0));
+function boxEye() { const b = boxes[BOX_FOCUS - 1]; return new THREE.Vector3(Math.cos(b.theta) * 96.6, BOX_FLOOR + 0.45 + 1.18, Math.sin(b.theta) * 96.6); }
+
+function flyTo(pos, target, { dur = 2000, lift = 0, done } = {}) {
+  controls.enabled = false;
+  flight = { from: camera.position.clone(), to: pos.clone(), tf: look.clone(), tt: target.clone(), t0: performance.now(), dur, lift, done };
+}
+function goOverview() {
+  setMode('overview'); curEnc = null; focus = null;
+  const p = overviewPose();
+  flyTo(p.pos, p.target, { lift: 30, done: () => { controls.target.copy(p.target); controls.enabled = true; } });
+}
+function goEnclosure(enc) {
+  const from = mode; setMode('enclosure'); curEnc = enc;
+  const p = enclosurePose(enc);
+  flyTo(p.pos, p.target, { lift: from === 'overview' ? 20 : 6, done: () => { controls.target.copy(p.target); controls.enabled = true; } });
+}
+function goSeat(s) {
+  focus = s; curEnc = s.enc; setMode('seat'); yaw = 0; pitch = 0;
+  eye.copy(seatEye(s)); lookBase.copy(PITCH_CENTER);
+  flyTo(eye, PITCH_CENTER, { lift: 3 });
+  renderSeatCard(); renderTicket(); document.getElementById('ticketInner').classList.remove('flipped');
+}
+function goBox() {
+  setMode('box'); yaw = 0; pitch = 0; eye.copy(boxEye()); lookBase.copy(PITCH_CENTER);
+  document.getElementById('ticketInner').classList.add('flipped');
+  flyTo(eye, PITCH_CENTER, { lift: 4 });
+}
+function back() {
+  if (flight) return;
+  if (mode === 'enclosure') goOverview();
+  else if (mode === 'seat') goEnclosure(focus.enc);
+  else if (mode === 'box') (focus ? goSeat(focus) : goOverview());
+}
+
+// ─── UI ────────────────────────────────────────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const tip = $('tip'), toastEl = $('toast');
+$('matchTitle').textContent = EVENT.match;
+$('matchSub').textContent = `${EVENT.format} · ${dateText} · ${EVENT.stadium}, ${EVENT.city}`;
+$('legend').innerHTML = [
+  ...['GENERAL', 'PREMIUM', 'VIP'].map((k) => `<div><span class="sw" style="background:${TYPES[k].color}"></span>${TYPES[k].name} ${fmt(TYPES[k].price)}</div>`),
+  `<div><span class="sw" style="background:#1e66f5"></span>Your pick</div>`,
+  `<div><span class="sw" style="background:#f5a524"></span>Held by another fan (10 min)</div>`,
+  `<div><span class="sw" style="background:#9aa3ab"></span>Sold</div>`,
+  `<div><span class="sw" style="background:#2a2f35"></span>Not for sale</div>`,
+  `<div><span class="sw" style="background:${TYPES.BOX.color}"></span>Hospitality Box ${fmt(TYPES.BOX.price)}</div>`,
+].join('');
+$('legendBtn').onclick = () => $('legend').classList.toggle('open');
+$('backBtn').onclick = back;
+$('dayNight').onclick = () => setNight(!night);
+addEventListener('keydown', (e) => { if (e.key === 'Escape') back(); });
+
+function setMode(m) {
+  mode = m; clearHover();
+  const backBtn = $('backBtn');
+  backBtn.hidden = m === 'overview';
+  backBtn.textContent = m === 'enclosure' ? '← Whole ground' : m === 'seat' ? '← Back to enclosure' : '← Back to my seat';
+  $('seatCard').hidden = m !== 'seat';
+  $('ticket').classList.toggle('show', m === 'seat' || m === 'box');
+  const tap = touch ? 'Tap' : 'Click';
+  $('hint').textContent = {
+    overview: touch ? 'Tap an enclosure to fly in · drag to rotate · pinch to zoom' : 'Hover an enclosure for prices · click to fly in · drag to rotate',
+    enclosure: `${tap} a coloured seat to pick it · amber = held · grey = sold · dark = not for sale`,
+    seat: 'Your view from this seat · drag to look around',
+    box: 'Hospitality Box view · drag to look around',
+  }[m];
+}
+function toast(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('show'), 2800); }
+function showTip(html, x, y) { tip.innerHTML = html; tip.style.display = 'block'; tip.style.left = Math.min(x, innerWidth - 300) + 'px'; tip.style.top = Math.min(y, innerHeight - 90) + 'px'; }
+function hideTip() { tip.style.display = 'none'; }
+
+function holdText() { if (!holdUntil) return `${HOLD_MIN}:00`; const s = Math.max(0, Math.ceil((holdUntil - Date.now()) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+function updateTimers() { for (const el of document.querySelectorAll('[data-timer]')) el.textContent = holdText(); }
+setInterval(() => {
+  if (holdUntil && Date.now() >= holdUntil) {
+    const was = [...cart]; cart.length = 0; holdUntil = null; was.forEach((s) => paint(s));
+    renderCart(); toast('Your hold ran out: the seats were released.');
+    if (mode === 'seat' || mode === 'box') goEnclosure(focus.enc);
+  }
+  updateTimers();
+}, 1000);
+
+function addSeat(s) {
+  if (cart.length >= MAX_SEATS) { toast(`You can book up to ${MAX_SEATS} seats at a time.`); return false; }
+  cart.push(s); if (!holdUntil) holdUntil = Date.now() + HOLD_MIN * 60000;
+  paint(s); renderCart(); return true;
+}
+function removeSeat(s) {
+  const i = cart.indexOf(s); if (i < 0) return;
+  cart.splice(i, 1); if (!cart.length) holdUntil = null;
+  paint(s); renderCart();
+  if (focus === s && (mode === 'seat' || mode === 'box')) goEnclosure(s.enc);
+  else if (mode === 'seat') renderSeatCard();
+}
+function together() {
+  if (cart.length < 2) return null;
+  const a = cart[0], same = cart.every((s) => s.enc === a.enc && s.rowIndex === a.rowIndex && s.side === a.side);
+  if (!same) return false;
+  const nums = cart.map((s) => s.seatNumber).sort((x, y) => x - y);
+  return nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+}
+function nextSeatOf(s) {
+  const row = s.enc.seats.filter((x) => x.rowIndex === s.rowIndex && x.side === s.side);
+  const mine = cart.filter((x) => x.enc === s.enc && x.rowIndex === s.rowIndex && x.side === s.side).map((x) => x.seatNumber);
+  const nums = mine.length ? [Math.max(...mine) + 1, Math.min(...mine) - 1] : [s.seatNumber + 1, s.seatNumber - 1];
+  for (const n of nums) { const c = row.find((x) => x.seatNumber === n); if (c && c.status === 'AVAILABLE' && !inCart(c)) return c; }
+  return null;
+}
+
+function renderSeatCard() {
+  const s = focus; if (!s) return;
+  $('seatCard').innerHTML = `
+    <div class="sc-head"><div><small>${s.enc.name}</small><b>Row ${s.row} · Seat ${s.seatNumber}</b></div><span class="timer" data-timer>${holdText()}</span></div>
+    <div class="grid2">
+      <div class="k"><small>Ticket type</small><b>${s.type.name}</b></div>
+      <div class="k"><small>Price</small><b>${fmt(s.type.price)}</b></div>
+      <div class="k"><small>Entry</small><b>Use Gate ${s.gate}</b></div>
+      <div class="k"><small>In your cart</small><b>${cart.length} of ${MAX_SEATS}</b></div>
+    </div>
+    <p class="note">This seat is held for you for ${HOLD_MIN} minutes. If you don't check out in time it goes back on sale.</p>
+    <div class="row-btns"><button class="btn primary" id="addNext">Add next seat</button><button class="btn" id="another">See another seat</button></div>
+    <button class="link" id="removeSeat">Remove this seat</button>`;
+  $('addNext').onclick = () => {
+    const n = nextSeatOf(s);
+    if (!n) return toast('No free seat right next to yours in this row.');
+    if (addSeat(n)) goSeat(n);
+  };
+  $('another').onclick = () => goEnclosure(s.enc);
+  $('removeSeat').onclick = () => removeSeat(s);
+}
+
+function drawQR(cv, text) {
+  const N = 25, q = 2, ctx = cv.getContext('2d'), S = cv.width, m = S / (N + q * 2), r = mulberry32(fnv(text));
+  const g = Array.from({ length: N }, () => Array.from({ length: N }, () => r() < 0.5));
+  const finder = (ox, oy) => { for (let y = -1; y <= 7; y++) for (let x = -1; x <= 7; x++) { const X = ox + x, Y = oy + y; if (X < 0 || Y < 0 || X >= N || Y >= N) continue; const ring = Math.max(Math.abs(x - 3), Math.abs(y - 3)); g[Y][X] = ring === 4 ? false : ring === 3 ? true : ring !== 2; } };
+  finder(0, 0); finder(N - 7, 0); finder(0, N - 7);
+  for (let i = 8; i < N - 8; i++) { g[6][i] = i % 2 === 0; g[i][6] = i % 2 === 0; }
+  for (let y = -2; y <= 2; y++) for (let x = -2; x <= 2; x++) { const ring = Math.max(Math.abs(x), Math.abs(y)); g[N - 7 + y][N - 7 + x] = ring !== 1; }
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S); ctx.fillStyle = '#111';
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (g[y][x]) ctx.fillRect(Math.floor((x + q) * m), Math.floor((y + q) * m), Math.ceil(m), Math.ceil(m));
+}
+const manualCode = (id) => { const h = (n) => n.toString(16).toUpperCase().padStart(8, '0').slice(0, 4); return `TL-${h(fnv(id + ':a'))}-${h(fnv(id + ':b'))}`; };
+
+function renderTicket() {
+  const s = focus; if (!s) return;
+  const diff = TYPES.BOX.price - s.type.price, box = boxes[BOX_FOCUS - 1];
+  $('tkFront').innerHTML = `
+    <div class="tk-top"><div class="brand"><i>TL</i><span>TicketLedger</span></div><div><span class="badge">NFT ticket</span> <button class="mini-btn" id="tkMin">${$('ticket').classList.contains('mini') ? 'Show' : 'Hide'}</button></div></div>
+    <div class="tk-ev"><small>${EVENT.stadium}, ${EVENT.city}</small><b>${EVENT.match}</b><span>${EVENT.format} · ${dateText}</span></div>
+    <div class="collapsible">
+      <div class="grid3">
+        <div class="k"><small>Enclosure</small><b>${s.enc.stand.name}</b></div><div class="k"><small>Tier</small><b>${s.enc.tier.label}</b></div><div class="k"><small>Gate</small><b>Gate ${s.gate}</b></div>
+        <div class="k"><small>Row</small><b>${s.row}</b></div><div class="k"><small>Seat</small><b>${s.seatNumber}</b></div><div class="k"><small>Type</small><b>${s.type.name}</b></div>
+      </div>
+      <div class="tk-qr"><canvas id="qr" width="232" height="232"></canvas><div><small style="color:var(--muted);font-size:11px">MANUAL CODE</small><div class="mono">${manualCode(s.id)}</div><p>Show the QR at Gate ${s.gate}. If it can't be scanned, staff can type this code.</p><p><b style="font-size:16px;color:var(--ink)">${fmt(s.type.price)}</b></p></div></div>
+    </div>
+    <div class="tk-actions"><button class="btn gold block" id="upgradeBtn">Upgrade to Hospitality Box · +${fmt(diff)}</button></div>`;
+  drawQR($('qr'), manualCode(s.id));
+  $('upgradeBtn').onclick = goBox;
+  $('tkMin').onclick = () => { $('ticket').classList.toggle('mini'); renderTicket(); };
+  $('tkBack').innerHTML = `
+    <div class="tk-top"><div class="brand"><i>TL</i><span>TicketLedger</span></div><span class="badge gold">Hospitality</span></div>
+    <div class="tk-ev"><small>${EVENT.stadium} · Pavilion</small><b>Hospitality ${box.name}</b><span>${EVENT.match} · ${dateText}</span></div>
+    <ul class="perks"><li>Leather seats behind a glass front</li><li>Square-of-the-wicket view from the Pavilion</li><li>Entry at Gate 1</li></ul>
+    <div class="grid3">
+      <div class="k"><small>Box seat</small><b>${fmt(TYPES.BOX.price)}</b></div><div class="k"><small>Your seat</small><b>${fmt(s.type.price)}</b></div><div class="k"><small>Difference</small><b>+${fmt(diff)}</b></div>
+    </div>
+    <div class="tk-actions"><button class="btn block" id="backSeatBtn">← Back to my seat</button></div>`;
+  $('backSeatBtn').onclick = () => goSeat(focus);
+}
+
+function renderCart() {
+  const btn = $('cartBtn'), panel = $('cart');
+  const total = cart.reduce((a, s) => a + s.type.price, 0);
+  btn.hidden = !cart.length && panel.hidden;
+  btn.innerHTML = `<span>Cart ${cart.length}/${MAX_SEATS}</span><span>${fmt(total)}</span>${cart.length ? `<span class="timer" data-timer>${holdText()}</span>` : ''}`;
+  if (panel.hidden) return;
+  const tg = together();
+  const groups = Object.values(TYPES).map((t) => ({ t, list: cart.filter((s) => s.type === t) })).filter((g) => g.list.length);
+  panel.innerHTML = `
+    <div class="cart-head"><b>Your seats (${cart.length}/${MAX_SEATS})</b>${cart.length ? `<span class="timer" data-timer>${holdText()}</span>` : ''}<button class="x" id="cartClose" aria-label="Close">×</button></div>
+    ${!cart.length ? `<p class="empty">No seats yet. ${touch ? 'Tap' : 'Click'} an enclosure, then a coloured seat.</p>` : ''}
+    ${tg === true ? '<div class="together ok">✓ Your seats are next to each other.</div>' : tg === false ? '<div class="together warn">⚠ These seats aren’t next to each other.</div>' : ''}
+    ${groups.map((g) => `<div class="grp"><div class="grp-h"><b>${g.t.name} × ${g.list.length}</b><span>${fmt(g.t.price * g.list.length)}</span></div><ul>
+      ${g.list.map((s) => `<li><div><b>${s.enc.name}</b><small>Row ${s.row} · Seat ${s.seatNumber} · Gate ${s.gate}</small></div><button class="btn" data-view="${s.id}">View</button><button class="x" data-rm="${s.id}" aria-label="Remove">×</button></li>`).join('')}
+    </ul></div>`).join('')}
+    ${cart.length ? `<div class="total"><span>Total</span><b>${fmt(total)}</b></div><button class="btn primary block" id="checkoutBtn">Checkout</button>` : ''}`;
+  $('cartClose').onclick = () => { panel.hidden = true; renderCart(); };
+  if (cart.length) $('checkoutBtn').onclick = showSummary;
+}
+$('cartBtn').onclick = () => { $('cart').hidden = !$('cart').hidden; renderCart(); };
+$('cart').addEventListener('click', (e) => {
+  const v = e.target.closest('[data-view]'), r = e.target.closest('[data-rm]');
+  if (v) { const s = seatById.get(v.dataset.view); if (innerWidth < 760) $('cart').hidden = true; renderCart(); goSeat(s); }
+  if (r) removeSeat(seatById.get(r.dataset.rm));
+});
+
+function showSummary() {
+  const total = cart.reduce((a, s) => a + s.type.price, 0);
+  const groups = Object.values(TYPES).map((t) => ({ t, n: cart.filter((s) => s.type === t).length })).filter((g) => g.n);
+  $('summarySheet').innerHTML = `
+    <h2>Order summary</h2>
+    <p class="muted">${EVENT.match} · ${EVENT.format} · ${dateText}<br>${EVENT.stadium}, ${EVENT.city}</p>
+    <table><thead><tr><th>Enclosure</th><th>Row · Seat</th><th>Type</th><th>Gate</th><th class="r">Price</th></tr></thead><tbody>
+      ${cart.map((s) => `<tr><td>${s.enc.name}</td><td>${s.row} · ${s.seatNumber}</td><td>${s.type.name}</td><td>${s.gate}</td><td class="r">${fmt(s.type.price)}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="sum-lines">${groups.map((g) => `<div><span>${g.t.name} × ${g.n}</span><span>${fmt(g.t.price * g.n)}</span></div>`).join('')}<div class="t"><span>Total</span><span>${fmt(total)}</span></div></div>
+    <div class="notice">Your seats are held for <b data-timer>${holdText()}</b>. Sales close when the match starts. Tickets can be resold or transferred only before the match starts. Each ticket comes with a QR code, a manual code and an NFT record.</div>
+    <div class="row-btns"><button class="btn" id="sumBack">Back</button><button class="btn primary" id="payBtn">Continue to payment</button></div>`;
+  $('summary').hidden = false;
+  $('sumBack').onclick = () => { $('summary').hidden = true; };
+  $('payBtn').onclick = () => { $('summary').hidden = true; toast('Prototype: in TicketLedger this opens secure payment.'); };
+}
+$('summary').addEventListener('click', (e) => { if (e.target.id === 'summary') $('summary').hidden = true; });
+
+function setNight(on) {
+  night = on;
+  scene.background = on ? SKY.night : SKY.day;
+  scene.fog.color.set(on ? 0x16263f : 0xd8e9f6);
+  sun.intensity = on ? 0.12 : 2.7; sun.color.set(on ? 0x9fb4ff : 0xfff0d4);
+  hemi.intensity = on ? 0.22 : 0.95;
+  for (const f of floods) f.intensity = on ? 1.5 : 0;
+  lampMat.emissiveIntensity = on ? 3 : 0.12;
+  renderer.toneMappingExposure = on ? 1.15 : 1.05;
+  $('dayNight').innerHTML = `<span>${on ? 'Day' : 'Night'}</span><span class="long"> match</span>`;
+}
+
+// ─── Pointer: hover, click, look around ────────────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let pointer = null, pointerDirty = false, down = null;
+function setNdc(e) { ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); }
+function pickEnclosure() { const h = ray.intersectObjects(stepMeshes, false)[0]; return h ? h.object.userData.enc : null; }
+function pickSeat(enc) { const h = ray.intersectObject(enc.mesh, false)[0]; return h ? enc.seats[h.instanceId] : null; }
+function highlightEnc(enc, on) {
+  if (!enc) return;
+  const e = on ? enc.type.c.clone().multiplyScalar(0.32) : new THREE.Color(0);
+  enc.stepMesh.material.emissive.copy(e); enc.mesh.material.emissive.copy(on ? new THREE.Color(0x303030) : new THREE.Color(0));
+}
+function clearHover() {
+  if (hoverEnc) { highlightEnc(hoverEnc, false); hoverEnc = null; }
+  if (hoverSeat) { paint(hoverSeat); hoverSeat = null; }
+  hideTip(); canvas.style.cursor = '';
+}
+function seatLine(s) {
+  if (inCart(s)) return `In your cart · ${touch ? 'tap' : 'click'} to remove`;
+  return { AVAILABLE: `<span class="p">${s.type.name} · ${fmt(s.type.price)}</span> · Gate ${s.gate}`, SOLD: 'Sold', LOCKED: 'Held by another fan (up to 10 minutes)', BLOCKED: `Not for sale: ${s.blockReason}` }[s.status];
+}
+function hoverTest() {
+  if (!pointer || pointer.type === 'touch' || flight) return;
+  setNdc(pointer);
+  if (mode === 'overview') {
+    const enc = pickEnclosure();
+    if (enc !== hoverEnc) { highlightEnc(hoverEnc, false); hoverEnc = enc; highlightEnc(enc, true); }
+    if (enc) { showTip(`<b>${enc.name}</b><br><span class="p">${enc.type.name} · ${fmt(enc.type.price)}</span><br>${seatsLeft(enc).toLocaleString('en-US')} seats left · Gate ${enc.gate}`, pointer.clientX, pointer.clientY); canvas.style.cursor = 'pointer'; }
+    else { hideTip(); canvas.style.cursor = ''; }
+  } else if (mode === 'enclosure') {
+    const s = pickSeat(curEnc);
+    if (s !== hoverSeat) { if (hoverSeat) paint(hoverSeat); hoverSeat = s; if (s) paint(s, true); }
+    if (s) { showTip(`<b>Row ${s.row} · Seat ${s.seatNumber}</b><br>${seatLine(s)}`, pointer.clientX, pointer.clientY); canvas.style.cursor = s.status === 'AVAILABLE' || inCart(s) ? 'pointer' : 'not-allowed'; }
+    else {
+      const enc = pickEnclosure();
+      if (enc && enc !== curEnc) { showTip(`<b>${enc.name}</b><br>${touch ? 'Tap' : 'Click'} to move here`, pointer.clientX, pointer.clientY); canvas.style.cursor = 'pointer'; }
+      else { hideTip(); canvas.style.cursor = ''; }
+    }
+  }
+}
+function onClick(e) {
+  if (flight) return;
+  setNdc(e);
+  if (mode === 'overview') { const enc = pickEnclosure(); if (enc) goEnclosure(enc); return; }
+  if (mode !== 'enclosure') return;
+  const s = pickSeat(curEnc);
+  if (s) {
+    if (inCart(s)) { removeSeat(s); toast(`Removed Row ${s.row} · Seat ${s.seatNumber}.`); return; }
+    if (s.status === 'SOLD') return toast('That seat is sold.');
+    if (s.status === 'LOCKED') return toast('Another fan is holding that seat (up to 10 minutes).');
+    if (s.status === 'BLOCKED') return toast(`Not for sale: ${s.blockReason}.`);
+    if (addSeat(s)) goSeat(s);
+    return;
+  }
+  const enc = pickEnclosure(); if (enc && enc !== curEnc) goEnclosure(enc);
+}
+canvas.addEventListener('pointermove', (e) => {
+  pointer = { clientX: e.clientX, clientY: e.clientY, type: e.pointerType }; pointerDirty = true;
+  if (down && e.isPrimary && (mode === 'seat' || mode === 'box') && !flight) {
+    yaw += (e.clientX - down.lx) * 0.0045; pitch += (e.clientY - down.ly) * 0.0035;
+    yaw = THREE.MathUtils.clamp(yaw, -1.3, 1.3); pitch = THREE.MathUtils.clamp(pitch, -0.6, 0.5);
+    down.lx = e.clientX; down.ly = e.clientY;
+  }
+});
+canvas.addEventListener('pointerdown', (e) => { if (e.isPrimary) down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now() }; else down = null; });
+canvas.addEventListener('pointerup', (e) => { if (down && e.isPrimary && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 600) onClick(e); down = null; });
+canvas.addEventListener('pointerleave', () => { pointer = null; clearHover(); });
+
+// ─── Loop ──────────────────────────────────────────────────────────────────────────────────────────────────
+const sph = new THREE.Spherical(), tmp = new THREE.Vector3();
+function applyLook() {
+  tmp.subVectors(lookBase, eye); sph.setFromVector3(tmp);
+  sph.theta += yaw; sph.phi = THREE.MathUtils.clamp(sph.phi + pitch, 0.25, Math.PI - 0.25);
+  tmp.setFromSpherical(sph);
+  camera.position.copy(eye); look.copy(eye).add(tmp); camera.lookAt(look);
+}
+const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (flight) {
+    const f = flight, t = Math.min(1, (now - f.t0) / f.dur), k = ease(t);
+    camera.position.lerpVectors(f.from, f.to, k); camera.position.y += Math.sin(Math.PI * k) * f.lift;
+    look.lerpVectors(f.tf, f.tt, k); camera.lookAt(look);
+    if (t >= 1) { flight = null; f.done?.(); }
+  } else if (mode === 'overview' || mode === 'enclosure') { controls.update(); look.copy(controls.target); }
+  else applyLook();
+  if (pointerDirty) { pointerDirty = false; hoverTest(); }
+  renderer.render(scene, camera);
+}
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+const start = overviewPose();
+camera.position.copy(start.pos); controls.target.copy(start.target); look.copy(start.target); camera.lookAt(look);
+setMode('overview'); renderCart();
+requestAnimationFrame(tick);
+// For automated screenshots and later integration
+window.__tl = { enclosures, seats, boxes, goEnclosure, goSeat, goBox, goOverview, addSeat, setNight, get mode() { return mode; } };
+</script>
+</body>
+</html>

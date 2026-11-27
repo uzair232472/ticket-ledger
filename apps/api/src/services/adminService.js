@@ -1,4 +1,7 @@
 import prisma from '../config/prisma.js';
+import { getSetting } from './systemConfig.js';
+import { assertConfirmed, recordAdminAction } from './adminActions.js';
+import { noteAccountAction } from './investigationService.js';
 import { revokeAllRefreshTokens } from './tokenService.js';
 import { BLOCKED_STATUSES } from '../config/auth.js';
 import { dispatchNotification, NOTIFICATION_TYPES } from './notificationService.js';
@@ -45,7 +48,7 @@ export const getSuperAdminMetrics = async () => {
   ]);
 
   const grossRevenuePkr = Number(revenueAgg._sum.totalAmount || 0);
-  const platformFeePkr = Math.round(grossRevenuePkr * 0.05); // 5% platform commission
+  const platformFeePkr = Math.round((grossRevenuePkr * Number(await getSetting('platformFeePercent'))) / 100); // platform commission (system setting)
 
   return {
     users: {
@@ -155,7 +158,7 @@ export const getUsersList = async ({
  */
 const ADMIN_SETTABLE_STATUSES = ['ACTIVE', 'SUSPENDED', 'BANNED', 'DEACTIVATED'];
 
-export const updateUserStatus = async ({ userId, status, reason = null, adminUser }) => {
+export const updateUserStatus = async ({ userId, status, reason = null, confirm, adminUser }) => {
   if (!ADMIN_SETTABLE_STATUSES.includes(status)) {
     const error = new Error(`Invalid account status. Allowed: ${ADMIN_SETTABLE_STATUSES.join(', ')}`);
     error.status = 400;
@@ -180,6 +183,8 @@ export const updateUserStatus = async ({ userId, status, reason = null, adminUse
   }
 
   const previousStatus = target.status;
+  // Taking an account away needs the admin to type its email (destructive; undoable from Admin actions)
+  if (status !== 'ACTIVE' && status !== previousStatus) assertConfirmed(confirm, target.email, `changing ${target.email} to ${status.toLowerCase()}`);
   const updated = await prisma.user.update({
     where: { id: userId },
     data: { status },
@@ -192,6 +197,11 @@ export const updateUserStatus = async ({ userId, status, reason = null, adminUse
       updatedAt: true,
     },
   });
+
+  if (status !== previousStatus) {
+    await recordAdminAction(prisma, { admin: adminUser, action: 'USER_STATUS', targetType: 'User', targetId: userId, summary: `${target.email}: ${previousStatus.toLowerCase()} → ${status.toLowerCase()}${reason ? ` (${reason})` : ''}`, before: { status: previousStatus }, after: { status } });
+    await noteAccountAction(prisma, { userId, adminId: adminUser.id, body: `Account changed from ${previousStatus.toLowerCase()} to ${status.toLowerCase()}${reason ? `: ${reason}` : ''}.`, data: { before: previousStatus, after: status } });
+  }
 
   // Blocked accounts lose every session; the access-token check rejects them on the next request
   if (BLOCKED_STATUSES.includes(status)) {
@@ -453,7 +463,7 @@ export const getFraudAlerts = async ({
   // Fetch behavior events that record fraud / rapid bot activities
   const where = {
     action: {
-      in: ['bot_risk_flagged', 'rapid_clicks', 'seat_rapid_click', 'fraud_score_computed', 'checkout_abandoned'],
+      in: ['bot_risk_flagged', 'rapid_clicks', 'seat_rapid_click', 'fraud_score_computed', 'checkout_abandoned', 'checkout_expired'],
     },
   };
 

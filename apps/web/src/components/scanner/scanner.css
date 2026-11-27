@@ -19,6 +19,28 @@
 .tl-gs-empty { margin-top: 10px; font-size: 14px; color: var(--gs-dim); }
 .tl-gs-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--gs-dim); }
 
+.tl-gs-search { position: relative; display: flex; align-items: center; margin-top: 14px; }
+.tl-gs-search > svg { position: absolute; left: 14px; color: var(--gs-dim); pointer-events: none; }
+.tl-gs-search input { width: 100%; min-height: 46px; padding: 0 44px 0 42px; border: 1px solid var(--gs-line); border-radius: 999px; background: #fff; font: 500 15px 'Plus Jakarta Sans', sans-serif; color: var(--gs-ink); outline: none; }
+.tl-gs-search input::-webkit-search-cancel-button { display: none; }
+.tl-gs-search input:focus { border-color: var(--gs-green); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15); }
+.tl-gs-search button { position: absolute; right: 8px; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--gs-dim); cursor: pointer; }
+.tl-gs-search button:hover { background: rgba(0, 0, 0, 0.06); color: var(--gs-ink); }
+.tl-gs-search-count { margin-top: 8px; font-size: 13px; color: var(--gs-dim); }
+.tl-gs-list { display: grid; margin-top: 14px; border: 1px solid var(--gs-line); border-radius: 12px; overflow: hidden; list-style: none; padding: 0; }
+.tl-gs-list li + li { border-top: 1px solid var(--gs-line); }
+.tl-gs-list button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 14px; border: 0; background: #fff; text-align: left; cursor: pointer; transition: background-color 0.15s ease; }
+.tl-gs-list button:hover { background: #f0fdf4; }
+.tl-gs-list-date { display: grid; place-items: center; flex: 0 0 48px; height: 48px; border-radius: 10px; border: 1px solid var(--gs-line); font: 600 10.5px/1 'Plus Jakarta Sans', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gs-dim); }
+.tl-gs-list-date b { font-size: 18px; line-height: 1; color: var(--gs-ink); letter-spacing: 0; }
+.tl-gs-list-main { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.tl-gs-list-main strong { font-size: 15px; font-weight: 700; color: var(--gs-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-gs-list-main small { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 13px; color: var(--gs-dim); }
+.tl-gs-list-main small svg { color: var(--gs-green); }
+.tl-gs-list-sep { margin: 0 2px; }
+.tl-gs-list-go { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--gs-green); color: var(--gs-green); font-size: 13px; font-weight: 700; }
+.tl-gs-list button:hover .tl-gs-list-go { background: var(--gs-green); color: #fff; }
+@media (max-width: 520px) { .tl-gs-list-go { padding: 0 10px; } .tl-gs-list-date { flex-basis: 42px; height: 42px; } }
 .tl-gs-events { display: grid; gap: 10px; margin-top: 14px; }
 .tl-gs-events button { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; padding: 16px; border: 1px solid var(--gs-line); border-radius: 12px; background: #fff; text-align: left; cursor: pointer; transition: border-color 0.2s ease, background-color 0.2s ease; }
 .tl-gs-events button:hover { border-color: var(--gs-green); background: #f0fdf4; }
@@ -73,6 +95,48 @@
 .tl-gs-camera-top button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.12); color: #fff; cursor: pointer; }
 .tl-gs-camera-bottom { padding: 14px 16px max(18px, env(safe-area-inset-bottom)); background: rgba(0, 0, 0, 0.7); }
 .tl-gs-camera-bottom > p { margin-bottom: 12px; font-size: 14px; color: rgba(255, 255, 255, 0.75); text-align: center; }
+/* ---------- Camera screen: responsive ---------- */
+/* The overlays live in a body-level wrapper (GateScanner portal); it only carries the scanner's colour tokens */
+.tl-gs.tl-gs-portal { max-width: none; margin: 0; padding: 0; }
+.tl-gs-camera { height: 100dvh; overflow: hidden; }
+.tl-gs-camera-top > span { flex: 1; min-width: 0; }
+.tl-gs-camera-top strong, .tl-gs-camera-top small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-gs-camera-top button { flex: 0 0 44px; }
+/* The controls never push the camera off the screen: they scroll inside their own panel */
+.tl-gs-camera-bottom { flex: 0 1 auto; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
+.tl-gs-camera-bottom > * { width: 100%; max-width: 640px; margin-left: auto; margin-right: auto; }
+.tl-gs-camera-bottom .tl-gs-drop { min-width: 0; }
+.tl-gs-camera-bottom .tl-gs-drop span { min-width: 0; }
+.tl-gs-camera-bottom .tl-gs-manual-row input { font-size: 16px; }
+
+/* Small phones: tighter controls so more of the camera shows */
+@media (max-width: 400px) {
+  .tl-gs-camera-top { padding-left: 12px; padding-right: 12px; }
+  .tl-gs-camera-bottom { padding-left: 12px; padding-right: 12px; }
+  .tl-gs-camera-bottom > p { margin-bottom: 8px; font-size: 13px; }
+  .tl-gs-camera-bottom .tl-gs-manual-row button { padding: 0 14px; }
+}
+
+/* Wide screens (laptops, tablets in landscape) and phones turned sideways: camera on the left, controls in a
+   side panel, so neither squeezes the other */
+@media (min-width: 900px), (orientation: landscape) and (max-height: 560px) {
+  .tl-gs-camera { display: grid; grid-template-columns: minmax(0, 1fr) min(380px, 42vw); grid-template-rows: auto minmax(0, 1fr); }
+  .tl-gs-camera-top { grid-column: 1 / -1; }
+  .tl-gs-camera .tl-qrcam { grid-column: 1; grid-row: 2; }
+  .tl-gs-camera-bottom { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; justify-content: center; gap: 4px; max-height: none; border-left: 1px solid rgba(255, 255, 255, 0.1); background: #07110c; }
+  .tl-gs-camera-bottom > p { text-align: left; }
+  .tl-gs-camera .tl-qrcam-frame { width: min(60vh, 46vw, 360px); }
+}
+/* Phones sideways: the header bar and hints get compact */
+@media (orientation: landscape) and (max-height: 560px) {
+  .tl-gs-camera-top { padding-top: max(8px, env(safe-area-inset-top)); padding-bottom: 8px; }
+  .tl-gs-camera-top button { width: 38px; height: 38px; flex-basis: 38px; }
+  .tl-gs-camera-bottom { justify-content: flex-start; padding-top: 10px; padding-right: max(14px, env(safe-area-inset-right)); }
+  .tl-gs-camera-bottom > p { display: none; }
+  .tl-gs-camera .tl-qrcam-frame { width: min(64vh, 40vw, 300px); }
+  .tl-gs-camera .tl-qrcam-frame span { width: 32px; height: 32px; }
+}
+
 .tl-gs-checking { position: absolute; left: 50%; top: 50%; z-index: 2; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; background: rgba(0, 0, 0, 0.7); transform: translate(-50%, -50%); }
 
 .tl-qrcam { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #000; }
@@ -176,3 +240,14 @@
 .tl-gs-drop.is-compact strong { color: #fff; font-size: 14px; }
 .tl-gs-drop.is-compact button { background: #fff; color: #0b1510; }
 @media (prefers-reduced-motion: reduce) { .tl-gv { animation: none; } }
+
+/* Exception request on the result card */
+.tl-gv-exception { display: grid; gap: 8px; width: 100%; text-align: left; }
+.tl-gv-exception label { font-size: 13px; font-weight: 700; }
+.tl-gv-exception input { width: 100%; padding: 12px 14px; border: 1px solid rgba(0, 0, 0, 0.2); border-radius: 10px; font: inherit; font-size: 15px; background: #fff; color: #0b0b0b; }
+.tl-gv-exception small { font-size: 12.5px; color: #991b1b; }
+/* Event list pager on the light layout (the dark console styles it in admin-overview.css) */
+.tl-gs .tl-pager { border-top-color: var(--gs-line); }
+.tl-gs .tl-pager p, .tl-gs .tl-pager-page { color: var(--gs-dim); }
+.tl-gs .tl-pager .tl-aov-pill { border-color: var(--gs-line); background: #fff; color: var(--gs-ink); }
+.tl-gs .tl-pager .tl-aov-pill:hover:not(:disabled) { border-color: var(--gs-green); }

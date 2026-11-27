@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import { assertOnSale } from '../services/eventToolsService.js';
 import prisma from '../config/prisma.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
-import { canManageEvent } from '../utils/eventAccess.js';
+import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE, underAdminReview } from '../utils/eventAccess.js';
 import { MediaValidationError, validateEventImage } from '../services/eventMediaService.js';
 import { uploadFile } from '../utils/storage.js';
 import {
@@ -30,9 +31,11 @@ const fail = (res, error, fallback) => {
 async function managedEvent(req, { write = false } = {}) {
   const event = await prisma.event.findUnique({ where: { id: req.params.eventId } });
   if (!event) throw new VenueError(404, 'Event not found');
-  if (!(await canManageEvent(req.user, event, { requireApproved: write }))) {
+  if (!(await canManageEvent(req.user, event, { requireApproved: write, permission: write ? 'event.edit' : 'event.view', req }))) {
     throw new VenueError(403, 'You are not authorized to manage this event’s venue.');
   }
+  // Seating and tiers are part of what the admin is reviewing
+  if (write && reviewLocked(req.user, event)) throw new VenueError(409, REVIEW_LOCK_MESSAGE);
   return event;
 }
 
@@ -75,6 +78,15 @@ export const createHold = async (req, res) => {
   try {
     const body = holdSchema.parse(req.body);
     const { eventId } = req.params;
+    // Outside the event's sales window nobody can hold seats
+    const ev = await prisma.event.findUnique({ where: { id: eventId }, select: { salesOpenAt: true, salesCloseAt: true, status: true, date: true, time: true, startsAt: true, endsAt: true } });
+    if (ev) {
+      try {
+        assertOnSale(ev);
+      } catch (e) {
+        return res.status(409).json({ success: false, code: e.code, message: e.message });
+      }
+    }
     let holds;
     if ('key' in body) holds = await holdSeat(eventId, body.key, req.user.id);
     else if ('tableKey' in body) holds = await holdTable(eventId, body.tableKey, req.user.id);
@@ -111,7 +123,7 @@ export const releaseHold = async (req, res) => {
     behaviorService.trackBehavior({
       req,
       userId: req.user.id,
-      action: BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED,
+      action: BEHAVIOR_ACTIONS.SEAT_HOLD_RELEASED, // the customer let go of seats: not an abandoned checkout
       eventId: req.params.eventId,
       metadata: { releasedKeys: keys, reason: 'seat_hold_released' },
     });
@@ -124,7 +136,7 @@ export const releaseHold = async (req, res) => {
 
 // ---------- Organizer: editor, drafts, publishing ----------
 
-async function editorPayload(event) {
+async function editorPayload(event, req) {
   const [tiers, draft, published, prot] = await Promise.all([
     prisma.ticketTier.findMany({ where: { eventId: event.id }, orderBy: { price: 'desc' }, select: { id: true, name: true, price: true, totalQuantity: true, availableQuantity: true } }),
     prisma.venueLayout.findFirst({ where: { eventId: event.id, status: 'DRAFT' }, orderBy: { updatedAt: 'desc' } }),
@@ -134,7 +146,7 @@ async function editorPayload(event) {
   const legacySeats = await prisma.seat.count({ where: { eventId: event.id, layoutKey: null } });
   const legacyBooked = legacySeats ? await prisma.seat.count({ where: { eventId: event.id, layoutKey: null, OR: [{ status: 'SOLD' }, { ticket: { isNot: null } }] } }) : 0;
   return {
-    event: { id: event.id, name: event.name, type: event.type, status: event.status, venue: event.venue, city: event.city },
+    event: { id: event.id, name: event.name, type: event.type, status: event.status, venue: event.venue, city: event.city, isHidden: event.isHidden, prebookDraftId: event.prebookDraftId, underReview: req.user.role !== 'SUPER_ADMIN' && underAdminReview(event) },
     suggestedTemplate: suggestTemplate(event.type),
     tiers,
     draft: draft && { id: draft.id, data: draft.data, updatedAt: draft.updatedAt },
@@ -147,7 +159,7 @@ async function editorPayload(event) {
 export const getEditor = async (req, res) => {
   try {
     const event = await managedEvent(req);
-    res.json({ success: true, data: await editorPayload(event) });
+    res.json({ success: true, data: await editorPayload(event, req) });
   } catch (error) {
     fail(res, error, 'Failed to load the venue editor');
   }
@@ -207,7 +219,7 @@ export const publish = async (req, res) => {
     res.json({
       success: true,
       message: `Venue plan v${result.layout.version} is live: ${result.created} seat(s) added, ${result.removed} removed, ${result.updated} updated.`,
-      data: { ...result, editor: await editorPayload(event) },
+      data: { ...result, editor: await editorPayload(event, req) },
     });
   } catch (error) {
     fail(res, error, 'Failed to publish the venue plan');

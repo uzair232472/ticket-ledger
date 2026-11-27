@@ -9,8 +9,8 @@ import PreviewFrame from './PreviewFrame';
 export const CARD_COPY = {
   banner: { title: 'Event banner', text: 'Wide banner shown on your event page.' },
   card: { title: 'Event card image', text: 'Main image for event listings.' },
-  galleryWide: { title: 'Gallery wide image', text: 'Wide image for the gallery section.' },
-  gallery: { title: 'Scrolling gallery', text: 'Multiple square images for the event gallery.' },
+  galleryWide: { title: 'Event details photo', text: 'Photo in the event details card (3:2).' },
+  gallery: { title: 'Event gallery', text: 'Landscape 3:2 photos for the event gallery carousel.' },
 };
 
 /** Form value for one image placement. Nothing changes on the server until the event is saved. */

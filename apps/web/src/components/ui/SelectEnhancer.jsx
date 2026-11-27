@@ -7,10 +7,16 @@ const MAX_H = 320;
 
 /** Theme from where the select sits: dark sections, the organizer / admin studio, or paper pages. */
 function themeOf(el) {
-  if (el.closest('.tl-pill, .tl-mapscene, .tl-acct-section--dark, .tl-dlg--dark, .tl-st-select')) return 'dark';
+  if (el.closest('.tl-pill, .tl-mapscene, .tl-acct-section--dark, .tl-dlg--dark, .tl-st-select, .tl-sp--dark, .tl-basic--dark, .tl-page--dark')) return 'dark';
   if (el.closest('.tl-dash--studio, .tl-ve-panel, .tl-wz-card, .tl-lp, .tl-dash')) return 'studio';
   return 'paper';
 }
+
+// Selects on the dark console pages open the console's own list (dash/ThemedSelect.jsx), never this one
+const ours = (el) => {
+  const select = el?.closest?.(SELECTOR);
+  return select && !select.closest('.tl-aov-root') ? select : null;
+};
 
 /** Options of a native select, keeping optgroup labels. */
 function readOptions(select) {
@@ -66,7 +72,7 @@ export default function SelectEnhancer() {
       lastPointer.current = e.pointerType || 'mouse';
     };
     const onMouseDown = (e) => {
-      const select = e.target.closest?.(SELECTOR);
+      const select = ours(e.target);
       if (!select || e.button !== 0 || lastPointer.current === 'touch') return;
       e.preventDefault();
       select.focus({ preventScroll: true });
@@ -74,7 +80,7 @@ export default function SelectEnhancer() {
       else show(select);
     };
     const onKeyDown = (e) => {
-      const select = e.target.closest?.(SELECTOR);
+      const select = ours(e.target);
       if (!select || open) return;
       if (e.key === ' ' || e.key === 'Enter' || (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) || e.key === 'F4') {
         e.preventDefault();
@@ -84,7 +90,7 @@ export default function SelectEnhancer() {
     // Touch: a tap (not a scroll) on a select opens the designed list instead of the native picker
     let touch = null;
     const onTouchStart = (e) => {
-      const select = e.target.closest?.(SELECTOR);
+      const select = ours(e.target);
       touch = select && e.touches.length === 1 ? { select, x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
     };
     const onTouchEnd = (e) => {

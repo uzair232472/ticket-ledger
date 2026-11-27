@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import usePaymentMethods from '../hooks/usePaymentMethods';
 import { Link, useNavigate, useNavigationType } from 'react-router-dom';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAuth } from '../context/AuthContext';
@@ -564,6 +565,7 @@ const PAYMENT_OPTIONS = [
  * stay in place), traps focus, closes on Escape unless a purchase is in flight, and returns focus on close.
  */
 function PurchaseDialog({ listing, purchasing, purchaseSuccess, purchaseError, paymentMethod, setPaymentMethod, onConfirm, onClose }) {
+  const available = usePaymentMethods();
   const dialogRef = useRef(null);
 
   useEffect(() => {
@@ -660,19 +662,25 @@ function PurchaseDialog({ listing, purchasing, purchaseSuccess, purchaseError, p
             <fieldset className="tl-rs-pay">
               <legend>Payment method</legend>
               <div className="tl-rs-pay-grid">
-                {PAYMENT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    aria-pressed={paymentMethod === opt.value}
-                    className="tl-rs-pay-opt"
-                    onClick={() => setPaymentMethod(opt.value)}
-                    disabled={purchasing}
-                  >
-                    {opt.icon}
-                    <span>{opt.label}</span>
-                  </button>
-                ))}
+                {/* Resale has no card payment flow yet: only the development test checkout can complete a purchase
+                    (the server refuses everything else); the wallets are future integrations */}
+                {PAYMENT_OPTIONS.map((opt) => {
+                  const off = opt.value === 'TEST_INSTANT' ? !available?.MOCK?.available : true;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      aria-pressed={paymentMethod === opt.value}
+                      className="tl-rs-pay-opt"
+                      onClick={() => setPaymentMethod(opt.value)}
+                      disabled={purchasing || off}
+                      title={off ? (opt.value === 'TEST_INSTANT' ? 'Buying resale tickets is not available yet' : 'Coming soon') : undefined}
+                    >
+                      {opt.icon}
+                      <span>{opt.label}{off && opt.value !== 'TEST_INSTANT' ? ' (soon)' : ''}</span>
+                    </button>
+                  );
+                })}
               </div>
             </fieldset>
 
@@ -683,7 +691,8 @@ function PurchaseDialog({ listing, purchasing, purchaseSuccess, purchaseError, p
               </div>
             )}
 
-            <button type="button" disabled={purchasing} onClick={onConfirm} className="tl-btn tl-btn--green tl-rs-confirm" data-autofocus>
+            {available && !available.MOCK?.available && <p className="tl-bk-muted" role="status">Buying resale tickets is not available yet.</p>}
+            <button type="button" disabled={purchasing || !available?.MOCK?.available} onClick={onConfirm} className="tl-btn tl-btn--green tl-rs-confirm" data-autofocus>
               {purchasing ? (
                 <>
                   <span className="tl-rs-spinner" aria-hidden="true" />

@@ -1,0 +1,607 @@
+{
+  "model": "attendance",
+  "title": "Attendance (no-show)",
+  "label": "checked_in",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "day_of_week"
+    ],
+    "numeric": [
+      "start_hour",
+      "tier_rank",
+      "ticket_price_rel",
+      "tickets_in_order",
+      "days_before_event_purchased",
+      "is_transferred",
+      "is_resold",
+      "customer_prior_tickets",
+      "customer_prior_attended",
+      "customer_prior_no_shows"
+    ]
+  },
+  "data": {
+    "dataset": "attendance_no_show.csv",
+    "rows": 150000,
+    "source": "synthetic-v0",
+    "sha256": "f29f55c61b1a3314b2b63ba53640815fe6d94a1849c739eabc6bb0f0ad695e11",
+    "from": "2023-01-10T09:00:00+00:00",
+    "to": "2025-12-29T16:00:00+00:00"
+  },
+  "split": {
+    "train_rows": 94552,
+    "val_rows": 20016,
+    "test_rows": 22500,
+    "val_start": "2025-03-07T20:59:59.999999232+00:00",
+    "test_start": "2025-07-30T17:41:59.999999744+00:00",
+    "purged_train_rows": 250,
+    "purged_val_rows": 300,
+    "holdout_groups": 1795
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "average error in people attending per event",
+  "higher_is_better": false,
+  "test_size": {
+    "positives (rare outcome)": 3485,
+    "other outcome": 19015,
+    "events": 450
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.6755,
+        "train_vs_validation": 0.0325,
+        "not_memorising": true
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.677,
+        "train_vs_validation": 0.0117,
+        "not_memorising": true
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.6777,
+        "train_vs_validation": 0.0066,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "simple"
+  },
+  "result": {
+    "model": 428.39,
+    "baseline": 478.5691,
+    "improvement": 50.1792,
+    "improvement_95ci": [
+      11.5599,
+      86.6236
+    ]
+  },
+  "details": {
+    "test_auc": 0.6835,
+    "test_brier": 0.1228,
+    "current_fixed_rule_error": 673.9,
+    "no_show_threshold": 0.8574,
+    "average_event_attendance": 6685.4
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.0005,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "calibration error (ECE)",
+      "value": 0.0069,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "per-ticket balanced accuracy vs baseline (0.5)",
+      "value": 0.6363,
+      "limit": ">= 0.5 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 17264,
+      "model": 355.8413,
+      "baseline": 1660.6101
+    },
+    "customers_unseen": {
+      "rows": 5236,
+      "model": 177.643,
+      "baseline": 5160.5132
+    },
+    "first_time_attendees": {
+      "rows": 2106,
+      "model": 99.4435,
+      "baseline": 6093.1094
+    },
+    "returning_attendees": {
+      "rows": 20394,
+      "model": 396.7822,
+      "baseline": 787.1622
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 9455,
+        "value": 0.6658
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 23638,
+        "value": 0.6742
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 47276,
+        "value": 0.6768
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 94552,
+        "value": 0.6838
+      }
+    ],
+    "still_improving": true,
+    "note": "more data would likely still help"
+  },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-31T09:00:00+00:00",
+        "to": "2025-09-01T09:00:00+00:00",
+        "rows": 4500,
+        "model": 320.5851,
+        "rule": 366.1272
+      },
+      {
+        "from": "2025-09-01T14:00:00+00:00",
+        "to": "2025-09-30T09:00:00+00:00",
+        "rows": 4500,
+        "model": 505.0403,
+        "rule": 491.2751
+      },
+      {
+        "from": "2025-09-30T15:00:00+00:00",
+        "to": "2025-11-03T09:00:00+00:00",
+        "rows": 4500,
+        "model": 422.3135,
+        "rule": 444.8861
+      },
+      {
+        "from": "2025-11-03T13:00:00+00:00",
+        "to": "2025-11-27T14:00:00+00:00",
+        "rows": 4500,
+        "model": 430.5728,
+        "rule": 505.849
+      },
+      {
+        "from": "2025-11-27T15:00:00+00:00",
+        "to": "2025-12-29T16:00:00+00:00",
+        "rows": 4500,
+        "model": 463.4381,
+        "rule": 584.7082
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 4000,
+      "features": [
+        {
+          "feature": "customer_prior_no_shows",
+          "label": "earlier no-shows",
+          "importance": 0.09613
+        },
+        {
+          "feature": "days_before_event_purchased",
+          "label": "days bought in advance",
+          "importance": 0.04162
+        },
+        {
+          "feature": "ticket_price_rel",
+          "label": "price vs typical",
+          "importance": 0.03234
+        },
+        {
+          "feature": "customer_prior_attended",
+          "label": "earlier events attended",
+          "importance": 0.02817
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.0108
+        },
+        {
+          "feature": "tickets_in_order",
+          "label": "tickets in the order",
+          "importance": 0.00751
+        },
+        {
+          "feature": "start_hour",
+          "label": "start time",
+          "importance": 0.00265
+        },
+        {
+          "feature": "is_resold",
+          "label": "resold ticket",
+          "importance": 0.00182
+        },
+        {
+          "feature": "day_of_week",
+          "label": "day of the week",
+          "importance": 0.00128
+        },
+        {
+          "feature": "is_transferred",
+          "label": "transferred ticket",
+          "importance": 0.00125
+        },
+        {
+          "feature": "customer_prior_tickets",
+          "label": "earlier tickets",
+          "importance": 0.00016
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "tier_rank",
+          "label": "ticket tier",
+          "importance": -0.00097
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": -0.00114
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.6672,
+        "actual": 0.6422,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.7609,
+        "actual": 0.7618,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8023,
+        "actual": 0.7911,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8398,
+        "actual": 0.8289,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8581,
+        "actual": 0.8618,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8826,
+        "actual": 0.8844,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.8927,
+        "actual": 0.892,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.9106,
+        "actual": 0.9147,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.9283,
+        "actual": 0.9244,
+        "rows": 2250
+      },
+      {
+        "predicted": 0.9561,
+        "actual": 0.9498,
+        "rows": 2250
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 1.0,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "customer_prior_attended",
+            "label": "earlier events attended",
+            "value": 30,
+            "typical": 3.0,
+            "effect": 4.57,
+            "direction": "up"
+          },
+          {
+            "feature": "tier_rank",
+            "label": "ticket tier",
+            "value": 1,
+            "typical": 0.0,
+            "effect": 0.65,
+            "direction": "up"
+          },
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 3.156,
+            "typical": 0.756,
+            "effect": 0.65,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.8653,
+        "actual": 1,
+        "reasons": [
+          {
+            "feature": "tickets_in_order",
+            "label": "tickets in the order",
+            "value": 1,
+            "typical": 2.0,
+            "effect": -5.54,
+            "direction": "down"
+          },
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 0.8,
+            "typical": 0.756,
+            "effect": 0.79,
+            "direction": "up"
+          },
+          {
+            "feature": "days_before_event_purchased",
+            "label": "days bought in advance",
+            "value": 16.7,
+            "typical": 21.2,
+            "effect": 0.79,
+            "direction": "up"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 950,
+            "predicted_rate": 0.8801,
+            "actual_rate": 0.9095,
+            "gap": -0.0294,
+            "auc": 0.6902,
+            "watch": false,
+            "why": null
+          },
+          "Islamabad": {
+            "rows": 3600,
+            "predicted_rate": 0.8503,
+            "actual_rate": 0.8575,
+            "gap": -0.0072,
+            "auc": 0.6761,
+            "watch": false,
+            "why": null
+          },
+          "Karachi": {
+            "rows": 7850,
+            "predicted_rate": 0.8483,
+            "actual_rate": 0.8392,
+            "gap": 0.0091,
+            "auc": 0.6815,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 6000,
+            "predicted_rate": 0.8538,
+            "actual_rate": 0.8425,
+            "gap": 0.0113,
+            "auc": 0.6768,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 950,
+            "predicted_rate": 0.8248,
+            "actual_rate": 0.8358,
+            "gap": -0.0109,
+            "auc": 0.713,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 1200,
+            "predicted_rate": 0.8394,
+            "actual_rate": 0.8508,
+            "gap": -0.0114,
+            "auc": 0.7012,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 50,
+            "note": "too few cases to measure"
+          },
+          "Rawalpindi": {
+            "rows": 1900,
+            "predicted_rate": 0.8452,
+            "actual_rate": 0.8216,
+            "gap": 0.0237,
+            "auc": 0.686,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 1000,
+            "predicted_rate": 0.8547,
+            "actual_rate": 0.832,
+            "gap": 0.0227,
+            "auc": 0.6698,
+            "watch": false,
+            "why": null
+          },
+          "CONFERENCE": {
+            "rows": 1450,
+            "predicted_rate": 0.8324,
+            "actual_rate": 0.8262,
+            "gap": 0.0062,
+            "auc": 0.6971,
+            "watch": false,
+            "why": null
+          },
+          "CRICKET_MATCH": {
+            "rows": 6350,
+            "predicted_rate": 0.864,
+            "actual_rate": 0.8542,
+            "gap": 0.0098,
+            "auc": 0.6583,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 1750,
+            "predicted_rate": 0.8212,
+            "actual_rate": 0.8171,
+            "gap": 0.004,
+            "auc": 0.6877,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 1150,
+            "predicted_rate": 0.7915,
+            "actual_rate": 0.793,
+            "gap": -0.0015,
+            "auc": 0.6443,
+            "watch": false,
+            "why": null
+          },
+          "KABADDI": {
+            "rows": 2050,
+            "predicted_rate": 0.7997,
+            "actual_rate": 0.7849,
+            "gap": 0.0148,
+            "auc": 0.6811,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 3800,
+            "predicted_rate": 0.8644,
+            "actual_rate": 0.8637,
+            "gap": 0.0008,
+            "auc": 0.6931,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 1900,
+            "predicted_rate": 0.894,
+            "actual_rate": 0.8916,
+            "gap": 0.0024,
+            "auc": 0.663,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 1450,
+            "predicted_rate": 0.841,
+            "actual_rate": 0.8566,
+            "gap": -0.0156,
+            "auc": 0.6822,
+            "watch": false,
+            "why": null
+          },
+          "THEATRE": {
+            "rows": 1600,
+            "predicted_rate": 0.865,
+            "actual_rate": 0.87,
+            "gap": -0.005,
+            "auc": 0.6817,
+            "watch": false,
+            "why": null
+          }
+        },
+        "customer_history": {
+          "first_time_attendees": {
+            "rows": 2106,
+            "predicted_rate": 0.8554,
+            "actual_rate": 0.8504,
+            "gap": 0.005,
+            "auc": 0.6391,
+            "watch": false,
+            "why": null
+          },
+          "returning_attendees": {
+            "rows": 20394,
+            "predicted_rate": 0.8493,
+            "actual_rate": 0.8446,
+            "gap": 0.0047,
+            "auc": 0.6876,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [],
+      "rule": "predicted rate off by more than 5%",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    }
+  },
+  "status": "PASSED",
+  "reasons": [],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "duration_seconds": 34.3,
+  "recommendation": "KEEP_CURRENT: trained on synthetic data",
+  "artifact": "models/v0/attendance.joblib"
+}

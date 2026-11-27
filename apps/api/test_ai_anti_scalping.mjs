@@ -55,12 +55,22 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
   });
 
   // 4. Test Normal Human Telemetry Check (Low Risk, Allowed)
+  // Step 6: the legacy scoring endpoints are SUPER_ADMIN only (401 anonymous, 403 for a customer)
+  await t.test('3b. Legacy ML scoring endpoints refuse anonymous callers and customers', async () => {
+    for (const path of ['/ml/fraud-check', '/ml/fraud/score', '/ml/demand-forecast', '/ml/forecast/demand', '/ml/intent-score', '/ml/intent/predict']) {
+      const anon = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      assert.equal(anon.status, 401, `${path} anonymous`);
+      const cust = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${customerToken}` }, body: '{}' });
+      assert.equal(cust.status, 403, `${path} customer`);
+    }
+  });
+
   await t.test('4. Evaluate Normal Human Session: Low fraud score (< 20) and Allowed', async () => {
     const res = await fetch(`${BASE_URL}/ml/fraud-check`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${customerToken}`,
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
         checkoutDurationSeconds: 38.5,
@@ -85,7 +95,7 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${customerToken}`,
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
         checkoutDurationSeconds: 0.65,
@@ -137,6 +147,7 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
         sessionDurationSeconds: 240,
@@ -196,7 +207,9 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
     const botData = await botCheckoutRes.json();
 
     assert.equal(botCheckoutRes.status, 403);
-    assert.equal(botData.blockedByAI, true);
+    assert.equal(botData.blockedByRules, true);
+    assert.equal(botData.blockedByAI, true, 'deprecated alias kept for one release');
+    assert.doesNotMatch(botData.message, /AI/, 'the block is made by rules, not AI');
     assert.equal(botData.data.riskLevel, 'CRITICAL_BOT');
     assert.match(botData.message, /Anti-Scalping Security Alert/i);
   });
@@ -226,7 +239,7 @@ test('MODULE 12 - AI Anti-Scalping, Bot Detection & Behavioral Analytics Tests',
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      body: JSON.stringify({ reason: 'Repeated high-frequency scalper bot attempts' }),
+      body: JSON.stringify({ reason: 'Repeated high-frequency scalper bot attempts', confirm: customerUser.email }),
     });
     const freezeData = await freezeRes.json();
     assert.equal(freezeRes.status, 200);

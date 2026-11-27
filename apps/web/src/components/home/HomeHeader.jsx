@@ -21,8 +21,8 @@ function useMenuGroups(onCategories) {
 
   const discover = [
     { label: 'Explore Events', to: '/events' },
-    { label: 'Categories', onClick: onCategories },
-    { label: 'All Categories', to: '/categories' },
+    // One entry: the categories page (it lists every category)
+    { label: 'Categories', to: '/categories' },
   ];
   if (!isAuthenticated || role === 'CUSTOMER' || role === 'SUPER_ADMIN') discover.push({ label: 'Fan Resale', to: '/resale' });
   groups.push({ title: 'Discover', items: discover });
@@ -57,7 +57,7 @@ function useMenuGroups(onCategories) {
       title: 'Admin',
       items: [
         { label: 'Admin Dashboard', to: '/admin/dashboard' },
-        { label: 'Organizer Approvals', to: '/admin/companies' },
+        { label: 'Organizer Approvals', to: '/admin/organizer-approvals' },
         { label: 'Event Approvals', to: '/admin/event-approvals' },
         { label: 'Fraud Watchlist', to: '/admin/fraud-watchlist' },
         { label: 'Demand Forecast', to: '/admin/demand-forecast' },
@@ -74,6 +74,8 @@ function useMenuGroups(onCategories) {
       ? [
           { label: 'Notifications', to: '/notifications', badge: 'notifications' },
           { label: 'Wishlist', to: '/wishlist' },
+          { label: 'Help & Support', to: '/support' },
+          ...(user?.isSupportAgent ? [{ label: 'Support Desk', to: '/support/desk' }] : []),
           { label: 'Profile & Settings', to: '/profile' },
           { label: 'Log Out', action: 'logout' },
         ]

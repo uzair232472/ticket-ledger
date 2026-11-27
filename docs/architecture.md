@@ -19,17 +19,17 @@ TicketLedger is a next-generation decentralized ticketing ecosystem designed for
 |  - JWT & Role-Based Auth Guard                              |
 |  - Seat Reservation Engine (Redis Atomic 10-min TTL Lock)   |
 |  - Secure Dynamic QR Generator (HMAC Signed + Nonce)        |
-|  - Multi-Payment Hub (Mock, Stripe, JazzCash, EasyPaisa)    |
+|  - Payments: Stripe (fail-closed), test checkout (dev only) |
 |  - Blockchain Minting Dispatcher (Ethers.js -> Polygon Amoy)|
 |  - Real-Time Socket.io Server                               |
 +---------------+------------------------------+---------------+
                 |                              |
                 v                              v
 +-------------------------------+  +---------------------------+
-|    Database & Cache Tier      |  |     FastAPI ML Tier       |
-|  - PostgreSQL 16 (Relational) |  |  - Purchase Intent Scorer |
-|  - Redis 7 (Seat Locking)     |  |  - Fraud Detection Engine |
-|  - Prisma ORM Data Access     |  |  - 48h Demand Forecaster  |
+|    Database & Cache Tier      |  |  FastAPI ML Tier (SHADOW) |
+|  - PostgreSQL 16 (Relational) |  |  - Scores in background   |
+|  - Redis 7 (Seat Locking)     |  |  - Never decides anything |
+|  - Prisma ORM Data Access     |  |  - Rules decide (in API)  |
 +-------------------------------+  +---------------------------+
                 |
                 v
@@ -49,8 +49,8 @@ TicketLedger is a next-generation decentralized ticketing ecosystem designed for
 | **Database** | PostgreSQL 16 + Prisma ORM | ACID compliance for financial orders, strict relational constraints |
 | **Cache & Lock** | Redis 7 | Sub-millisecond atomic key expirations for 10-minute seat reservations |
 | **Blockchain** | Polygon Amoy (Solidity ERC721) | Ultra-low gas fees, fast finality, MetaMask compatibility, anti-scalp cap |
-| **ML Engine** | Python FastAPI, Scikit-learn, TF | High-speed REST inference for intent and fraud scoring |
-| **Payments** | Stripe, JazzCash, EasyPaisa, Mock | Local Pakistani payment gateways + international sandbox |
+| **ML Engine** | Python FastAPI, Scikit-learn | Shadow-only models (Step 6): logged next to the rules, shown to staff as labelled experimental aggregates; every decision is made by rules in the API (docs/ml-step6-integration.md) |
+| **Payments** | Stripe (fail-closed), Mock (development only) | JazzCash / EasyPaisa disabled until real integrations exist (R0); live payments not enabled |
 | **Real-time** | Socket.io | Live seat occupancy updates, gate check-in counts |
 | **Documents/QR** | PDFKit, QRCode | Cryptographically verifiable dynamic ticket payloads & PDF downloads |
 

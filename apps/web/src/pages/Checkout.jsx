@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Tag, Trash2, X } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useDialog } from '../components/ui/DialogProvider';
 import api from '../utils/api';
+import usePaymentMethods, { firstAvailable } from '../hooks/usePaymentMethods';
 import { useAuth } from '../context/AuthContext';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
 import { formatClock, groupByTier, lineTitle, summaryLines } from '../components/venue/BookingSummary';
 import { formatPkr } from '../components/venue/venueTheme';
 import { getEventVisual } from '../utils/eventMedia';
+import { useEventExtras } from '../components/event-detail/EventExtras';
 import { formatEventDate, formatEventTime } from '../utils/eventTime';
 
 const stripePromise = loadStripe(
@@ -18,13 +20,14 @@ const stripePromise = loadStripe(
   'pk_test_51UNHhM4Ve73zHzr5tqCqRRooaoF8dNMnKcv6aQyRV2d8tbZhf4QvO2q6w65A1YCr1lhVkcd1OOY0wZRwfDedBiUy00w2gURSW4'
 );
 
-// The payment options the API already supports (bookingController / paymentService)
+// Payment options; which ones can be used comes from the server (GET /api/payments/methods)
 const METHODS = [
-  { value: 'MOCK', label: 'Instant test payment', note: 'Sandbox · confirms immediately' },
-  { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet · MPIN / OTP' },
-  { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet · OTP' },
-  { value: 'STRIPE', label: 'Card (Stripe Sandbox)', note: 'Visa / Mastercard test payment' },
+  { value: 'STRIPE', label: 'Card', note: 'Visa / Mastercard, processed by Stripe' },
+  { value: 'MOCK', label: 'Test payment', note: 'Development only · no money is charged' },
+  { value: 'JAZZCASH', label: 'JazzCash', note: 'Mobile wallet' },
+  { value: 'EASYPAISA', label: 'EasyPaisa', note: 'Mobile wallet' },
 ];
+const PREFERRED = ['STRIPE', 'MOCK'];
 const WALLETS = new Set(['JAZZCASH', 'EASYPAISA']);
 const digits = (v) => v.replace(/\D/g, '');
 // "+92 300 1234567" and "0300-1234567" → "03001234567"
@@ -50,10 +53,30 @@ async function loadReservation(eventId) {
   };
 }
 
+// A discount code from a recovery reminder link (/events/:id?code=…) waits here until checkout
+const codeKey = (eventId) => `tl_discount_${eventId}`;
+const savedCode = (eventId) => {
+  try {
+    return sessionStorage.getItem(codeKey(eventId)) || '';
+  } catch {
+    return '';
+  }
+};
+const saveCode = (eventId, code) => {
+  try {
+    if (code) sessionStorage.setItem(codeKey(eventId), code);
+    else sessionStorage.removeItem(codeKey(eventId));
+  } catch {
+    /* storage unavailable */
+  }
+};
+const newAttemptKey = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `co-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
 function paymentDetailsFor(method, params, form) {
   if (method === 'JAZZCASH') return { otpCode: form.otp, ppTxnRefNo: params.ppTxnRefNo };
   if (method === 'EASYPAISA') return { otpCode: form.otp, epOrderId: params.epOrderId };
-  if (method === 'STRIPE') return { clientSecret: params.clientSecret, paymentIntentId: params.paymentIntentId, paymentTxId: params.paymentIntentId || `ch_${Date.now()}` };
+  // The server checks the order's own PaymentIntent with Stripe; nothing from here is taken as proof of payment
+  if (method === 'STRIPE') return { paymentIntentId: params.paymentIntentId };
   return { paymentTxId: params.mockTxId };
 }
 
@@ -118,7 +141,12 @@ function CheckoutContent() {
   const [now, setNow] = useState(Date.now());
   const offset = useRef(0);
 
-  const [method, setMethod] = useState('MOCK');
+  const available = usePaymentMethods();
+  const [method, setMethod] = useState(null);
+  // The first method the server can take a payment with (card first); never one it refuses
+  useEffect(() => {
+    if (available && !available[method]?.available) setMethod(firstAvailable(available, PREFERRED));
+  }, [available, method]);
   const [form, setForm] = useState({
     phone: user?.phone || '',
     otp: '',
@@ -133,7 +161,20 @@ function CheckoutContent() {
   const [serverTotal, setServerTotal] = useState(null);
   const [confirmed, setConfirmed] = useState(null); // { order, receipt } once the payment is confirmed
   const inFlight = useRef(false);
-  const orderRef = useRef(null); // { id, method, keys, total, params }
+  const orderRef = useRef(null); // { id, method, keys, code, total, params }
+  // One Idempotency-Key per checkout attempt (same seats and code): a retry after a timeout or a double click
+  // reaches the same order on the server instead of creating another
+  const attemptRef = useRef(null); // { sig, key }
+  // Discount code: what is typed, and what the server accepted for these seats
+  const [codeInput, setCodeInput] = useState(() => new URLSearchParams(location.search).get('code') || savedCode(eventId));
+  const [discount, setDiscount] = useState(null); // { code, discount, total, label }
+  const [codeError, setCodeError] = useState('');
+  const [applying, setApplying] = useState(false);
+  const autoApplied = useRef(false);
+  // The event's terms: accepted with a checkbox when the organizer set some
+  const extras = useEventExtras(eventId);
+  const terms = extras?.policies?.terms || null;
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const formRef = useRef(null);
   const problemRef = useRef(null);
 
@@ -164,8 +205,62 @@ function CheckoutContent() {
   const lines = useMemo(() => summaryLines(mine), [mine]);
   const groups = useMemo(() => groupByTier(lines), [lines]);
   const subtotal = lines.reduce((n, l) => n + l.total, 0);
-  const total = serverTotal ?? subtotal;
+  // The server's price for these seats: discount (code or group), service fee, tax, total
+  const [pricing, setPricing] = useState(null);
+  const expectedTotal = pricing?.total ?? (discount ? discount.total : subtotal);
+  const total = serverTotal ?? expectedTotal;
   const keys = useMemo(() => mine.map((m) => m.id).sort().join(','), [mine]);
+
+  // Check a code with the server for the seats held now
+  const applyCode = useCallback(async (raw, { quiet = false } = {}) => {
+    const code = String(raw || '').trim().toUpperCase();
+    if (!code || !mine.length) return;
+    setApplying(true);
+    setCodeError('');
+    try {
+      const { data } = await api.post('/bookings/quote', { eventId, seatIds: mine.map((m) => m.id), code });
+      const d = data.data;
+      setPricing(d);
+      setDiscount({ code: d.code, discount: d.discount, total: d.total, applied: d.codeApplied !== false, label: d.type === 'PERCENT' ? `${d.value}% off` : `${formatPkr(d.value)} off` });
+      setCodeInput(d.code);
+      saveCode(eventId, d.code);
+    } catch (err) {
+      setDiscount(null);
+      if (!quiet || err.response?.status === 400) setCodeError(err.response?.data?.message || 'We couldn’t check this code. Try again.');
+    } finally {
+      setApplying(false);
+    }
+  }, [eventId, mine]);
+  // Price without a code (group discount, fees and tax still apply)
+  const quote = useCallback(async () => {
+    if (!mine.length) return;
+    try {
+      const { data } = await api.post('/bookings/quote', { eventId, seatIds: mine.map((m) => m.id) });
+      setPricing(data.data);
+    } catch {
+      setPricing(null);
+    }
+  }, [eventId, mine]);
+  const removeCode = () => {
+    quote();
+    setDiscount(null);
+    setCodeInput('');
+    setCodeError('');
+    saveCode(eventId, '');
+  };
+  // A code from the reminder link is applied once the seats are known; a change of seats re-prices it
+  useEffect(() => {
+    if (!mine.length) return;
+    if (!autoApplied.current) {
+      autoApplied.current = true;
+      if (codeInput) applyCode(codeInput, { quiet: true });
+      else quote();
+      return;
+    }
+    if (discount) applyCode(discount.code, { quiet: true });
+    else quote();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keys]);
 
   // Reservation countdown from the server's own expiry times
   const earliest = useMemo(() => {
@@ -180,8 +275,8 @@ function CheckoutContent() {
   const secondsLeft = earliest ? Math.max(0, Math.round((earliest - (now + offset.current)) / 1000)) : null;
   const expired = secondsLeft === 0;
 
-  // A new selection or method invalidates the server's quote
-  useEffect(() => setServerTotal(null), [keys, method]);
+  // A new selection, method or code invalidates the server's quote
+  useEffect(() => setServerTotal(null), [keys, method, discount?.code]);
 
   useEffect(() => {
     if (problem) problemRef.current?.focus();
@@ -259,12 +354,17 @@ function CheckoutContent() {
       return;
     }
 
+    if (terms && !acceptTerms) {
+      setProblem({ tone: 'error', kind: 'validation', text: 'Please accept the event terms to continue.' });
+      return;
+    }
     inFlight.current = true;
     setProblem(null);
     let stage = 'initiate';
     try {
       let order = orderRef.current;
-      if (!order || order.method !== method || order.keys !== keys) {
+      const code = discount?.code || '';
+      if (!order || order.method !== method || order.keys !== keys || order.code !== code) {
         setPhase('reserving');
         const durationSec = Math.max(0.1, (Date.now() - mountTime.current) / 1000);
         const clicksPerMin = Math.round((clickCount.current / Math.max(1, durationSec)) * 60) || 28;
@@ -284,20 +384,29 @@ function CheckoutContent() {
             deviceSwitches: 0,
           };
 
+        const sig = `${keys}|${code}`;
+        if (attemptRef.current?.sig !== sig) attemptRef.current = { sig, key: newAttemptKey() };
         const { data } = await api.post('/bookings/initiate', {
           eventId,
           seatIds: mine.map((m) => m.id),
           paymentMethod: method,
           customerPhone: normalizePhone(form.phone) || undefined,
+          discountCode: code || undefined,
+          acceptTerms: terms ? acceptTerms : undefined,
           telemetry,
-        });
+        }, { headers: { 'Idempotency-Key': attemptRef.current.key } });
         const d = data.data;
-        order = { id: d.orderId, method, keys, total: Number(d.totalAmount), params: d.paymentParams };
+        if (d.alreadyPaid && !d.paymentParams) {
+          // This exact checkout was already paid: show its confirmation
+          navigate(`/bookings/${d.orderId}/confirmation`, { replace: true, state: { eventId } });
+          return;
+        }
+        order = { id: d.orderId, method, keys, code, total: Number(d.totalAmount), params: d.paymentParams };
         orderRef.current = order;
         // The server prices the order; if that differs from what was shown, stop and let the customer review
-        if (Math.abs(order.total - subtotal) > 0.009) {
+        if (Math.abs(order.total - expectedTotal) > 0.009) {
           setServerTotal(order.total);
-          setProblem({ tone: 'warn', kind: 'price', text: `The total was recalculated by the server: ${formatPkr(order.total)} (shown before: ${formatPkr(subtotal)}). Review the order and press Confirm order again to pay.` });
+          setProblem({ tone: 'warn', kind: 'price', text: `The total was recalculated by the server: ${formatPkr(order.total)} (shown before: ${formatPkr(expectedTotal)}). Review the order and press Confirm order again to pay.` });
           return;
         }
       }
@@ -309,7 +418,10 @@ function CheckoutContent() {
 
       // Handle real Stripe Sandbox checkout only when the API created a real PaymentIntent
       // (only that path returns paymentIntentId; the simulated fallback's clientSecret is unknown to Stripe)
-      if (method === 'STRIPE' && stripe && elements) {
+      // Already paid at Stripe (a retry after the card went through): only the confirmation is left
+      if (method === 'STRIPE' && order.params?.alreadyPaid) {
+        paymentDetails = { paymentIntentId: order.params.paymentIntentId };
+      } else if (method === 'STRIPE' && stripe && elements) {
         const cardElement = elements.getElement(CardElement);
         if (cardElement && order.params?.paymentIntentId && order.params?.clientSecret) {
           const stripeRes = await stripe.confirmCardPayment(order.params.clientSecret, {
@@ -334,11 +446,8 @@ function CheckoutContent() {
             return;
           }
 
-          paymentDetails = {
-            paymentIntentId: stripeRes.paymentIntent.id,
-            paymentTxId: stripeRes.paymentIntent.id,
-            cardLast4: stripeRes.paymentIntent.payment_method?.card?.last4 || '4242',
-          };
+          // The server confirms the order only after checking this PaymentIntent with Stripe itself
+          paymentDetails = { paymentIntentId: stripeRes.paymentIntent.id };
         }
       }
 
@@ -366,8 +475,22 @@ function CheckoutContent() {
       const msg = err.response?.data?.message || 'Something went wrong. Please try again.';
       if (!err.response) {
         setProblem({ tone: 'error', kind: 'network', text: 'We couldn’t reach TicketLedger. Check your connection and try again — nothing has been charged.' });
+      } else if (stage === 'initiate' && err.response?.data?.code === 'PAYMENT_ALREADY_RECEIVED' && err.response.data.orderId) {
+        // An earlier checkout of these seats was paid: confirm that one instead of charging again
+        orderRef.current = null;
+        try {
+          const done = await api.post('/bookings/confirm', { orderId: err.response.data.orderId, paymentDetails: {} }, { timeout: 45000 });
+          setConfirmed({ order: done.data.data.order, receipt: done.data.data.paymentReceipt });
+          window.dispatchEvent(new Event('tl:holds-changed'));
+        } catch {
+          navigate(`/bookings/${err.response.data.orderId}/confirmation`, { replace: true, state: { eventId, pending: true } });
+        }
+      } else if (stage === 'initiate' && err.response?.data?.field === 'discountCode') {
+        setDiscount(null);
+        setCodeError(msg);
+        setProblem({ tone: 'error', kind: 'validation', text: `${msg} Remove the code or try another to continue.` });
       } else if (stage === 'initiate') {
-        if (err.response?.data?.blockedByAI) {
+        if (err.response?.data?.blockedByRules || err.response?.data?.blockedByAI) {
           const anomalies = err.response?.data?.data?.anomalyFactors?.join(' • ') || '';
           setProblem({ tone: 'error', kind: 'blocked', text: `🚨 ${msg} ${anomalies ? `(Signals: ${anomalies})` : ''}` });
         }
@@ -413,10 +536,9 @@ function CheckoutContent() {
 
   if (!eventId || status === 'error' || (status === 'ready' && mine.length === 0)) {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {header}
         <section className="tl-bk-panel tl-co-status" aria-labelledby="co-empty">
-          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
           <h2 id="co-empty" className="tl-co-status-title">{status === 'error' ? 'Checkout unavailable' : 'No reserved tickets'}</h2>
           <p>{status === 'error' ? loadError : 'Your reservation may have expired, or no seats have been selected yet. Choose seats to start a new order.'}</p>
           <div className="tl-co-actions">
@@ -431,7 +553,7 @@ function CheckoutContent() {
 
   if (status === 'loading' || authLoading) {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {header}
         <div className="tl-co-grid" aria-busy="true">
           <div className="tl-vb-skeleton" style={{ height: 520 }} />
@@ -443,7 +565,7 @@ function CheckoutContent() {
   }
 
   return (
-    <BookingShell>
+    <BookingShell dark>
       {header}
       <form ref={formRef} onSubmit={submit} noValidate className="tl-co-grid">
         <div className="tl-bk-rise">
@@ -527,14 +649,18 @@ function CheckoutContent() {
             <legend className="tl-sr">Payment method</legend>
             <h2 className="tl-bk-h2" aria-hidden="true">Payment</h2>
             <div className="tl-co-methods" role="radiogroup" aria-label="Payment method">
-              {METHODS.map((m) => (
-                <label key={m.value} className="tl-co-method">
-                  <input type="radio" name="method" value={m.value} checked={method === m.value} onChange={() => { setMethod(m.value); setFieldErrors({}); setProblem(null); }} />
-                  <span className="tl-co-radio" aria-hidden="true" />
-                  <span><strong>{m.label}</strong><small>{m.note}</small></span>
-                </label>
-              ))}
+              {METHODS.filter((m) => m.value !== 'MOCK' || available?.MOCK?.available).map((m) => {
+                const off = !available?.[m.value]?.available;
+                return (
+                  <label key={m.value} className="tl-co-method" aria-disabled={off || undefined} style={off ? { opacity: 0.55 } : undefined}>
+                    <input type="radio" name="method" value={m.value} disabled={off} checked={method === m.value} onChange={() => { setMethod(m.value); setFieldErrors({}); setProblem(null); }} />
+                    <span className="tl-co-radio" aria-hidden="true" />
+                    <span><strong>{m.label}</strong><small>{off ? (available ? (m.value === 'JAZZCASH' || m.value === 'EASYPAISA' ? 'Coming soon' : available[m.value]?.reason || 'Not available') : 'Checking…') : m.note}</small></span>
+                  </label>
+                );
+              })}
             </div>
+            {available && !method && <p className="tl-co-gateway" role="alert">No payment method is available right now. Please try again later.</p>}
             {WALLETS.has(method) && (
               <div className="tl-co-gateway">
                 <p className="tl-bk-muted">{method === 'JAZZCASH' ? 'JazzCash' : 'EasyPaisa'} sends an authorisation request to the number above. Sandbox code: 123456.</p>
@@ -564,11 +690,12 @@ function CheckoutContent() {
                         style: {
                           base: {
                             fontSize: '15px',
-                            color: '#0f172a',
-                            fontFamily: 'Inter, system-ui, sans-serif',
-                            '::placeholder': { color: '#94a3b8' },
+                            color: '#f2f6f4',
+                            iconColor: '#22e06b',
+                            fontFamily: 'Plus Jakarta Sans, Inter, system-ui, sans-serif',
+                            '::placeholder': { color: 'rgba(226, 236, 232, 0.45)' },
                           },
-                          invalid: { color: '#ef4444' },
+                          invalid: { color: '#fb7185', iconColor: '#fb7185' },
                         },
                       }}
                     />
@@ -593,10 +720,40 @@ function CheckoutContent() {
             </div>
             <dl className="tl-co-sum">
               <div><dt>Tickets ({mine.length})</dt><dd>{formatPkr(subtotal)}</dd></div>
-              <div><dt>Service fee</dt><dd>{formatPkr(0)}</dd></div>
+              {discount && discount.applied && <div><dt>Discount ({discount.code} · {discount.label})</dt><dd>−{formatPkr(discount.discount)}</dd></div>}
+              {pricing?.groupDiscount > 0 && <div><dt>Group discount ({pricing.group?.percent}% for {pricing.group?.minTickets}+ tickets)</dt><dd>−{formatPkr(pricing.groupDiscount)}</dd></div>}
+              <div><dt>Service fee</dt><dd>{formatPkr(pricing?.serviceFee || 0)}</dd></div>
+              {pricing?.tax > 0 && <div><dt>{pricing.taxLabel} ({pricing.taxPercent}%)</dt><dd>{formatPkr(pricing.tax)}</dd></div>}
               <div><dt>NFT minting &amp; network gas</dt><dd>Included</dd></div>
-              {serverTotal != null && serverTotal !== subtotal && <div><dt>Price adjustment (server)</dt><dd>{formatPkr(serverTotal - subtotal)}</dd></div>}
+              {serverTotal != null && serverTotal !== expectedTotal && <div><dt>Price adjustment (server)</dt><dd>{formatPkr(serverTotal - expectedTotal)}</dd></div>}
             </dl>
+            <div className="tl-co-code">
+              {discount ? (
+                <p className="tl-co-code-applied">
+                  <span><Tag className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> <b>{discount.code}</b> {discount.applied ? <>applied · you save {formatPkr(discount.discount)}</> : <>not used: your group discount saves more</>}</span>
+                  <button type="button" className="tl-bk-link" onClick={removeCode} disabled={busy}>Remove</button>
+                </p>
+              ) : (
+                <div className="tl-co-code-row">
+                  <label className="tl-sr" htmlFor="co-code">Discount code</label>
+                  <input
+                    id="co-code"
+                    placeholder="Discount code"
+                    autoComplete="off"
+                    value={codeInput}
+                    onChange={(e) => { setCodeInput(e.target.value.toUpperCase()); setCodeError(''); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCode(codeInput); } }}
+                    aria-invalid={codeError ? 'true' : undefined}
+                    aria-describedby={codeError ? 'co-code-err' : undefined}
+                    disabled={busy}
+                  />
+                  <button type="button" className="tl-bk-btn tl-bk-btn--ghost" onClick={() => applyCode(codeInput)} disabled={busy || applying || !codeInput.trim()}>
+                    {applying ? 'Checking…' : 'Apply'}
+                  </button>
+                </div>
+              )}
+              {codeError && <p id="co-code-err" className="tl-co-field-error">{codeError}</p>}
+            </div>
             <p className="tl-co-total"><span>Total</span><strong>{formatPkr(total)}</strong></p>
 
             {problem && (
@@ -628,8 +785,14 @@ function CheckoutContent() {
               </div>
             )}
 
+            {terms && (
+              <label className="tl-co-terms">
+                <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} disabled={busy} />
+                <span>I accept the <details><summary>event terms</summary><span style={{ whiteSpace: 'pre-wrap', display: 'block', marginTop: 6 }}>{terms}</span></details>{extras?.policies?.ageRestriction ? ` (${extras.policies.ageRestriction}+ only)` : ''}</span>
+              </label>
+            )}
             <div className="tl-co-confirm">
-              <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired} aria-busy={busy}>
+              <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired || !method} aria-busy={busy}>
                 {busy ? (
                   <>
                     <span>{phase === 'reserving' ? 'Creating your order…' : 'Confirming payment…'}</span>

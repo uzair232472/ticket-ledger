@@ -1,0 +1,78 @@
+{
+  "banner": "PUBLIC dataset (ULB Credit Card Fraud, Dal Pozzolo et al. 2015, OpenML 1597). Card transactions with anonymised features, NOT ticket scalping; not TicketLedger data; a check of the fraud METHOD only; not evidence of real-world performance for TicketLedger.",
+  "source": {
+    "title": "Credit Card Fraud Detection (ULB, September 2013)",
+    "page": "https://www.openml.org/d/1597",
+    "license": "Public (OpenML dataset 1597, checked 2026-11-26); citation requested",
+    "citation": "Dal Pozzolo, A., Caelen, O., Johnson, R. A. & Bontempi, G. (2015). Calibrating Probability with Undersampling for Unbalanced Classification. IEEE Symposium on Computational Intelligence and Data Mining (CIDM).",
+    "archive_sha256": "fdaf12730dc1fc426f318b71349f24f5c5fd00aa1152940be7e7509ae3d89d2a"
+  },
+  "split": {
+    "method": "chronological by Time: oldest 60% train, next 20% calibrate + threshold, newest 20% test",
+    "rows": {
+      "train": 170884,
+      "calibration": 56961,
+      "test": 56962
+    },
+    "frauds": {
+      "train": 360,
+      "calibration": 57,
+      "test": 75
+    }
+  },
+  "threshold": {
+    "probability": 0.00147,
+    "fixed_on": "calibration period",
+    "max_false_flags": 0.01
+  },
+  "base_rate": 0.00132,
+  "model": {
+    "flagged": 568,
+    "precision": 0.1127,
+    "recall": 0.8533,
+    "false_flag_rate": 0.00886,
+    "test_auc": 0.9855,
+    "average_precision": 0.7561,
+    "lift_over_random": 85.6,
+    "false_flags_within_limit": true
+  },
+  "rule": {
+    "flagged": 416,
+    "precision": 0.0024,
+    "recall": 0.0133,
+    "false_flag_rate": 0.0073,
+    "rule": "flag the largest amounts (>= 1127.95, top 1% of the calibration period)"
+  },
+  "recall_gain_95ci": [
+    0.7666,
+    0.9197
+  ],
+  "calibration_top5pct": [
+    {
+      "predicted": 0.0011,
+      "actual": 0.0,
+      "rows": 570
+    },
+    {
+      "predicted": 0.0015,
+      "actual": 0.0035,
+      "rows": 570
+    },
+    {
+      "predicted": 0.0015,
+      "actual": 0.0018,
+      "rows": 570
+    },
+    {
+      "predicted": 0.0015,
+      "actual": 0.0,
+      "rows": 569
+    },
+    {
+      "predicted": 0.1061,
+      "actual": 0.1125,
+      "rows": 569
+    }
+  ],
+  "note": "Same method as the app's fraud model (chronological split, isotonic calibration on a later period, threshold fixed before the test at 1% false flags, comparison with a rule at a similar flag budget). Card fraud is not scalping: these numbers say the method works on real rare fraud, not that the TicketLedger model does."
+}

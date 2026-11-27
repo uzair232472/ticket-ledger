@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Mail, Lock, User, ScanLine, CalendarDays, RefreshCw } from 'lucide-react';
+import { Mail, Lock, User, ScanLine, CalendarDays, RefreshCw, Building2, BadgeCheck } from 'lucide-react';
 import AuthShell, { Alert, Field, SubmitButton } from '../components/auth/AuthShell';
 import { getHomeRoute } from '../lib/session';
 import { validateName, validatePassword, PASSWORD_HINT } from '../lib/validation';
@@ -9,7 +9,9 @@ import { validateName, validatePassword, PASSWORD_HINT } from '../lib/validation
 export default function AcceptInvite() {
   const { token } = useParams();
   const navigate = useNavigate();
-  const { getInvite, acceptInvite, user, logout } = useAuth();
+  const location = useLocation();
+  const { getInvite, acceptInvite, rejectInvite, user, logout } = useAuth();
+  const [declined, setDeclined] = useState(false);
 
   const [invite, setInvite] = useState(null);
   const [lookupError, setLookupError] = useState('');
@@ -54,10 +56,46 @@ export default function AcceptInvite() {
     }
   };
 
+  const isGate = invite?.role === 'GATE_STAFF' || (!invite?.role && invite);
+  const heading = isGate ? 'Gate staff invite' : 'Team invite';
+
+  const accept = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const data = await acceptInvite(token);
+      navigate(getHomeRoute(data.user), { replace: true });
+    } catch (err) {
+      setError(err.message);
+      if (err.status === 410) setInvite(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const decline = async () => {
+    setError('');
+    try {
+      await rejectInvite(token);
+      setDeclined(true);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   if (checking) {
     return (
-      <AuthShell title="Gate staff invite" subtitle="Checking your invite link...">
+      <AuthShell title={heading} subtitle="Checking your invite link...">
         <RefreshCw className="w-6 h-6 animate-spin text-[#16a34a] mx-auto" />
+      </AuthShell>
+    );
+  }
+
+  if (declined) {
+    return (
+      <AuthShell title="Invitation declined">
+        <p className="text-xs text-slate-600">You declined the invitation. The link no longer works.</p>
+        <Link to="/" className="text-xs text-[#16a34a] hover:underline font-bold">Go to TicketLedger →</Link>
       </AuthShell>
     );
   }
@@ -71,12 +109,34 @@ export default function AcceptInvite() {
     );
   }
 
-  // Someone else is signed in on this device: the invite would create a separate account
+  const summary = (
+    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+      <div className="flex items-center gap-2 font-bold text-slate-900">
+        <Building2 className="w-4 h-4 text-[#16a34a]" /> {invite.companyName}
+      </div>
+      <div className="flex items-center gap-2">
+        <BadgeCheck className="w-3.5 h-3.5 text-[#16a34a]" /> {invite.roleLabel || 'Gate Staff'}{invite.invitedBy ? ` · invited by ${invite.invitedBy}` : ''}
+      </div>
+      {(invite.events || []).map((ev) => (
+        <div key={ev.id} className="flex items-center gap-2 text-slate-500">
+          {isGate ? <ScanLine className="w-3.5 h-3.5" /> : <CalendarDays className="w-3.5 h-3.5" />}
+          {ev.name} · {new Date(ev.date).toLocaleDateString(undefined, { dateStyle: 'medium' })} · {ev.venue}
+        </div>
+      ))}
+    </div>
+  );
+  const declineButton = (
+    <button type="button" onClick={decline} className="w-full text-xs py-2 text-slate-500 hover:text-rose-600 font-bold">
+      Decline invitation
+    </button>
+  );
+
+  // Someone else is signed in on this device: the invitation belongs to another email address
   if (user && user.email !== invite.email) {
     return (
-      <AuthShell title="Gate staff invite" subtitle={`This invite is for ${invite.email}.`}>
+      <AuthShell title={heading} subtitle={`This invite is for ${invite.email}.`}>
         <p className="text-xs text-slate-600">
-          You're signed in as <strong>{user.email}</strong>. Sign out to accept the invite with the invited email.
+          You're signed in as <strong>{user.email}</strong>. Sign out, then sign in or create the account with the invited email.
         </p>
         <button type="button" onClick={logout} className="w-full btn-eventfrog text-xs py-3">
           Sign out and continue
@@ -85,21 +145,41 @@ export default function AcceptInvite() {
     );
   }
 
+  // Signed in with the invited email: join with this account
+  if (user) {
+    return (
+      <AuthShell title={`Join ${invite.companyName}`} subtitle="Accept to join with your TicketLedger account. Your tickets and bookings stay as they are.">
+        {summary}
+        <Alert>{error}</Alert>
+        <button type="button" disabled={loading} onClick={accept} className="w-full btn-eventfrog text-xs py-3">
+          {loading ? 'Joining…' : 'Accept invitation'}
+        </button>
+        {declineButton}
+      </AuthShell>
+    );
+  }
+
+  // An account already uses this email: sign in to accept
+  if (invite.existingAccount) {
+    return (
+      <AuthShell title={`Join ${invite.companyName}`} subtitle={`Sign in as ${invite.email} to accept this invitation.`}>
+        {summary}
+        <Alert>{error}</Alert>
+        <Link to="/login" state={{ from: location.pathname }} className="block text-center w-full btn-eventfrog text-xs py-3">
+          Sign in to accept
+        </Link>
+        {declineButton}
+      </AuthShell>
+    );
+  }
+
   return (
     <AuthShell
-      title="Join the gate team"
-      subtitle={`${invite.companyName} invited you to scan tickets.`}
-      footer={<>Already set up? <Link to="/login" className="text-[#16a34a] hover:underline font-bold ml-1">Sign in →</Link></>}
+      title={isGate ? 'Join the gate team' : `Join ${invite.companyName}`}
+      subtitle={isGate ? `${invite.companyName} invited you to scan tickets.` : `${invite.companyName} invited you as ${invite.roleLabel}.`}
+      footer={<>Already set up? <Link to="/login" state={{ from: location.pathname }} className="text-[#16a34a] hover:underline font-bold ml-1">Sign in →</Link></>}
     >
-      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
-        <div className="flex items-center gap-2 font-bold text-slate-900">
-          <ScanLine className="w-4 h-4 text-[#16a34a]" /> {invite.eventName}
-        </div>
-        <div className="flex items-center gap-2 text-slate-500">
-          <CalendarDays className="w-3.5 h-3.5" />
-          {new Date(invite.eventDate).toLocaleDateString(undefined, { dateStyle: 'medium' })} · {invite.venue}
-        </div>
-      </div>
+      {summary}
 
       <Alert>{error}</Alert>
 
@@ -112,6 +192,7 @@ export default function AcceptInvite() {
           <span>Accept Invite</span>
         </SubmitButton>
       </form>
+      {declineButton}
     </AuthShell>
   );
 }

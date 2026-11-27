@@ -1,12 +1,58 @@
 import dotenv from 'dotenv';
+import { evaluateCheckoutBotRules } from './security/checkoutBotRules.js';
+import { ruleDemandForecast } from './demandRules.js';
+
 dotenv.config();
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+// A slow or hung ML service must never hold up a request: after this many ms the caller uses its rules
+export const ML_TIMEOUT_MS = Number(process.env.ML_TIMEOUT_MS) || 300;
 
 /**
- * 1. AI Anti-Scalping & Bot Detection Evaluator (Module 15: POST /fraud/score)
+ * In production the app never shows a synthetic model's answer, even if the ML service is misconfigured
+ * (ML_ALLOW_SYNTHETIC without ML_ENV=production): such an answer is discarded and the rules answer instead.
  */
-export const checkFraudRisk = async (telemetry = {}) => {
+export function refuseSyntheticInProduction(result, env = process.env) {
+  if (env.NODE_ENV === 'production' && result?.prediction_source !== 'rules') {
+    throw new Error(`ML service answered with "${result?.prediction_source || 'an unknown source'}"; only rule-based answers are used in production`);
+  }
+  return result;
+}
+const ML_TRAINING_TIMEOUT_MS = 60_000;
+
+/** POST to the ML service with the shared service token and a hard timeout. Throws on timeout / non-2xx. */
+export async function mlPost(path, body, { timeoutMs = ML_TIMEOUT_MS } = {}) {
+  const res = await fetch(`${ML_SERVICE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-ML-Token': process.env.ML_SERVICE_TOKEN || '' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    const err = new Error(detail.detail || `ML service returned status ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/** GET from the ML service (health / metrics probes for the AI monitor). Throws on timeout / non-2xx. */
+export async function mlGet(path, { timeoutMs = 1500 } = {}) {
+  const res = await fetch(`${ML_SERVICE_URL}${path}`, {
+    headers: { 'X-ML-Token': process.env.ML_SERVICE_TOKEN || '' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) throw Object.assign(new Error(`ML service returned status ${res.status}`), { status: res.status });
+  return res.json();
+}
+
+/**
+ * 1. Scalper-bot security rules via the ML service (legacy POST /fraud/score, SUPER_ADMIN diagnostics only).
+ * Checkout evaluates the same rules in the API (services/security/checkoutBotRules.js).
+ */
+/** The legacy /fraud/score request body built from checkout telemetry (exported for the rule parity test). */
+export function fraudPayload(telemetry = {}) {
   const {
     checkoutDurationSeconds = 25.0,
     clicksPerMinute = 30.0,
@@ -36,61 +82,17 @@ export const checkFraudRisk = async (telemetry = {}) => {
     ...(ipCityMismatch !== undefined && { ip_city_mismatch: Number(ipCityMismatch) }),
     ...(resaleAttempts !== undefined && { resale_attempts: Number(resaleAttempts) }),
   };
+  return payload;
+}
 
+export const checkFraudRisk = async (telemetry = {}) => {
+  const payload = fraudPayload(telemetry);
   try {
-    // Try primary Module 15 endpoint: POST /fraud/score
-    let res = await fetch(`${ML_SERVICE_URL}/fraud/score`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok && res.status === 404) {
-      // Fallback alias
-      res = await fetch(`${ML_SERVICE_URL}/predict/fraud`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
-
-    if (res.ok) {
-      return await res.json();
-    }
-    throw new Error(`ML service returned status ${res.status}`);
+    return await mlPost('/fraud/score', payload);
   } catch (error) {
-    console.warn(`[ML Service] Warning: Python ML service unreachable at ${ML_SERVICE_URL}. Using defensive heuristic fallback.`);
-
-    const isBotSpeed = Number(checkoutDurationSeconds) < 2.5;
-    const isHighClick = Number(clicksPerMinute) > 150;
-    const isSniping = Number(rapidSeatAttempts) >= 6;
-
-    let score = 10.0;
-    const anomalies = [];
-    if (isBotSpeed) {
-      score += 55.0;
-      anomalies.push(`Sub-second checkout speed (${checkoutDurationSeconds}s)`);
-    }
-    if (isHighClick) {
-      score += 25.0;
-      anomalies.push(`Inhuman click rate (${clicksPerMinute} cpm)`);
-    }
-    if (isSniping) {
-      score += 20.0;
-      anomalies.push(`Rapid seat lock sniping (${rapidSeatAttempts} attempts)`);
-    }
-
-    const isBot = score >= 65.0;
-    return {
-      fraud_score: Math.min(score, 100.0),
-      classification: score >= 75.0 ? 'HIGH_RISK_BOT' : score >= 45.0 ? 'SUSPICIOUS' : 'NORMAL',
-      is_bot: isBot,
-      risk_level: score >= 75.0 ? 'CRITICAL_BOT' : score >= 45.0 ? 'SUSPICIOUS' : 'LOW',
-      action_recommended: score >= 75.0 ? 'BLOCK_TRANSACTION' : score >= 45.0 ? 'REQUIRE_CAPTCHA' : 'ALLOW',
-      anomaly_factors: anomalies,
-      confidence: 0.85,
-      fallback: true,
-    };
+    console.warn(`[ML Service] fraud check unavailable (${error.name === 'TimeoutError' ? 'timeout' : error.message}); using the built-in rules.`);
+    // The same security rules the ML service applies (Step 6: one copy, identical with the service up or down)
+    return { ...evaluateCheckoutBotRules(telemetry), fallback: true };
   }
 };
 
@@ -138,37 +140,10 @@ export const forecastEventDemand = async (eventParams = {}) => {
   };
 
   try {
-    // Try primary Module 15 endpoint: POST /forecast/demand
-    let res = await fetch(`${ML_SERVICE_URL}/forecast/demand`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok && res.status === 404) {
-      res = await fetch(`${ML_SERVICE_URL}/predict/demand`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
-
-    if (res.ok) {
-      return await res.json();
-    }
-    throw new Error(`ML service returned status ${res.status}`);
+    return refuseSyntheticInProduction(await mlPost('/forecast/demand', payload));
   } catch (error) {
-    console.warn(`[ML Service] Warning: Python ML service unreachable for demand forecast. Using baseline ratio.`);
-    const projectedSales = Math.floor(venueCapacity * 0.78);
-    return {
-      projected_48h_sales: projectedSales,
-      projected_revenue_pkr: projectedSales * avgTicketPrice,
-      sellout_probability: 0.78,
-      demand_tier: 'HIGH',
-      demand_level: 'HIGH',
-      pricing_recommendation: `Estimated 78% uptake in ${city}. Optimize tier distribution for peak revenue.`,
-      fallback: true,
-    };
+    console.warn('[ML Service] demand forecast unavailable; using the built-in rule.');
+    return { ...ruleDemandForecast(eventParams), fallback: true };
   }
 };
 
@@ -205,25 +180,7 @@ export const scorePurchaseIntent = async (sessionParams = {}) => {
   };
 
   try {
-    // Try primary Module 15 endpoint: POST /intent/predict
-    let res = await fetch(`${ML_SERVICE_URL}/intent/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok && res.status === 404) {
-      res = await fetch(`${ML_SERVICE_URL}/predict/intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    }
-
-    if (res.ok) {
-      return await res.json();
-    }
-    throw new Error(`ML service returned status ${res.status}`);
+    return refuseSyntheticInProduction(await mlPost('/intent/predict', payload));
   } catch (error) {
     return {
       purchase_intent_score: checkoutStarted ? 85.0 : 45.0,
@@ -231,6 +188,9 @@ export const scorePurchaseIntent = async (sessionParams = {}) => {
       intent_level: checkoutStarted ? 'HIGH_INTENT' : 'MODERATE',
       suggested_action: checkoutStarted ? 'DISPATCH_SMS_REMINDER' : 'MONITOR_SESSION',
       fallback: true,
+      prediction_source: 'rules',
+      validated: false,
+      notice: 'Rule-based estimate (no trained model).',
     };
   }
 };
@@ -245,17 +205,8 @@ export const triggerModelTraining = async (modelType = 'fraud') => {
     throw new Error(`Invalid model type '${modelType}'. Must be one of: ${validTypes.join(', ')}`);
   }
 
-  const res = await fetch(`${ML_SERVICE_URL}/train/${modelType.toLowerCase()}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-
-  if (res.ok) {
-    return await res.json();
-  }
-  const errData = await res.json().catch(() => ({}));
-  throw new Error(errData.detail || `ML training failed with HTTP ${res.status}`);
+  // Legacy synthetic training: the ML service refuses it (403) unless ML_ALLOW_SYNTHETIC=1 in development
+  return mlPost(`/train/${modelType.toLowerCase()}`, {}, { timeoutMs: ML_TRAINING_TIMEOUT_MS });
 };
 
 export default {

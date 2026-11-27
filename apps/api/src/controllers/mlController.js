@@ -1,6 +1,10 @@
+import { z } from 'zod';
 import prisma from '../config/prisma.js';
+import { assertConfirmed, recordAdminAction } from '../services/adminActions.js';
+import { noteAccountAction } from '../services/investigationService.js';
 import { revokeAllRefreshTokens } from '../services/tokenService.js';
 import mlService from '../services/mlService.js';
+import { recordReview, recordWatchlistView, reviewHistory, reviewMetrics, reviewQueue } from '../services/ml/fraudReview.js';
 
 /**
  * 1. AI Real-Time Fraud & Scalper Bot Check (Module 15: Calls FastAPI /fraud/score and saves score)
@@ -187,6 +191,10 @@ export const trainModel = async (req, res) => {
       data: result,
     });
   } catch (error) {
+    // Legacy synthetic training is switched off on purpose (models come from the gated pipeline, python -m
+    // ml.train): the ML service refuses with 403, which is a refusal, not a server failure
+    if (error.status === 403) return res.status(403).json({ success: false, code: 'TRAINING_DISABLED', message: error.message });
+    if (error.message?.startsWith('Invalid model type')) return res.status(400).json({ success: false, message: error.message });
     console.error('Error retraining model:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -280,6 +288,10 @@ export const getFraudWatchlist = async (req, res) => {
       };
     });
 
+    // The watchlist shows detector output: remember who saw which accounts, so a later fraud review of
+    // those accounts by the same admin is recorded as not blind (services/ml/fraudReview.js)
+    await recordWatchlistView(req.user?.id, formatted.map((f) => f.userId));
+
     const totalFlagged = formatted.length;
     const criticalBots = formatted.filter((f) => f.riskLevel === 'CRITICAL_BOT').length;
     const suspicious = formatted.filter((f) => f.riskLevel === 'SUSPICIOUS').length;
@@ -316,12 +328,23 @@ export const freezeUserAccount = async (req, res) => {
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    if (user.role === 'SUPER_ADMIN') return res.status(403).json({ success: false, message: "Admin accounts can't be frozen here." });
+    // Destructive: the admin types the account's email (undoable from Admin actions)
+    try {
+      assertConfirmed(req.body?.confirm, user.email, `freezing ${user.email}`);
+    } catch (e) {
+      return res.status(428).json({ success: false, code: e.code, confirmPhrase: e.phrase, message: e.message });
+    }
 
     const updated = await prisma.user.update({
       where: { id: userId },
       data: { status: 'SUSPENDED' },
     });
     await revokeAllRefreshTokens(userId);
+    if (user.status !== 'SUSPENDED') {
+      await recordAdminAction(prisma, { admin: req.user, action: 'USER_STATUS', targetType: 'User', targetId: userId, summary: `${user.email}: ${user.status.toLowerCase()} → suspended (fraud: ${reason})`, before: { status: user.status }, after: { status: 'SUSPENDED' } });
+      await noteAccountAction(prisma, { userId, adminId: req.user.id, body: `Account frozen from the fraud watchlist: ${reason}`, data: { before: user.status, after: 'SUSPENDED' } });
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -396,4 +419,45 @@ export default {
   getFraudWatchlist,
   freezeUserAccount,
   unfreezeUserAccount,
+};
+
+/**
+ * Blind fraud review (services/ml/fraudReview.js). Reviewers see order facts only - never the detector or
+ * scores. Recording a review changes nothing about the order, payment, tickets or account.
+ */
+const reviewSchema = z.object({
+  decision: z.enum(['CONFIRMED_FRAUD', 'LEGITIMATE', 'UNRESOLVED']),
+  note: z.string().trim().max(1000).optional(),
+});
+const fail = (res, error) => {
+  if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message });
+  return res.status(error.status || 500).json({ success: false, message: error.message });
+};
+
+export const fraudReviewQueue = async (req, res) => {
+  try {
+    return res.status(200).json({ success: true, data: await reviewQueue({ limit: Number(req.query.limit) || 25, reviewerId: req.user.id }) });
+  } catch (error) { return fail(res, error); }
+};
+
+export const submitFraudReview = async (req, res) => {
+  try {
+    const { decision, note } = reviewSchema.parse(req.body);
+    const review = await recordReview({ sampleId: req.params.sampleId, decision, note, reviewerId: req.user.id });
+    return res.status(201).json({ success: true, data: review });
+  } catch (error) { return fail(res, error); }
+};
+
+export const fraudReviewHistory = async (req, res) => {
+  try {
+    return res.status(200).json({ success: true, data: await reviewHistory(req.params.sampleId) });
+  } catch (error) { return fail(res, error); }
+};
+
+export const fraudReviewMetrics = async (req, res) => {
+  try {
+    const from = req.query.from ? new Date(req.query.from) : undefined;
+    const to = req.query.to ? new Date(req.query.to) : undefined;
+    return res.status(200).json({ success: true, data: await reviewMetrics({ from, to }) });
+  } catch (error) { return fail(res, error); }
 };

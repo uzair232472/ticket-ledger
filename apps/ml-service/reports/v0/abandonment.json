@@ -1,0 +1,584 @@
+{
+  "model": "abandonment",
+  "title": "Abandoned checkout",
+  "label": "checkout_abandoned",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country"
+    ],
+    "numeric": [
+      "event_views",
+      "seat_selections",
+      "session_duration_seconds",
+      "ticket_price_rel",
+      "tier_count",
+      "hours_since_sales_open",
+      "days_until_event",
+      "customer_prior_sessions",
+      "customer_prior_purchases",
+      "prior_sessions_this_event",
+      "account_age_days"
+    ]
+  },
+  "data": {
+    "dataset": "behavior_sequences.csv",
+    "rows": 19318,
+    "source": "synthetic-v0",
+    "sha256": "ddc7c6d198342c9ef5eac7ddd51d987358bc793e27db6f094496c4d70a373279",
+    "from": "2023-01-01T19:12:00+00:00",
+    "to": "2025-12-24T16:09:00+00:00"
+  },
+  "split": {
+    "train_rows": 12111,
+    "val_rows": 2584,
+    "test_rows": 2898,
+    "val_start": "2025-02-15T02:08:54+00:00",
+    "test_start": "2025-07-31T13:01:39+00:00",
+    "purged_train_rows": 19,
+    "purged_val_rows": 12,
+    "holdout_groups": 900
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "share of actual abandons among the top 10% scored checkouts",
+  "higher_is_better": true,
+  "test_size": {
+    "positives (rare outcome)": 857,
+    "other outcome": 2041
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.6166,
+        "train_vs_validation": 0.1211,
+        "not_memorising": false
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.622,
+        "train_vs_validation": 0.0619,
+        "not_memorising": false
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.6236,
+        "train_vs_validation": 0.031,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "simple"
+  },
+  "result": {
+    "model": 0.5156,
+    "baseline": 0.3468,
+    "improvement": 0.1687,
+    "improvement_95ci": [
+      0.1225,
+      0.2179
+    ]
+  },
+  "details": {
+    "test_auc": 0.6444,
+    "test_brier": 0.1967,
+    "baseline_auc": 0.5658
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.0066,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "calibration error (ECE)",
+      "value": 0.0239,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "first-time customers/visitors: top-10% share vs rule",
+      "value": 0.1179,
+      "limit": ">= 0 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 1443,
+      "model": 0.48,
+      "baseline": 0.3214
+    },
+    "customers_unseen": {
+      "rows": 1455,
+      "model": 0.546,
+      "baseline": 0.3708
+    },
+    "events_known": {
+      "rows": 194,
+      "model": 0.5579,
+      "baseline": 0.3419
+    },
+    "events_unseen": {
+      "rows": 2704,
+      "model": 0.5131,
+      "baseline": 0.3473
+    },
+    "first_time_visitors": {
+      "rows": 299,
+      "model": 0.5132,
+      "baseline": 0.3953
+    },
+    "returning_visitors": {
+      "rows": 2599,
+      "model": 0.5158,
+      "baseline": 0.3408
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 1211,
+        "value": 0.5
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 3027,
+        "value": 0.6191
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 6055,
+        "value": 0.6386
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 12111,
+        "value": 0.648
+      }
+    ],
+    "still_improving": true,
+    "note": "more data would likely still help"
+  },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-07-31T13:11:00+00:00",
+        "to": "2025-09-01T05:12:00+00:00",
+        "rows": 580,
+        "model": 0.5234,
+        "rule": 0.343
+      },
+      {
+        "from": "2025-09-01T08:38:00+00:00",
+        "to": "2025-09-29T10:05:00+00:00",
+        "rows": 580,
+        "model": 0.4982,
+        "rule": 0.3401
+      },
+      {
+        "from": "2025-09-29T10:35:00+00:00",
+        "to": "2025-10-29T04:36:00+00:00",
+        "rows": 580,
+        "model": 0.5325,
+        "rule": 0.3551
+      },
+      {
+        "from": "2025-10-29T06:52:00+00:00",
+        "to": "2025-11-22T19:33:00+00:00",
+        "rows": 579,
+        "model": 0.4919,
+        "rule": 0.3583
+      },
+      {
+        "from": "2025-11-22T21:04:00+00:00",
+        "to": "2025-12-24T16:09:00+00:00",
+        "rows": 579,
+        "model": 0.5369,
+        "rule": 0.3366
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 2898,
+      "features": [
+        {
+          "feature": "ticket_price_rel",
+          "label": "price vs typical",
+          "importance": 0.10619
+        },
+        {
+          "feature": "event_views",
+          "label": "event page views",
+          "importance": 0.02224
+        },
+        {
+          "feature": "customer_prior_purchases",
+          "label": "earlier purchases",
+          "importance": 0.00564
+        },
+        {
+          "feature": "session_duration_seconds",
+          "label": "time on site",
+          "importance": 0.00273
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.00143
+        },
+        {
+          "feature": "account_age_days",
+          "label": "account age",
+          "importance": 0.00106
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": 0.00053
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "tier_count",
+          "label": "number of ticket types",
+          "importance": 0.0
+        },
+        {
+          "feature": "prior_sessions_this_event",
+          "label": "earlier visits to this event",
+          "importance": 0.0
+        },
+        {
+          "feature": "seat_selections",
+          "label": "seats selected",
+          "importance": -0.0001
+        },
+        {
+          "feature": "customer_prior_sessions",
+          "label": "earlier visits",
+          "importance": -0.00017
+        },
+        {
+          "feature": "hours_since_sales_open",
+          "label": "hours since sales opened",
+          "importance": -0.00042
+        },
+        {
+          "feature": "days_until_event",
+          "label": "days until the event",
+          "importance": -0.0017
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.1654,
+        "actual": 0.1448,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2145,
+        "actual": 0.2103,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2145,
+        "actual": 0.169,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2411,
+        "actual": 0.2379,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2579,
+        "actual": 0.3,
+        "rows": 290
+      },
+      {
+        "predicted": 0.2829,
+        "actual": 0.2414,
+        "rows": 290
+      },
+      {
+        "predicted": 0.3172,
+        "actual": 0.3517,
+        "rows": 290
+      },
+      {
+        "predicted": 0.3964,
+        "actual": 0.4103,
+        "rows": 290
+      },
+      {
+        "predicted": 0.4084,
+        "actual": 0.3875,
+        "rows": 289
+      },
+      {
+        "predicted": 0.4923,
+        "actual": 0.5052,
+        "rows": 289
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 0.6552,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 2.356,
+            "typical": 0.523,
+            "effect": 28.68,
+            "direction": "up"
+          },
+          {
+            "feature": "event_type",
+            "label": "event type",
+            "value": "MUSIC_CONCERT",
+            "typical": "CRICKET_MATCH",
+            "effect": 15.8,
+            "direction": "up"
+          },
+          {
+            "feature": "event_views",
+            "label": "event page views",
+            "value": 1,
+            "typical": 2.0,
+            "effect": 15.8,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.2579,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "ticket_price_rel",
+            "label": "price vs typical",
+            "value": 0.689,
+            "typical": 0.523,
+            "effect": 4.34,
+            "direction": "up"
+          },
+          {
+            "feature": "event_views",
+            "label": "event page views",
+            "value": 6,
+            "typical": 2.0,
+            "effect": -3.64,
+            "direction": "down"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 98,
+            "predicted_rate": 0.3642,
+            "actual_rate": 0.4388,
+            "gap": -0.0746,
+            "auc": 0.5738,
+            "watch": true,
+            "why": "predicted rate off by more than 5%"
+          },
+          "Islamabad": {
+            "rows": 404,
+            "predicted_rate": 0.3216,
+            "actual_rate": 0.2698,
+            "gap": 0.0518,
+            "auc": 0.6536,
+            "watch": true,
+            "why": "predicted rate off by more than 5%"
+          },
+          "Karachi": {
+            "rows": 946,
+            "predicted_rate": 0.2858,
+            "actual_rate": 0.278,
+            "gap": 0.0078,
+            "auc": 0.6576,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 843,
+            "predicted_rate": 0.2965,
+            "actual_rate": 0.3037,
+            "gap": -0.0072,
+            "auc": 0.6182,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 150,
+            "predicted_rate": 0.2984,
+            "actual_rate": 0.3133,
+            "gap": -0.0149,
+            "auc": 0.6407,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 162,
+            "predicted_rate": 0.281,
+            "actual_rate": 0.2901,
+            "gap": -0.0091,
+            "auc": 0.6802,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 3,
+            "note": "too few cases to measure"
+          },
+          "Rawalpindi": {
+            "rows": 292,
+            "predicted_rate": 0.3043,
+            "actual_rate": 0.3116,
+            "gap": -0.0073,
+            "auc": 0.6595,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 23,
+            "note": "too few cases to measure"
+          },
+          "CONFERENCE": {
+            "rows": 4,
+            "note": "too few cases to measure"
+          },
+          "CRICKET_MATCH": {
+            "rows": 2063,
+            "predicted_rate": 0.2847,
+            "actual_rate": 0.2821,
+            "gap": 0.0026,
+            "auc": 0.6294,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 173,
+            "predicted_rate": 0.2729,
+            "actual_rate": 0.2428,
+            "gap": 0.0302,
+            "auc": 0.6637,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 72,
+            "note": "too few cases to measure"
+          },
+          "KABADDI": {
+            "rows": 146,
+            "predicted_rate": 0.2417,
+            "actual_rate": 0.2123,
+            "gap": 0.0293,
+            "auc": 0.6986,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 228,
+            "predicted_rate": 0.3824,
+            "actual_rate": 0.4123,
+            "gap": -0.0299,
+            "auc": 0.6267,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 144,
+            "predicted_rate": 0.4647,
+            "actual_rate": 0.4722,
+            "gap": -0.0075,
+            "auc": 0.5533,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 37,
+            "note": "too few cases to measure"
+          },
+          "THEATRE": {
+            "rows": 8,
+            "note": "too few cases to measure"
+          }
+        },
+        "customer_history": {
+          "first_time_visitors": {
+            "rows": 299,
+            "predicted_rate": 0.3155,
+            "actual_rate": 0.3244,
+            "gap": -0.0089,
+            "auc": 0.6095,
+            "watch": false,
+            "why": null
+          },
+          "returning_visitors": {
+            "rows": 2599,
+            "predicted_rate": 0.297,
+            "actual_rate": 0.2924,
+            "gap": 0.0046,
+            "auc": 0.648,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [
+        "city: Faisalabad",
+        "city: Islamabad"
+      ],
+      "rule": "predicted rate off by more than 5%",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    }
+  },
+  "status": "PASSED",
+  "reasons": [],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "duration_seconds": 3.9,
+  "recommendation": "KEEP_CURRENT: trained on synthetic data",
+  "artifact": "models/v0/abandonment.joblib"
+}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { WizardHero } from '../components/dash/Studio';
 import {
   AlertCircle, AlertTriangle, ArrowLeft, Ban, CalendarClock, CheckCircle2, ChevronRight, Clock, History, Loader2, PauseCircle,
   Receipt, Send, Tag, Ticket, Undo2, Users,
@@ -137,8 +138,8 @@ export default function EventChanges() {
         tone: 'warning',
         title: 'Change the date?',
         message: summary.holders
-          ? `${summary.holders} ticket holder${summary.holders === 1 ? '' : 's'} will be emailed the new date once it’s live, and can get a full refund until 48 hours before it (at most 14 days). Small same-day changes (two hours or less, same venue) go live straight away; anything else is checked by a TicketLedger admin first.`
-          : 'No tickets are sold yet, so the new date goes live straight away.',
+          ? `A TicketLedger admin approves the change first. Then ${summary.holders} ticket holder${summary.holders === 1 ? '' : 's'} are emailed the new date and can get a full refund until 48 hours before it (at most 14 days).`
+          : 'A TicketLedger admin approves the change first. The event keeps its current date until then.',
         confirmLabel: 'Send the change',
         cancelLabel: 'Not yet',
       });
@@ -203,20 +204,22 @@ export default function EventChanges() {
 
   return (
     <div>
-      <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
-        <Link to="/organizer/dashboard">Dashboard</Link>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <Link to={`/events/${id}`}>{event.name}</Link>
-        <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-        <span aria-current="page">Cancel or change date</span>
-      </nav>
-      <header className="tl-wz-head">
-        <div>
-          <h1 className="tl-wz-title">Cancel or change date</h1>
-          <p className="tl-wz-step-text">{event.name} · {slot(event.startsAt || event.date, event.venue, event.city)}</p>
-        </div>
-        <Link to="/organizer/dashboard" className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> Back to dashboard</Link>
-      </header>
+      <WizardHero>
+        <nav className="tl-wz-crumbs" aria-label="Breadcrumb">
+          <Link to="/organizer/dashboard">Dashboard</Link>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <Link to={`/events/${id}`}>{event.name}</Link>
+          <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          <span aria-current="page">Cancel or change date</span>
+        </nav>
+        <header className="tl-wz-head">
+          <div>
+            <h1 className="tl-wz-title">Cancel or change date</h1>
+            <p className="tl-wz-step-text">{event.name} · {slot(event.startsAt || event.date, event.venue, event.city)}</p>
+          </div>
+          <Link to="/organizer/dashboard" className="tl-wz-btn"><ArrowLeft className="w-4 h-4" /> Back to dashboard</Link>
+        </header>
+      </WizardHero>
 
       {error && <div className="tl-wz-alert" role="alert"><AlertCircle className="w-4 h-4" />{error}</div>}
 
@@ -276,8 +279,8 @@ export default function EventChanges() {
               <>
                 <p className="tl-lc-text">
                   {summary.holders
-                    ? 'Ticket holders keep their seats and QR codes for the new date, and can get a full refund if they can’t make it. A same-day shift of two hours or less at the same venue goes live straight away; other changes are approved by an admin first.'
-                    : 'No tickets are sold yet, so the new date goes live straight away.'}
+                    ? 'Every change is approved by a TicketLedger admin first. Ticket holders then keep their seats and QR codes for the new date, and can get a full refund if they can’t make it.'
+                    : 'No tickets are sold yet. The change is approved by a TicketLedger admin first, and the event keeps its current date until then.'}
                 </p>
                 <div className="tl-wz-grid">
                   <div className={`tl-wz-field${fieldError.date ? ' has-error' : ''}`}>

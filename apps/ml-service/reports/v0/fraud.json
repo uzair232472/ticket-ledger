@@ -1,0 +1,718 @@
+{
+  "model": "fraud",
+  "title": "Fraud (flag for review)",
+  "label": "is_fraud",
+  "kind": "binary",
+  "features": {
+    "categorical": [
+      "event_type",
+      "city",
+      "country",
+      "payment_method"
+    ],
+    "numeric": [
+      "tickets_requested",
+      "unit_price_rel",
+      "checkout_duration_seconds",
+      "clicks_per_minute",
+      "rapid_seat_attempts",
+      "time_on_seatmap_seconds",
+      "device_switches",
+      "account_age_days",
+      "customer_prior_orders",
+      "orders_last_24h",
+      "failed_payments_30d",
+      "prior_resale_listings",
+      "hours_since_sales_open",
+      "linked_accounts",
+      "linked_accounts_confirmed_fraud",
+      "linked_orders_same_event_24h"
+    ]
+  },
+  "data": {
+    "dataset": "fraud_purchases.csv",
+    "rows": 51500,
+    "source": "synthetic-v0",
+    "sha256": "2d2bba7ba166d723ce62ccb263278fd6d1f8bf5bc6b5d93e7edc7d96ab07741a",
+    "from": "2023-01-01T11:07:00+00:00",
+    "to": "2025-12-31T17:25:00+00:00"
+  },
+  "split": {
+    "train_rows": 31872,
+    "val_rows": 6358,
+    "test_rows": 7725,
+    "val_start": "2025-02-19T11:56:18+00:00",
+    "test_start": "2025-08-02T17:45:45+00:00",
+    "purged_train_rows": 785,
+    "purged_val_rows": 561,
+    "holdout_groups": 1518
+  },
+  "leakage_checks": "passed",
+  "gates": {
+    "bootstrap_resamples": 300,
+    "bootstrap_confidence": 0.95,
+    "min_test_positives": 100,
+    "min_test_negatives": 100,
+    "min_test_frauds": 50,
+    "min_test_events_demand": 100,
+    "min_test_events_attendance": 30,
+    "min_test_events_crowd": 30,
+    "min_test_events_demand_hourly": 30,
+    "max_calibration_error": 0.05,
+    "max_false_flag_rate": 0.01,
+    "min_range_coverage": 0.75,
+    "coverage_tolerance": 0.02,
+    "max_auc_gap": 0.05,
+    "min_error_ratio": 0.7,
+    "top_fraction": 0.1
+  },
+  "main_measure": "share of flagged orders that are fraud (precision)",
+  "higher_is_better": true,
+  "test_size": {
+    "frauds": 476
+  },
+  "complexity_selection": {
+    "measure": "validation AUC",
+    "levels": [
+      {
+        "level": "flexible",
+        "validation_score": 0.9898,
+        "train_vs_validation": 0.0096,
+        "not_memorising": true
+      },
+      {
+        "level": "moderate",
+        "validation_score": 0.9895,
+        "train_vs_validation": 0.009,
+        "not_memorising": true
+      },
+      {
+        "level": "simple",
+        "validation_score": 0.9886,
+        "train_vs_validation": 0.0073,
+        "not_memorising": true
+      }
+    ],
+    "chosen": "flexible"
+  },
+  "result": {
+    "model": 0.877,
+    "baseline": 0.9938,
+    "improvement": -0.1168,
+    "improvement_95ci": [
+      -0.1482,
+      -0.0879
+    ]
+  },
+  "details": {
+    "test_auc": 0.9907,
+    "test_brier": 0.007,
+    "baseline_auc": 0.6806,
+    "threshold": 0.1136,
+    "sampling_weighted": false,
+    "baseline_is_logged_rule_decision": false,
+    "model_flags": {
+      "precision": 0.877,
+      "false_flag_rate": 0.0086,
+      "recall": 0.9286,
+      "flag_rate": 0.0652
+    },
+    "rule_flags": {
+      "precision": 0.9938,
+      "false_flag_rate": 0.0001,
+      "recall": 0.334,
+      "flag_rate": 0.0207
+    }
+  },
+  "guards": [
+    {
+      "name": "train AUC - test AUC (memorising)",
+      "value": 0.0083,
+      "limit": "<= 0.05",
+      "passed": true
+    },
+    {
+      "name": "false flags among legitimate orders",
+      "value": 0.0086,
+      "limit": "<= 0.01",
+      "passed": true
+    },
+    {
+      "name": "share of frauds caught vs rules",
+      "value": 0.5945,
+      "limit": ">= 0 (not worse)",
+      "passed": true
+    }
+  ],
+  "segments": {
+    "customers_known": {
+      "rows": 4930,
+      "model": 0.9189,
+      "baseline": 0.9934
+    },
+    "customers_unseen": {
+      "rows": 2795,
+      "model": 0.8327,
+      "baseline": 1.0
+    },
+    "events_known": {
+      "rows": 324,
+      "note": "too few cases to measure"
+    },
+    "events_unseen": {
+      "rows": 7401,
+      "model": 0.8785,
+      "baseline": 0.9938
+    },
+    "human_speed": {
+      "rows": 7552,
+      "model": 0.8157,
+      "baseline": 0.0
+    },
+    "first_time_customers": {
+      "rows": 1684,
+      "model": 0.6321,
+      "baseline": 0.0
+    },
+    "returning_customers": {
+      "rows": 6041,
+      "model": 0.9422,
+      "baseline": 0.9938
+    }
+  },
+  "learning_curve": {
+    "measure": "test AUC (higher is better)",
+    "points": [
+      {
+        "train_fraction": 0.1,
+        "train_rows": 3187,
+        "value": 0.9834
+      },
+      {
+        "train_fraction": 0.25,
+        "train_rows": 7968,
+        "value": 0.9894
+      },
+      {
+        "train_fraction": 0.5,
+        "train_rows": 15936,
+        "value": 0.9911
+      },
+      {
+        "train_fraction": 1.0,
+        "train_rows": 31872,
+        "value": 0.9911
+      }
+    ],
+    "still_improving": false,
+    "note": "score has levelled off: more data of the same kind adds little"
+  },
+  "diagnostics": {
+    "over_time": [
+      {
+        "from": "2025-08-02T17:50:00+00:00",
+        "to": "2025-09-02T13:19:00+00:00",
+        "rows": 1545,
+        "model": 0.899,
+        "rule": 1.0
+      },
+      {
+        "from": "2025-09-02T13:35:00+00:00",
+        "to": "2025-10-02T23:43:00+00:00",
+        "rows": 1545,
+        "model": 0.8716,
+        "rule": 1.0
+      },
+      {
+        "from": "2025-10-02T23:50:00+00:00",
+        "to": "2025-10-31T03:51:00+00:00",
+        "rows": 1545,
+        "model": 0.8931,
+        "rule": 0.9792
+      },
+      {
+        "from": "2025-10-31T04:01:00+00:00",
+        "to": "2025-11-28T01:32:00+00:00",
+        "rows": 1545,
+        "model": 0.8673,
+        "rule": 1.0
+      },
+      {
+        "from": "2025-11-28T01:38:00+00:00",
+        "to": "2025-12-31T17:25:00+00:00",
+        "rows": 1545,
+        "model": 0.8358,
+        "rule": 1.0
+      }
+    ],
+    "importance": {
+      "measure": "drop in test AUC when shuffled",
+      "rows": 4000,
+      "features": [
+        {
+          "feature": "linked_accounts",
+          "label": "accounts sharing a phone or browser",
+          "importance": 0.03092
+        },
+        {
+          "feature": "hours_since_sales_open",
+          "label": "hours since sales opened",
+          "importance": 0.01264
+        },
+        {
+          "feature": "customer_prior_orders",
+          "label": "earlier orders",
+          "importance": 0.0054
+        },
+        {
+          "feature": "tickets_requested",
+          "label": "tickets in the order",
+          "importance": 0.00349
+        },
+        {
+          "feature": "rapid_seat_attempts",
+          "label": "rapid seat attempts",
+          "importance": 0.00242
+        },
+        {
+          "feature": "account_age_days",
+          "label": "account age",
+          "importance": 0.00239
+        },
+        {
+          "feature": "prior_resale_listings",
+          "label": "earlier resale listings",
+          "importance": 0.00202
+        },
+        {
+          "feature": "clicks_per_minute",
+          "label": "clicks per minute",
+          "importance": 0.00168
+        },
+        {
+          "feature": "event_type",
+          "label": "event type",
+          "importance": 0.00127
+        },
+        {
+          "feature": "checkout_duration_seconds",
+          "label": "checkout speed",
+          "importance": 0.0012
+        },
+        {
+          "feature": "failed_payments_30d",
+          "label": "failed payments (30 days)",
+          "importance": 0.00109
+        },
+        {
+          "feature": "orders_last_24h",
+          "label": "orders in the last 24 h",
+          "importance": 0.00104
+        },
+        {
+          "feature": "device_switches",
+          "label": "device switches",
+          "importance": 0.00097
+        },
+        {
+          "feature": "time_on_seatmap_seconds",
+          "label": "time on the seat map",
+          "importance": 0.00089
+        },
+        {
+          "feature": "payment_method",
+          "label": "payment method",
+          "importance": 0.00037
+        },
+        {
+          "feature": "unit_price_rel",
+          "label": "price vs typical",
+          "importance": 0.00022
+        },
+        {
+          "feature": "country",
+          "label": "country",
+          "importance": 0.0
+        },
+        {
+          "feature": "linked_accounts_confirmed_fraud",
+          "label": "linked accounts with confirmed fraud",
+          "importance": 0.0
+        },
+        {
+          "feature": "linked_orders_same_event_24h",
+          "label": "linked accounts' orders for this event (24 h)",
+          "importance": 0.0
+        },
+        {
+          "feature": "city",
+          "label": "city",
+          "importance": -0.0004
+        }
+      ]
+    },
+    "calibration": [
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0005,
+        "actual": 0.0,
+        "rows": 773
+      },
+      {
+        "predicted": 0.0028,
+        "actual": 0.0,
+        "rows": 772
+      },
+      {
+        "predicted": 0.0051,
+        "actual": 0.0078,
+        "rows": 772
+      },
+      {
+        "predicted": 0.0051,
+        "actual": 0.0052,
+        "rows": 772
+      },
+      {
+        "predicted": 0.0081,
+        "actual": 0.0194,
+        "rows": 772
+      },
+      {
+        "predicted": 0.5958,
+        "actual": 0.5842,
+        "rows": 772
+      }
+    ],
+    "examples": [
+      {
+        "which": "highest prediction",
+        "prediction": 1.0,
+        "actual": 1,
+        "reasons": [
+          {
+            "feature": "tickets_requested",
+            "label": "tickets in the order",
+            "value": 8,
+            "typical": 2.0,
+            "effect": 0.77,
+            "direction": "up"
+          },
+          {
+            "feature": "device_switches",
+            "label": "device switches",
+            "value": 5,
+            "typical": 0.0,
+            "effect": 0.77,
+            "direction": "up"
+          },
+          {
+            "feature": "hours_since_sales_open",
+            "label": "hours since sales opened",
+            "value": 1.54,
+            "typical": 205.835,
+            "effect": 0.77,
+            "direction": "up"
+          }
+        ]
+      },
+      {
+        "which": "middle prediction",
+        "prediction": 0.0019,
+        "actual": 0,
+        "reasons": [
+          {
+            "feature": "customer_prior_orders",
+            "label": "earlier orders",
+            "value": 9,
+            "typical": 1.0,
+            "effect": -0.48,
+            "direction": "down"
+          },
+          {
+            "feature": "tickets_requested",
+            "label": "tickets in the order",
+            "value": 1,
+            "typical": 2.0,
+            "effect": -0.31,
+            "direction": "down"
+          },
+          {
+            "feature": "event_type",
+            "label": "event type",
+            "value": "MUSIC_CONCERT",
+            "typical": "CRICKET_MATCH",
+            "effect": 0.19,
+            "direction": "up"
+          }
+        ]
+      }
+    ],
+    "explanation_note": "Each reason is the change in this prediction (percentage points) when that one input is set to its typical value. One input at a time: effects do not add up to the prediction and ignore interactions.",
+    "fairness": {
+      "groups": {
+        "city": {
+          "Faisalabad": {
+            "rows": 298,
+            "false_flag_rate": 0.0184,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 26,
+            "watch": true,
+            "why": "false flags over 1% and over twice the overall rate"
+          },
+          "Islamabad": {
+            "rows": 1093,
+            "false_flag_rate": 0.0108,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 70,
+            "recall": 0.9286,
+            "rule_recall": 0.2,
+            "watch": false,
+            "why": null
+          },
+          "Karachi": {
+            "rows": 2584,
+            "false_flag_rate": 0.0103,
+            "rule_false_flag_rate": 0.0004,
+            "frauds": 165,
+            "recall": 0.9394,
+            "rule_recall": 0.4061,
+            "watch": false,
+            "why": null
+          },
+          "Lahore": {
+            "rows": 2180,
+            "false_flag_rate": 0.0067,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 105,
+            "recall": 0.9524,
+            "rule_recall": 0.3143,
+            "watch": false,
+            "why": null
+          },
+          "Multan": {
+            "rows": 384,
+            "false_flag_rate": 0.0028,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 21,
+            "watch": false,
+            "why": null
+          },
+          "Peshawar": {
+            "rows": 432,
+            "false_flag_rate": 0.0,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 32,
+            "recall": 0.9375,
+            "rule_recall": 0.5,
+            "watch": false,
+            "why": null
+          },
+          "Quetta": {
+            "rows": 8,
+            "note": "too few legitimate orders to measure"
+          },
+          "Rawalpindi": {
+            "rows": 746,
+            "false_flag_rate": 0.0087,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 56,
+            "recall": 0.9286,
+            "rule_recall": 0.25,
+            "watch": false,
+            "why": null
+          }
+        },
+        "event_type": {
+          "BOXING": {
+            "rows": 96,
+            "note": "too few legitimate orders to measure"
+          },
+          "CONFERENCE": {
+            "rows": 39,
+            "note": "too few legitimate orders to measure"
+          },
+          "CRICKET_MATCH": {
+            "rows": 5110,
+            "false_flag_rate": 0.006,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 247,
+            "recall": 0.9271,
+            "rule_recall": 0.251,
+            "watch": false,
+            "why": null
+          },
+          "FOOTBALL_MATCH": {
+            "rows": 450,
+            "false_flag_rate": 0.0138,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 16,
+            "watch": false,
+            "why": null
+          },
+          "HOCKEY_MATCH": {
+            "rows": 157,
+            "note": "too few legitimate orders to measure"
+          },
+          "KABADDI": {
+            "rows": 346,
+            "false_flag_rate": 0.0063,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 28,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_CONCERT": {
+            "rows": 761,
+            "false_flag_rate": 0.0159,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 70,
+            "recall": 0.9286,
+            "rule_recall": 0.4143,
+            "watch": false,
+            "why": null
+          },
+          "MUSIC_FESTIVAL": {
+            "rows": 597,
+            "false_flag_rate": 0.0072,
+            "rule_false_flag_rate": 0.0018,
+            "frauds": 41,
+            "recall": 0.9268,
+            "rule_recall": 0.3415,
+            "watch": false,
+            "why": null
+          },
+          "QAWWALI": {
+            "rows": 141,
+            "note": "too few legitimate orders to measure"
+          },
+          "THEATRE": {
+            "rows": 28,
+            "note": "too few legitimate orders to measure"
+          }
+        },
+        "payment_method": {
+          "EASYPAISA": {
+            "rows": 2418,
+            "false_flag_rate": 0.0077,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 90,
+            "recall": 0.9,
+            "rule_recall": 0.2778,
+            "watch": false,
+            "why": null
+          },
+          "JAZZCASH": {
+            "rows": 3251,
+            "false_flag_rate": 0.0073,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 120,
+            "recall": 0.9083,
+            "rule_recall": 0.3167,
+            "watch": false,
+            "why": null
+          },
+          "STRIPE": {
+            "rows": 2056,
+            "false_flag_rate": 0.0117,
+            "rule_false_flag_rate": 0.0006,
+            "frauds": 266,
+            "recall": 0.9474,
+            "rule_recall": 0.3609,
+            "watch": false,
+            "why": null
+          }
+        },
+        "customer_history": {
+          "human_speed": {
+            "rows": 7552,
+            "false_flag_rate": 0.0084,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 304,
+            "recall": 0.8882,
+            "rule_recall": 0.0,
+            "watch": false,
+            "why": null
+          },
+          "first_time_customers": {
+            "rows": 1684,
+            "false_flag_rate": 0.0242,
+            "rule_false_flag_rate": 0.0,
+            "frauds": 74,
+            "recall": 0.9054,
+            "rule_recall": 0.0,
+            "watch": true,
+            "why": "false flags over 1% and over twice the overall rate"
+          },
+          "returning_customers": {
+            "rows": 6041,
+            "false_flag_rate": 0.0041,
+            "rule_false_flag_rate": 0.0002,
+            "frauds": 402,
+            "recall": 0.9328,
+            "rule_recall": 0.3955,
+            "watch": false,
+            "why": null
+          }
+        }
+      },
+      "watch": [
+        "city: Faisalabad",
+        "customer_history: first_time_customers"
+      ],
+      "rule": "fraud: false flags over 1% and over twice the overall rate",
+      "note": "Informational, on the offline test period. It never changes the status; flagged groups need a person's review before any go-live."
+    },
+    "without_link_features": {
+      "precision": 0.8228,
+      "rule_precision": 0.9938,
+      "test_auc": 0.9793,
+      "false_flag_rate": 0.0112,
+      "recall": 0.7899,
+      "flag_rate": 0.0592
+    }
+  },
+  "status": "REJECTED",
+  "reasons": [
+    "not clearly better than the baseline: 95% interval of the improvement is [-0.1482, -0.0879]"
+  ],
+  "deployed_model": {
+    "status": "NO_DEPLOYED_MODEL"
+  },
+  "shadow_decision": {
+    "date": "2026-11-20",
+    "decision": "Option 1: the existing rules stay the active decision-making system; the v0 fraud model runs in shadow only. The precision benchmark is not changed to let a synthetic-trained model pass.",
+    "keep": "improved fraud recall and bot-detection capability (incl. human-speed bots) - tracked, not used",
+    "record": "every shadow prediction, compared against verified fraud and verified legitimate outcomes",
+    "re_evaluate": "on real client data once enough reviewed cases exist (minimums in ml/gates.py)",
+    "measures": "precision (main), false-flag rate among legitimate orders (separate limit, <= 1%), recall (tracked) - reported separately, never combined"
+  },
+  "final_model": {
+    "calibration": "isotonic, 5-fold (CalibratedClassifierCV)",
+    "trained_rows": 51500,
+    "trained_from": "2023-01-01T11:07:00+00:00",
+    "trained_to": "2025-12-31T17:25:00+00:00"
+  },
+  "duration_seconds": 21.6,
+  "recommendation": "KEEP_CURRENT: the candidate did not pass the evaluation gates",
+  "artifact": "models/v0/fraud.joblib"
+}

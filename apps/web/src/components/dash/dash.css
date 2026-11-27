@@ -640,3 +640,25 @@ a.tl-dash-tile:hover .tl-dash-tile-name, button.tl-dash-tile:hover .tl-dash-tile
 .tl-dash-tile-actions button { min-height: 28px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-transform: inherit; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(11, 11, 11, 0.35); cursor: pointer; }
 .tl-dash-tile-actions button:hover { text-decoration-color: currentColor; }
 .tl-dash-feed-item > button, .tl-dash-feed-item > .tl-dash-row-actions { align-self: start; }
+
+/* Nav dropdown (NavGroup: the AI pages) */
+.tl-dash-nav-group { padding: 0; }
+.tl-dash-nav-group > button { display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 4px; background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; text-underline-offset: inherit; }
+.tl-dash-nav-group.is-active > button { text-decoration: underline; text-decoration-thickness: inherit; text-underline-offset: inherit; text-decoration-color: inherit; }
+.tl-dash-nav-group:hover { text-decoration: none; }
+.tl-dash-nav-group > button:hover { text-decoration: underline; }
+.tl-dash-nav-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 220px; max-width: calc(100vw - 32px);
+  margin: 0; padding: 6px; list-style: none; background: #fff; border: 1px solid rgba(11, 11, 11, 0.12); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(11, 20, 14, 0.14); text-transform: none; letter-spacing: 0; opacity: 1;
+}
+.tl-dash-nav-menu a { display: block; padding: 9px 12px; border-radius: 8px; color: #0b1a10; font: 500 13px/1.3 Inter, system-ui, sans-serif; text-decoration: none; white-space: nowrap; }
+.tl-dash-nav-menu a:hover, .tl-dash-nav-menu a:focus-visible { background: #eef7ef; outline: none; }
+.tl-dash-nav-menu a.is-active { color: #15803d; font-weight: 600; background: #f3faf4; }
+.tl-dash-nav-menu-label { padding: 10px 12px 4px; margin-top: 4px; border-top: 1px solid rgba(11, 11, 11, 0.08); font: 600 10.5px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; text-transform: uppercase; color: #8a978f; }
+@media (max-width: 640px) { .tl-dash-nav-menu { left: auto; right: 0; } }
+/* The base nav dims inactive links with opacity, which would also fade the open menu: dim the button instead */
+.tl-dash-nav-group:not(.is-active) { opacity: 1; }
+.tl-dash-nav-group:not(.is-active) > button { opacity: 0.6; }
+.tl-dash-nav-group:not(.is-active) > button:hover, .tl-dash-nav-group > button[aria-expanded='true'] { opacity: 1; }
+.tl-dash--studio .tl-dash-nav-group:not(.is-active) > button { opacity: 1; }

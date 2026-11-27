@@ -1,26 +1,26 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { EventExtrasTop, EventPolicies, SalesWindowNote, useEventExtras } from '../components/event-detail/EventExtras';
 import { Link, useLocation, useNavigate, useNavigationType, useParams } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CustomEase } from 'gsap/CustomEase';
-import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, MapPin, RefreshCw, Share2, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, Building2, CalendarDays, Check, Clock, LayoutGrid, MapPin, Music, RefreshCw, Share2, Sparkles, Tag, Ticket, Trophy, Users } from 'lucide-react';
 import { useDialog } from '../components/ui/DialogProvider';
 import { googleMapsUrl } from '../utils/maps';
 import api, { trackClientBehavior } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import { useWishlist } from '../context/WishlistContext';
-import { getEventVisual } from '../utils/eventMedia';
+import { getEventVisual, resolveMediaUrl } from '../utils/eventMedia';
 import { EVENT_TIMEZONE_LABEL, eventDayEnd, formatEventDate, formatEventTime } from '../utils/eventTime';
 import HomeHeader from '../components/home/HomeHeader';
 import SiteFooter from '../components/home/SiteFooter';
-import EventTile from '../components/events/EventTile';
-import EventGallery from '../components/event-detail/EventGallery';
+import EventGallery, { GalleryLightbox, PhotoSlideshow, useEventPhotos } from '../components/event-detail/EventGallery';
 import ContactOrganizer from '../components/event-detail/ContactOrganizer';
 import { categoryName } from '../components/home/homeData';
 import markUrl from '../assets/ticketledger-mark.svg';
 import '../components/home/home.css';
 import '../components/events/events.css';
 import '../components/event-detail/detail.css';
+import RecommendedEvents from '../components/ml/RecommendedEvents';
 
 gsap.registerPlugin(ScrollTrigger, CustomEase);
 // The reference's "verticalEase" (same curve as its Explore transitions)
@@ -56,14 +56,53 @@ function getSaleState(event) {
   return { key: 'onsale', label: available <= LOW_AVAILABILITY ? `Only ${available} left` : 'On sale', available };
 }
 
-// Cheapest ticket still available (falls back to the cheapest overall when everything is sold)
-function getStartingPrice(tiers = []) {
-  const prices = (list) => list.map((t) => Number(t.price)).filter((p) => Number.isFinite(p));
-  const open = prices(tiers.filter((t) => t.availableQuantity > 0));
-  const all = open.length ? open : prices(tiers);
-  if (!all.length) return null;
-  const min = Math.min(...all);
-  return min === 0 ? 'Free' : formatPkr(min);
+// "PKR 1,500 – 15,000" across every tier (one price when they're all the same)
+function getPriceRange(tiers = []) {
+  const prices = tiers.map((t) => Number(t.price)).filter((p) => Number.isFinite(p));
+  if (!prices.length) return null;
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (max === 0) return 'Free';
+  if (min === max) return formatPkr(min);
+  return `${min === 0 ? 'Free' : formatPkr(min)} – ${max.toLocaleString('en-PK')}`;
+}
+
+const SPORT_TYPES = ['CRICKET_MATCH', 'FOOTBALL_MATCH', 'KABADDI', 'BOXING', 'HOCKEY_MATCH'];
+const MUSIC_TYPES = ['MUSIC_CONCERT', 'MUSIC_FESTIVAL', 'QAWWALI'];
+const categoryIcon = (type) => (SPORT_TYPES.includes(type) ? Trophy : MUSIC_TYPES.includes(type) ? Music : Sparkles);
+
+// Title in two tones, as the design: the first half of the words white, the rest green
+function splitTitle(name = '') {
+  const words = name.trim().split(/\s+/);
+  const cut = Math.floor(words.length / 2);
+  return [words.slice(0, cut).join(' '), words.slice(cut).join(' ')];
+}
+
+const placeOf = (venue = '', city = '') =>
+  city && !venue.toLowerCase().includes(city.toLowerCase()) ? `${venue}, ${city}` : venue || city;
+
+/** "Other Events" card: photo with the date chip, name, place, starting price and an arrow. */
+function RelatedCard({ event, index, linkState }) {
+  const visual = getEventVisual(event, index);
+  const min = event.pricing?.minPrice;
+  const price = min == null ? null : Number(min) === 0 ? 'Free' : `From ${formatPkr(min)}`;
+  return (
+    <Link to={`/events/${event.id}`} state={linkState} className="tl-dt-rcard">
+      <img className="tl-dt-rcard-img" src={visual.image} alt="" loading="lazy" decoding="async" onError={(e) => e.currentTarget.classList.add('is-broken')} />
+      <span className="tl-dt-rcard-shade" aria-hidden="true" />
+      <span className="tl-dt-chip">
+        <CalendarDays className="w-3.5 h-3.5" aria-hidden="true" /> {formatEventDate(event.date)}
+      </span>
+      <span className="tl-dt-rcard-body">
+        <span className="tl-dt-rcard-title">{event.name}</span>
+        <span className="tl-dt-rcard-place">
+          <MapPin className="w-4 h-4" aria-hidden="true" /> {placeOf(event.venue, event.city)}
+        </span>
+        {price && <span className="tl-dt-rcard-price">{price}</span>}
+      </span>
+      <span className="tl-dt-rcard-go" aria-hidden="true"><ArrowRight className="w-4 h-4" /></span>
+    </Link>
+  );
 }
 
 // Same category first, then same city, then soonest; upcoming published events only
@@ -93,6 +132,7 @@ function Row({ label, id, children }) {
 }
 
 function EventDetailsPage({ id }) {
+  const extras = useEventExtras(id);
   const location = useLocation();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
@@ -108,7 +148,8 @@ function EventDetailsPage({ id }) {
   const [related, setRelated] = useState([]);
   const [resale, setResale] = useState(null);
   const [waitlist, setWaitlist] = useState({ on: false, count: null, busy: false, message: '' });
-  const { isSaved, toggle: toggleFavorite } = useWishlist();
+  const [tab, setTab] = useState('details'); // details | venue
+  const [viewer, setViewer] = useState(null); // index of the photo open in the viewer
   const dialog = useDialog();
 
   // Back to Explore: step back through history when we came from it (Explore then restores its
@@ -295,7 +336,26 @@ function EventDetailsPage({ id }) {
 
   const visual = event ? getEventVisual(event, 0) : null;
   const heroImage = visual?.bannerImage?.includes('images.unsplash.com') ? visual.bannerImage.replace(/w=\d+/, 'w=2000') : visual?.bannerImage;
-  const startingPrice = event ? getStartingPrice(event.tiers) : null;
+  const priceRange = event ? getPriceRange(event.tiers) : null;
+  const photos = useEventPhotos(event, heroImage);
+  // Organizer's details-card photo (3:2), else the first gallery photo, else the banner
+  const detailsPhoto = resolveMediaUrl(event?.galleryWideUrl) || photos[0] || heroImage;
+  // Details card slideshow: the details photo first, then the gallery photos (no repeats)
+  const slides = useMemo(() => [...new Set([detailsPhoto, ...photos].filter(Boolean))], [detailsPhoto, photos]);
+  const [titleLead, titleAccent] = splitTitle(event?.name);
+  const CategoryIcon = categoryIcon(event?.type);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  const tabs = [
+    { key: 'details', label: 'Event Details', Icon: Tag },
+    { key: 'venue', label: 'Venue Info', Icon: Building2 },
+  ];
+  const onTabKey = (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const next = tab === 'details' ? 'venue' : 'details';
+    setTab(next);
+    document.getElementById(`tl-dt-tab-${next}`)?.focus();
+  };
   const time = event ? formatEventTime(event.time) : '';
   const organizer = event?.company?.companyName;
   const description = event?.description?.trim();
@@ -390,120 +450,155 @@ function EventDetailsPage({ id }) {
                 <div className="tl-dt-hero-top">{backLink}</div>
 
                 <div className="tl-dt-hero-inner">
-                  <div className="tl-dt-hero-main">
-                    <p className="tl-dt-kicker">
-                      <span>{categoryName(event.type, event.categoryLabel)}</span>
-                      <span className={`tl-dt-status is-${sale.key}`}>{sale.label}</span>
-                    </p>
-                    <h1 id="tl-dt-title" className="tl-dt-title">{event.name}</h1>
+                  <p className="tl-dt-badge">
+                    <CategoryIcon className="w-4 h-4" aria-hidden="true" /> {categoryName(event.type, event.categoryLabel)}
+                  </p>
+                  <h1 id="tl-dt-title" className="tl-dt-title">
+                    {titleLead && <span className="tl-dt-title-lead">{titleLead}</span>}
+                    <span className="tl-dt-title-accent">{titleAccent}</span>
+                  </h1>
+                  <ul className="tl-dt-meta">
+                    <li><MapPin className="w-5 h-5" aria-hidden="true" /> {placeOf(event.venue, event.city)}</li>
+                    <li>
+                      <CalendarDays className="w-5 h-5" aria-hidden="true" />
+                      <time dateTime={new Date(event.date).toISOString().slice(0, 10)}>{formatEventDate(event.date)}</time>
+                      {time && <> – {time}</>}
+                    </li>
+                    <li className={`tl-dt-meta-status is-${sale.key}`}><Clock className="w-5 h-5" aria-hidden="true" /> {sale.label}</li>
+                  </ul>
+                </div>
+              </section>
+
+              {/* Photo + tabbed details card */}
+              <section className="tl-dt-overview" aria-label="Event overview">
+                <div className="tl-dt-ov-media">
+                  <PhotoSlideshow photos={slides} />
+                </div>
+
+                <div className="tl-dt-ov-panel">
+                  <div className="tl-dt-tabs" role="tablist" aria-label="Event information">
+                    {tabs.map(({ key, label, Icon }) => (
+                      <button
+                        key={key}
+                        id={`tl-dt-tab-${key}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === key}
+                        aria-controls={`tl-dt-panel-${key}`}
+                        tabIndex={tab === key ? 0 : -1}
+                        className={`tl-dt-tab${tab === key ? ' is-active' : ''}`}
+                        onClick={() => setTab(key)}
+                        onKeyDown={onTabKey}
+                      >
+                        <Icon className="w-4 h-4" aria-hidden="true" /> {label}
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="tl-dt-hero-side">
-                    <dl className="tl-dt-facts">
-                      <div>
-                        <span className="tl-dt-fact-icon" aria-hidden="true"><MapPin className="w-6 h-6" /></span>
-                        <dt>Location</dt>
-                        <dd>
-                          <a className="tl-dt-maplink" href={googleMapsUrl({ ...event, venue: event.venue, city: event.city })} target="_blank" rel="noreferrer" title="Open in Google Maps">
-                            <MapPin className="w-4 h-4" aria-hidden="true" />
-                            <span>
-                              {event.venue}
-                              {event.city && !venueHasCity && <><br />{event.city}</>}
-                            </span>
-                            <span className="tl-dt-sr"> (opens in Google Maps)</span>
-                          </a>
-                        </dd>
-                      </div>
-                      <div>
-                        <span className="tl-dt-fact-icon" aria-hidden="true"><CalendarDays className="w-6 h-6" /></span>
-                        <dt>Date &amp; time</dt>
-                        <dd>
-                          <time dateTime={new Date(event.date).toISOString().slice(0, 10)}>{formatEventDate(event.date)}</time>
-                          {time && <><br />{time} PKT</>}
-                          {event.lastScheduleChange && !event.lastScheduleChange.minor && (
-                            <><br /><s className="tl-dt-was">Was {formatEventDate(event.lastScheduleChange.oldDate)}{event.lastScheduleChange.oldVenue !== event.venue ? ` at ${event.lastScheduleChange.oldVenue}` : ''}</s></>
-                          )}
-                        </dd>
-                      </div>
-                      {organizer && (
+                  {tab === 'details' ? (
+                    <div id="tl-dt-panel-details" role="tabpanel" aria-labelledby="tl-dt-tab-details" className="tl-dt-tabpanel">
+                      <dl className="tl-dt-info">
+                        {priceRange && (
+                          <div>
+                            <dt><Ticket className="w-5 h-5" aria-hidden="true" /> Ticket Price Range</dt>
+                            <dd className="tl-dt-info-price">{priceRange}</dd>
+                          </div>
+                        )}
                         <div>
-                          <span className="tl-dt-fact-icon" aria-hidden="true"><Users className="w-6 h-6" /></span>
-                          <dt>Organizer</dt>
-                          <dd>{organizer}</dd>
+                          <dt><LayoutGrid className="w-5 h-5" aria-hidden="true" /> Event Category</dt>
+                          <dd>{categoryName(event.type, event.categoryLabel)}</dd>
                         </div>
+                        <div>
+                          <dt><CalendarDays className="w-5 h-5" aria-hidden="true" /> Date &amp; Time</dt>
+                          <dd>
+                            {formatEventDate(event.date)}{time && <> • {time}</>}
+                            {event.lastScheduleChange && !event.lastScheduleChange.minor && (
+                              <s className="tl-dt-was">Was {formatEventDate(event.lastScheduleChange.oldDate)}{event.lastScheduleChange.oldVenue !== event.venue ? ` at ${event.lastScheduleChange.oldVenue}` : ''}</s>
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt><MapPin className="w-5 h-5" aria-hidden="true" /> Venue</dt>
+                          <dd>{placeOf(event.venue, event.city)}</dd>
+                        </div>
+                      </dl>
+                      {description && (
+                        <>
+                          <h2 className="tl-dt-subhead">About the Event</h2>
+                          <p className="tl-dt-about">{description}</p>
+                        </>
                       )}
-                    </dl>
-                    <div className="tl-dt-book">
-                      {startingPrice && (
-                        <p className="tl-dt-price">
-                          <span>{startingPrice === 'Free' ? 'Price' : 'Tickets from'}</span> {startingPrice}
-                        </p>
-                      )}
-                      {/* The booking button lives in the Tickets section below; here only the sale note is shown */}
-                      {!bookingAction('hero') && <p className="tl-dt-book-note">{sale.note}</p>}
                     </div>
-                    {/* Cancelled, postponed or moved: what ticket holders can do */}
-                    {(event.status === 'CANCELLED' || event.postponedAt || (event.refundWindowEndsAt && new Date(event.refundWindowEndsAt) > new Date())) && (
-                      <div className={`tl-dt-change${event.status === 'CANCELLED' ? ' is-bad' : ''}`} role="status">
-                        <strong>
-                          {event.status === 'CANCELLED' ? 'This event is cancelled' : event.postponedAt ? 'This event is postponed' : 'This event has a new date'}
-                        </strong>
-                        <p>
-                          {event.status === 'CANCELLED'
-                            ? `${event.cancelReason ? `${event.cancelReason} ` : ''}Every ticket is refunded in full automatically.`
-                            : event.postponedAt
-                              ? `${event.postponeReason ? `${event.postponeReason} ` : ''}Tickets stay valid for the new date. Ticket holders can get a refund until it’s announced.`
-                              : `${event.lastScheduleChange?.reason ? `${event.lastScheduleChange.reason} ` : ''}Tickets stay valid. Ticket holders who can’t make it can get a full refund until ${new Date(event.refundWindowEndsAt).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })}.`}
-                        </p>
-                        <Link to={`/events/${event.id}/refund`}>Have tickets? See your options</Link>
+                  ) : (
+                    <div id="tl-dt-panel-venue" role="tabpanel" aria-labelledby="tl-dt-tab-venue" className="tl-dt-tabpanel">
+                      <dl className="tl-dt-info">
+                        <div>
+                          <dt><Building2 className="w-5 h-5" aria-hidden="true" /> Venue</dt>
+                          <dd>
+                            <a className="tl-dt-maplink" href={googleMapsUrl(event)} target="_blank" rel="noreferrer" title="Open in Google Maps">
+                              <span>{event.venue}</span>
+                              <span className="tl-dt-sr"> (opens in Google Maps)</span>
+                            </a>
+                          </dd>
+                        </div>
+                        {event.locationAddress && (
+                          <div>
+                            <dt><MapPin className="w-5 h-5" aria-hidden="true" /> Address</dt>
+                            <dd>{event.locationAddress}</dd>
+                          </div>
+                        )}
+                        {event.city && (
+                          <div>
+                            <dt><MapPin className="w-5 h-5" aria-hidden="true" /> City</dt>
+                            <dd>{event.city}</dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt><Clock className="w-5 h-5" aria-hidden="true" /> Time zone</dt>
+                          <dd>{EVENT_TIMEZONE_LABEL}</dd>
+                        </div>
+                        {organizer && (
+                          <div>
+                            <dt><Users className="w-5 h-5" aria-hidden="true" /> Organizer</dt>
+                            <dd>{organizer}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      <div className="tl-dt-venue-actions">
+                        <a className="tl-dt-cta tl-dt-cta--ghost" href={googleMapsUrl(event)} target="_blank" rel="noreferrer">
+                          Open in Google Maps <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                        </a>
+                        <ContactOrganizer email={event.organizerContactEmail} eventName={event.name} organizer={organizer} />
                       </div>
-                    )}
-                    <ContactOrganizer email={event.organizerContactEmail} eventName={event.name} organizer={organizer} />
+                    </div>
+                  )}
+
+                  {/* Cancelled, postponed or moved: what ticket holders can do */}
+                  {(event.status === 'CANCELLED' || event.postponedAt || (event.refundWindowEndsAt && new Date(event.refundWindowEndsAt) > new Date())) && (
+                    <div className={`tl-dt-change${event.status === 'CANCELLED' ? ' is-bad' : ''}`} role="status">
+                      <strong>
+                        {event.status === 'CANCELLED' ? 'This event is cancelled' : event.postponedAt ? 'This event is postponed' : 'This event has a new date'}
+                      </strong>
+                      <p>
+                        {event.status === 'CANCELLED'
+                          ? `${event.cancelReason ? `${event.cancelReason} ` : ''}Every ticket is refunded in full automatically.`
+                          : event.postponedAt
+                            ? `${event.postponeReason ? `${event.postponeReason} ` : ''}Tickets stay valid for the new date. Ticket holders can get a refund until it’s announced.`
+                            : `${event.lastScheduleChange?.reason ? `${event.lastScheduleChange.reason} ` : ''}Tickets stay valid. Ticket holders who can’t make it can get a full refund until ${new Date(event.refundWindowEndsAt).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Karachi' })}.`}
+                      </p>
+                      <Link to={`/events/${event.id}/refund`}>Have tickets? See your options</Link>
+                    </div>
+                  )}
+
+                  <div className="tl-dt-ov-book">
+                    <SalesWindowNote extras={extras} />
+                    {bookingAction('card') || <p className="tl-dt-book-note">{sale.note}</p>}
                   </div>
                 </div>
               </section>
 
               <div className="tl-dt-body">
-                {description && (
-                  <Row label="About the event">
-                    <p className="tl-dt-desc">{description}</p>
-                  </Row>
-                )}
-
-                <Row label="Tickets" id="tickets">
-                  {event.tiers?.length > 0 ? (
-                    <ul className="tl-dt-tiers">
-                      {event.tiers.map((tier) => {
-                        const left = Math.max(0, Number(tier.availableQuantity) || 0);
-                        const price = Number(tier.price);
-                        return (
-                          <li key={tier.id} className={`tl-dt-tier${left === 0 ? ' is-out' : ''}`}>
-                            <span className="tl-dt-tier-name">{tier.name}</span>
-                            <span className="tl-dt-tier-left">
-                              {left === 0 ? 'Sold out' : left <= LOW_AVAILABILITY ? `Only ${left} left` : `${left.toLocaleString('en-PK')} available`}
-                            </span>
-                            <span className="tl-dt-tier-price">{price === 0 ? 'Free' : formatPkr(price)}</span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : (
-                    <p className="tl-dt-muted">Ticket categories haven’t been announced yet.</p>
-                  )}
-                  <div className="tl-dt-tickets-foot">
-                    {sale.key === 'onsale' ? (
-                      <>
-                        {bookingAction('tickets')}
-                        <p className="tl-dt-muted">
-                          Pick your seats on the venue map. {isAuthenticated ? 'Selected seats are held for you for 10 minutes while you check out.' : 'You’ll sign in before a seat is held for you.'}
-                        </p>
-                      </>
-                    ) : (
-                      <p className={`tl-dt-state is-${sale.key}`} role="status">{sale.note}</p>
-                    )}
-                  </div>
-                </Row>
-
+                <EventExtrasTop extras={extras} />
                 {soldOut && (
                   <Row label="Waitlist" id="waitlist">
                     <p className="tl-dt-desc tl-dt-desc--small">
@@ -534,57 +629,33 @@ function EventDetailsPage({ id }) {
                   </Row>
                 )}
 
-                <Row label="Details">
-                  <dl className="tl-dt-details">
-                    <div><dt>Category</dt><dd>{categoryName(event.type, event.categoryLabel)}</dd></div>
-                    <div><dt>Date</dt><dd>{formatEventDate(event.date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</dd></div>
-                    {time && <div><dt>Time</dt><dd>{time} <span className="tl-dt-tz">{EVENT_TIMEZONE_LABEL}</span></dd></div>}
-                    <div>
-                      <dt>Venue</dt>
-                      <dd>
-                        <a className="tl-dt-maplink" href={googleMapsUrl(event)} target="_blank" rel="noreferrer" title="Open in Google Maps">
-                          <MapPin className="w-4 h-4" aria-hidden="true" /> <span>{event.venue}</span>
-                          <span className="tl-dt-sr"> (opens in Google Maps)</span>
-                        </a>
-                        {event.locationAddress && <small className="tl-dt-addr">{event.locationAddress}</small>}
-                      </dd>
-                    </div>
-                    {event.city && <div><dt>City</dt><dd>{event.city}</dd></div>}
-                    {organizer && <div><dt>Organizer</dt><dd>{organizer}</dd></div>}
-                  </dl>
-                </Row>
-
-                {['onsale', 'soldout'].includes(sale.key) && (
-                  <Row label="Good to know">
-                    <ul className="tl-dt-notes">
-                      <li>Seats you select are held for 10 minutes while you complete checkout.</li>
-                      <li>Resale on TicketLedger is capped at 110% of the ticket’s face value.</li>
-                      <li>Your entry QR code lives in your wallet and refreshes every 30 seconds.</li>
-                    </ul>
-                  </Row>
-                )}
+                <EventPolicies extras={extras} />
               </div>
 
-              <EventGallery event={event} mainImage={heroImage} />
+              <EventGallery photos={photos} onOpen={setViewer} />
 
               {related.length > 0 && (
-                <section className="tl-dt-related" aria-labelledby="tl-dt-related-title">
-                  <h2 id="tl-dt-related-title" className="tl-dt-related-title">Other events</h2>
+                <section className="tl-dt-section tl-dt-related" aria-labelledby="tl-dt-related-title">
+                  <div className="tl-dt-section-head">
+                    <h2 id="tl-dt-related-title" className="tl-dt-section-title">Other Events</h2>
+                    <Link to={backHref} onClick={onBack} className="tl-dt-pill">
+                      View all events <ArrowRight className="w-4 h-4" aria-hidden="true" />
+                    </Link>
+                  </div>
                   <div className="tl-dt-related-grid">
                     {related.map((item, i) => (
                       <div key={item.id} className="tl-dt-related-item">
-                        <EventTile
-                          event={item}
-                          index={i}
-                          isFavorite={isSaved(item.id)}
-                          onToggleFavorite={toggleFavorite}
-                          linkState={relatedLinkState}
-                        />
+                        <RelatedCard event={item} index={i} linkState={relatedLinkState} />
                       </div>
                     ))}
                   </div>
                 </section>
               )}
+              {viewer != null && photos.length > 0 && (
+                <GalleryLightbox photos={photos} index={viewer} onIndex={setViewer} onClose={closeViewer} />
+              )}
+              {/* Step 6: shown only when ML_REC_DISPLAY is on (renders nothing otherwise) */}
+              <RecommendedEvents surface="event" excludeEventId={id} title="You might also like" />
             </>
           )}
         </main>

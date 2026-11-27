@@ -1,0 +1,299 @@
+{
+  "source": "synthetic-v0",
+  "generator_version": "2.3.0",
+  "seed": 42,
+  "scale": 1.0,
+  "history": {
+    "from": "2022-12-31T19:00Z",
+    "to": "2025-12-31T18:59Z"
+  },
+  "countries": [
+    "PK"
+  ],
+  "currencies": {
+    "PK": "PKR"
+  },
+  "timezones": {
+    "PK": "Asia/Karachi"
+  },
+  "world": {
+    "organizers": 150,
+    "events": 5000,
+    "customers": 20000
+  },
+  "generated_at": "2026-11-25T19:31:42+00:00",
+  "files": {
+    "behavior_sequences": {
+      "file": "behavior_sequences.csv",
+      "rows": 100000,
+      "columns": [
+        "session_id",
+        "customer_id",
+        "event_id",
+        "ts",
+        "event_type",
+        "city",
+        "country",
+        "event_views",
+        "seat_selections",
+        "checkout_started",
+        "session_duration_seconds",
+        "currency",
+        "ticket_price",
+        "ticket_price_rel",
+        "min_price",
+        "tier_count",
+        "hours_since_sales_open",
+        "days_until_event",
+        "customer_prior_sessions",
+        "customer_prior_purchases",
+        "prior_sessions_this_event",
+        "account_age_days",
+        "purchased_7d",
+        "checkout_abandoned"
+      ],
+      "labels": {
+        "purchased_7d": {
+          "rows": 100000,
+          "positives": 18028,
+          "rate": 0.1803
+        },
+        "checkout_abandoned": {
+          "rows": 19318,
+          "positives": 5718,
+          "rate": 0.296
+        }
+      },
+      "ts_from": "2023-01-01T10:28Z",
+      "ts_to": "2025-12-24T18:55Z",
+      "sha256": "ddc7c6d198342c9ef5eac7ddd51d987358bc793e27db6f094496c4d70a373279"
+    },
+    "fraud_purchases": {
+      "file": "fraud_purchases.csv",
+      "rows": 51500,
+      "columns": [
+        "order_id",
+        "customer_id",
+        "event_id",
+        "ts",
+        "event_type",
+        "city",
+        "country",
+        "tickets_requested",
+        "currency",
+        "total_amount",
+        "unit_price_rel",
+        "payment_method",
+        "checkout_duration_seconds",
+        "clicks_per_minute",
+        "rapid_seat_attempts",
+        "time_on_seatmap_seconds",
+        "device_switches",
+        "account_age_days",
+        "customer_prior_orders",
+        "orders_last_24h",
+        "failed_payments_30d",
+        "prior_resale_listings",
+        "hours_since_sales_open",
+        "linked_accounts",
+        "linked_accounts_confirmed_fraud",
+        "linked_orders_same_event_24h",
+        "is_fraud"
+      ],
+      "labels": {
+        "is_fraud": {
+          "rows": 51500,
+          "positives": 3441,
+          "rate": 0.0668
+        }
+      },
+      "ts_from": "2023-01-01T11:07Z",
+      "ts_to": "2025-12-31T17:25Z",
+      "sha256": "2d2bba7ba166d723ce62ccb263278fd6d1f8bf5bc6b5d93e7edc7d96ab07741a"
+    },
+    "event_demand": {
+      "file": "event_demand.csv",
+      "rows": 5000,
+      "columns": [
+        "event_id",
+        "organizer_id",
+        "ts",
+        "event_start",
+        "event_type",
+        "city",
+        "country",
+        "timezone",
+        "venue_capacity",
+        "tier_count",
+        "currency",
+        "min_price",
+        "avg_price",
+        "max_price",
+        "min_price_rel",
+        "avg_price_rel",
+        "max_price_rel",
+        "day_of_week",
+        "start_hour",
+        "sales_open_hour",
+        "lead_days",
+        "start_month",
+        "organizer_past_events",
+        "organizer_past_sell_through_48h",
+        "sales_48h"
+      ],
+      "labels": {
+        "sales_48h": {
+          "mean": 3763.069,
+          "total": 18815345
+        }
+      },
+      "ts_from": "2023-01-01T09:00Z",
+      "ts_to": "2025-12-19T13:00Z",
+      "sha256": "8d26c1a9fe5bd7bf1cb86b3b62df777034ba759d90c5dc7e7ed6870a41f40226"
+    },
+    "attendance_no_show": {
+      "file": "attendance_no_show.csv",
+      "rows": 150000,
+      "columns": [
+        "ticket_id",
+        "customer_id",
+        "event_id",
+        "ts",
+        "event_start",
+        "event_type",
+        "city",
+        "country",
+        "day_of_week",
+        "start_hour",
+        "tier_rank",
+        "currency",
+        "ticket_price",
+        "ticket_price_rel",
+        "tickets_in_order",
+        "days_before_event_purchased",
+        "is_transferred",
+        "is_resold",
+        "customer_prior_tickets",
+        "customer_prior_attended",
+        "customer_prior_no_shows",
+        "event_tickets_sold",
+        "sample_weight",
+        "checked_in"
+      ],
+      "labels": {
+        "checked_in": {
+          "rows": 150000,
+          "positives": 127058,
+          "rate": 0.8471
+        }
+      },
+      "ts_from": "2023-01-10T09:00Z",
+      "ts_to": "2025-12-29T16:00Z",
+      "sha256": "f29f55c61b1a3314b2b63ba53640815fe6d94a1849c739eabc6bb0f0ad695e11"
+    },
+    "crowd_flow": {
+      "file": "crowd_flow.csv",
+      "rows": 92100,
+      "columns": [
+        "event_id",
+        "gate_id",
+        "ts",
+        "minutes_from_start",
+        "event_type",
+        "city",
+        "country",
+        "day_of_week",
+        "start_hour",
+        "tickets_sold",
+        "gate_count",
+        "gate_capacity_per_hour",
+        "scans"
+      ],
+      "labels": {
+        "scans": {
+          "mean": 53.561,
+          "total": 4933002
+        }
+      },
+      "ts_from": "2023-01-24T13:30Z",
+      "ts_to": "2025-12-30T10:55Z",
+      "sha256": "d25b54b0ba1ce3124441b84f4e5682f435fb7b36427475af582c51831e006264"
+    },
+    "checkout_abandonment": {
+      "file": "checkout_abandonment.csv",
+      "rows": 19318,
+      "columns": [
+        "order_id",
+        "customer_id",
+        "event_id",
+        "ts",
+        "event_type",
+        "city",
+        "country",
+        "payment_method",
+        "tickets_requested",
+        "unit_price_rel",
+        "hours_since_sales_open",
+        "days_until_event",
+        "account_age_days",
+        "customer_prior_orders",
+        "customer_prior_purchases",
+        "customer_prior_expired_checkouts",
+        "first_time",
+        "visit_event_views",
+        "visit_seat_selections",
+        "abandoned",
+        "feature_source"
+      ],
+      "labels": {
+        "abandoned": {
+          "rows": 19318,
+          "positives": 5718,
+          "rate": 0.296
+        }
+      },
+      "ts_from": "2023-01-01T19:12Z",
+      "ts_to": "2025-12-24T16:09Z",
+      "sha256": "b1e7db20f5206707a28ff2f8c1c4640c0371b528cc3543aaabb7b1a677d6bf91"
+    },
+    "demand_hourly": {
+      "file": "demand_hourly.csv",
+      "rows": 60000,
+      "columns": [
+        "event_id",
+        "organizer_id",
+        "ts",
+        "event_type",
+        "city",
+        "country",
+        "day_of_week",
+        "venue_capacity",
+        "tier_count",
+        "min_price_rel",
+        "avg_price_rel",
+        "max_price_rel",
+        "start_hour",
+        "start_month",
+        "organizer_past_events",
+        "organizer_past_sell_through_48h",
+        "hours_since_sales_open",
+        "days_until_event",
+        "sold_so_far",
+        "sold_last_24h",
+        "sell_through_so_far",
+        "rule_next_24h",
+        "sales_next_24h",
+        "feature_source"
+      ],
+      "labels": {
+        "sales_next_24h": {
+          "mean": 245.01,
+          "total": 14700618
+        }
+      },
+      "ts_from": "2023-01-01T19:00Z",
+      "ts_to": "2025-12-29T17:00Z",
+      "sha256": "fde1c73ff1bba6906e315bb26bba4a9b8ff3e89569638b0dbcc534f945b0e89b"
+    }
+  }
+}

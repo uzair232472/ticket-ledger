@@ -101,3 +101,102 @@
   .tl-ov-avatar { width: 76px; height: 76px; font-size: 26px; }
   .tl-ov-panel { padding: 18px; }
 }
+
+/* ================= Profile on the dark shell (same look as Notifications / Help & support) ================= */
+.tl-basic--dark .tl-ov-crumbs { color: rgba(244, 244, 241, 0.65); }
+.tl-basic--dark .tl-ov-crumbs b { color: #22e06b; }
+.tl-basic--dark .tl-ov-edit { background: #22e06b; color: #04140a; box-shadow: 0 0 24px rgba(34, 224, 107, 0.45); }
+.tl-basic--dark .tl-ov-edit:hover { background: #4ade80; }
+
+/* Navigation */
+.tl-basic--dark .tl-ov-nav { padding: 12px; border: 1px solid rgba(244, 244, 241, 0.14); border-radius: 16px; background: rgba(14, 30, 40, 0.72); backdrop-filter: blur(10px); }
+.tl-basic--dark .tl-ov-nav-top { color: #f4f4f1; }
+.tl-basic--dark .tl-ov-nav-top.is-active, .tl-basic--dark .tl-ov-nav-list .is-active { background: rgba(34, 224, 107, 0.12); color: #22e06b; box-shadow: inset 0 0 0 1px rgba(34, 224, 107, 0.45); }
+.tl-basic--dark .tl-ov-nav-top:hover:not(.is-active), .tl-basic--dark .tl-ov-nav-list a:hover, .tl-basic--dark .tl-ov-nav-list button:hover { background: rgba(244, 244, 241, 0.06); color: #fff; }
+.tl-basic--dark .tl-ov-nav-group, .tl-basic--dark .tl-ov-nav-user { border-top-color: rgba(244, 244, 241, 0.1); }
+.tl-basic--dark .tl-ov-nav-head, .tl-basic--dark .tl-ov-nav-user small { color: rgba(244, 244, 241, 0.55); }
+.tl-basic--dark .tl-ov-nav-list a, .tl-basic--dark .tl-ov-nav-list button { color: rgba(244, 244, 241, 0.82); }
+.tl-basic--dark .tl-ov-nav-list a svg, .tl-basic--dark .tl-ov-nav-list button svg { color: rgba(244, 244, 241, 0.6); }
+.tl-basic--dark .tl-ov-nav-list .is-active svg { color: #22e06b; }
+@media (max-width: 860px) { .tl-basic--dark .tl-ov-nav { padding-bottom: 12px; border-bottom: 1px solid rgba(244, 244, 241, 0.14); } }
+
+/* Avatar, pills, hero */
+.tl-basic--dark .tl-ov-avatar { background: rgba(34, 224, 107, 0.16); color: #86efac; box-shadow: 0 0 0 2px rgba(34, 224, 107, 0.45), 0 0 24px rgba(34, 224, 107, 0.25); }
+.tl-basic--dark .tl-ov-pill { border-color: rgba(34, 224, 107, 0.45); background: rgba(34, 224, 107, 0.1); color: #86efac; }
+.tl-basic--dark .tl-ov-pill i { background: #22e06b; box-shadow: 0 0 8px #22e06b; }
+.tl-basic--dark .tl-ov-hero { border: 1px solid rgba(34, 224, 107, 0.3); background: linear-gradient(110deg, rgba(16, 70, 52, 0.85) 0%, rgba(14, 40, 44, 0.85) 55%, rgba(10, 28, 40, 0.9) 100%); }
+.tl-basic--dark .tl-ov-hero::after { background: rgba(34, 224, 107, 0.1); filter: blur(30px); }
+.tl-basic--dark .tl-ov-hero h2 { color: #f4f4f1; }
+.tl-basic--dark .tl-ov-hero p { color: rgba(244, 244, 241, 0.75); }
+
+/* Stats, panels, lists */
+.tl-basic--dark .tl-ov-stat,
+.tl-basic--dark .tl-ov-panel { border-color: rgba(244, 244, 241, 0.14); background: rgba(14, 30, 40, 0.72); backdrop-filter: blur(10px); }
+.tl-basic--dark .tl-ov-stat h3, .tl-basic--dark .tl-ov-muted, .tl-basic--dark .tl-ov-empty p, .tl-basic--dark .tl-ov-ticket-text small, .tl-basic--dark .tl-ov-actions small { color: rgba(244, 244, 241, 0.65); }
+.tl-basic--dark .tl-ov-stat-row strong, .tl-basic--dark .tl-ov-panel-head h3 { color: #f4f4f1; }
+.tl-basic--dark .tl-ov-stat-icon { border: 1px solid rgba(34, 224, 107, 0.45); background: rgba(34, 224, 107, 0.12); color: #22e06b; box-shadow: 0 0 16px rgba(34, 224, 107, 0.2); }
+.tl-basic--dark .tl-ov-art { color: #22e06b; opacity: 0.1; }
+.tl-basic--dark .tl-ov-link { color: #22e06b; }
+.tl-basic--dark .tl-ov-outline { border-color: #22e06b; background: transparent; color: #22e06b; }
+.tl-basic--dark .tl-ov-outline:hover { background: rgba(34, 224, 107, 0.12); }
+.tl-basic--dark .tl-ov-empty-art { background: rgba(34, 224, 107, 0.1); color: #22e06b; }
+.tl-basic--dark .tl-ov-tickets a, .tl-basic--dark .tl-ov-actions a, .tl-basic--dark .tl-ov-actions button { border-color: rgba(244, 244, 241, 0.12); background: rgba(244, 244, 241, 0.03); color: #f4f4f1; }
+.tl-basic--dark .tl-ov-tickets a:hover, .tl-basic--dark .tl-ov-actions a:hover, .tl-basic--dark .tl-ov-actions button:hover { border-color: rgba(34, 224, 107, 0.55); background: rgba(34, 224, 107, 0.07); }
+.tl-basic--dark .tl-ov-status { background: rgba(34, 224, 107, 0.15); color: #86efac; }
+.tl-basic--dark .tl-ov-status.is-scanned { background: rgba(244, 244, 241, 0.1); color: rgba(244, 244, 241, 0.75); }
+.tl-basic--dark .tl-ov-status.is-resold, .tl-basic--dark .tl-ov-status.is-transferred { background: rgba(248, 113, 113, 0.15); color: #fca5a5; }
+
+/* ---------- The other account sections (utility-class markup): dark glass instead of white cards ---------- */
+.tl-basic--dark .tl-basic-skin { color: #f4f4f1; }
+.tl-basic--dark .tl-basic-skin .bg-white { background-color: rgba(14, 30, 40, 0.72); backdrop-filter: blur(10px); }
+.tl-basic--dark .tl-basic-skin .bg-slate-50,
+.tl-basic--dark .tl-basic-skin [class~='bg-slate-50/50'],
+.tl-basic--dark .tl-basic-skin [class~='bg-slate-50/80'] { background-color: rgba(244, 244, 241, 0.04); }
+.tl-basic--dark .tl-basic-skin .bg-slate-100,
+.tl-basic--dark .tl-basic-skin .bg-slate-200,
+.tl-basic--dark .tl-basic-skin [class~='bg-slate-200/70'] { background-color: rgba(244, 244, 241, 0.08); }
+.tl-basic--dark .tl-basic-skin .bg-slate-800 { background-color: #22e06b; color: #04140a; }
+.tl-basic--dark .tl-basic-skin [class~='hover:bg-slate-900']:hover { background-color: #4ade80; }
+.tl-basic--dark .tl-basic-skin [class~='hover:bg-slate-50']:hover,
+.tl-basic--dark .tl-basic-skin [class~='hover:bg-slate-200']:hover { background-color: rgba(244, 244, 241, 0.08); }
+.tl-basic--dark .tl-basic-skin .bg-emerald-50, .tl-basic--dark .tl-basic-skin .bg-teal-50 { background-color: rgba(34, 224, 107, 0.1); }
+.tl-basic--dark .tl-basic-skin .bg-purple-50 { background-color: rgba(192, 132, 252, 0.12); }
+.tl-basic--dark .tl-basic-skin .bg-rose-50 { background-color: rgba(248, 113, 113, 0.12); }
+.tl-basic--dark .tl-basic-skin [class~='hover:bg-rose-100']:hover { background-color: rgba(248, 113, 113, 0.2); }
+.tl-basic--dark .tl-basic-skin .bg-emerald-100 { background-color: rgba(34, 224, 107, 0.18); }
+.tl-basic--dark .tl-basic-skin .bg-teal-100 { background-color: rgba(45, 212, 191, 0.16); }
+
+.tl-basic--dark .tl-basic-skin [class*='border-slate-'],
+.tl-basic--dark .tl-basic-skin .divide-slate-100 > * + * { border-color: rgba(244, 244, 241, 0.12); }
+.tl-basic--dark .tl-basic-skin .border-rose-200 { border-color: rgba(248, 113, 113, 0.4); }
+.tl-basic--dark .tl-basic-skin [class~='border-[#008459]'],
+.tl-basic--dark .tl-basic-skin [class~='hover:border-[#008459]']:hover { border-color: #22e06b; }
+
+.tl-basic--dark .tl-basic-skin .text-slate-900, .tl-basic--dark .tl-basic-skin .text-slate-800,
+.tl-basic--dark .tl-basic-skin [class*='text-[#212b36]'] { color: #f4f4f1; }
+.tl-basic--dark .tl-basic-skin .text-slate-700, .tl-basic--dark .tl-basic-skin .text-slate-600 { color: rgba(244, 244, 241, 0.8); }
+.tl-basic--dark .tl-basic-skin .text-slate-500 { color: rgba(244, 244, 241, 0.65); }
+.tl-basic--dark .tl-basic-skin .text-slate-400 { color: rgba(244, 244, 241, 0.5); }
+.tl-basic--dark .tl-basic-skin [class*='text-[#008459]'],
+.tl-basic--dark .tl-basic-skin [class~='hover:text-[#008459]']:hover { color: #22e06b; }
+.tl-basic--dark .tl-basic-skin .text-emerald-800, .tl-basic--dark .tl-basic-skin .text-teal-700, .tl-basic--dark .tl-basic-skin .text-teal-800 { color: #86efac; }
+.tl-basic--dark .tl-basic-skin .text-purple-700, .tl-basic--dark .tl-basic-skin .text-purple-600 { color: #d8b4fe; }
+.tl-basic--dark .tl-basic-skin .text-rose-700, .tl-basic--dark .tl-basic-skin .text-rose-600 { color: #fca5a5; }
+.tl-basic--dark .tl-basic-skin .text-amber-700, .tl-basic--dark .tl-basic-skin .text-amber-500 { color: #fcd34d; }
+
+.tl-basic--dark .tl-basic-skin [class*='bg-[#008459]'] { background-color: #22e06b; color: #04140a; box-shadow: 0 0 20px rgba(34, 224, 107, 0.35); }
+.tl-basic--dark .tl-basic-skin [class*='hover:bg-[#00704c]']:hover { background-color: #4ade80; }
+.tl-basic--dark .tl-basic-skin .btn-eventfrog { background: #22e06b; color: #04140a; box-shadow: 0 0 20px rgba(34, 224, 107, 0.35); }
+
+/* Form fields */
+.tl-basic--dark .tl-basic-skin input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.tl-basic--dark .tl-basic-skin select,
+.tl-basic--dark .tl-basic-skin textarea { border-color: rgba(34, 224, 107, 0.4); border-radius: 10px; background-color: rgba(30, 60, 64, 0.55); color: #f4f4f1; }
+.tl-basic--dark .tl-basic-skin select { background-image: var(--sel-chev-light); }
+.tl-basic--dark .tl-basic-skin input::placeholder, .tl-basic--dark .tl-basic-skin textarea::placeholder { color: rgba(244, 244, 241, 0.45); }
+.tl-basic--dark .tl-basic-skin input:focus, .tl-basic--dark .tl-basic-skin select:focus, .tl-basic--dark .tl-basic-skin textarea:focus { border-color: #22e06b; box-shadow: 0 0 0 3px rgba(34, 224, 107, 0.2); }
+.tl-basic--dark .tl-basic-skin input:disabled, .tl-basic--dark .tl-basic-skin input[readonly] { opacity: 0.7; }
+.tl-basic--dark .tl-basic-skin input[type='file'] { color: rgba(244, 244, 241, 0.8); }
+.tl-basic--dark .tl-basic-skin input[type='file']::file-selector-button { margin-right: 10px; padding: 6px 12px; border: 0; border-radius: 6px; background: rgba(6, 16, 29, 0.9); color: #f4f4f1; font-weight: 600; cursor: pointer; }
+.tl-basic--dark .tl-basic-skin input[type='checkbox'], .tl-basic--dark .tl-basic-skin input[type='radio'] { accent-color: #22e06b; }
+.tl-basic--dark .tl-pf-loading span { border-color: #22e06b; border-top-color: transparent; }

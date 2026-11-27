@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { testCheckoutAllowed } from '../services/payments/config.js';
 import crypto from 'crypto';
 import prisma from '../config/prisma.js';
+import { moveRefusal } from '../services/eventTiming.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
 
 // Schemas
@@ -44,6 +46,10 @@ export const listTicketForResale = async (req, res) => {
           : `This event is ${ticket.event.status.toLowerCase()}, so its tickets can’t be resold.`,
       });
     }
+
+    // Only before the event starts (eventTiming.js)
+    const timing = moveRefusal(ticket.event, 'resold');
+    if (timing) return res.status(409).json({ success: false, code: 'EVENT_STARTED_OR_ENDED', message: timing });
 
     // Verify ownership
     if (ticket.userId !== userId) {
@@ -247,10 +253,13 @@ export const getMarketListings = async (req, res) => {
   try {
     const { eventId, city, maxPrice, search } = req.query;
 
+    // Only listings for events that have not started: a past event's tickets are never on the market
+    const now = new Date();
     const whereClause = {
       status: 'ACTIVE',
       ticket: {
         status: 'ACTIVE',
+        event: { status: 'PUBLISHED', OR: [{ startsAt: { gt: now } }, { startsAt: null, date: { gte: new Date(now.getTime() - 86_400_000) } }] },
       },
     };
 
@@ -259,7 +268,7 @@ export const getMarketListings = async (req, res) => {
     }
 
     if (city) {
-      whereClause.ticket.event = { city };
+      whereClause.ticket.event = { ...whereClause.ticket.event, city };
     }
 
     if (maxPrice) {
@@ -398,6 +407,16 @@ export const buyResaleTicket = async (req, res) => {
   try {
     const { listingId } = req.params;
     const buyerId = req.user.id;
+    // FAIL-CLOSED: resale has no provider payment flow yet, so a ticket may only change hands through the
+    // development test checkout. Wherever real payments are required (production, Stripe live mode, test
+    // checkout off) a resale purchase is refused instead of transferring a ticket nobody paid for.
+    if (!testCheckoutAllowed()) {
+      return res.status(503).json({ success: false, code: 'RESALE_PAYMENTS_UNAVAILABLE', message: 'Buying resale tickets is not available yet.' });
+    }
+    const method = req.body?.paymentMethod ?? 'TEST_INSTANT';
+    if (!['TEST_INSTANT', 'MOCK'].includes(method)) {
+      return res.status(400).json({ success: false, code: 'PAYMENT_METHOD_UNAVAILABLE', message: 'Only the test checkout is available for resale tickets.' });
+    }
 
     // Fetch listing with ticket
     const listing = await prisma.resaleListing.findUnique({
@@ -429,6 +448,8 @@ export const buyResaleTicket = async (req, res) => {
     if (ev.status !== 'PUBLISHED' || ev.postponedAt || listing.ticket.status !== 'ACTIVE') {
       return res.status(409).json({ success: false, message: 'This event is no longer on sale, so this ticket can’t be bought.' });
     }
+    const timing = moveRefusal(ev, 'bought on resale');
+    if (timing) return res.status(409).json({ success: false, code: 'EVENT_STARTED_OR_ENDED', message: timing });
 
     // Buyer cannot buy their own ticket
     if (listing.sellerId === buyerId) {
@@ -561,6 +582,8 @@ export const relistResaleListing = async (req, res) => {
     if (event.status !== 'PUBLISHED' || event.postponedAt || listing.ticket.status !== 'ACTIVE') {
       return res.status(409).json({ success: false, message: 'This event isn’t on sale right now, so the ticket can’t be relisted yet.' });
     }
+    const timing = moveRefusal(event, 'resold');
+    if (timing) return res.status(409).json({ success: false, code: 'EVENT_STARTED_OR_ENDED', message: timing });
     const price = req.body?.resalePrice != null ? Number(req.body.resalePrice) : Number(listing.resalePrice);
     if (!(price > 0) || price > Number(listing.maxResalePrice)) {
       return res.status(400).json({ success: false, message: `Choose a price up to Rs. ${Number(listing.maxResalePrice).toLocaleString()} (110% of face value).` });

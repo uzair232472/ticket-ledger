@@ -3,7 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Notice } from '../components/dash/DashShell';
 import { StudioHead, StatCard, Panel, Badge, Avatar } from '../components/dash/Studio';
+import { AbandonmentInsightPanel, InsightBoundary } from '../components/ml/InsightPanels';
+import Pager, { pageOf } from '../components/dash/Pager';
 import { useDialog } from '../components/ui/DialogProvider';
+import api from '../utils/api';
+import { can } from '../lib/permissions';
 import {
   Users,
   BarChart3,
@@ -24,14 +28,66 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+/**
+ * Automatic reminders (organizations only): after a checkout lapses unpaid, wait N hours, then remind the customer
+ * once (optionally with a personal code). Shows how many reminded customers bought tickets afterwards.
+ */
+function AutoRecovery() {
+  const [data, setData] = useState(null);
+  const [form, setForm] = useState(null);
+  const [msg, setMsg] = useState(null);
+  const load = () => api.get('/org/recovery').then((r) => { setData(r.data.data); setForm(r.data.data.settings); }).catch(() => setData(false));
+  useEffect(() => { load(); }, []);
+  if (data === false || !form) return null;
+  const save = async (patch) => {
+    const next = { ...form, ...patch };
+    setForm(next);
+    try {
+      const r = await api.put('/org/recovery', next);
+      setData(r.data.data);
+      setForm(r.data.data.settings);
+      setMsg({ tone: 'good', text: r.data.message });
+    } catch (e) {
+      setMsg({ tone: 'bad', text: e.response?.data?.message || 'Could not save.' });
+      load();
+    }
+  };
+  const s = data.last30Days;
+  return (
+    <Panel icon={Zap} title="Automatic reminders" badge={form.recoveryEnabled ? 'On' : 'Off'} badgeTone={form.recoveryEnabled ? 'green' : 'grey'}
+      sub={`When a checkout lapses unpaid, the customer gets one reminder (at most one per event every ${data.limits.cooldownDays} days, never after they bought).`}>
+      {msg && <Notice tone={msg.tone} onDismiss={() => setMsg(null)}>{msg.text}</Notice>}
+      <div className="flex flex-wrap gap-4 items-end">
+        <label className="flex items-center gap-2 text-sm font-bold">
+          <input type="checkbox" checked={form.recoveryEnabled} onChange={(e) => save({ recoveryEnabled: e.target.checked })} /> Send automatically
+        </label>
+        <label className="grid gap-1 text-xs"><span className="font-bold">Wait (hours)</span>
+          <input className="tl-dash-input" type="number" min={1} max={data.limits.windowHours - 1} value={form.recoveryDelayHours} onChange={(e) => setForm({ ...form, recoveryDelayHours: Number(e.target.value) })} onBlur={() => save({})} style={{ width: 90 }} />
+        </label>
+        <label className="grid gap-1 text-xs"><span className="font-bold">Personal discount (%)</span>
+          <input className="tl-dash-input" type="number" min={0} max={data.limits.maxPercent} value={form.recoveryDiscountPercent} onChange={(e) => setForm({ ...form, recoveryDiscountPercent: Number(e.target.value) })} onBlur={() => save({})} style={{ width: 90 }} />
+        </label>
+        <label className="grid gap-1 text-xs"><span className="font-bold">Code valid (hours)</span>
+          <input className="tl-dash-input" type="number" min={1} max={168} disabled={!form.recoveryDiscountPercent} value={form.recoveryValidHours} onChange={(e) => setForm({ ...form, recoveryValidHours: Number(e.target.value) })} onBlur={() => save({})} style={{ width: 90 }} />
+        </label>
+      </div>
+      <p className="text-sm mt-3">Last 30 days: <b>{s.sent}</b> reminders ({s.automatic} automatic, {s.manual} by hand) · <b>{s.recovered}</b> customers bought afterwards ({s.rate}%) · {s.codesUsed} codes used</p>
+    </Panel>
+  );
+}
+
+// Recorded = the app logged this reason; steps = only the steps reached are known (no reason was logged)
 const REASONS = {
-  PAYMENT_FRICTION: { tone: 'rose', label: 'Payment friction' },
-  HIGH_TICKET_PRICE: { tone: 'amber', label: 'Price sensitivity' },
-  SEAT_LOCK_TIMEOUT: { tone: 'blue', label: 'Seat lock expired (10m)' },
-  COMPARISON_SHOPPING: { tone: 'blue', label: 'Comparison shopping (4+ views)' },
+  PAYMENT_FAILED: { tone: 'rose', label: 'Payment failed' },
+  REMOVED_TICKETS: { tone: 'amber', label: 'Removed tickets' },
+  HOLD_EXPIRED: { tone: 'blue', label: 'Seat hold ran out' },
+  LEFT_AT_CHECKOUT: { tone: 'grey', label: 'Left at checkout' },
+  LEFT_AFTER_SEAT: { tone: 'grey', label: 'Left after choosing a seat' },
 };
-const reasonOf = (r) => REASONS[r] || { tone: 'grey', label: 'Browser hesitation' };
-const intentOf = (score) => (score >= 75 ? { tone: 'green', text: 'High intent' } : score >= 50 ? { tone: 'amber', text: 'Moderate' } : { tone: 'grey', text: 'Low intent' });
+const reasonOf = (r) => REASONS[r] || { tone: 'grey', label: 'Not recorded' };
+const intentOf = (score) => (score >= 75 ? { tone: 'green', text: 'High intent' } : score >= 55 ? { tone: 'amber', text: 'Moderate' } : { tone: 'grey', text: 'Low intent' });
+const CART_SOURCE = { recorded: 'from checkout', seat_price: 'seat price', cheapest_tier: 'estimate: cheapest tier', unknown: 'unknown' };
+const when = (t) => new Date(t).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 /** View → seat → checkout → abandoned, with the furthest step reached highlighted. */
 function Journey({ item }) {
@@ -58,7 +114,7 @@ function Journey({ item }) {
 export default function AbandonedIntentDashboard() {
   const dialog = useDialog();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   // Filters
   const [eventsList, setEventsList] = useState([]);
@@ -77,7 +133,12 @@ export default function AbandonedIntentDashboard() {
   const [sendingUserId, setSendingUserId] = useState(null);
   const [batchSending, setBatchSending] = useState(false);
   const [actionSuccessMsg, setActionSuccessMsg] = useState(null);
-  const [discountCode, setDiscountCode] = useState('RECOVER10');
+  const [page, setPage] = useState(0); // prospect directory: 10 rows a page
+  // The offer each reminder carries: a personal single-use code (made per person), an existing code, or none
+  const [offer, setOffer] = useState({ kind: 'personal', percent: 10, code: '' });
+  const offerBody = () => (offer.kind === 'personal' ? { discountPercent: Number(offer.percent) || 10 } : offer.kind === 'code' ? { discountCode: offer.code.trim() } : {});
+  const offerLabel = () => (offer.kind === 'personal' ? `a personal ${Number(offer.percent) || 10}% code (single use, valid 48 hours)` : offer.kind === 'code' ? `the code “${offer.code.trim()}”` : 'no discount');
+  const offerProblem = () => (offer.kind === 'code' && !offer.code.trim() ? 'Enter the discount code to send, or choose another offer.' : offer.kind === 'personal' && !(Number(offer.percent) >= 1 && Number(offer.percent) <= 90) ? 'The personal discount must be 1–90%.' : null);
 
   // 1. Events for the filter
   useEffect(() => {
@@ -135,6 +196,10 @@ export default function AbandonedIntentDashboard() {
       setError('Guests have no account or email, so they cannot get a reminder.');
       return;
     }
+    if (offerProblem()) {
+      setError(offerProblem());
+      return;
+    }
     setSendingUserId(prospect.user.id);
     setActionSuccessMsg(null);
     setError(null);
@@ -142,12 +207,12 @@ export default function AbandonedIntentDashboard() {
       const res = await fetch(`${API_URL}/api/analytics/abandoned/send-reminder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ targetUserId: prospect.user.id, eventId: prospect.event.id, discountCode }),
+        body: JSON.stringify({ targetUserId: prospect.user.id, eventId: prospect.event.id, ...offerBody() }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
         setSentReminders((prev) => ({ ...prev, [`${prospect.user.id}_${prospect.event.id}`]: true }));
-        setActionSuccessMsg(`Recovery reminder sent to ${prospect.user.name}.`);
+        setActionSuccessMsg(`Recovery reminder sent to ${prospect.user.name}${json.discountCode ? ` with code ${json.discountCode.code}` : ''}.`);
       } else {
         setError(json.message || 'Failed to send recovery reminder');
       }
@@ -166,7 +231,11 @@ export default function AbandonedIntentDashboard() {
       setError('No registered users in this list to send reminders to.');
       return;
     }
-    if (!(await dialog.confirm({ title: 'Send recovery reminders?', message: `Reminders with the coupon “${discountCode}” go to ${registeredUsers.length} ${registeredUsers.length === 1 ? 'person' : 'people'}.`, confirmLabel: 'Send reminders', tone: 'info' }))) return;
+    if (offerProblem()) {
+      setError(offerProblem());
+      return;
+    }
+    if (!(await dialog.confirm({ title: 'Send recovery reminders?', message: `Reminders with ${offerLabel()} go to ${registeredUsers.length} ${registeredUsers.length === 1 ? 'person' : 'people'}.`, confirmLabel: 'Send reminders', tone: 'info' }))) return;
 
     setBatchSending(true);
     setActionSuccessMsg(null);
@@ -175,7 +244,7 @@ export default function AbandonedIntentDashboard() {
       const res = await fetch(`${API_URL}/api/analytics/abandoned/batch-reminders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ eventId: selectedEventId || undefined, discountCode }),
+        body: JSON.stringify({ eventId: selectedEventId || undefined, ...offerBody() }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -195,6 +264,9 @@ export default function AbandonedIntentDashboard() {
 
   const summary = data?.summary || {};
   const rows = data?.abandonedUsers || [];
+  // Back to the first page whenever the filters change; stay on a valid page after a refresh
+  useEffect(() => { setPage(0); }, [selectedEventId, minScore, selectedReason]);
+  const shown = pageOf(rows, page, 10);
 
   return (
     <div>
@@ -221,7 +293,7 @@ export default function AbandonedIntentDashboard() {
           tone="green"
           label="Recoverable revenue"
           value={`PKR ${(summary.recoverableRevenuePkr ?? 0).toLocaleString()}`}
-          note="Total cart value left in abandoned checkouts"
+          note="Sum of the carts left: the checkout amount when recorded, else the held seat's price"
         />
         <StatCard
           icon={TrendingUp}
@@ -229,28 +301,48 @@ export default function AbandonedIntentDashboard() {
           label="Avg intent score"
           value={summary.avgIntentScore ?? 0}
           unit="/100"
-          note="Based on clickstream, seat locks and checkout speed"
+          note="Same rule as Purchase intent: 40 + 15 (3+ views) + 20 (seat) + 25 (checkout) − 10 (left). No AI model"
         />
         <StatCard
           icon={AlertTriangle}
           tone="amber"
           label="Top dropout reason"
-          value={<span style={{ fontSize: 'clamp(18px, 1.5vw, 22px)', letterSpacing: '-0.01em' }}>{summary.topReason ? summary.topReason.replace(/_/g, ' ') : 'None detected'}</span>}
-          note="Most common friction point across abandoned sessions"
+          value={<span style={{ fontSize: 'clamp(18px, 1.5vw, 22px)', letterSpacing: '-0.01em' }}>{summary.topReason ? reasonOf(summary.topReason).label : 'None'}</span>}
+          note="Most common reason among the people listed below"
         />
       </div>
+
+      {/* Step 6: per-event totals; the experimental model is display-only and changes no reminder */}
+      {selectedEventId && <InsightBoundary><div style={{ marginBottom: 20 }}><AbandonmentInsightPanel eventId={selectedEventId} /></div></InsightBoundary>}
+
+      {/* Automatic reminders (organization members who contact attendees) */}
+      {user?.role !== 'SUPER_ADMIN' && can(user, 'attendee.contact') && <div style={{ marginBottom: 20 }}><AutoRecovery /></div>}
 
       {/* Recovery actions */}
       <div className="tl-ab-actions">
         <div className="tl-ab-actions-intro">
           <span className="tl-recovery-icon" style={{ background: '#d8f0dc', color: 'var(--st-green)' }}><Send className="w-5 h-5" /></span>
-          <span><strong>Recovery actions</strong><span>Send everyone listed below a reminder with a coupon.</span></span>
+          <span><strong>Recovery actions</strong><span>Send everyone listed below a reminder. A personal code works once, for that person only.</span></span>
         </div>
         <div className="tl-ab-actions-right">
           <label className="tl-coupon">
-            <Tag className="w-4 h-4" aria-hidden="true" /> Coupon
-            <input type="text" value={discountCode} onChange={(e) => setDiscountCode(e.target.value.toUpperCase())} aria-label="Coupon code" />
+            <Tag className="w-4 h-4" aria-hidden="true" /> Offer
+            <select value={offer.kind} onChange={(e) => setOffer({ ...offer, kind: e.target.value })} aria-label="Offer in the reminder">
+              <option value="personal">Personal code</option>
+              <option value="code">Existing code</option>
+              <option value="none">No discount</option>
+            </select>
           </label>
+          {offer.kind === 'personal' && (
+            <label className="tl-coupon">
+              <input type="number" min={1} max={90} value={offer.percent} onChange={(e) => setOffer({ ...offer, percent: e.target.value })} aria-label="Personal discount percent" style={{ width: 56 }} /> % off
+            </label>
+          )}
+          {offer.kind === 'code' && (
+            <label className="tl-coupon">
+              <input type="text" placeholder="CODE" value={offer.code} onChange={(e) => setOffer({ ...offer, code: e.target.value.toUpperCase() })} aria-label="Discount code" />
+            </label>
+          )}
           <button type="button" className="tl-st-btn tl-st-btn--green" onClick={handleBatchSendReminders} disabled={batchSending || !summary.registeredDropouts}>
             {batchSending ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />} Send reminders
           </button>
@@ -285,11 +377,7 @@ export default function AbandonedIntentDashboard() {
                   aria-label="Abandonment reason"
                 >
                   <option value="ALL">All abandonment reasons</option>
-                  <option value="PAYMENT_FRICTION">Payment friction</option>
-                  <option value="HIGH_TICKET_PRICE">High ticket price</option>
-                  <option value="SEAT_LOCK_TIMEOUT">Seat lock timeout</option>
-                  <option value="COMPARISON_SHOPPING">Comparison shopping</option>
-                  <option value="BROWSER_HESITATION">Browser hesitation</option>
+                  {Object.entries(REASONS).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
                 </select>
               </label>
               <label className="tl-ss tl-ss--sm">
@@ -299,9 +387,8 @@ export default function AbandonedIntentDashboard() {
                   aria-label="Minimum intent score"
                 >
                   <option value="">Any intent score</option>
-                  <option value="50">Score ≥ 50 (moderate+)</option>
-                  <option value="70">Score ≥ 70 (high intent)</option>
-                  <option value="80">Score ≥ 80 (very high)</option>
+                  <option value="55">Score ≥ 55 (moderate+)</option>
+                  <option value="75">Score ≥ 75 (high intent)</option>
                 </select>
               </label>
             </div>
@@ -327,7 +414,7 @@ export default function AbandonedIntentDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((item) => {
+                {shown.rows.map((item) => {
                   const reason = reasonOf(item.likelyReason);
                   const intent = intentOf(item.intentScore);
                   const isSent = sentReminders[`${item.user.id}_${item.event.id}`];
@@ -350,13 +437,13 @@ export default function AbandonedIntentDashboard() {
                       <td className="tl-ab-event">
                         <strong>{item.event.name}</strong>
                         <span><MapPin className="w-3 h-3" aria-hidden="true" />{item.event.venue || item.event.city}</span>
-                        <em>Cart: PKR {item.cartValue.toLocaleString()}</em>
+                        <em>Cart: PKR {item.cartValue.toLocaleString()} <small>({CART_SOURCE[item.cartValueSource] || 'unknown'})</small></em>
                       </td>
                       <td>
                         <Journey item={item} />
                         <div className="tl-last">
                           <Clock className="w-3.5 h-3.5" aria-hidden="true" />
-                          Last: <b>{item.lastAction}</b> · {new Date(item.lastActionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          Last: <b>{item.lastAction.replace(/_/g, ' ')}</b> · {when(item.lastActionTime)}
                         </div>
                       </td>
                       <td className="is-center">
@@ -366,7 +453,8 @@ export default function AbandonedIntentDashboard() {
                         </span>
                       </td>
                       <td className="tl-reason">
-                        <Badge tone={reason.tone}>{reason.label}</Badge>
+                        <Badge tone={reason.tone}>{reason.label}</Badge>{' '}
+                        <small className="tl-reason-src">{item.reasonSource === 'recorded' ? 'recorded by the app' : 'from the steps only'}</small>
                         <p>{item.reasonDetail}</p>
                         <em><Zap className="w-3.5 h-3.5" aria-hidden="true" />Suggest: {item.recommendedAction.replace(/_/g, ' ').toLowerCase()}</em>
                       </td>
@@ -378,7 +466,7 @@ export default function AbandonedIntentDashboard() {
                             type="button"
                             onClick={() => handleSendReminder(item)}
                             disabled={isSending}
-                            title={`Send an in-app and email reminder with coupon ${discountCode}`}
+                            title={`Send an in-app and email reminder with ${offerLabel()}`}
                             className="tl-st-btn tl-st-btn--xs tl-st-btn--green"
                           >
                             {isSending ? <RefreshCw className="w-4 h-4 tl-dash-spin" /> : <Send className="w-4 h-4" />} Send reminder
@@ -394,15 +482,18 @@ export default function AbandonedIntentDashboard() {
             </table>
           </div>
         )}
+        {!loading && rows.length > 0 && <div className="tl-pi-pager"><Pager page={shown.page} total={rows.length} onPage={setPage} label="Abandoned prospects" /></div>}
       </Panel>
 
       <div className="tl-note-strip">
         <Info className="w-4 h-4" aria-hidden="true" />
         <p>
           <strong>How recovery works.</strong> TicketLedger records signals such as event views, seat picks, seat locks,
-          checkout starts and checkout drop-offs. When someone locks a seat or starts checkout but doesn't pay, those
-          signals are combined into a likely reason and an intent score. You can then send them an in-app and email
-          reminder with a single-use coupon.
+          checkout starts and checkout drop-offs. Anyone who chose a seat or started checkout and has not bought that
+          event is listed. The reason is shown as <b>recorded by the app</b> when it was logged (payment failed, tickets
+          removed, seat hold ran out); otherwise only the steps they reached are known. The score is a fixed rule, not an
+          AI model. The experimental AI view (admins, per event) sits in the box above the list and never sends anything.
+          Accounts used by the test scripts also appear here.
         </p>
       </div>
     </div>

@@ -1,5 +1,9 @@
 import prisma from '../config/prisma.js';
-import nftService from '../services/nftService.js';
+import nftService, { mintView } from '../services/nftService.js';
+import { ticketStates } from '../services/ticketStatus.js';
+
+// Explorer links only for tokens on Amoy itself (never for simulated tokens or other chains)
+const onExplorer = (mint) => ['RECORDED', 'VERIFIED'].includes(mint.status) && nftService.status().chainId === 80002;
 import {
   createSignedQRPayload,
   generateQRDataUrl,
@@ -39,11 +43,16 @@ export const mintOrderNFTs = async (req, res) => {
       });
     }
 
-    const mintResult = await nftService.batchMintOrderTickets(orderId);
+    // Customers retry only tickets whose backoff has passed; an admin may also retry ones given up on
+    const isAdmin = req.user.role === 'SUPER_ADMIN';
+    const mintResult = await nftService.batchMintOrderTickets(orderId, isAdmin ? { force: true } : { dueOnly: true });
+    const waiting = order.tickets.length - mintResult.totalMinted;
 
     return res.status(200).json({
       success: true,
-      message: `Successfully minted ${mintResult.totalMinted} ERC721 NFT tickets on Polygon Amoy!`,
+      message: waiting
+        ? `${mintResult.totalMinted} of ${order.tickets.length} NFT tickets minted; the rest will be retried automatically.`
+        : `Successfully minted ${mintResult.totalMinted} ERC721 NFT tickets on Polygon Amoy!`,
       data: mintResult,
     });
   } catch (error) {
@@ -63,6 +72,8 @@ export const getMyNFTTickets = async (req, res) => {
       where: {
         userId,
         status: { not: 'CANCELLED' },
+        // Paid tickets only: an unfinished checkout's placeholder tickets are never minted
+        order: { status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED'] } },
       },
       include: {
         event: {
@@ -96,25 +107,14 @@ export const getMyNFTTickets = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Auto-mint any confirmed tickets that don't have on-chain metadata yet
+    // Tickets still waiting for their NFT are minted by the background job; nudge it for this customer
+    if (tickets.some((t) => mintView(t).status === 'PENDING')) nftService.retryDueMintsLater({ userId });
+
     const formattedNFTs = await Promise.all(
       tickets.map(async (t) => {
-        let tokenId = t.tokenId;
-        let txHash = t.txHash;
-        let contractAddress = t.contractAddress;
-        let ownerWallet = t.ownerWallet || req.user.walletAddress;
-
-        if (!tokenId || !txHash) {
-          try {
-            const minted = await nftService.mintTicketNFT(t.id);
-            tokenId = minted.tokenId;
-            txHash = minted.txHash;
-            contractAddress = minted.contractAddress;
-            ownerWallet = minted.ownerWallet;
-          } catch (e) {
-            console.warn(`Background auto-mint skipped for ticket ${t.id}:`, e.message);
-          }
-        }
+        const { tokenId, txHash, contractAddress } = t;
+        const ownerWallet = t.ownerWallet || req.user.walletAddress;
+        const mint = mintView(t);
 
         const originalPrice = Number(t.price);
         const resalePriceCap = Math.floor((originalPrice * 110) / 100);
@@ -141,14 +141,18 @@ export const getMyNFTTickets = async (req, res) => {
             contractAddress,
             ownerWallet,
             txHash,
-            polygonscanTxUrl: txHash ? `https://amoy.polygonscan.com/tx/${txHash}` : null,
+            polygonscanTxUrl: onExplorer(mint) && txHash ? `https://amoy.polygonscan.com/tx/${txHash}` : null,
             polygonscanTokenUrl:
-              contractAddress && tokenId
+              onExplorer(mint) && contractAddress && tokenId
                 ? `https://amoy.polygonscan.com/token/${contractAddress}?a=${tokenId}`
                 : null,
-            isMinted: Boolean(tokenId && txHash),
-            isLiveOnChain: Boolean(process.env.POLYGON_PRIVATE_KEY && process.env.TICKET_NFT_CONTRACT_ADDRESS),
+            isMinted: mint.isMinted,
+            mintStatus: mint.status,
+            mintLabel: mint.label,
+            isLiveOnChain: nftService.isLive,
           },
+          // Payment, entry and NFT are separate facts (services/ticketStatus.js)
+          states: ticketStates(t),
           qrNonce: t.qrNonce,
           activeResaleListing: t.resaleListings?.[0] || null,
           createdAt: t.createdAt,
@@ -210,6 +214,8 @@ export const getNFTTicketById = async (req, res) => {
             txHash: ticket.txHash,
             ownerWallet: ticket.ownerWallet,
             polygonscanUrl: ticket.txHash ? `https://amoy.polygonscan.com/tx/${ticket.txHash}` : null,
+            mintStatus: mintView(ticket).status,
+            mintLabel: mintView(ticket).label,
           },
         },
       },
@@ -264,25 +270,14 @@ export const getCustomerWallet = async (req, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Tickets still waiting for their NFT are minted by the background job; nudge it for this customer
+    if (tickets.some((t) => t.status !== 'CANCELLED' && mintView(t).status === 'PENDING')) nftService.retryDueMintsLater({ userId });
+
     const walletTickets = await Promise.all(
       tickets.map(async (t) => {
-        let tokenId = t.tokenId;
-        let txHash = t.txHash;
-        let contractAddress = t.contractAddress;
-        let ownerWallet = t.ownerWallet || req.user.walletAddress;
-
-        // Auto-mint on Polygon Amoy if not yet minted
-        if (!tokenId || !txHash) {
-          try {
-            const minted = await nftService.mintTicketNFT(t.id);
-            tokenId = minted.tokenId;
-            txHash = minted.txHash;
-            contractAddress = minted.contractAddress;
-            ownerWallet = minted.ownerWallet;
-          } catch (e) {
-            console.warn(`Background minting note for ticket ${t.id}:`, e.message);
-          }
-        }
+        const { tokenId, txHash, contractAddress } = t;
+        const ownerWallet = t.ownerWallet || req.user.walletAddress;
+        const mint = mintView(t);
 
         // Signed gate pass (TL1…) and its manual code; generated on demand, never stored
         const pass = await passFor(t);
@@ -310,15 +305,20 @@ export const getCustomerWallet = async (req, res) => {
             contractAddress: contractAddress || null,
             ownerWallet: ownerWallet || req.user.walletAddress || 'Platform Custodian',
             network: 'Polygon Amoy Testnet (ChainId 80002)',
-            isMinted: Boolean(tokenId && txHash),
+            isMinted: mint.isMinted,
+            mintStatus: mint.status,
+            mintLabel: mint.label,
+            verified: mint.status === 'VERIFIED',
+            // Says "verified" only when ownership was read back from the chain
             ownershipBadge: {
-              label: 'Verified ERC721 NFT Pass',
+              label: mint.label,
               network: 'Polygon Amoy',
-              isOwner: true,
-              wallet: ownerWallet || req.user.walletAddress || 'Platform Custodian',
+              isOwner: mint.status === 'VERIFIED',
+              wallet: mint.status === 'VERIFIED' ? t.nftVerifiedOwner : ownerWallet || null,
             },
-            polygonscanUrl: txHash ? `https://amoy.polygonscan.com/tx/${txHash}` : null,
+            polygonscanUrl: onExplorer(mint) && txHash ? `https://amoy.polygonscan.com/tx/${txHash}` : null,
           },
+          states: ticketStates(t),
           qr: {
             code: pass.code,
             manualCode: pass.manualCode,

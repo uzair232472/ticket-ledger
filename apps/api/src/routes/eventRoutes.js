@@ -1,4 +1,5 @@
 import express from 'express';
+import { getEventExtras } from '../controllers/eventExtrasController.js';
 import multer from 'multer';
 import { 
   createEvent, 
@@ -15,6 +16,7 @@ import {
   checkEventSchedule,
   getCategories,
   createCategory,
+  setInitialTiers,
 } from '../controllers/eventController.js';
 import { EVENT_IMAGE_SPECS, HERO_VIDEO_SPECS, LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
 import { requestPromotion, withdrawPromotion, getHeroPromotions } from '../controllers/promotionController.js';
@@ -31,10 +33,12 @@ import {
   joinEventWaitlist,
   getEventWaitlistStatus,
 } from '../controllers/ticketTransferController.js';
-import { authenticateJWT, requireRole, optionalAuth } from '../middlewares/auth.js';
+import { authenticateJWT, optionalAuth, loadOrgContext, orgGuard } from '../middlewares/auth.js';
+import { getRecommendations, postRecommendationClick, postRecommendationRendered } from '../controllers/recommendationController.js';
+import { recBeaconRateLimiter } from '../middlewares/rateLimit.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 
-import { getSubmissionStatus, submitEventForReview } from '../controllers/eventReviewController.js';
+import { getSubmissionStatus, submitEventForReview, replyToReview, withdrawFromReview } from '../controllers/eventReviewController.js';
 
 const router = express.Router();
 
@@ -55,7 +59,7 @@ const EVENT_MEDIA_FIELDS = [
 const MULTER_MESSAGES = {
   LIMIT_FILE_SIZE: `An image is larger than ${LARGEST_IMAGE_BYTES / (1024 * 1024)} MB.`,
   LIMIT_FILE_COUNT: 'Too many images in one upload.',
-  LIMIT_UNEXPECTED_FILE: `Too many images, or an unknown image field. Scrolling Gallery Images allows up to ${EVENT_IMAGE_SPECS.gallery.maxCount}.`,
+  LIMIT_UNEXPECTED_FILE: `Too many images, or an unknown image field. Event Gallery Images allows up to ${EVENT_IMAGE_SPECS.gallery.maxCount}.`,
 };
 const eventMediaUpload = (req, res, next) =>
   upload.fields(EVENT_MEDIA_FIELDS)(req, res, (err) => {
@@ -80,13 +84,17 @@ const promoVideoUpload = (req, res, next) =>
 
 // Event categories: the fixed list plus organizer-added ones (adding needs an approved organizer company)
 router.get('/categories', getCategories);
-router.post('/categories', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), requireApprovedOrganizer, createCategory);
+router.post('/categories', authenticateJWT, loadOrgContext, requireApprovedOrganizer, createCategory);
 
 // Live venue / schedule check for the organizer's create and edit form (before /:id so it isn't an event id)
-router.get('/schedule-check', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), checkEventSchedule);
+router.get('/schedule-check', ...orgGuard('event.view'), checkEventSchedule);
 
 // Public discovery endpoints with optional authentication to attribute user views
 router.get('/', optionalAuth, getEvents);
+// Recommendation experiment (rules + control group; logged for Step 5 data collection, not shown in the app yet)
+router.get('/recommendations', optionalAuth, getRecommendations);
+router.post('/recommendations/:listId/click', optionalAuth, recBeaconRateLimiter, postRecommendationClick);
+router.post('/recommendations/:listId/rendered', optionalAuth, recBeaconRateLimiter, postRecommendationRendered);
 // Events approved for the home page hero (before /:id so it isn't an event id)
 router.get('/promoted-hero', getHeroPromotions);
 router.get('/:id', optionalAuth, getEventById);
@@ -99,7 +107,7 @@ router.get('/:eventId/waitlist', authenticateJWT, getEventWaitlistStatus);
 router.post(
   '/',
   authenticateJWT,
-  requireRole('ORGANIZER', 'SUPER_ADMIN'),
+  loadOrgContext,
   requireApprovedOrganizer,
   eventMediaUpload,
   createEvent
@@ -108,38 +116,43 @@ router.post(
 // Edit event details and media (owning organizer or Super Admin; checked in the controller)
 router.get(
   '/:id/manage',
-  authenticateJWT,
-  requireRole('ORGANIZER', 'SUPER_ADMIN'),
+  ...orgGuard('event.view'),
   getEventForEdit
 );
 
 router.put(
   '/:id',
-  authenticateJWT,
-  requireRole('ORGANIZER', 'SUPER_ADMIN'),
+  ...orgGuard('event.edit'),
   eventMediaUpload,
   updateEvent
 );
 
+// First ticket tiers of an event created without any (a reserved prebooked date)
+router.post('/:id/tiers', ...orgGuard('event.edit'), setInitialTiers);
+
 router.get(
   '/organizer/my-events',
-  authenticateJWT,
-  requireRole('ORGANIZER', 'SUPER_ADMIN'),
+  ...orgGuard('event.view'),
   getOrganizerEvents
 );
 
 // Review & submit: readiness check, and sending the event to admins for approval
-router.get('/:id/submission', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), getSubmissionStatus);
-router.post('/:id/submit', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), submitEventForReview);
+router.get('/:id/submission', ...orgGuard('event.view'), getSubmissionStatus);
+router.post('/:id/submit', ...orgGuard('event.submit'), submitEventForReview);
+// Answer an admin's question (and optionally accept the date they suggested)
+router.post('/:id/review-reply', ...orgGuard('event.submit', { allowPlatformAdmin: false }), replyToReview);
+// Take it back from review to change it (editing is locked while an admin reviews it)
+router.post('/:id/review-withdraw', ...orgGuard('event.submit', { allowPlatformAdmin: false }), withdrawFromReview);
 
 // Promotion requests: top of listings and the home page hero (owning organizer or Super Admin)
-router.post('/:id/promotion', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), promoVideoUpload, requestPromotion);
-router.delete('/:id/promotion/:kind', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), withdrawPromotion);
+router.post('/:id/promotion', ...orgGuard('event.promote'), promoVideoUpload, requestPromotion);
+router.delete('/:id/promotion/:kind', ...orgGuard('event.promote'), withdrawPromotion);
 
 // Cancel, postpone or move an event with ticket holders (owning organizer or Super Admin)
-const manageGuard = [authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN')];
+const manageGuard = orgGuard('event.lifecycle');
 router.get('/:id/lifecycle', manageGuard, getLifecycle);
-router.post('/:id/cancel', manageGuard, cancelEventHandler);
+// Cancelling refunds every ticket holder: it also needs finance.refunds
+router.post('/:id/cancel', orgGuard(['event.lifecycle', 'finance.refunds']), cancelEventHandler);
 router.post('/:id/postpone', manageGuard, postponeEventHandler);
 router.post('/:id/reschedule', manageGuard, rescheduleEventHandler);
 router.delete('/:id/reschedule', manageGuard, withdrawRescheduleHandler);
@@ -149,34 +162,34 @@ router.get('/:id/refund-options', authenticateJWT, getRefundOptions);
 router.post('/:id/refund-request', authenticateJWT, requestRefundHandler);
 
 // Delete an event (owning organizer or Super Admin; refused while tickets are sold or being paid for)
-router.delete('/:id', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), deleteEvent);
+router.delete('/:id', ...orgGuard('event.delete'), deleteEvent);
 
 router.patch(
   '/:id/status',
-  authenticateJWT,
+  ...orgGuard('event.lifecycle'),
   updateEventStatus
 );
 
 // Module 17: Pre-Launch Demand Forecast & Pricing Adjustments
 router.get(
   '/:id/prelaunch-forecast',
-  authenticateJWT,
-  requireRole(['ORGANIZER', 'SUPER_ADMIN']),
+  ...orgGuard('event.pricing'),
   getPreLaunchDemandForecast
 );
 
 router.put(
   '/:id/pricing',
-  authenticateJWT,
-  requireRole(['ORGANIZER', 'SUPER_ADMIN']),
+  ...orgGuard('event.pricing'),
   updateEventPricing
 );
 
 router.post(
   '/:id/publish',
-  authenticateJWT,
-  requireRole(['ORGANIZER', 'SUPER_ADMIN']),
+  ...orgGuard('event.pricing'),
   publishEventWithPricing
 );
+
+// Public extras of an event page: announcements, other dates of its series, sales window, policies
+router.get('/:id/extras', getEventExtras);
 
 export default router;

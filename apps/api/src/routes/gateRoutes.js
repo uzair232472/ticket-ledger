@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireRole } from '../middlewares/auth.js';
+import { requireAuth, orgGuard } from '../middlewares/auth.js';
 import {
   scanTicket,
   getDynamicRotatingQR,
@@ -13,8 +13,8 @@ const router = Router();
 router.get('/dynamic-qr/:ticketId', requireAuth, getDynamicRotatingQR);
 
 // Gate Staff & Admin turnstile endpoints
-router.post('/scan', requireAuth, requireRole(['GATE_STAFF', 'SUPER_ADMIN', 'ORGANIZER']), scanTicket);
-router.get('/recent-scans', requireAuth, requireRole(['GATE_STAFF', 'SUPER_ADMIN', 'ORGANIZER']), getRecentScans);
-router.get('/stats/:eventId', requireAuth, requireRole(['GATE_STAFF', 'SUPER_ADMIN', 'ORGANIZER']), getEventGateStats);
+router.post('/scan', ...orgGuard('gate.scan'), scanTicket);
+router.get('/recent-scans', ...orgGuard('gate.stats'), getRecentScans);
+router.get('/stats/:eventId', ...orgGuard('gate.stats'), getEventGateStats);
 
 export default router;

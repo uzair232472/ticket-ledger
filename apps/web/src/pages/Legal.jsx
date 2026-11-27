@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SUPPORT_EMAIL } from '../lib/site';
 import './legal.css';
+import './dark-pages.css';
 
 const UPDATED = '5 October 2026';
 const CONTACT = SUPPORT_EMAIL;
@@ -176,8 +177,24 @@ export default function Legal({ doc = 'terms' }) {
     };
   }, [d.title]);
 
+  // "On this page": highlight the section being read
+  const [active, setActive] = useState(d.sections[0]?.id);
+  useEffect(() => {
+    setActive(d.sections[0]?.id);
+    const els = d.sections.map((s) => document.getElementById(s.id)).filter(Boolean);
+    const io = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        if (hit) setActive(hit.target.id);
+      },
+      { rootMargin: '-25% 0px -65% 0px' }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [d]);
+
   return (
-    <main className="tl-legal">
+    <main className="tl-legal tl-page--dark">
       <header className="tl-legal-head">
         <p className="tl-legal-eyebrow">Legal</p>
         <h1>{d.title}</h1>
@@ -190,7 +207,7 @@ export default function Legal({ doc = 'terms' }) {
           <p>On this page</p>
           <ol>
             {d.sections.map((s) => (
-              <li key={s.id}><a href={`#${s.id}`}>{s.heading}</a></li>
+              <li key={s.id}><a href={`#${s.id}`} className={active === s.id ? 'is-active' : undefined} aria-current={active === s.id ? 'location' : undefined}>{s.heading}</a></li>
             ))}
           </ol>
           <Link to={other.to} className="tl-legal-switch">Read the {other.label} →</Link>

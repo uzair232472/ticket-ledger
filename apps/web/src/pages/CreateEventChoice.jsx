@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Info } from 'lucide-react';
+import { ArrowRight, Info } from 'lucide-react';
+import { DashHead, useAdminDark } from '../components/dash/DashShell';
 import './createEventChoice.css';
 
 /** Barcode on the ticket stub (decorative). */
@@ -120,23 +121,30 @@ const OPTIONS = [
 
 /** /organizer/events/new: the two ways to start, as two tickets side by side. */
 export default function CreateEventChoice() {
+  // On the dark console the page opens with the stadium heading; the light studio keeps its own heading
+  const dark = useAdminDark();
   return (
     <div className="tl-cc-page">
+      {dark ? (
+        <DashHead
+          title="Create event"
+          note="Launch your next experience now, or reserve the dates and venue first and add tickets later."
+          icon={null}
+        />
+      ) : (
       <header className="tl-cc-head">
         <div className="tl-cc-head-row">
           <p className="tl-sh-crumbs">
             <span>Organizer studio</span>
             <span>Create</span>
           </p>
-          <Link to="/organizer/dashboard" className="tl-cc-back">
-            <ArrowLeft className="w-4 h-4" /> Back to dashboard
-          </Link>
         </div>
         <h1 className="tl-sh-title tl-cc-title">
           Make it <span>happen.</span>
         </h1>
         <p className="tl-cc-intro">Launch your next experience. Or save the date.</p>
       </header>
+      )}
 
       <div className="tl-cc-grid">
         {OPTIONS.map(({ to, kicker, title, text, steps, cta, tone, Art }) => (

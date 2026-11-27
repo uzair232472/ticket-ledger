@@ -1,0 +1,100 @@
+/* Discount codes (dark console): summary figures, the codes table and the New coupon dialog */
+.tl-dc-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.tl-dc-code {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px dashed rgba(34, 224, 107, 0.6);
+  background: rgba(34, 224, 107, 0.1);
+  color: #b8f7cf;
+  font: 700 13px/1.3 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+}
+.tl-dc-value { font-size: 15px; color: #fff; }
+.tl-dc-note { margin-top: 3px; font-size: 12px; color: var(--aov-dim, #5b6b61); }
+.tl-dc-window { min-width: 170px; font-size: 12.5px; color: rgba(242, 246, 244, 0.85); }
+.tl-dc-actions { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.tl-dc-actions .tl-st-btn { display: inline-flex; align-items: center; gap: 6px; }
+.tl-aov-page .tl-dc-del:hover:not(:disabled) { border-color: #fb7185; color: #fda4af; background: rgba(251, 113, 133, 0.1); }
+.tl-dc .tl-pager { margin: 14px 0 0; }
+
+/* Dialog */
+.tl-dc-dialog { width: min(640px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.tl-dc-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; margin-top: 6px; }
+.tl-dc-field { display: grid; gap: 6px; min-width: 0; margin: 0 !important; }
+.tl-dc-field > span:first-child { font-size: 12.5px; font-weight: 700; color: rgba(242, 246, 244, 0.85); }
+.tl-dc-field.is-wide { grid-column: 1 / -1; }
+.tl-dc-field .tl-dash-input, .tl-dc-field .tl-dash-select { width: 100%; }
+.tl-dc-pair { display: flex; gap: 8px; }
+.tl-dc-pair .tl-dash-input { flex: 1; min-width: 0; }
+.tl-dc-pair .tl-dash-select { flex: 0 0 96px; width: 96px; }
+.tl-dc-mono { font-family: 'JetBrains Mono', monospace !important; letter-spacing: 0.06em; text-transform: uppercase; }
+.tl-dc-spacer { display: none; }
+
+@media (max-width: 1100px) { .tl-dc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .tl-dc-form { grid-template-columns: minmax(0, 1fr); }
+  .tl-dc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tl-dash-dialog-backdrop:has(.tl-dc-dialog) { place-items: end center; padding: 0; }
+  .tl-dc-dialog { border-radius: 18px 18px 0 0 !important; max-height: 92dvh; }
+}
+
+/* The console dialog uses mono, uppercase labels and buttons; this form reads as normal text, the code stays mono */
+.tl-dc-dialog .tl-dc-field > span:first-child { font: 700 12.5px/1.3 'Plus Jakarta Sans', sans-serif !important; letter-spacing: 0 !important; text-transform: none !important; }
+.tl-dc-dialog :is(input, select):not(.tl-dc-mono) { font-family: 'Plus Jakarta Sans', sans-serif !important; letter-spacing: 0 !important; font-size: 14px !important; }
+.tl-dc-dialog .tl-dash-dialog-actions .tl-dash-btn { font-family: 'Plus Jakarta Sans', sans-serif !important; text-transform: none !important; letter-spacing: 0 !important; font-size: 14px !important; display: inline-flex; align-items: center; gap: 8px; }
+/* Row actions stay on one line; the table scrolls sideways on narrow screens */
+.tl-dc-actions { flex-wrap: nowrap; }
+.tl-dc-table td { vertical-align: middle; }
+
+/* ---------- Checkout settings + support requests (same console look as discount codes) ---------- */
+.tl-co-search { position: relative; display: flex; align-items: center; width: min(320px, 100%); }
+.tl-co-search > svg { position: absolute; left: 14px; color: var(--aov-green, #16a34a); pointer-events: none; }
+.tl-co-search input { width: 100%; min-height: 40px; padding: 0 38px 0 40px !important; border-radius: 999px !important; font: 500 13.5px 'Plus Jakarta Sans', sans-serif; }
+.tl-co-search input::-webkit-search-cancel-button { display: none; }
+.tl-co-search button { position: absolute; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: var(--aov-dim, #5b6b61); cursor: pointer; }
+.tl-co-search button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.tl-co-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0; }
+.tl-co-facts > div { padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(3, 10, 14, 0.4); }
+.tl-co-facts dt { font-size: 12px; color: var(--aov-dim, #5b6b61); }
+.tl-co-facts dd { margin: 4px 0 0; font-size: 15px; font-weight: 700; color: #fff; }
+.tl-co-example { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 14px; padding: 12px 16px; border-radius: 14px; border: 1px dashed rgba(34, 224, 107, 0.45); background: rgba(34, 224, 107, 0.06); font-size: 13.5px; color: rgba(242, 246, 244, 0.85); }
+.tl-co-example b { color: #fff; }
+.tl-co-example .is-total { margin-left: auto; color: #86efac; }
+.tl-co-example .is-total b { font-size: 16px; color: #4ade80; }
+.tl-co-ic { color: var(--aov-green, #16a34a); }
+.tl-co-check { display: flex !important; align-items: center; gap: 10px; margin: 4px 0 0 !important; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(3, 10, 14, 0.4); font: 600 13.5px 'Plus Jakarta Sans', sans-serif !important; letter-spacing: 0 !important; text-transform: none !important; color: #fff !important; cursor: pointer; }
+.tl-co-check.is-wide { grid-column: 1 / -1; }
+.tl-co-check svg { color: var(--aov-green, #16a34a); }
+.tl-co-preview { margin: 14px 0 0 !important; padding: 10px 14px; border-radius: 12px; background: rgba(34, 224, 107, 0.08); font-size: 13px; color: rgba(242, 246, 244, 0.85) !important; }
+.tl-co-preview b { color: #4ade80; }
+.tl-so-subject { font-weight: 700; color: #fff; text-decoration: none; }
+.tl-so-subject:hover { color: var(--aov-green, #16a34a); text-decoration: underline; text-underline-offset: 3px; }
+.tl-so-ref { padding: 1px 8px; margin-right: 6px; font-size: 11px; }
+.tl-so-needs { margin-top: 6px; font-size: 12px; font-weight: 700; color: #fda4af; }
+.tl-so-back { min-height: 42px; padding: 0 18px; gap: 8px; }
+@media (max-width: 760px) {
+  .tl-co-facts { grid-template-columns: minmax(0, 1fr); }
+  .tl-co-search { width: 100%; }
+  .tl-co-example .is-total { margin-left: 0; }
+}
+
+/* Support threads and status pills on the console (support.css's light colours otherwise win here) */
+.tl-aov-page .tl-sp-msg header { color: rgba(226, 236, 232, 0.65); }
+.tl-aov-page .tl-sp-msg header strong { color: #fff !important; }
+.tl-aov-page .tl-sp-msg.is-agent header strong { color: #86efac !important; }
+.tl-aov-page .tl-sp-pill[data-s] { border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.06); color: #fff; }
+.tl-aov-page .tl-sp-pill:is([data-s='OPEN'], [data-s='IN_PROGRESS']) { border-color: rgba(96, 165, 250, 0.5); background: rgba(96, 165, 250, 0.14); color: #bfdbfe; }
+.tl-aov-page .tl-sp-pill[data-s='WAITING_ON_CUSTOMER'] { border-color: rgba(250, 204, 21, 0.5); background: rgba(250, 204, 21, 0.12); color: #fde68a; }
+.tl-aov-page .tl-sp-pill[data-s='ESCALATED'] { border-color: rgba(251, 113, 133, 0.5); background: rgba(251, 113, 133, 0.12); color: #fda4af; }
+.tl-aov-page .tl-sp-pill[data-s='RESOLVED'] { border-color: rgba(34, 224, 107, 0.5); background: rgba(34, 224, 107, 0.14); color: #86efac; }
+.tl-aov-page .tl-sp-pill[data-s='CLOSED'] { color: rgba(226, 236, 232, 0.7); }
+
+/* Gate staff and invites (Team > Gate staff) as tables */
+.tl-staff-table { margin-top: 8px; }
+.tl-staff-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.tl-staff-who > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.tl-staff-who .tl-staff-avatar { flex: 0 0 auto; }
+.tl-staff-mail { overflow-wrap: anywhere; }
+.tl-staff-table .tl-staff-events { margin: 0; }
+.tl-staff-group + .tl-staff-group { margin-top: 26px; }

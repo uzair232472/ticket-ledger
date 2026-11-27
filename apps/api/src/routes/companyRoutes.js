@@ -7,7 +7,11 @@ import {
   updateCompanyStatus,
   requireApprovedOrganizer 
 } from '../controllers/companyController.js';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, requireRole, loadOrgContext } from '../middlewares/auth.js';
+import { pendingFinanceReviews, reviewFinance } from '../services/orgProfileService.js';
+import { adminPayouts, decide as decidePayout } from '../services/payoutService.js';
+import { AccessError } from '../services/orgAccess.js';
+import { requireAdmin } from '../services/adminAccess.js';
 
 const router = express.Router();
 
@@ -47,10 +51,11 @@ router.post(
   registerCompany
 );
 
-router.get('/my-company', requireRole('ORGANIZER', 'SUPER_ADMIN'), getMyCompany);
+// Owners see their company in full; other members see it without verification documents
+router.get('/my-company', getMyCompany);
 
 // Route to verify requireApprovedOrganizer guard works
-router.get('/guard-check', requireApprovedOrganizer, (req, res) => {
+router.get('/guard-check', loadOrgContext, requireApprovedOrganizer, (req, res) => {
   res.json({
     success: true,
     message: 'Authorized! Company is fully APPROVED to create events.',
@@ -59,7 +64,48 @@ router.get('/guard-check', requireApprovedOrganizer, (req, res) => {
 });
 
 // Super Admin governance routes
-router.get('/admin/all', requireRole('SUPER_ADMIN'), getAllCompanies);
-router.patch('/admin/:id/status', requireRole('SUPER_ADMIN'), updateCompanyStatus);
+router.get('/admin/all', requireAdmin('admin.view'), getAllCompanies);
+router.patch('/admin/:id/status', requireAdmin('admin.approvals'), updateCompanyStatus);
+
+// Payout details waiting for a check, and the decision (verify / reject with a note)
+const adminFail = (res, e, fallback) => (e instanceof AccessError ? res.status(e.status).json({ success: false, message: e.message }) : (console.error(fallback, e), res.status(500).json({ success: false, message: fallback })));
+router.get('/admin/finance/pending', requireAdmin('admin.finance'), async (req, res) => {
+  try {
+    res.json({ success: true, data: { reviews: await pendingFinanceReviews() } });
+  } catch (e) {
+    adminFail(res, e, 'Could not load payout reviews.');
+  }
+});
+router.post('/admin/:id/finance/review', requireAdmin('admin.finance'), async (req, res) => {
+  try {
+    const status = String(req.body?.status || '');
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+    const finance = await reviewFinance(req, req.params.id, { status, note });
+    res.json({ success: true, message: status === 'VERIFIED' ? 'Payout details verified.' : 'Payout details rejected. The owners were told why.', data: { finance } });
+  } catch (e) {
+    adminFail(res, e, 'Could not save the review.');
+  }
+});
+
+// Payouts to organizations: the queue, and marking a transfer paid / failed / held
+router.get('/admin/payouts', requireAdmin('admin.finance'), async (req, res) => {
+  try {
+    const status = ['SCHEDULED', 'ON_HOLD', 'PROCESSING', 'PAID', 'FAILED', 'CANCELLED'].includes(req.query.status) ? req.query.status : undefined;
+    res.json({ success: true, data: { payouts: await adminPayouts({ status }) } });
+  } catch (e) {
+    adminFail(res, e, 'Could not load payouts.');
+  }
+});
+router.post('/admin/payouts/:id/decide', requireAdmin('admin.finance'), async (req, res) => {
+  try {
+    const action = String(req.body?.action || '');
+    const reference = typeof req.body?.reference === 'string' ? req.body.reference.trim().slice(0, 120) : '';
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 300) : '';
+    const payout = await decidePayout(req.user, req.params.id, { action, reference, reason });
+    res.json({ success: true, message: { PAID: 'Marked paid. The organizer was told.', FAILED: 'Marked failed. The organizer was told.', HOLD: 'Payout put on hold.', RELEASE: 'Hold released.', RETRY: 'Ready to pay again.' }[action] || 'Saved.', data: { payout } });
+  } catch (e) {
+    adminFail(res, e, 'Could not update the payout.');
+  }
+});
 
 export default router;

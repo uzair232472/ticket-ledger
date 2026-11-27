@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Calendar, Check, Clock, MapPin, QrCode, RefreshCw } from 'lucide-react';
+import { ArrowRight, Calendar, Check, Clock, MapPin, QrCode, RefreshCw } from 'lucide-react';
 import api from '../utils/api';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
@@ -9,6 +9,10 @@ import { formatEventDate, formatEventTime } from '../utils/eventTime';
 
 const POLL_MS = 3000;
 const POLL_LIMIT_MS = 3 * 60 * 1000;
+
+// Paid, valid ticket whose NFT issuance is not finished. Payment, entry and NFT are separate facts from the API
+// (ticket.states); a pending NFT never makes the ticket invalid.
+const isNftPending = (t) => t.states?.entry.valid && ['PENDING', 'FAILED'].includes(t.states?.nft.status);
 
 const seatFacts = (seat) => {
   if (!seat) return [['Seat', '—']];
@@ -98,7 +102,6 @@ export default function BookingSuccess() {
       <BookingShell>
         {head('Order unavailable')}
         <section className="tl-bk-panel tl-co-status is-error" role="alert">
-          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
           <p>{error}</p>
           <div className="tl-co-actions">
             <button type="button" className="tl-bk-btn" onClick={fetchOrder} disabled={checking}><RefreshCw className="w-4 h-4" aria-hidden="true" /> Try again</button>
@@ -110,6 +113,7 @@ export default function BookingSuccess() {
   }
 
   const { event, tickets = [] } = order;
+  const nftPending = tickets.filter(isNftPending).length;
   const time = formatEventTime(event?.time);
   const eventMeta = event && (
     <p className="tl-bk-meta">
@@ -148,7 +152,6 @@ export default function BookingSuccess() {
       <BookingShell>
         {head('Order not completed', 'checkout')}
         <section className="tl-bk-panel tl-co-status is-error" aria-labelledby="failed-title">
-          <span className="tl-co-status-icon" aria-hidden="true"><AlertTriangle className="w-6 h-6" /></span>
           <h2 id="failed-title" className="tl-co-status-title">No tickets were issued</h2>
           <p>
             This order for {event?.name} was cancelled or its reservation expired before payment was confirmed, so the seats were released and nothing was charged for it.
@@ -172,6 +175,11 @@ export default function BookingSuccess() {
         <h2 id="ok-title" className="tl-co-status-title">{event?.name}</h2>
         {eventMeta}
         <p>Payment confirmed and {tickets.length} ticket{tickets.length === 1 ? '' : 's'} issued to your account. Show the rotating QR code from your ticket wallet at the gate.</p>
+        {nftPending > 0 && (
+          <p className="tl-co-note" role="status">
+            NFT issuance pending for {nftPending} ticket{nftPending === 1 ? '' : 's'}. Nothing is lost: your payment and tickets are confirmed and the QR pass works at the gate. We retry automatically and you’ll get a notification when it’s done.
+          </p>
+        )}
         <div className="tl-co-actions">
           <Link to="/wallet" className="tl-bk-btn"><QrCode className="w-4 h-4" aria-hidden="true" /> Open ticket wallet</Link>
           <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost">My orders <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
@@ -191,7 +199,7 @@ export default function BookingSuccess() {
               </dl>
               <p className="tl-co-ticket-foot">
                 <span>Ticket {i + 1} of {tickets.length}</span>
-                <span>{t.tokenId != null ? `NFT #${t.tokenId}` : t.status}</span>
+                <span>{t.states ? `${t.states.entry.label} · ${t.states.nft.label}${t.states.nft.status === 'VERIFIED' && t.tokenId != null ? ` #${t.tokenId}` : ''}` : t.status}</span>
               </p>
             </li>
           ))}

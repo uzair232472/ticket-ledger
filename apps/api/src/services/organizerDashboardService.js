@@ -1,17 +1,22 @@
+import { eventWhereFor, memberContext } from './orgAccess.js';
+import { LEFT_CHECKOUT_ACTIONS } from './checkoutOutcome.js';
+import { getSetting } from './systemConfig.js';
 import prisma from '../config/prisma.js';
+import { showRate } from './ml/attendanceBaseline.js';
 
 /**
  * Service to aggregate comprehensive organizer dashboard metrics, sales charts,
  * tier breakdowns, live turnstile entry pacing, attendance predictions, and fraud feeds.
  */
-export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = null }) => {
-  // 1. Identify Organizer Company
-  let companyId = null;
-  if (organizerUser.role !== 'SUPER_ADMIN') {
-    const company = await prisma.company.findUnique({
-      where: { userId: organizerUser.id },
-    });
-    if (!company) {
+export const getOrganizerDashboardMetrics = async (args) => withAccess(await buildDashboard(args), args);
+
+const buildDashboard = async ({ organizerUser, eventId = null, orgContext = null }) => {
+  // 1. The organization (membership) and what this member may see. Super Admins see every event.
+  let ctx = null;
+  const eventWhere = {};
+  if (organizerUser.role !== 'SUPER_ADMIN' || orgContext) {
+    ctx = orgContext ?? (await memberContext(organizerUser));
+    if (!ctx || !ctx.permissions.has('event.view')) {
       return {
         hasCompany: false,
         message: 'No company registered for this organizer.',
@@ -19,14 +24,10 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
         metrics: null,
       };
     }
-    companyId = company.id;
+    Object.assign(eventWhere, eventWhereFor(ctx, 'event.view'));
   }
 
   // 2. Fetch accessible events for this organizer
-  const eventWhere = {};
-  if (companyId) {
-    eventWhere.companyId = companyId;
-  }
   const organizerEvents = await prisma.event.findMany({
     where: eventWhere,
     select: {
@@ -36,6 +37,7 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
       city: true,
       venue: true,
       date: true,
+      endsAt: true,
       status: true,
       bannerUrl: true,
       cardImageUrl: true,
@@ -123,7 +125,7 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
   const refundsPending = refundRows.filter((r) => r.status !== 'SUCCEEDED').length;
   const grossSalesPkr = totalRevenuePkr;
   totalRevenuePkr -= refundedPkr;
-  const platformFeePkr = Math.round(totalRevenuePkr * 0.05);
+  const platformFeePkr = Math.round((totalRevenuePkr * Number(await getSetting('platformFeePercent'))) / 100);
   const netRevenuePkr = totalRevenuePkr - platformFeePkr;
 
   // Payouts are held until PAYOUT_HOLD_DAYS after each event ends, so refunds can always be paid
@@ -210,41 +212,25 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
     },
   });
 
-  const validScans = gateScans.filter((s) => s.result === 'VALID_FIRST_SCAN').length;
+  // Reversed admissions stay in the log but are not attendance
+  const validScans = gateScans.filter((s) => s.result === 'VALID_FIRST_SCAN' && !s.reversedAt).length;
   const duplicateScans = gateScans.filter((s) => s.result === 'ALREADY_SCANNED').length;
   const invalidScans = gateScans.filter((s) => s.result === 'INVALID_SCAN').length;
   const turnoutPercentage = totalTicketsSold > 0 ? Math.round((validScans / totalTicketsSold) * 100) : 0;
 
-  // 7. Attendance Prediction & No-Show Risk Model
-  // Based on the Module 14 synthetic attendance dataset patterns:
-  // Factors: city, event type, ticket price average, days to event.
+  // 7. Attendance prediction: tickets sold x historical show rate of past finished events
+  // (falls back to the previous fixed percentages until enough check-ins exist; see services/ml/attendanceBaseline.js)
   let predictedAttendanceRate = 88.5;
   let predictedNoShowRisk = 11.5;
   let attendanceFactors = [];
+  let attendanceBasis = 'FIXED_RULE';
 
   const targetEventObj = selectedEvent || organizerEvents[0];
   if (targetEventObj) {
-    if (targetEventObj.type === 'CRICKET_MATCH') {
-      predictedAttendanceRate = 92.4;
-      predictedNoShowRisk = 7.6;
-      attendanceFactors.push('High fan enthusiasm for live cricket match');
-    } else if (targetEventObj.type === 'MUSIC_CONCERT' || targetEventObj.type === 'MUSIC_FESTIVAL') {
-      predictedAttendanceRate = 86.8;
-      predictedNoShowRisk = 13.2;
-      attendanceFactors.push('Weekend music concert profile with average 13% no-show buffer');
-    } else if (targetEventObj.type === 'KABADDI') {
-      predictedAttendanceRate = 89.1;
-      predictedNoShowRisk = 10.9;
-      attendanceFactors.push('Strong regional sports audience loyalty');
-    }
-
-    if (targetEventObj.city === 'Lahore' || targetEventObj.city === 'Karachi') {
-      predictedAttendanceRate += 2.0;
-      predictedNoShowRisk -= 2.0;
-      attendanceFactors.push(`Metro city venue (${targetEventObj.city}) minimizes commute attrition`);
-    }
-
-    predictedAttendanceRate = Math.min(98, Math.max(65, Math.round(predictedAttendanceRate * 10) / 10));
+    const sr = await showRate({ type: targetEventObj.type, city: targetEventObj.city });
+    predictedAttendanceRate = sr.rate;
+    attendanceFactors = sr.factors;
+    attendanceBasis = sr.basis;
     predictedNoShowRisk = Math.round((100 - predictedAttendanceRate) * 10) / 10;
   }
 
@@ -284,7 +270,7 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
       where: { eventId: { in: activeEventIds }, action: 'event_view' },
     }),
     prisma.behaviorEvent.count({
-      where: { eventId: { in: activeEventIds }, action: 'checkout_abandoned' },
+      where: { eventId: { in: activeEventIds }, action: { in: LEFT_CHECKOUT_ACTIONS } },
     }),
   ]);
 
@@ -326,6 +312,7 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
       totalTicketsSold,
       confidenceScore: 0.91,
       factors: attendanceFactors,
+      basis: attendanceBasis, // HISTORY_TYPE | HISTORY_ALL | FIXED_RULE
     },
     fraudFeed,
     modulesPreview: {
@@ -335,6 +322,29 @@ export const getOrganizerDashboardMetrics = async ({ organizerUser, eventId = nu
     },
   };
 };
+
+/**
+ * Removes what the member's permissions don't cover: money figures without finance.view, the attendee fraud
+ * feed without attendee.view. Super Admins and owners see everything.
+ */
+async function withAccess(data, { organizerUser, orgContext = null }) {
+  if (organizerUser.role === 'SUPER_ADMIN' && !orgContext) return { ...data, access: { finance: true, attendees: true } };
+  const ctx = orgContext ?? (await memberContext(organizerUser));
+  const finance = Boolean(ctx?.permissions.has('finance.view'));
+  const attendees = Boolean(ctx?.permissions.has('attendee.view'));
+  const money = /pkr|revenue|payout|refund|fee|price|amount/i;
+  const strip = (obj) => {
+    if (Array.isArray(obj)) return obj.map(strip);
+    if (!obj || typeof obj !== 'object' || obj instanceof Date) return obj;
+    return Object.fromEntries(Object.entries(obj).filter(([k]) => !money.test(k)).map(([k, v]) => [k, strip(v)]));
+  };
+  const out = { ...data, access: { finance, attendees } };
+  if (!finance) {
+    for (const key of ['metrics', 'salesGraph', 'tierBreakdown', 'modulesPreview']) if (out[key]) out[key] = strip(out[key]);
+  }
+  if (!attendees) out.fraudFeed = [];
+  return out;
+}
 
 export default {
   getOrganizerDashboardMetrics,

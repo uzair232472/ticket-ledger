@@ -8,16 +8,28 @@ import fcmService from '../services/fcmService.js';
 export const getMyNotifications = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { limit = 30, page = 1 } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const skip = (page - 1) * limit;
 
-    const [notifications, total, unreadCount] = await Promise.all([
+    // Optional tab filter (same groups as the notifications page)
+    const anyOf = (words) => ({ OR: words.map((w) => ({ type: { contains: w } })) });
+    const FILTERS = {
+      UNREAD: { isRead: false },
+      BOOKINGS: anyOf(['BOOKING', 'PAYMENT', 'REFUND', 'EVENT_CANCELLED', 'EVENT_POSTPONED', 'EVENT_RESCHEDULED']),
+      TRANSFERS: anyOf(['TRANSFER', 'RESALE', 'TICKET']),
+      SECURITY: anyOf(['FRAUD', 'ORGANIZER', 'ABANDONED']),
+    };
+    const where = { userId, ...(FILTERS[req.query.filter] || {}) };
+
+    const [notifications, total, allTotal, unreadCount] = await Promise.all([
       prisma.notification.findMany({
-        where: { userId },
+        where,
         orderBy: { createdAt: 'desc' },
         skip,
-        take: Number(limit),
+        take: limit,
       }),
+      prisma.notification.count({ where }),
       prisma.notification.count({ where: { userId } }),
       prisma.notification.count({ where: { userId, isRead: false } }),
     ]);
@@ -25,9 +37,12 @@ export const getMyNotifications = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        total,
+        total, // in the chosen filter
+        allTotal,
         unreadCount,
-        page: Number(page),
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
         notifications,
       },
     });

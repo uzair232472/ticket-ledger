@@ -4,6 +4,7 @@ export * from './geometry.js';
 export * from './generate.js';
 export * from './templates.js';
 export * from './validate.js';
+export * from './view3d.js';
 
 /**
  * Every bookable position as the API stores it (one Seat row each). General-admission capacity

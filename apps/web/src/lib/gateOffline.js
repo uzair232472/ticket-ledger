@@ -1,8 +1,10 @@
 /**
  * Offline support for the gate scanner.
  *
- * IndexedDB keeps, per event: the offline pack (public key + every paid ticket with its status, qrVersion and
- * manual code), the check-ins this device made, and a queue of scans to upload with POST /api/checkin/sync.
+ * IndexedDB (tl-gate) keeps, per event: the offline pack (public key + every paid ticket with its status, qrVersion
+ * and manual code) and the check-ins this device made. Scans themselves live in gateScanStore.js (tl-gate-scans);
+ * the old `queue` store here is kept at version 1 so an older scanner build still opens this database, and holds a
+ * mirror of the scans not processed by the server yet (a rolled-back scanner uploads exactly those).
  * Passes are verified locally with the public key (WebCrypto Ed25519), which can check passes but never make
  * them. If the device has been offline for more than 2 hours, scanning locks until it reconnects.
  */
@@ -14,7 +16,8 @@ const LAST_ONLINE_KEY = 'tl-gate-last-online';
 const DEVICE_KEY = 'tl-gate-device';
 
 let dbPromise = null;
-const openDb = () => {
+/** Kept at version 1 on purpose: an older scanner build must still be able to open it (rollback). */
+export const openLegacyDb = () => {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -32,7 +35,7 @@ const openDb = () => {
 };
 
 const tx = async (store, mode, fn) => {
-  const db = await openDb();
+  const db = await openLegacyDb();
   return new Promise((resolve, reject) => {
     const t = db.transaction(store, mode);
     const request = fn(t.objectStore(store));
@@ -49,26 +52,22 @@ export const loadPack = async (eventId, ownerId) => {
 };
 export const markUsedLocally = (eventId, ticketId, info) => tx('used', 'readwrite', (s) => s.put(info, `${eventId}:${ticketId}`));
 export const usedLocally = (eventId, ticketId) => tx('used', 'readonly', (s) => s.get(`${eventId}:${ticketId}`));
-export const enqueue = (scan) => tx('queue', 'readwrite', (s) => s.put(scan));
-export const queued = async (eventId) => {
-  const all = await tx('queue', 'readonly', (s) => s.getAll());
-  return (all || []).filter((q) => !eventId || q.eventId === eventId).sort((a, b) => a.scannedAt.localeCompare(b.scannedAt));
-};
-export const dequeue = (ids) => tx('queue', 'readwrite', (s) => ids.forEach((id) => s.delete(id)));
+// The version-1 queue (see the header): written and cleared only by gateScanStore.js
+export const legacyPut = (item) => tx('queue', 'readwrite', (s) => s.put(item));
+export const legacyAll = async () => (await tx('queue', 'readonly', (s) => s.getAll())) || [];
+export const legacyDelete = (ids) => (ids.length ? tx('queue', 'readwrite', (s) => ids.forEach((id) => s.delete(id))) : Promise.resolve());
 
 /**
- * Access to an event was revoked: remove everything this device holds for it (the ticket list, its own
- * check-ins and scans waiting to upload, which the server would refuse). Returns how many queued scans
- * were dropped.
+ * Access to an event (or this device) was revoked: delete the event's ticket list and the device's local
+ * presence copy, so it can't decide scans any more. Scans waiting to upload are evidence of what happened at the
+ * gate and are KEPT: scan records (gateScanStore.js) are never deleted here (supervisors review them; they never
+ * admit anyone by themselves).
  */
-export async function wipeEvent(eventId) {
-  const dropped = (await queued(eventId)).map((q) => q.clientId);
-  await dequeue(dropped);
+export async function wipeEventPack(eventId) {
   await tx('packs', 'readwrite', (s) => s.delete(eventId));
   const keys = (await tx('used', 'readonly', (s) => s.getAllKeys())) || [];
   const mine = keys.filter((k) => String(k).startsWith(`${eventId}:`));
   if (mine.length) await tx('used', 'readwrite', (s) => mine.forEach((k) => s.delete(k)));
-  return dropped.length;
 }
 
 // ---------- Device identity and connectivity ----------
@@ -89,7 +88,8 @@ const safeSet = (k, v) => {
 export const deviceId = () => {
   let id = safeGet(DEVICE_KEY);
   if (!id) {
-    id = `gate-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
+    const rnd = crypto.randomUUID?.() || [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    id = `gate-${rnd}`;
     safeSet(DEVICE_KEY, id);
   }
   return id;
@@ -136,11 +136,20 @@ const verifySignature = async (pack, payload, sig) => {
 
 const timeOf = (d) => new Date(d).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+/** Re-entries still allowed for a ticket that is outside (same rule as the server's checkinService). */
+const reentriesLeft = (event, entries) => {
+  if (!event?.reentryPolicy || event.reentryPolicy === 'NONE') return 0;
+  if (event.reentryPolicy === 'UNLIMITED') return Infinity;
+  return Math.max(0, (event.maxReentries ?? 0) - Math.max(0, (entries || 1) - 1));
+};
+
 /**
- * Decides a scan on the device, from the pack (same order of checks as the server). Admitting marks the
- * ticket used on this device so a second scan here turns yellow.
+ * Decides a scan on the device, from the pack (same order of checks as the server): signature, event, QR
+ * version, cancelled, the gate's ticket types, then entry / exit and the re-entry policy. The device keeps each
+ * ticket's presence (inside / outside, number of entries) so its own later scans are decided correctly.
+ * opts: { direction: 'ENTRY' | 'EXIT', gateRow: the pack's gate (or null) }
  */
-export async function evaluateOffline(pack, raw, gate) {
+export async function evaluateOffline(pack, raw, gate, { direction = 'ENTRY', gateRow = null } = {}) {
   const eventId = pack.event.id;
   const text = String(raw || '').trim();
   let ticket = null;
@@ -163,21 +172,46 @@ export async function evaluateOffline(pack, raw, gate) {
     version = Number(v);
   }
 
-  const view = { type: ticket.type, seat: ticket.seat, holder: ticket.holder };
+  const view = { id: ticket.id, type: ticket.type, seat: ticket.seat, holder: ticket.holder };
   if (version !== ticket.qrVersion) return { result: 'RED', reason: 'Old QR: this ticket was transferred', ticket: view };
   if (ticket.status === 'CANCELLED') return { result: 'RED', reason: 'Ticket refunded / cancelled', ticket: view };
-
-  const local = await usedLocally(eventId, ticket.id);
-  const used = local || (ticket.status === 'USED' ? { at: ticket.checkedInAt, gate: ticket.gate } : null);
-  if (used) {
-    return {
-      result: 'YELLOW',
-      reason: used.at ? `Already scanned at ${timeOf(used.at)}${used.gate ? `, ${used.gate}` : ''}` : 'Already scanned',
-      ticket: view,
-      firstScan: used,
-    };
+  // Event timing (same rule as the server, services/eventTiming.js): no entry after the end or before gates open
+  const win = pack.entryWindow;
+  if (direction !== 'EXIT' && win) {
+    const t = Date.now();
+    const fmt = (iso) => new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    if (win.ended || t >= Date.parse(win.end)) return { result: 'RED', reason: `Event ended (${fmt(win.end)}): this ticket has expired`, ticket: view };
+    if (t < Date.parse(win.gatesOpen)) return { result: 'RED', reason: `Too early: gates open ${fmt(win.gatesOpen)}`, ticket: view };
   }
 
-  await markUsedLocally(eventId, ticket.id, { at: new Date().toISOString(), gate });
+  const now = new Date().toISOString();
+  const local = await usedLocally(eventId, ticket.id);
+  const used = local || (ticket.status === 'USED' ? { at: ticket.checkedInAt, gate: ticket.gate, inside: ticket.isInside !== false, entries: ticket.entryCount || 1, exitAt: ticket.lastExitAt } : null);
+  const inside = used && used.inside !== false;
+
+  if (direction === 'EXIT') {
+    if (!used) return { result: 'RED', reason: "This ticket hasn't entered yet", ticket: view };
+    if (!inside) return { result: 'YELLOW', reason: used.exitAt ? `Already left at ${timeOf(used.exitAt)}` : 'Already outside', ticket: view, firstScan: used };
+    await markUsedLocally(eventId, ticket.id, { ...used, inside: false, exitAt: now });
+    return { result: 'GREEN', reason: reentriesLeft(pack.event, used.entries) ? 'Exit recorded. Re-entry allowed' : 'Exit recorded. No re-entry with this ticket', ticket: view };
+  }
+
+  if (gateRow?.allowedTierIds?.length && !gateRow.allowedTierIds.includes(ticket.tierId)) {
+    const names = (pack.gates || []).filter((g) => g.active && g.type !== 'EXIT' && (!g.allowedTierIds.length || g.allowedTierIds.includes(ticket.tierId))).map((g) => g.name);
+    return { result: 'RED', code: 'WRONG_GATE', reason: `Wrong gate: ${ticket.type} tickets enter at ${names.join(', ') || 'another gate'}`, ticket: view };
+  }
+
+  if (used) {
+    if (inside || !used.exitAt) {
+      return { result: 'YELLOW', reason: used.at ? `Already scanned at ${timeOf(used.at)}${used.gate ? `, ${used.gate}` : ''}` : 'Already scanned', ticket: view, firstScan: used };
+    }
+    if (reentriesLeft(pack.event, used.entries) > 0) {
+      await markUsedLocally(eventId, ticket.id, { ...used, inside: true, entries: (used.entries || 1) + 1 });
+      return { result: 'GREEN', reason: 'Re-entry allowed', reentry: true, ticket: view };
+    }
+    return { result: 'YELLOW', reason: pack.event.reentryPolicy === 'LIMITED' ? 'Re-entry limit reached' : `Left at ${timeOf(used.exitAt)}: no re-entry for this event`, ticket: view, firstScan: used };
+  }
+
+  await markUsedLocally(eventId, ticket.id, { at: now, gate, inside: true, entries: 1 });
   return { result: 'GREEN', reason: 'Entry allowed', ticket: view };
 }

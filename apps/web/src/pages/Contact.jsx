@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { SUPPORT_EMAIL, ORGANIZER_EMAIL, SUPPORT_HOURS } from '../lib/site';
 import './legal.css';
 import './info.css';
+import './dark-pages.css';
 
 const TOPICS = [
   ['BOOKING', 'Tickets and bookings'],
@@ -68,11 +69,12 @@ export default function Contact() {
   );
 
   return (
-    <main className="tl-legal tl-info">
+    <main className="tl-legal tl-info tl-page--dark">
       <header className="tl-legal-head tl-info-head">
         <p className="tl-legal-eyebrow">Contact us</p>
         <h1>We’re here to help.</h1>
         <p className="tl-legal-intro">Questions about a booking, a payment or hosting your event? Send us a message and a real person will reply.</p>
+        {user && <Link to="/support" className="tl-legal-switch">Signed in? Open a support request you can track →</Link>}
       </header>
 
       <div className="tl-info-contact">

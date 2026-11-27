@@ -2,13 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import { MyTicketsFab } from './venue/BookingSummary';
 import './holdbar.css';
 
 const clock = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 /**
  * Site-wide "My tickets" countdown: while the signed-in user holds seats, a small bar on every screen shows
- * how long the reservation lasts and links back to the seat plan. Holds come from the server, so the bar
+ * how long the reservation lasts and links back to the seat plan, where My Tickets opens. It is the same
+ * button as on the full-screen seat page, in the same spot (bottom right). Holds come from the server, so the bar
  * survives refreshes and page changes. Hidden on that event's own seat page, which has the same button.
  */
 export default function HoldBar() {
@@ -66,19 +68,19 @@ export default function HoldBar() {
     load();
   }, [secondsLeft, load]);
 
-  if (!first || !secondsLeft || pathname === `/events/${first.eventId}/seats`) return null;
+  if (!first || !secondsLeft || pathname === `/events/${first.eventId}/seats` || pathname === '/cart') return null;
+  // Seats held for several events: pay for them together in the cart
+  const several = holds.length > 1;
 
-  const urgent = secondsLeft < 60;
   return (
-    <Link
-      to={`/events/${first.eventId}/checkout`}
-      className={`tl-holdbar${urgent ? ' is-urgent' : ''}`}
-      aria-label={`Complete booking: ${count} seat${count === 1 ? '' : 's'} reserved for ${first.eventName}, ${Math.ceil(secondsLeft / 60)} minute${secondsLeft > 60 ? 's' : ''} left`}
-      title={`Seats reserved for ${first.eventName}: Click to complete booking`}
-    >
-      <span className="tl-holdbar-label">Complete booking</span>
-      <span className="tl-holdbar-time" role="timer" aria-hidden="true">{clock(secondsLeft)}</span>
-      <span className="tl-holdbar-count" aria-hidden="true">{count}</span>
-    </Link>
+    <MyTicketsFab
+      as={Link}
+      to={several ? '/cart' : `/events/${first.eventId}/seats?tickets=1`}
+      count={count}
+      secondsLeft={secondsLeft}
+      urgent={secondsLeft < 60}
+      aria-label={`My Tickets: ${count} seat${count === 1 ? '' : 's'} reserved${several ? ` for ${holds.length} events` : ` for ${first.eventName}`}, ${Math.ceil(secondsLeft / 60)} minute${secondsLeft > 60 ? 's' : ''} left`}
+      title={several ? `Seats reserved for ${holds.length} events: pay for them together in the cart` : `Seats reserved for ${first.eventName}`}
+    />
   );
 }

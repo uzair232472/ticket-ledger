@@ -1,5 +1,8 @@
 import prisma from '../config/prisma.js';
+import { recordProfileView } from '../services/ml/fraudReview.js';
+import { getScopedEventIds } from '../services/accessService.js';
 import behaviorService, { BEHAVIOR_ACTIONS } from '../services/behaviorService.js';
+import { behaviourReport, customerTimeline } from '../services/behaviourReport.js';
 
 /**
  * 1. Track a behavioral event from client or background
@@ -60,17 +63,22 @@ export const getMyBehaviorProfile = async (req, res) => {
 export const getUserBehaviorProfileById = async (req, res) => {
   try {
     const { userId } = req.params;
-    if (req.user.role !== 'SUPER_ADMIN') {
-      const customer = await prisma.order.findFirst({
-        where: { userId, event: { company: { userId: req.user.id } } },
-        select: { id: true },
-      });
-      if (!customer) {
-        return res.status(403).json({ success: false, message: 'You can only view attendees of your own events.' });
-      }
+    // Super Admins see the platform-wide profile. Organization members (attendee.view) see only behaviour on
+    // their organization's events they cover, and only for people who bought tickets to one of them.
+    if (req.user.role === 'SUPER_ADMIN') {
+      const profile = await behaviorService.getUserBehavioralProfile(userId);
+      // Shows the account's fraud score: logged so a later blind fraud review by this admin is marked exposed
+      await recordProfileView(req.user.id, userId).catch(() => {});
+      return res.status(200).json({ success: true, data: profile });
     }
-    const profile = await behaviorService.getUserBehavioralProfile(userId);
-
+    const eventIds = await getScopedEventIds(req.user, 'attendee.view');
+    const customer = eventIds.length
+      ? await prisma.order.findFirst({ where: { userId, eventId: { in: eventIds }, status: { in: ['SUCCESSFUL', 'PARTIALLY_REFUNDED', 'REFUNDED'] } }, select: { id: true } })
+      : null;
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'No attendee with this id on your events.' });
+    }
+    const profile = await behaviorService.getUserBehavioralProfile(userId, null, { eventIds });
     return res.status(200).json({
       success: true,
       data: profile,
@@ -110,4 +118,29 @@ export default {
   getMyBehaviorProfile,
   getUserBehaviorProfileById,
   linkSessionToUser,
+};
+
+/**
+ * 5. Super admin behaviour report: what happened, on which event, by which customer (counts only, no model)
+ */
+export const getBehaviourReport = async (req, res) => {
+  try {
+    const { days, eventId, scope } = req.query;
+    const data = await behaviourReport({ days, eventId: typeof eventId === 'string' && eventId ? eventId : null, scope });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('[BehaviorController] getBehaviourReport error:', error);
+    return res.status(error.status || 500).json({ success: false, message: error.message });
+  }
+};
+
+/** 6. One customer's timeline (super admin) */
+export const getCustomerTimeline = async (req, res) => {
+  try {
+    const { eventId, limit } = req.query;
+    const data = await customerTimeline({ userId: req.params.userId, eventId: typeof eventId === 'string' && eventId ? eventId : null, limit });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    return res.status(error.status || 500).json({ success: false, message: error.message });
+  }
 };

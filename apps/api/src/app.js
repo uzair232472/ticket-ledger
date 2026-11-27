@@ -1,4 +1,6 @@
+import paymentService from './services/paymentService.js';
 import express from 'express';
+import { handleStripeWebhook } from './services/stripeWebhookService.js';
 import cors from 'cors';
 import { corsOrigin } from './config/cors.js';
 import morgan from 'morgan';
@@ -21,6 +23,10 @@ import behaviorRoutes from './routes/behaviorRoutes.js';
 import intentAnalyticsRoutes from './routes/intentAnalyticsRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import staffRoutes from './routes/staffRoutes.js';
+import orgRoutes from './routes/orgRoutes.js';
+import supportRoutes from './routes/supportRoutes.js';
+import giftRoutes from './routes/giftRoutes.js';
+import { publicConfig as publicSiteConfig } from './controllers/adminConsoleController.js';
 import venueRoutes from './routes/venueRoutes.js';
 import wishlistRoutes from './routes/wishlistRoutes.js';
 import prebookRoutes from './routes/prebookRoutes.js';
@@ -34,6 +40,17 @@ app.use(cors({
   origin: corsOrigin,
   credentials: true,
 }));
+// Stripe webhooks need the RAW body to verify the signature: mounted before the JSON parser.
+// Evidence only: it never changes orders, payments or tickets (services/stripeWebhookService.js).
+app.post('/api/payments/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  try {
+    const { status, body } = await handleStripeWebhook({ rawBody: req.body, signature: req.headers['stripe-signature'] });
+    return res.status(status).json(body);
+  } catch (e) {
+    console.error('[stripe webhook]', e.message);
+    return res.status(500).json({ received: false }); // Stripe retries
+  }
+});
 // Venue plans can be larger than the default 100kb body limit (scoped to these routes only)
 app.use('/api/venues', express.json({ limit: '2mb' }));
 app.use(express.json());
@@ -59,9 +76,16 @@ app.get('/api/health', (req, res) => {
 });
 
 // Static file serving for uploaded documents & media
+// Support attachments are private: never served from the public folder (see /api/support/attachments/:id)
+app.use('/uploads/support', (req, res) => res.status(404).end());
 app.use('/uploads', express.static('uploads'));
 
 // API Routes
+// Which payment methods can take a payment now (the checkout pages show only these as selectable). Public.
+app.get('/api/payments/methods', (req, res) => {
+  const a = paymentService.availability();
+  res.json({ success: true, data: { methods: Object.entries(a).map(([method, v]) => ({ method, available: v.available, test: Boolean(v.test), mode: v.mode || null, reason: v.available ? null : v.reason })) } });
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/companies', companyRoutes);
@@ -78,6 +102,11 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/behavior', behaviorRoutes);
 app.use('/api/analytics', intentAnalyticsRoutes);
 app.use('/api/staff', staffRoutes);
+app.use('/api/org', orgRoutes);
+app.use('/api/support', supportRoutes);
+app.use('/api/gifts', giftRoutes);
+// Site-wide settings every visitor needs (banner, organizer registration open)
+app.get('/api/site-config', publicSiteConfig);
 app.use('/api/venues', venueRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/prebook', prebookRoutes);

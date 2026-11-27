@@ -136,7 +136,7 @@ test('MODULE 15 - FastAPI ML Service & Node.js Score Persistence Tests', async (
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${customerToken}`,
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
         checkoutDurationSeconds: 42.0,
@@ -159,7 +159,7 @@ test('MODULE 15 - FastAPI ML Service & Node.js Score Persistence Tests', async (
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${customerToken}`,
+        Authorization: `Bearer ${adminToken}`,
       },
       body: JSON.stringify({
         eventViewsCount: 5,

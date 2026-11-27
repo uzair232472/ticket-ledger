@@ -9,7 +9,7 @@ Folder: `apps/ml-service/`. Python 3.10 virtual environment in `.venv/` (depende
 > ### Model-file status on this machine (verified 2026-10-06 by running the code)
 > - `models/*.joblib` are **git-ignored** (`.gitignore: *.joblib`), so a fresh clone has **no model files**. In that case `load_models()` loads nothing and each endpoint uses its built-in heuristic branch.
 > - The three `.joblib` files present locally were produced by the **legacy** trainer `train_models.py` (they contain a bare `RandomForestClassifier` and two bare `Pipeline`s). `main.py` expects the **dictionary** format written by `scripts/train_*.py` (keys `pipeline`, `sales_pipeline`, `level_pipeline`). Calling the inference functions with these files raised: fraud → `TypeError: list indices must be integers or slices, not str`; intent → `KeyError: 'pipeline'`; demand → `KeyError: 'sales_pipeline'`. Over HTTP these become **500 errors**, and the Node `mlService` then returns its own fallback values.
-> - Running `python scripts/train_intent_model.py` (etc.) or calling `POST /train/<type>` rewrites the files in the dictionary format and makes the trained models usable. `models/model_metrics.json` (dated 2026-09-26) describes dictionary-format models, i.e. not the files currently on disk.
+> - Running `python scripts/train_intent_model.py` (etc.) or calling `POST /train/<type>` rewrites the files in the dictionary format and makes the trained models usable. The old `models/model_metrics.json` (near-perfect legacy scores) was removed on 2026-11-25.
 
 ---
 
@@ -18,7 +18,7 @@ Folder: `apps/ml-service/`. Python 3.10 virtual environment in `.venv/` (depende
 | Symbol | Line | Behaviour |
 |---|---|---|
 | `app = FastAPI(...)` + `CORSMiddleware(allow_origins=["*"])` | `:22-35` | Open CORS; **no authentication** — anyone who can reach port 8000 can score, read metrics or **retrain** models. Only the Node API is meant to call it (`ML_SERVICE_URL`). |
-| Paths | `:37-41` | `models/fraud_model.joblib`, `demand_model.joblib`, `intent_model.joblib`, `model_metrics.json`. |
+| Paths | `:37-41` | `models/fraud_model.joblib`, `demand_model.joblib`, `intent_model.joblib`; `REPORTS_DIR` = `reports/v0` (`ML_REPORTS_DIR`). |
 | `load_models()` | `:47` | Loads each file that exists into globals `fraud_pkg`, `demand_pkg`, `intent_pkg`; a load error is printed and swallowed. Runs at import (`:59`) and again whenever a package is `None` at request time, and after training. |
 | Pydantic request/response models | `:64-144` | `FraudScoreRequest` (core features + telemetry aliases), `FraudScoreResponse`, `DemandForecastRequest` (+ aliases `marketing_tier`, `avg_ticket_price`, `is_weekend`), `DemandForecastResponse`, `IntentPredictRequest` (+ aliases), `IntentPredictResponse`, `TrainingResponse`. All fields optional with defaults, so missing values never fail validation. |
 
@@ -51,7 +51,7 @@ Folder: `apps/ml-service/`. Python 3.10 virtual environment in `.venv/` (depende
 |---|---|---|
 | `GET /` (`read_root`) | `:361` | Service info and which packages are loaded (non-`None`, even if in the wrong format). |
 | `GET /health` (`health_check`) | `:383` | `{status:'healthy', models_loaded:{…}}`. |
-| `GET /models/metrics` (`get_model_metrics`) | `:397` | Contents of `models/model_metrics.json`. |
+| `GET /models/metrics` (`get_model_metrics`) | `:397` | Summary of the gated reports in `reports/v0/` (status, model vs rule, 95% interval). The legacy near-perfect file is no longer served. |
 | `POST /fraud/score`, `/predict/fraud` (`post_fraud_score`, `post_predict_fraud_alias`) | `:408`, `:412` | `execute_fraud_score`. |
 | `POST /forecast/demand`, `/predict/demand` (`post_forecast_demand`, `post_predict_demand_alias`) | `:416`, `:420` | `execute_demand_forecast`. |
 | `POST /intent/predict`, `/predict/intent` (`post_intent_predict`, `post_predict_intent_alias`) | `:424`, `:428` | `execute_intent_predict`. |
@@ -75,7 +75,7 @@ Folder: `apps/ml-service/`. Python 3.10 virtual environment in `.venv/` (depende
 | `generate_attendance_no_show(n_rows=50000, seed=42)` | `:303` | `data/attendance_no_show.csv` (weather, distance, price, resale → check-in probability). **No script trains on it and no code reads it** (the organizer dashboard's attendance prediction is a fixed rule). |
 | `main()` | `:353` | Runs all four. |
 
-Because labels are generated from the same features by formulas, very high test scores are expected (e.g. fraud accuracy 1.0, intent R² 0.976 in `model_metrics.json`) and **say nothing about real-world performance**.
+Because labels are generated from the same features by formulas, very high test scores are expected (e.g. fraud accuracy 1.0, intent R² 0.976 in the old, now deleted, `model_metrics.json`) and **say nothing about real-world performance**.
 
 ### `scripts/train_fraud_model.py` — `train_fraud()` (`:31`)
 Reads `fraud_purchases.csv`; features `account_age_days, ticket_count, total_amount, failed_payments, device_change_count, ip_city_mismatch, purchase_speed_seconds, resale_attempts`; target `is_fraud`; stratified 70/15/15 split (seed 42); `StandardScaler` → `CalibratedClassifierCV(RandomForestClassifier(100 trees, depth 12), cv=3)`; reports accuracy/precision/recall/F1/ROC-AUC on validation and test; saves `{pipeline, features, target, metrics, classification_tiers, training_metadata}` to `models/fraud_model.joblib`; writes `data/test_fraud.csv`.
@@ -87,13 +87,13 @@ Reads `behavior_sequences.csv`; numeric features scaled, `city`/`event_type` one
 Reads `event_demand.csv`; one-hot `event_type, city, day_of_week`, scaled numerics; **two pipelines** on the same preprocessing: `GradientBoostingRegressor` for `predicted_48h_sales` and `RandomForestClassifier(100, depth 10)` for `demand_level`; stratified on level; saves `{sales_pipeline, level_pipeline, …}` to `demand_model.joblib`; writes `data/test_demand.csv`.
 
 ### `scripts/evaluate_models.py` — `evaluate_all()` (`:28`)
-Loads each dictionary-format model and its `data/test_*.csv`, recomputes metrics, prints a report and writes `models/model_metrics.json`. Fails (or skips) with legacy-format files.
+Loads each dictionary-format model and its `data/test_*.csv`, recomputes metrics, prints a report and writes `dev/legacy-synthetic/legacy_model_metrics.json`. Fails (or skips) with legacy-format files.
 
 ### `train_models.py` (top level) — **legacy, incompatible**
 `train_fraud_model()` (`:25`), `train_demand_model()` (`:68`), `train_intent_model()` (`:135`) generate their own random data in memory (different feature sets: e.g. clicks per minute, marketing tier, session duration) and save **bare estimators**. `main.py` cannot use these files (see the status box above). Treat this file as superseded by `scripts/`.
 
 ### `test_health.py`
-`test_root()` asserts `GET /` returns `service == "TicketLedger ML Service"`, but `read_root` returns `"TicketLedger AI Analytics & Bot Defense Engine (Module 15)"`, so **this assertion fails** against the current code (not executed here; inferred from the source). `test_health()` matches the current `/health` response. Requires `httpx` for FastAPI's `TestClient`, which is not in `requirements.txt`.
+`test_root()` checks `GET /`: the current display name (`"TicketLedger AI Analytics & Bot Defense Engine (Module 15)"`, changed on purpose in commit `6114e20`; the API title stays `"TicketLedger ML Service"`), status `online`, a version, the endpoint list and the loaded-model flags. `test_health()` matches the current `/health` response. Requires `httpx` for FastAPI's `TestClient`, which is not in `requirements.txt`.
 
 ### Data files (`apps/ml-service/data/`)
 | File | Rows | Produced by | Used by |

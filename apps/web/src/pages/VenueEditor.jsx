@@ -5,14 +5,14 @@ import {
   LayoutTemplate, Minus, MousePointer2, PenTool, Plus, Redo2, RefreshCw, Save, Send, Square, Table2, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
 import api from '../utils/api';
-import { TEMPLATES, assignTiers, buildTemplate, layoutInventory, newSectionId, round, validateLayout } from '@venue-core';
+import { TEMPLATES, TEAM_NAME_MAX, applySightScreens, assignTiers, buildTemplate, layoutInventory, newSectionId, round, sightScreenCount, sightScreenSeats, validateLayout, view3dOf } from '@venue-core';
 import VenueMap from '../components/venue/VenueMap';
 import VenueBooking from '../components/venue/VenueBooking';
 import { previewAdapter } from '../components/venue/adapters';
 import EditorOverlay from '../components/venue/editor/EditorOverlay';
 import SectionInspector from '../components/venue/editor/SectionInspector';
 import MiniPlan from '../components/venue/editor/MiniPlan';
-import { ConfirmDialog, NumberField, SelectField, TextField } from '../components/venue/editor/fields';
+import { ColorField, ConfirmDialog, NumberField, Segmented, SelectField, TextField } from '../components/venue/editor/fields';
 import { formatPkr, generated, tierPalette } from '../components/venue/venueTheme';
 import { ACCEPT_ATTR, readImageSize } from '../utils/eventImageSpecs';
 import '../components/venue/venue.css';
@@ -414,11 +414,64 @@ export default function VenueEditor() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Editing shortcuts (outside text fields): Delete removes the selected section, Ctrl+Z / Ctrl+Y undo and redo,
+  // Ctrl+D duplicates, Ctrl+S saves, Esc closes the section settings
+  useEffect(() => {
+    if (!layout || tool === 'draw') return undefined;
+    const onKey = (e) => {
+      if (confirm || previewKey) return;
+      const typing = e.target.closest?.('input, textarea, select, [contenteditable="true"]');
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      if (mod && k === 's') {
+        e.preventDefault();
+        if (busy || payload.event.underReview) return;
+        if (published) saveDraft();
+        else if (layout.sections.length) publish();
+        return;
+      }
+      if (typing) return;
+      if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+      else if (mod && k === 'd' && selected) { e.preventDefault(); duplicateSection(selected); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { e.preventDefault(); removeSection(selected); }
+      else if (e.key === 'Escape' && (selected || featureSelected)) { setSelectedId(null); setFeatureSelected(false); if (tool === 'block') setTool('select'); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   const handleUnits = 7 / (zoomPx || 1);
   const mapClickPoint = (e) => {
     const p = mapRef.current.toSvg(e.clientX, e.clientY);
     if (drawPoints.length >= 3 && Math.hypot(p.x - drawPoints[0][0], p.y - drawPoints[0][1]) < handleUnits * 2) return finishDrawing();
     setDrawPoints((pts) => [...pts, [p.x, p.y]]);
+  };
+
+  // ---------- Removing and duplicating ----------
+  // Removing is one undo step, so it happens straight away; only a section with held or booked seats asks first
+  const removeSection = (sec) => {
+    const apply = () => {
+      update((cur) => ({ ...cur, sections: cur.sections.filter((s) => s.id !== sec.id) }));
+      if (selectedId === sec.id) setSelectedId(null);
+      setConfirm(null);
+      setStatus({ tone: 'info', text: `Removed “${sec.name}”. Save to keep this change.`, undo: true });
+    };
+    if (!protectedBySection[sec.id]) return apply();
+    setConfirm({
+      title: `Remove “${sec.name}”?`,
+      body: <p>This section has held or booked seats, so publishing will be refused while it is missing. You can undo this until you publish.</p>,
+      confirmLabel: 'Remove section',
+      tone: 'danger',
+      onConfirm: apply,
+    });
+  };
+  const duplicateSection = (sec) => {
+    const id = newSectionId();
+    const copy = JSON.parse(JSON.stringify(sec));
+    const shift = (sh) => (sh.type === 'arc' ? { ...sh, a0: sh.a0 + (sh.a1 - sh.a0) + 2, a1: sh.a1 + (sh.a1 - sh.a0) + 2 } : sh.type === 'rect' ? { ...sh, x: sh.x + 30, y: sh.y + 30 } : { ...sh, points: sh.points.map(([x, y]) => [x + 30, y + 30]) });
+    update((cur) => ({ ...cur, sections: [...cur.sections, { ...copy, id, name: uniqueName(sec.name.replace(/\s+\d+$/, '')), shape: shift(copy.shape) }] }));
+    setSelectedId(id);
   };
 
   const toggleBlocked = (key, section) => {
@@ -623,20 +676,20 @@ export default function VenueEditor() {
             </button>
             {published ? (
               <>
-                <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy} className="tl-dash-btn" title="Saves your work without changing the seats attendees see">
+                <button type="button" onClick={() => saveDraft()} disabled={!dirty || busy || payload.event.underReview} className="tl-dash-btn" title="Saves your work without changing the seats attendees see">
                   <Save className="w-4 h-4" /> {busy === 'save' ? 'Saving…' : 'Save draft'}
                 </button>
-                <button type="button" onClick={publish} disabled={busy || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
+                <button type="button" onClick={publish} disabled={busy || payload.event.underReview || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
                   <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish changes'}
                 </button>
               </>
             ) : (
               // No plan yet: saving creates the seats, so attendees can see them (a draft alone shows nothing)
-              <button type="button" onClick={publish} disabled={busy || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
+              <button type="button" onClick={publish} disabled={busy || payload.event.underReview || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
                 <Save className="w-4 h-4" /> {busy === 'publish' ? 'Saving…' : setup ? 'Save & continue' : 'Save seating plan'}
               </button>
             )}
-            {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status)) && (
+            {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status) || (ev.prebookDraftId && ev.isHidden)) && (
               <Link to={`/organizer/events/${eventId}/submit${setup ? '?setup=1' : ''}`} className="tl-dash-btn tl-dash-btn--green">
                 Next: Review &amp; submit
               </Link>
@@ -652,6 +705,11 @@ export default function VenueEditor() {
             <p><strong>Step 4 of 5: Seating plan.</strong> Your event is saved privately. Choose a plan, set each section’s seats and price tier, then press <strong>Save &amp; continue</strong> to review your event and send it for approval.</p>
           </Banner>
         </>
+      )}
+      {ev.underReview && (
+        <Banner tone="warn" icon={AlertTriangle}>
+          <p><strong>Waiting for a TicketLedger admin.</strong> The seating plan and ticket tiers are locked while they review them, so nothing you change here can be saved. <Link className="underline font-semibold" to={`/organizer/events/${eventId}/submit`}>Withdraw it from review</Link> to make changes.</p>
+        </Banner>
       )}
       {payload.legacy?.seats > 0 && (
         <Banner tone={payload.legacy.booked ? 'warn' : 'info'}>
@@ -671,7 +729,12 @@ export default function VenueEditor() {
       ) : null}
       {status && (
         <Banner tone={status.tone} icon={status.tone === 'ok' ? CheckCircle2 : AlertCircle} onClose={() => setStatus(null)}>
-          <p>{status.text}</p>
+          <p>
+            {status.text}
+            {status.undo && history.current.past.length > 0 && (
+              <button type="button" className="ml-2 font-bold underline" onClick={() => { undo(); setStatus(null); }}>Undo</button>
+            )}
+          </p>
           {status.list?.length > 0 && (
             <ul className="list-disc pl-4 space-y-0.5">
               {status.list.map((m, i) => <li key={i}>{m}</li>)}
@@ -737,6 +800,9 @@ export default function VenueEditor() {
                         </span>
                         {hasError && <AlertTriangle className="w-4 h-4 text-rose-500" aria-label="Has problems" />}
                         <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                      <button type="button" className="tl-ve-sec-del" onClick={() => removeSection(sec)} aria-label={`Remove ${sec.name}`} title="Remove section">
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </li>
                   );
@@ -838,7 +904,7 @@ export default function VenueEditor() {
                   <button type="button" className="tl-vm-btn" onClick={() => mapRef.current?.zoomOut()} aria-label="Zoom out"><Minus className="w-4 h-4" /></button>
                 </div>
                 <span className="tl-vm-hint hidden md:inline">
-                  {tool === 'block' ? 'Click seats to block or unblock them' : tool === 'draw' ? `Drawing: ${drawPoints.length} point${drawPoints.length === 1 ? '' : 's'}` : 'Click a section to configure it · drag to move · Ctrl + scroll to zoom'}
+                  {tool === 'block' ? 'Click seats to block or unblock them' : tool === 'draw' ? `Drawing: ${drawPoints.length} point${drawPoints.length === 1 ? '' : 's'}` : 'Click a section to configure it · drag to move · Delete removes it · Ctrl + Z undo · Ctrl + scroll to zoom'}
                 </span>
               </div>
           </section>
@@ -852,7 +918,10 @@ export default function VenueEditor() {
                     <h2>{selected.name}</h2>
                     <p>Section settings</p>
                   </div>
-                  <button type="button" className="tl-vm-btn" onClick={() => setSelectedId(null)} aria-label="Close section settings"><X className="w-4 h-4" /></button>
+                  <div className="flex gap-1.5">
+                    <button type="button" className="tl-vm-btn tl-ve-delbtn" onClick={() => removeSection(selected)} aria-label={`Remove ${selected.name}`} title="Remove section (Delete)"><Trash2 className="w-4 h-4" /></button>
+                    <button type="button" className="tl-vm-btn" onClick={() => setSelectedId(null)} aria-label="Close section settings" title="Close (Esc)"><X className="w-4 h-4" /></button>
+                  </div>
                 </div>
                 <SectionInspector
                   key={selected.id}
@@ -867,26 +936,8 @@ export default function VenueEditor() {
                     setTool((t) => (t === 'block' ? 'select' : 'block'));
                     mapRef.current?.fitSection(selected.id);
                   }}
-                  onDuplicate={() => {
-                    const id = newSectionId();
-                    const copy = JSON.parse(JSON.stringify(selected));
-                    const shift = (sh) => (sh.type === 'arc' ? { ...sh, a0: sh.a0 + (sh.a1 - sh.a0) + 2, a1: sh.a1 + (sh.a1 - sh.a0) + 2 } : sh.type === 'rect' ? { ...sh, x: sh.x + 30, y: sh.y + 30 } : { ...sh, points: sh.points.map(([x, y]) => [x + 30, y + 30]) });
-                    update((cur) => ({ ...cur, sections: [...cur.sections, { ...copy, id, name: uniqueName(selected.name.replace(/\s+\d+$/, '')), shape: shift(copy.shape) }] }));
-                    setSelectedId(id);
-                  }}
-                  onDelete={() =>
-                    setConfirm({
-                      title: `Remove “${selected.name}”?`,
-                      body: <p>{protectedBySection[selected.id] ? 'This section has held or booked seats, so publishing will be refused while it is missing.' : 'You can undo this until you publish.'}</p>,
-                      confirmLabel: 'Remove section',
-                      tone: 'danger',
-                      onConfirm: () => {
-                        update((cur) => ({ ...cur, sections: cur.sections.filter((s) => s.id !== selected.id) }));
-                        setSelectedId(null);
-                        setConfirm(null);
-                      },
-                    })
-                  }
+                  onDuplicate={() => duplicateSection(selected)}
+                  onDelete={() => removeSection(selected)}
                 />
               </>
             ) : (
@@ -915,6 +966,37 @@ export default function VenueEditor() {
                     </>
                   )}
                 </section>
+                {layout.feature?.kind === 'cricket' && (() => {
+                  const v3 = view3dOf(layout);
+                  // Typed text is kept as typed (spaces included); the 3D view trims it when drawing
+                  const setV3 = (patch, key) => update({ ...layout, view3d: { ...v3, teamName: layout.view3d?.teamName ?? '', ...patch } }, key);
+                  const screened = sightScreenCount(layout);
+                  const possible = Object.values(sightScreenSeats(layout)).reduce((n, l) => n + l.length, 0);
+                  const roofs = layout.sections.filter((s) => s.view3d?.roof).length;
+                  return (
+                    <section className="space-y-2.5 pt-3 border-t border-slate-100">
+                      <h3 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">3D stadium</h3>
+                      <p className="text-[11px] text-slate-500">How the ground looks in the customers’ 3D view. Roofs are set per stand: select a stand and turn on “Roof over this stand”{roofs ? ` (${roofs} now)` : ''}.</p>
+                      <TextField label="Team name on the roof" value={layout.view3d?.teamName ?? ''} maxLength={TEAM_NAME_MAX} placeholder="e.g. Lahore Qalandars" onChange={(teamName) => setV3({ teamName }, 'v3-team')} hint={!roofs && v3.teamName ? 'Add a roof to a stand to show it.' : undefined} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <ColorField label="Team colour" value={v3.teamColors[0]} onChange={(c) => setV3({ teamColors: [c, v3.teamColors[1]] }, 'v3-c1')} />
+                        <ColorField label="Second colour" value={v3.teamColors[1]} onChange={(c) => setV3({ teamColors: [v3.teamColors[0], c] }, 'v3-c2')} />
+                      </div>
+                      <Segmented label="Seat colours" value={v3.seatColors} onChange={(seatColors) => setV3({ seatColors })} options={[{ value: 'tiers', label: 'By ticket type' }, { value: 'team', label: 'Team colours' }]} />
+                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                        <p className="text-[11px] text-slate-600">
+                          <strong className="text-slate-800">Sight screens.</strong>{' '}
+                          {screened ? `${screened} seats behind the sight screens are blocked (not sold), so batters can see the ball.` : `${possible} seats in the front rows behind the sight screens can be blocked so they are not sold.`}
+                        </p>
+                        {screened ? (
+                          <button type="button" className="tl-vm-btn" onClick={() => update(applySightScreens(layout, false))}>Unblock sight-screen seats</button>
+                        ) : (
+                          <button type="button" className="tl-vm-btn" disabled={!possible} onClick={() => update(applySightScreens(layout, true))}>Block seats behind the sight screens</button>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })()}
                 <section className="space-y-2.5 pt-3 border-t border-slate-100">
                   <h3 className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Uploaded plan</h3>
                   {layout.background ? (
@@ -958,7 +1040,24 @@ export default function VenueEditor() {
               {errorCount ? <AlertTriangle className="w-5 h-5" aria-hidden="true" /> : <CheckCircle2 className="w-5 h-5" aria-hidden="true" />}
               <div>
                 <strong>{errorCount ? `${errorCount} problem${errorCount === 1 ? '' : 's'} to fix` : dirty ? 'Unsaved changes' : published ? 'Seating saved' : 'Ready to save'}</strong>
-                <small>{errorCount ? 'See the list below.' : dirty ? 'Save to keep your changes.' : 'All changes saved.'}</small>
+                <small>{errorCount ? 'See the list below.' : dirty ? 'Save to keep your changes (Ctrl+S).' : 'All changes saved.'}</small>
+              </div>
+              {/* The same save as the page header, always in reach at the bottom of the screen */}
+              <div className="tl-ve-ready-actions">
+                {published ? (
+                  <button type="button" onClick={publish} disabled={busy || payload.event.underReview || (!dirty && !draftPending)} className="tl-dash-btn tl-dash-btn--green">
+                    <Send className="w-4 h-4" /> {busy === 'publish' ? 'Publishing…' : 'Publish changes'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={publish} disabled={busy || payload.event.underReview || !layout.sections.length} className="tl-dash-btn tl-dash-btn--green">
+                    <Save className="w-4 h-4" /> {busy === 'publish' ? 'Saving…' : setup ? 'Save & continue' : 'Save seating plan'}
+                  </button>
+                )}
+                {published && !dirty && (setup || ['DRAFT', 'PRELAUNCH_ANALYSIS', 'REJECTED'].includes(ev.status) || (ev.prebookDraftId && ev.isHidden)) && (
+                  <Link to={`/organizer/events/${eventId}/submit${setup ? '?setup=1' : ''}`} className="tl-dash-btn tl-dash-btn--green">
+                    Next: Review <ChevronRight className="w-4 h-4" />
+                  </Link>
+                )}
               </div>
             </div>
           </div>

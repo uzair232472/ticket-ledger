@@ -29,9 +29,20 @@ __pycache__/
 env/
 venv/
 .venv/
+.venv*/
 ENV/
 *.h5
 *.joblib
+# Step 6 (Option 1): only the five approved v0 SHADOW artifacts are tracked, so every machine has the exact files
+# whose fingerprints are in apps/ml-service/models/v0/registry.json. Every other .joblib / .pkl stays ignored.
+!apps/ml-service/models/v0/intent.joblib
+!apps/ml-service/models/v0/abandonment.joblib
+!apps/ml-service/models/v0/fraud.joblib
+!apps/ml-service/models/v0/demand.joblib
+!apps/ml-service/models/v0/crowd.joblib
+!apps/ml-service/models/v0/attendance.joblib
+!apps/ml-service/models/v0/checkout_abandonment.joblib
+!apps/ml-service/models/v0/demand_hourly.joblib
 *.pkl
 
 # Hardhat / Blockchain
@@ -65,3 +76,11 @@ apps/api/.keys/
 
 # User uploads (company documents, avatars, event media) stay on the server
 apps/api/uploads/
+apps/api/private_uploads/
+
+# ML training exports and candidates built from the client's database (never commit client data)
+apps/ml-service/exports/
+apps/ml-service/models/candidates/
+apps/ml-service/reports/candidates/
+# PUBLIC datasets: re-fetched with apps/ml-service/scripts/fetch_public_datasets.py (sources, licenses, checksums there)
+apps/ml-service/data/public/*/

@@ -2,10 +2,19 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
+import { reauthorizeUserRooms } from '../services/socketAccess.js';
 import { sendStaffInviteEmail } from '../services/emailService.js';
-import { sha256, revokeAllRefreshTokens } from '../services/tokenService.js';
-import { getOwnedCompanyId, getScopedEventIds } from '../services/accessService.js';
+import { sha256 } from '../services/tokenService.js';
+import { getScopedEventIds } from '../services/accessService.js';
+import { ALL_PERMISSIONS, AccessError, canAccessEvent, requestContext } from '../services/orgAccess.js';
+import { deactivateMember, expireStaleInvites, orgAudit, reactivateMember } from '../services/orgService.js';
 import { INVITE_TTL_MS, MESSAGES } from '../config/auth.js';
+
+/*
+ * Gate staff (scanner) management: the Gate Staff tab of the Team page and the event pages. Gate staff are
+ * organization members with the GATE_STAFF role, assigned to events. Scope always comes from the caller's ACTIVE
+ * membership (staff.* permissions); Super Admins act across organizations, audited with the organization id.
+ */
 
 const NOT_OWN_STAFF = "You can only manage your own company's staff.";
 
@@ -17,7 +26,7 @@ const inviteSchema = z.object({
 const listSchema = z.object({
   eventId: z.string().optional(),
   companyId: z.string().optional(),
-  status: z.enum(['PENDING', 'ACCEPTED', 'CANCELLED', 'EXPIRED']).optional(),
+  status: z.enum(['PENDING', 'ACCEPTED', 'CANCELLED', 'EXPIRED', 'REJECTED', 'REVOKED']).optional(),
 });
 
 const INVITE_INCLUDE = {
@@ -30,6 +39,7 @@ const INVITE_INCLUDE = {
 const serializeInvite = ({ tokenHash, ...invite }) => invite;
 
 const handleError = (res, error, context) => {
+  if (error instanceof AccessError) return res.status(error.status).json({ success: false, code: error.code, message: error.message });
   if (error instanceof z.ZodError) {
     return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Validation error' });
   }
@@ -38,15 +48,34 @@ const handleError = (res, error, context) => {
 };
 
 /**
- * Company scope for the current user: null = all companies (Super Admin), otherwise the owned company id.
- * Organizers without a company get an empty string, which matches nothing.
+ * Organization scope: null = all organizations (Super Admin), otherwise the caller's organization when they hold
+ * `permission`. Members without it get an empty string, which matches nothing.
  */
-const resolveCompanyScope = async (user) => {
-  if (user.role === 'SUPER_ADMIN') return null;
-  return (await getOwnedCompanyId(user.id)) || '';
+const resolveCompanyScope = async (req, permission) => {
+  if (req.user.role === 'SUPER_ADMIN') return null;
+  const ctx = await requestContext(req);
+  return ctx && ctx.permissions.has(permission) ? ctx.companyId : '';
 };
+const canManageCompany = (scope, companyId) => scope === null || (scope !== '' && scope === companyId);
 
-const canManageCompany = (scope, companyId) => scope === null || scope === companyId;
+/** The organization context used for a membership change: the caller's own, or a Super Admin's for that company. */
+async function contextFor(req, companyId) {
+  if (req.user.role !== 'SUPER_ADMIN') return requestContext(req);
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true, companyName: true, status: true, userId: true, email: true } });
+  return { superAdmin: true, companyId, company, role: 'SUPER_ADMIN', permissions: new Set(ALL_PERMISSIONS), eventScoped: false, eventIds: null };
+}
+
+/** The gate staff membership of a user, within the caller's scope. */
+async function findStaffMembership(req, userId, permission) {
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId, role: 'GATE_STAFF', status: { not: 'REMOVED' } },
+    include: { user: { select: { id: true, name: true, email: true, status: true, companyId: true } } },
+  });
+  if (!membership) return { error: [404, 'Staff member not found.'] };
+  const scope = await resolveCompanyScope(req, permission);
+  if (!canManageCompany(scope, membership.companyId)) return { error: [403, NOT_OWN_STAFF] };
+  return { membership };
+}
 
 const newInviteToken = () => {
   const raw = crypto.randomBytes(32).toString('base64url');
@@ -57,16 +86,9 @@ const sendInvite = async (invite, rawToken, inviter) =>
   sendStaffInviteEmail({
     to: invite.email,
     inviteToken: rawToken,
-    eventName: invite.event.name,
+    eventName: invite.event?.name || 'your events',
     companyName: invite.company.companyName,
     inviterName: inviter.name,
-  });
-
-// Marks PENDING invites past their expiry as EXPIRED so lists show the real state
-const expireStaleInvites = (where) =>
-  prisma.staffInvite.updateMany({
-    where: { ...where, status: 'PENDING', expiresAt: { lt: new Date() } },
-    data: { status: 'EXPIRED' },
   });
 
 /**
@@ -82,41 +104,45 @@ export const createInvite = async (req, res) => {
     });
     if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
 
-    // Ownership is checked against the organizer's own company, never against client input
-    const scope = await resolveCompanyScope(req.user);
-    if (!canManageCompany(scope, event.companyId)) {
+    // Ownership is checked against the caller's own membership (and event scope), never against client input
+    if (!(await canAccessEvent(req.user, event, { permission: 'staff.invite', req }))) {
       return res.status(403).json({ success: false, message: MESSAGES.INVITE_NOT_OWN_EVENT });
     }
-    if (req.user.role === 'ORGANIZER' && event.company.status !== 'APPROVED') {
+    if (req.user.role !== 'SUPER_ADMIN' && event.company.status !== 'APPROVED') {
       return res.status(403).json({ success: false, message: MESSAGES.COMPANY_NOT_APPROVED });
     }
+    const ctx = await contextFor(req, event.companyId);
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      if (existing.role !== 'GATE_STAFF') {
+      if (existing.role === 'SUPER_ADMIN') {
         return res.status(409).json({ success: false, message: MESSAGES.INVITE_EMAIL_TAKEN });
       }
-      if (existing.companyId !== event.companyId) {
+      const membership = await prisma.organizationMember.findFirst({ where: { userId: existing.id, status: { not: 'REMOVED' } } });
+      if (membership && membership.companyId !== event.companyId) {
         return res.status(409).json({ success: false, message: 'This staff member belongs to another company.' });
       }
-      if (existing.status === 'DEACTIVATED') {
+      if (membership?.status === 'DEACTIVATED') {
         return res.status(409).json({ success: false, message: 'This staff member is deactivated. Reactivate them in your staff list first.' });
       }
-      if (existing.status !== 'ACTIVE') {
+      if (membership && existing.status !== 'ACTIVE') {
         return res.status(409).json({ success: false, message: 'This staff account is blocked by TicketLedger. Contact support.' });
       }
-
-      // Same company: assign the existing account to this event, no new invite needed
-      const assignment = await prisma.staffEventAssignment.upsert({
-        where: { staffId_eventId: { staffId: existing.id, eventId } },
-        update: {},
-        create: { staffId: existing.id, eventId, assignedById: req.user.id },
-      });
-      return res.status(200).json({
-        success: true,
-        message: `${existing.name} already has a staff account and is now assigned to ${event.name}.`,
-        data: { assignment, assignedExisting: true },
-      });
+      if (membership) {
+        // Same organization: assign the existing member to this event, no new invite needed
+        const assignment = await prisma.staffEventAssignment.upsert({
+          where: { staffId_eventId: { staffId: existing.id, eventId } },
+          update: {},
+          create: { staffId: existing.id, eventId, assignedById: req.user.id },
+        });
+        await orgAudit(prisma, { req, ctx, action: 'ORG_MEMBER_EVENTS_CHANGED', targetType: 'OrganizationMember', targetId: membership.id, after: { added: [eventId] }, details: { userId: existing.id, email } });
+        return res.status(200).json({
+          success: true,
+          message: `${existing.name} already has a staff account and is now assigned to ${event.name}.`,
+          data: { assignment, assignedExisting: true },
+        });
+      }
+      // An existing TicketLedger account without an organization: invited like anyone else, accepts by signing in
     }
 
     const token = newInviteToken();
@@ -124,26 +150,21 @@ export const createInvite = async (req, res) => {
       // A new invite replaces any open one for the same email and event; the old link stops working
       await tx.staffInvite.updateMany({
         where: { email, eventId, status: 'PENDING' },
-        data: { status: 'CANCELLED' },
+        data: { status: 'CANCELLED', respondedAt: new Date() },
       });
-      return tx.staffInvite.create({
-        data: {
-          email,
-          companyId: event.companyId,
-          eventId,
-          invitedById: req.user.id,
-          tokenHash: token.hash,
-          expiresAt: token.expiresAt,
-        },
+      const created = await tx.staffInvite.create({
+        data: { email, companyId: event.companyId, eventId, role: 'GATE_STAFF', eventIds: [eventId], invitedById: req.user.id, tokenHash: token.hash, expiresAt: token.expiresAt },
         include: INVITE_INCLUDE,
       });
+      await orgAudit(tx, { req, ctx, action: 'ORG_INVITE_CREATED', targetType: 'StaffInvite', targetId: created.id, after: { email, role: 'GATE_STAFF', eventIds: [eventId] }, details: { existingAccount: Boolean(existing) } });
+      return created;
     });
 
     const delivery = await sendInvite(invite, token.raw, req.user);
     return res.status(201).json({
       success: true,
       message: delivery.success ? `Invite sent to ${email}.` : `Invite created, but the email to ${email} could not be sent. Try resending.`,
-      data: { invite: serializeInvite(invite), emailSent: delivery.success },
+      data: { invite: serializeInvite(invite), emailSent: delivery.success, existingAccount: Boolean(existing) },
     });
   } catch (error) {
     return handleError(res, error, 'Send invite');
@@ -151,85 +172,91 @@ export const createInvite = async (req, res) => {
 };
 
 /**
- * GET /api/staff — staff accounts and invites, scoped to the organizer's company
+ * GET /api/staff — gate staff members and their invites, scoped to the caller's organization
  */
 export const listStaff = async (req, res) => {
   try {
     const filters = listSchema.parse(req.query);
-    const scope = await resolveCompanyScope(req.user);
+    const scope = await resolveCompanyScope(req, 'staff.view');
     const companyId = scope === null ? filters.companyId : scope;
 
     const inviteWhere = {
+      role: 'GATE_STAFF',
       ...(companyId !== undefined ? { companyId } : {}),
-      ...(filters.eventId ? { eventId: filters.eventId } : {}),
+      ...(filters.eventId ? { eventIds: { has: filters.eventId } } : {}),
     };
-    await expireStaleInvites(inviteWhere);
+    await expireStaleInvites(companyId !== undefined ? { companyId } : {});
 
-    const [invites, staff] = await Promise.all([
+    const [invites, members] = await Promise.all([
       prisma.staffInvite.findMany({
         where: { ...inviteWhere, ...(filters.status ? { status: filters.status } : {}) },
         include: INVITE_INCLUDE,
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.user.findMany({
+      prisma.organizationMember.findMany({
         where: {
           role: 'GATE_STAFF',
+          status: { not: 'REMOVED' },
           ...(companyId !== undefined ? { companyId } : {}),
-          ...(filters.eventId ? { staffAssignments: { some: { eventId: filters.eventId } } } : {}),
+          ...(filters.eventId ? { user: { staffAssignments: { some: { eventId: filters.eventId } } } } : {}),
         },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          status: true,
-          createdAt: true,
-          companyId: true,
-          memberOfCompany: { select: { id: true, companyName: true } },
-          staffAssignments: {
-            select: { assignedAt: true, event: { select: { id: true, name: true, date: true } } },
-            orderBy: { assignedAt: 'desc' },
+        include: {
+          company: { select: { id: true, companyName: true } },
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              status: true,
+              createdAt: true,
+              staffAssignments: { select: { assignedAt: true, event: { select: { id: true, name: true, date: true, companyId: true } } }, orderBy: { assignedAt: 'desc' } },
+            },
           },
         },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
 
-    return res.status(200).json({
-      success: true,
-      data: { staff, invites: invites.map(serializeInvite) },
-    });
+    const staff = members.map((m) => ({
+      id: m.user.id,
+      memberId: m.id,
+      name: m.user.name,
+      email: m.user.email,
+      // Organization access; accountStatus is the TicketLedger account itself
+      status: m.status === 'ACTIVE' && m.user.status !== 'ACTIVE' ? m.user.status : m.status,
+      accountStatus: m.user.status,
+      createdAt: m.user.createdAt,
+      companyId: m.companyId,
+      memberOfCompany: m.company,
+      staffAssignments: m.user.staffAssignments.filter((a) => a.event.companyId === m.companyId).map(({ event: { companyId: _c, ...event }, ...a }) => ({ ...a, event })),
+    }));
+
+    return res.status(200).json({ success: true, data: { staff, invites: invites.map(serializeInvite) } });
   } catch (error) {
     return handleError(res, error, 'Load staff');
   }
 };
 
 /**
- * GET /api/staff/events — events the current user may invite staff for (with companies for the admin filter)
+ * GET /api/staff/events — events the caller may invite staff for (with companies for the admin filter)
  */
 export const listInvitableEvents = async (req, res) => {
   try {
-    const scope = await resolveCompanyScope(req.user);
+    const scope = await resolveCompanyScope(req, 'staff.invite');
     const companyFilter = scope === null ? req.query.companyId : scope;
+    const ctx = scope === null ? null : await requestContext(req);
 
     const events = await prisma.event.findMany({
-      where: companyFilter !== undefined ? { companyId: companyFilter } : {},
-      select: {
-        id: true,
-        name: true,
-        date: true,
-        city: true,
-        status: true,
-        company: { select: { id: true, companyName: true } },
+      where: {
+        ...(companyFilter !== undefined ? { companyId: companyFilter } : {}),
+        ...(ctx?.eventScoped ? { id: { in: ctx.eventIds } } : {}),
       },
+      select: { id: true, name: true, date: true, city: true, status: true, company: { select: { id: true, companyName: true } } },
       orderBy: { date: 'asc' },
     });
 
     const companies = scope === null
-      ? await prisma.company.findMany({
-          where: { events: { some: {} } },
-          select: { id: true, companyName: true },
-          orderBy: { companyName: 'asc' },
-        })
+      ? await prisma.company.findMany({ where: { events: { some: {} } }, select: { id: true, companyName: true }, orderBy: { companyName: 'asc' } })
       : [];
 
     return res.status(200).json({ success: true, data: { events, companies } });
@@ -246,15 +273,16 @@ export const resendInvite = async (req, res) => {
     const invite = await prisma.staffInvite.findUnique({ where: { id: req.params.id } });
     if (!invite) return res.status(404).json({ success: false, message: 'Invite not found.' });
 
-    const scope = await resolveCompanyScope(req.user);
+    const scope = await resolveCompanyScope(req, 'staff.invite');
     if (!canManageCompany(scope, invite.companyId)) {
       return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
     }
     if (!['PENDING', 'EXPIRED'].includes(invite.status)) {
       return res.status(409).json({ success: false, message: `This invite was ${invite.status.toLowerCase()} and cannot be resent.` });
     }
-    if (await prisma.user.findUnique({ where: { email: invite.email } })) {
-      return res.status(409).json({ success: false, message: MESSAGES.INVITE_EMAIL_TAKEN });
+    const existing = await prisma.user.findUnique({ where: { email: invite.email }, select: { id: true } });
+    if (existing && (await prisma.organizationMember.findFirst({ where: { userId: existing.id, status: { not: 'REMOVED' } }, select: { id: true } }))) {
+      return res.status(409).json({ success: false, message: 'This person already belongs to an organization.' });
     }
 
     const token = newInviteToken();
@@ -263,6 +291,7 @@ export const resendInvite = async (req, res) => {
       data: { tokenHash: token.hash, expiresAt: token.expiresAt, status: 'PENDING' },
       include: INVITE_INCLUDE,
     });
+    await orgAudit(prisma, { req, ctx: await contextFor(req, invite.companyId), action: 'ORG_INVITE_RESENT', targetType: 'StaffInvite', targetId: invite.id, before: { status: invite.status, expiresAt: invite.expiresAt }, after: { status: 'PENDING', expiresAt: token.expiresAt }, details: { email: invite.email } });
 
     const delivery = await sendInvite(updated, token.raw, req.user);
     return res.status(200).json({
@@ -283,7 +312,7 @@ export const cancelInvite = async (req, res) => {
     const invite = await prisma.staffInvite.findUnique({ where: { id: req.params.id } });
     if (!invite) return res.status(404).json({ success: false, message: 'Invite not found.' });
 
-    const scope = await resolveCompanyScope(req.user);
+    const scope = await resolveCompanyScope(req, 'staff.invite');
     if (!canManageCompany(scope, invite.companyId)) {
       return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
     }
@@ -291,7 +320,8 @@ export const cancelInvite = async (req, res) => {
       return res.status(409).json({ success: false, message: 'This invite was already accepted. Deactivate the staff account instead.' });
     }
 
-    await prisma.staffInvite.update({ where: { id: invite.id }, data: { status: 'CANCELLED' } });
+    await prisma.staffInvite.update({ where: { id: invite.id }, data: { status: 'CANCELLED', revokedById: req.user.id, respondedAt: new Date() } });
+    await orgAudit(prisma, { req, ctx: await contextFor(req, invite.companyId), action: 'ORG_INVITE_REVOKED', targetType: 'StaffInvite', targetId: invite.id, before: { status: invite.status }, after: { status: 'CANCELLED' }, details: { email: invite.email } });
     return res.status(204).end();
   } catch (error) {
     return handleError(res, error, 'Cancel invite');
@@ -299,38 +329,17 @@ export const cancelInvite = async (req, res) => {
 };
 
 /**
- * PATCH /api/staff/:id/deactivate — blocks login and revokes every session of the staff member
+ * PATCH /api/staff/:id/deactivate — takes away the member's organization access at once (scanning, offline
+ * packs). Their TicketLedger account stays active; scanners are told to wipe their offline lists.
  */
 export const deactivateStaff = async (req, res) => {
   try {
-    const staff = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!staff || staff.role !== 'GATE_STAFF') {
-      return res.status(404).json({ success: false, message: 'Staff member not found.' });
-    }
-
-    const scope = await resolveCompanyScope(req.user);
-    if (!canManageCompany(scope, staff.companyId)) {
-      return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: staff.id },
-      data: { status: 'DEACTIVATED' },
-      select: { id: true, name: true, email: true, status: true, companyId: true },
-    });
-    await revokeAllRefreshTokens(staff.id);
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'STAFF_DEACTIVATED',
-        targetType: 'User',
-        targetId: staff.id,
-        details: { email: staff.email, companyId: staff.companyId },
-      },
-    });
-
-    return res.status(200).json({ success: true, message: `${staff.name} has been deactivated.`, data: { staff: updated } });
+    const { membership, error } = await findStaffMembership(req, req.params.id, 'staff.manage');
+    if (error) return res.status(error[0]).json({ success: false, message: error[1] });
+    const ctx = await contextFor(req, membership.companyId);
+    await deactivateMember(req, ctx, membership.id, req.body?.reason);
+    const staff = { id: membership.user.id, name: membership.user.name, email: membership.user.email, status: 'DEACTIVATED', accountStatus: membership.user.status, companyId: membership.companyId };
+    return res.status(200).json({ success: true, message: `${membership.user.name} has been deactivated.`, data: { staff } });
   } catch (error) {
     return handleError(res, error, 'Deactivate staff');
   }
@@ -344,33 +353,21 @@ export const deactivateStaff = async (req, res) => {
 export const revokeEventAccess = async (req, res) => {
   try {
     const { id: staffId, eventId } = req.params;
-    const staff = await prisma.user.findUnique({ where: { id: staffId } });
-    if (!staff || staff.role !== 'GATE_STAFF') {
-      return res.status(404).json({ success: false, message: 'Staff member not found.' });
-    }
-    const scope = await resolveCompanyScope(req.user);
-    if (!canManageCompany(scope, staff.companyId)) {
-      return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
-    }
+    const { membership, error } = await findStaffMembership(req, staffId, 'staff.manage');
+    if (error) return res.status(error[0]).json({ success: false, message: error[1] });
+    const staff = membership.user;
     const event = await prisma.event.findUnique({ where: { id: eventId }, select: { id: true, name: true, companyId: true } });
-    if (!event || !canManageCompany(scope, event.companyId)) {
+    if (!event || event.companyId !== membership.companyId || !(await canAccessEvent(req.user, event, { permission: 'staff.manage', req }))) {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
 
     const { count } = await prisma.staffEventAssignment.deleteMany({ where: { staffId, eventId } });
+    await prisma.gateAssignment.deleteMany({ where: { staffId, eventId } }); // their gates at this event go too
     if (!count) {
       return res.status(200).json({ success: true, message: `${staff.name} wasn’t assigned to ${event.name}.` });
     }
 
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'STAFF_EVENT_ACCESS_REVOKED',
-        targetType: 'User',
-        targetId: staffId,
-        details: { email: staff.email, eventId, eventName: event.name },
-      },
-    });
+    await orgAudit(prisma, { req, ctx: await contextFor(req, membership.companyId), action: 'STAFF_EVENT_ACCESS_REVOKED', targetType: 'OrganizationMember', targetId: membership.id, before: { eventIds: [eventId] }, after: { eventIds: [] }, details: { userId: staffId, email: staff.email, eventId, eventName: event.name } });
     await prisma.notification.create({
       data: {
         userId: staffId,
@@ -380,6 +377,7 @@ export const revokeEventAccess = async (req, res) => {
       },
     });
     getIO()?.to(`user_${staffId}`).emit('staff:access-revoked', { eventId });
+    await reauthorizeUserRooms(staffId);
 
     return res.status(200).json({ success: true, message: `${staff.name} can no longer scan tickets for ${event.name}.` });
   } catch (error) {
@@ -388,52 +386,31 @@ export const revokeEventAccess = async (req, res) => {
 };
 
 /**
- * PATCH /api/staff/:id/reactivate — lets a staff member the organizer deactivated sign in again. Only undoes
- * the organizer's own deactivation: accounts suspended or banned by TicketLedger stay blocked.
+ * PATCH /api/staff/:id/reactivate — gives a deactivated gate staff member their organization access back.
+ * Accounts suspended or banned by TicketLedger stay blocked (only support restores those).
  */
 export const reactivateStaff = async (req, res) => {
   try {
-    const staff = await prisma.user.findUnique({ where: { id: req.params.id } });
-    if (!staff || staff.role !== 'GATE_STAFF') {
-      return res.status(404).json({ success: false, message: 'Staff member not found.' });
+    const { membership, error } = await findStaffMembership(req, req.params.id, 'staff.manage');
+    if (error) return res.status(error[0]).json({ success: false, message: error[1] });
+    const staff = membership.user;
+    if (membership.status === 'ACTIVE') {
+      return res.status(200).json({ success: true, message: `${staff.name} is already active.`, data: { staff: { ...staff, status: 'ACTIVE' } } });
     }
-
-    const scope = await resolveCompanyScope(req.user);
-    if (!canManageCompany(scope, staff.companyId)) {
-      return res.status(403).json({ success: false, message: NOT_OWN_STAFF });
-    }
-    if (staff.status === 'ACTIVE') {
-      return res.status(200).json({ success: true, message: `${staff.name} is already active.`, data: { staff } });
-    }
-    if (staff.status !== 'DEACTIVATED' && req.user.role !== 'SUPER_ADMIN') {
+    if (!['ACTIVE', 'DEACTIVATED'].includes(staff.status) && req.user.role !== 'SUPER_ADMIN') {
       return res.status(409).json({ success: false, message: 'This account was blocked by TicketLedger and can only be restored by support.' });
     }
-
-    const updated = await prisma.user.update({
-      where: { id: staff.id },
-      data: { status: 'ACTIVE' },
-      select: { id: true, name: true, email: true, status: true, companyId: true },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        userId: req.user.id,
-        action: 'STAFF_REACTIVATED',
-        targetType: 'User',
-        targetId: staff.id,
-        details: { email: staff.email, companyId: staff.companyId },
-      },
-    });
+    await reactivateMember(req, await contextFor(req, membership.companyId), membership.id);
     await prisma.notification.create({
       data: {
         userId: staff.id,
         type: 'STAFF_REACTIVATED',
-        title: 'Your gate staff account is active again',
-        message: 'You can sign in to TicketLedger and scan tickets for your assigned events.',
+        title: 'Your gate staff access is active again',
+        message: 'You can scan tickets for your assigned events again.',
       },
     });
-
-    return res.status(200).json({ success: true, message: `${staff.name} has been reactivated.`, data: { staff: updated } });
+    const updated = await prisma.user.findUnique({ where: { id: staff.id }, select: { id: true, name: true, email: true, status: true, companyId: true } });
+    return res.status(200).json({ success: true, message: `${staff.name} has been reactivated.`, data: { staff: { ...updated, status: 'ACTIVE', accountStatus: updated.status } } });
   } catch (error) {
     return handleError(res, error, 'Reactivate staff');
   }
@@ -444,7 +421,7 @@ export const reactivateStaff = async (req, res) => {
  */
 export const getMyGateEvents = async (req, res) => {
   try {
-    const scopedIds = await getScopedEventIds(req.user);
+    const scopedIds = await getScopedEventIds(req.user, 'gate.scan');
     const events = await prisma.event.findMany({
       where: scopedIds === null ? {} : { id: { in: scopedIds } },
       select: {

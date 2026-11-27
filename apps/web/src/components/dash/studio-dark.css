@@ -1,0 +1,368 @@
+/* =========================================================================================
+ * Organizer studio pages on the dark console (DashShell STUDIO_DARK): create / edit event and every
+ * setup step, prebookings and the organization profile. Part 1 is hand-written (headings, stepper,
+ * the create-event choice, form details); part 2 re-colours the light studio surfaces, generated from
+ * studio.css, selects.css and createEventChoice.css (colour declarations only, never layout).
+ * Loaded before admin-overview.css, so its hand-tuned console rules win where both style an element.
+ * ========================================================================================= */
+
+/* ---------- Wizard heading (breadcrumb, title, stepper) in the stadium band ---------- */
+.tl-wzh {
+  position: relative;
+  isolation: isolate;
+  margin: 0 calc(-1 * clamp(16px, 2vw, 28px)) 6px;
+  padding: calc(var(--tl-header-h) + 8px) clamp(16px, 2vw, 28px) 10px;
+  overflow: hidden;
+}
+.tl-wzh::after {
+  content: '';
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  bottom: 0;
+  height: 40px;
+  z-index: -1;
+  background: radial-gradient(60% 100% at 50% 100%, rgba(34, 224, 107, 0.35), transparent 70%);
+  pointer-events: none;
+}
+.tl-aov-page .tl-wzh .tl-wz-crumbs { color: rgba(226, 236, 232, 0.75); }
+.tl-aov-page .tl-wzh .tl-wz-crumbs a { color: var(--aov-green); }
+.tl-aov-page .tl-wzh .tl-wz-crumbs svg { color: rgba(226, 236, 232, 0.45); }
+.tl-aov-page .tl-wzh .tl-wz-crumbs [aria-current] { color: #fff; font-weight: 600; }
+.tl-aov-page .tl-wzh :is(.tl-wz-head, .tl-ed-head) { margin-bottom: 18px; }
+.tl-aov-page .tl-wzh .tl-wz-title {
+  color: var(--aov-green);
+  text-shadow: 0 0 30px rgba(34, 224, 107, 0.35);
+  font-size: clamp(34px, 4.2vw, 52px);
+  letter-spacing: -0.02em;
+}
+.tl-aov-page .tl-wzh :is(.tl-wz-step-text, .tl-ed-sub) { color: rgba(242, 246, 244, 0.88); }
+.tl-aov-page .tl-ed-band { background: rgba(7, 20, 26, 0.72); border: 1px solid var(--aov-rim); border-radius: 16px; backdrop-filter: blur(8px); }
+.tl-aov-page .tl-ed-view { color: #fff; border-color: rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.04); }
+
+/* Stepper: green dots and a solid trail for steps done; every label readable */
+.tl-aov-page .tl-wz-step,
+.tl-aov-page .tl-wz-step:disabled { color: rgba(226, 236, 232, 0.72); opacity: 1; }
+.tl-aov-page .tl-wz-step.is-current { color: #fff; font-weight: 700; }
+.tl-aov-page .tl-wz-step.is-done { color: #b8f7cf; }
+.tl-aov-page button.tl-wz-step:not(:disabled):hover { color: var(--aov-green); }
+.tl-aov-page .tl-wz-dot { background: rgba(7, 20, 26, 0.9); border-color: rgba(255, 255, 255, 0.25); color: rgba(226, 236, 232, 0.8); }
+.tl-aov-page .tl-wz-step.is-current .tl-wz-dot,
+.tl-aov-page .tl-wz-step.is-done .tl-wz-dot { border-color: transparent; background: linear-gradient(180deg, #2ee07a, #16a34a); color: #04210f; box-shadow: 0 0 16px rgba(34, 224, 107, 0.45); }
+.tl-aov-page .tl-wz-step.is-current .tl-wz-dot { outline: 3px solid rgba(34, 224, 107, 0.25); }
+.tl-aov-page .tl-wz-steps > li + li .tl-wz-step::before { border-top-color: rgba(255, 255, 255, 0.2); }
+.tl-aov-page .tl-wz-steps > li:has(.is-done) + li .tl-wz-step::before { border-top-color: var(--aov-green); }
+
+/* ---------- Create event: the two ways to start, side by side under the stadium heading ---------- */
+.tl-aov-page .tl-cc-page { max-width: none; margin: 0; padding: 0 0 12px; display: grid; gap: 18px; }
+.tl-aov-page .tl-cc-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 20px; }
+.tl-aov-page .tl-cc-ticket {
+  --notch-bg: #07141a;
+  border: 1px solid var(--aov-rim);
+  background: var(--aov-card);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.tl-aov-page .tl-cc-ticket:hover { border-color: rgba(34, 224, 107, 0.55); box-shadow: 0 20px 44px rgba(0, 0, 0, 0.45), 0 0 30px rgba(34, 224, 107, 0.14); }
+.tl-aov-page .tl-cc-body { background: transparent; }
+.tl-aov-page .tl-cc-name { color: #fff; }
+.tl-aov-page .tl-cc-text { color: rgba(226, 236, 232, 0.82); }
+.tl-aov-page .tl-cc-steps { color: #b8f7cf; }
+.tl-aov-page .tl-cc-steps span:not(:last-child)::after { color: rgba(226, 236, 232, 0.35); }
+.tl-aov-page .tl-cc-note { color: var(--aov-dim); }
+.tl-aov-page .tl-cc-back-pill { min-height: 42px; padding: 0 18px; gap: 8px; }
+
+/* Full-page messages (an event that can't be loaded) start below the site header */
+.tl-aov-page > div > .tl-wz-card:first-child { margin-top: calc(var(--tl-header-h) + 32px) !important; }
+
+/* ---------- Form details ---------- */
+/* Multi-line fields keep soft corners (the console's pill inputs would turn them into capsules) */
+.tl-aov-page textarea,
+.tl-aov-page textarea.tl-dash-input,
+.tl-aov-sec textarea.tl-dash-input { border-radius: 14px !important; min-height: 96px; padding: 12px 14px; }
+/* File inputs: the browser's grey button becomes an outlined console pill */
+.tl-aov-page input[type='file'] { color: var(--aov-dim); font-size: 13px; }
+.tl-aov-page input[type='file']::file-selector-button {
+  margin-right: 12px;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 224, 107, 0.5);
+  background: rgba(34, 224, 107, 0.1);
+  color: #fff;
+  font: 600 13px 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+}
+.tl-aov-page input[type='file']::file-selector-button:hover { background: rgba(34, 224, 107, 0.2); }
+/* Image upload frames and their buttons */
+.tl-aov-page .tl-imf-frame,
+.tl-aov-page .tl-imf-slot { border-color: rgba(255, 255, 255, 0.18); background: rgba(3, 10, 14, 0.5); }
+.tl-aov-page .tl-imf-empty { color: var(--aov-dim); }
+.tl-aov-page .tl-imf-empty strong { color: #fff; }
+.tl-aov-page .tl-imf-frame figcaption { background: rgba(7, 20, 26, 0.85); color: #fff; }
+.tl-aov-page .tl-imf-btn { border-radius: 999px; border-color: rgba(34, 224, 107, 0.5); background: rgba(34, 224, 107, 0.1); color: #fff; }
+.tl-aov-page .tl-imf-btn svg { color: var(--aov-green); }
+.tl-aov-page .tl-imf-btn:hover:not(:disabled) { background: rgba(34, 224, 107, 0.2); border-color: var(--aov-green); }
+.tl-aov-page .tl-imf-btn--quiet { border-color: rgba(255, 255, 255, 0.2); background: transparent; color: var(--aov-dim); }
+/* Location picker: tabs, search and results on the dark card; the map keeps its own colours */
+.tl-aov-page .tl-lp { background: rgba(3, 10, 14, 0.45); border-color: rgba(255, 255, 255, 0.12); }
+.tl-aov-page .tl-lp-head h3, .tl-aov-page .tl-lp-head strong { color: #fff; }
+.tl-aov-page .tl-lp-tabs { background: rgba(7, 20, 26, 0.75); border-color: rgba(255, 255, 255, 0.14); border-radius: 999px; }
+.tl-aov-page .tl-lp-tabs button { border-radius: 999px; color: var(--aov-dim); }
+.tl-aov-page .tl-lp-tabs button[aria-selected='true'] { background: linear-gradient(180deg, #2ee07a, #16a34a); color: #04210f; }
+.tl-aov-page .tl-lp-field { background: rgba(3, 10, 14, 0.6); border-color: rgba(255, 255, 255, 0.16); color: var(--aov-dim); border-radius: 999px; }
+.tl-aov-page .tl-lp-field input { color: #fff; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+.tl-aov-page .tl-lp-results { background: #0b1c22; border-color: rgba(34, 224, 107, 0.35); }
+.tl-aov-page .tl-lp-results button { color: #fff; }
+.tl-aov-page .tl-lp-results button:hover { background: rgba(34, 224, 107, 0.12); }
+.tl-aov-page .tl-lp-map { border-radius: 12px; overflow: hidden; }
+
+/* ---------- Seating editor: the plan picker cards on the console card colours ---------- */
+.tl-aov-page .rounded-3xl.bg-white { background: var(--aov-card) !important; border-color: var(--aov-rim) !important; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38) !important; }
+.tl-aov-page .rounded-2xl.bg-white { background: rgba(3, 10, 14, 0.45) !important; border-color: rgba(255, 255, 255, 0.12) !important; }
+.tl-aov-page button.rounded-2xl.bg-white:hover { border-color: rgba(34, 224, 107, 0.55) !important; box-shadow: 0 0 22px rgba(34, 224, 107, 0.15) !important; }
+.tl-aov-page .rounded-2xl.bg-white.border-emerald-400 { border-color: var(--aov-green) !important; box-shadow: 0 0 0 2px rgba(34, 224, 107, 0.25) !important; }
+.tl-aov-page .bg-emerald-50 { background-color: rgba(34, 224, 107, 0.12) !important; }
+.tl-aov-page .text-emerald-800 { color: #86efac !important; }
+.tl-aov-page .border-emerald-200 { border-color: rgba(34, 224, 107, 0.45) !important; }
+
+/* ---------- Dropdowns: the global select style (selects.css) outranks page rules; the dark pages win here ---------- */
+html .tl-aov-root select:not([multiple]):not([size]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2322e06b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  padding-right: 40px;
+}
+html .tl-aov-root select option { background: #0b1c22; color: #fff; }
+html .tl-aov-root select option:disabled { color: rgba(226, 236, 232, 0.45); }
+
+/* ---------- Generated: light studio surfaces re-coloured for the dark page ---------- */
+/* from components/dash/studio.css */
+.tl-aov-page .tl-st-btn--ghost { border-color: rgba(255, 255, 255, 0.14); }
+.tl-aov-page .tl-st-btn--outline { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-card-link:hover { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-tile-value { color: #4ade80; }
+.tl-aov-page .tl-st-ev { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-st-ev-media { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-st-ev-badge { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-st-ev-badge.is-live { color: #4ade80; }
+.tl-aov-page .tl-st-ev-stats { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-st-ev-actions a { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-st-empty { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-table tbody tr:hover td { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-dash--studio .tl-dash-select,
+.tl-aov-page .tl-dash--studio .tl-dash-input { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-staff-icon:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-staff-icon.is-danger:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-dash--studio .tl-status { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-dash--studio .tl-status[data-tone='good'] { background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-dash--studio .tl-status[data-tone='warn'] { background-color: rgba(250, 204, 21, 0.1); color: #facc15; }
+.tl-aov-page .tl-dash--studio .tl-status[data-tone='bad'] { background-color: rgba(251, 113, 133, 0.1); color: #fb7185; }
+.tl-aov-page .tl-st-btn--light { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-st-btn--done { background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-st-icon-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-sc { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-pn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-pn--mint .tl-pn-icon { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-bd--green { background-color: rgba(34, 224, 107, 0.1); border-color: rgba(34, 224, 107, 0.45); color: #4ade80; }
+.tl-aov-page .tl-bd--amber { background-color: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.45); color: #facc15; }
+.tl-aov-page .tl-bd--blue { background-color: rgba(96, 165, 250, 0.1); border-color: rgba(96, 165, 250, 0.45); color: #93c5fd; }
+.tl-aov-page .tl-bd--rose { background-color: rgba(251, 113, 133, 0.1); border-color: rgba(251, 113, 133, 0.45); color: #fb7185; }
+.tl-aov-page .tl-bd--grey { background-color: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-av { background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-av.is-guest { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-pg button { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-sb { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-stb th { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-stb tbody tr:hover td { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-action-chip { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-action-chip.is-muted { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-total-pill { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-recovery-item { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-recovery-icon { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-recovery-item.is-lead .tl-recovery-icon { background-color: rgba(250, 204, 21, 0.1); color: #facc15; }
+.tl-aov-page .tl-recovery-num { color: #facc15; }
+.tl-aov-page .tl-stage-pill { background-color: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.45); color: #facc15; }
+.tl-aov-page .tl-df-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-tier-adj { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-price-input input { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-df-tip { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-df-tip svg { color: #facc15; }
+.tl-aov-page .tl-pn--warn { background-color: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.45); }
+.tl-aov-page .tl-pn--warn .tl-df-kicker { color: #facc15; }
+.tl-aov-page .tl-df-preview { color: #facc15; }
+.tl-aov-page .tl-df-factors span.down { color: #facc15; }
+.tl-aov-page .tl-df-confirm { background-color: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.45); }
+.tl-aov-page .tl-df-confirm > svg { color: #facc15; }
+.tl-aov-page .tl-coupon { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-coupon input { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-journey span { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-journey span.is-done { border-color: rgba(34, 224, 107, 0.45); background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-journey span.is-dropped { border-color: rgba(251, 113, 133, 0.45); background-color: rgba(251, 113, 133, 0.1); color: #fb7185; }
+.tl-aov-page .tl-wz-steps > li + li .tl-wz-step::before { border-top-color: rgba(255, 255, 255, 0.14); }
+.tl-aov-page .tl-wz-dot { border-color: rgba(255, 255, 255, 0.14); background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-wz-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-wz-input { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-wz-tip > span { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-wz-tips-note { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-wz-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-imf { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-imf-frame { border-color: rgba(255, 255, 255, 0.14); background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-imf-empty svg { color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-imf-frame figcaption { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-imf-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-imf-gallery li { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-imf-gallery-bar button:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-imf-slot { border-color: rgba(255, 255, 255, 0.14); background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-tier-row { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-tier-del { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-next-option { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-next-option > span { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-wz-alert { color: #fb7185; }
+.tl-aov-page .tl-wz-draft button { background-color: rgba(255, 255, 255, 0.04); color: #fb7185; }
+.tl-aov-page .tl-wz-draft button:hover { border-color: rgba(251, 113, 133, 0.45); }
+.tl-aov-page .tl-wz-btn--discard { color: #fb7185; }
+.tl-aov-page .tl-wz-btn--discard:hover:not(:disabled) { border-color: rgba(251, 113, 133, 0.45); background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-dash--studio .tl-dash-icon-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-icon-btn:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-btn:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-turnout .tl-ring::before { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-dash--studio .tl-coming .tl-tile { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-tile-flag { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-tile-flag.is-live { color: #4ade80; }
+.tl-aov-page .tl-dash--studio .tl-dash-dialog { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dash--studio .tl-dash-textarea { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ap-stat { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ap-section { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-rc { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-rc-icon { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-rc-note { color: #fb7185; }
+.tl-aov-page .tl-rc-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-rc-btn--reject { color: #fb7185; }
+.tl-aov-page .tl-rc-btn--neutral:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-bh-score { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-score-icon { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-bh-score-icon.is-blue { background-color: rgba(96, 165, 250, 0.1); color: #93c5fd; }
+.tl-aov-page .tl-bh-bar { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-bh-counters { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-counter { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-timeline { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-filters button { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-table th { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-bh-status { background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-bh-status.is-warn { background-color: rgba(250, 204, 21, 0.1); color: #facc15; }
+.tl-aov-page .tl-bh-status.is-bad { background-color: rgba(251, 113, 133, 0.1); color: #fb7185; }
+.tl-aov-page .tl-bh-toggle:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-bh-meta td { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-pager button { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-bh-pager button.is-next:disabled { background-color: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+.tl-aov-page .tl-ts-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ts-card--ink .tl-ts-icon { color: #4ade80; }
+.tl-aov-page .tl-dir { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dir-btn { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dir-btn--danger { border-color: rgba(251, 113, 133, 0.45); color: #fb7185; }
+.tl-aov-page .tl-dir-btn--danger:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-dir-pager button { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-dir-pager button.is-next:disabled { background-color: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+.tl-aov-page .tl-sf-bar { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-sf-stat-icon { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-sf-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-sf-head-icon { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-sf-avatar { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-sf-assigned li span { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-sf-deactivate { background-color: rgba(255, 255, 255, 0.04); color: #fb7185; }
+.tl-aov-page .tl-sf-deactivate:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-scan-mode { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-scan-mode button[aria-pressed='true'] i { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-scan-sys.is-offline strong { color: #facc15; }
+.tl-aov-page .tl-scan-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-scan-camera { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-scan-manual textarea { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-scan-verify { color: #4ade80; }
+.tl-aov-page .tl-scan-verify:disabled { background-color: rgba(34, 224, 107, 0.1); color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-scan-seat2 div { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-rv-banner { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-rv-comment { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ap-tab { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ap-item { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-lp { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-lp-tabs { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-lp-field { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-lp-results { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-lp-map { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-lp-clear { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-lp-pin span { border-color: rgba(255, 255, 255, 0.14); }
+.tl-aov-page .tl-lp-pin span::after { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ed-table th { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-ed-tool.is-seating { background-image: none; background-color: rgba(255, 255, 255, 0.04); border-color: rgba(34, 224, 107, 0.45); }
+.tl-aov-page .tl-ed-tool.is-forecast { background-image: none; background-color: rgba(255, 255, 255, 0.04); border-color: rgba(250, 204, 21, 0.45); }
+.tl-aov-page .tl-ed-tool-go { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ed-help > span { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-dash-btn.tl-dir-delete { border-color: rgba(251, 113, 133, 0.45); color: #fb7185; }
+.tl-aov-page .tl-dash-btn.tl-dir-delete:hover { background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-sf-deactivate.tl-sf-reactivate { color: #4ade80; }
+.tl-aov-page .tl-sf-deactivate.tl-sf-reactivate:hover:not(:disabled) { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-staff-icon.is-good { color: #4ade80; }
+.tl-aov-page .tl-staff-icon.is-good:hover:not(:disabled) { background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-wz-hint { color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-sf-revoke { border-color: rgba(251, 113, 133, 0.45); background-color: rgba(255, 255, 255, 0.04); color: #fb7185; }
+.tl-aov-page .tl-sf-revoke:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-staff-events li { border-color: rgba(96, 165, 250, 0.45); color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-staff-events button { color: #fb7185; }
+.tl-aov-page .tl-staff-events button:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-wz-dupe { color: #facc15; }
+.tl-aov-page .tl-wz-dupe strong { color: #facc15; }
+.tl-aov-page .tl-wz-dupe a { color: #facc15; }
+.tl-aov-page .tl-pr-head > span { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-pr-option { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-pr-icon { background-color: rgba(96, 165, 250, 0.1); }
+.tl-aov-page .tl-pr-state button { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-pr-state.is-ok { background-color: rgba(34, 224, 107, 0.1); color: #4ade80; }
+.tl-aov-page .tl-pr-state.is-bad { background-color: rgba(251, 113, 133, 0.1); color: #fb7185; }
+.tl-aov-page .tl-pr-guide { background-color: rgba(96, 165, 250, 0.1); }
+.tl-aov-page .tl-pr-guide dd { color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-pr-file button { background-color: rgba(96, 165, 250, 0.1); }
+.tl-aov-page .tl-lc-stat { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-lc-text { color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-lc-pending { color: #facc15; }
+.tl-aov-page .tl-lc-danger { border-color: rgba(251, 113, 133, 0.45); }
+.tl-aov-page .tl-lc-danger h2 svg { color: #fb7185; }
+.tl-aov-page .tl-lc-impact { color: rgba(226, 236, 232, 0.78); }
+.tl-aov-page .tl-lc-move { background-color: rgba(96, 165, 250, 0.1); }
+.tl-aov-page .tl-rt-item { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-vp-map { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-ac { background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-ac-nav { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-ac-day.is-free { border-color: rgba(34, 224, 107, 0.45); }
+.tl-aov-page .tl-ac-day.is-partly { border-color: rgba(250, 204, 21, 0.45); }
+.tl-aov-page .tl-ac-day.is-full { border-color: rgba(251, 113, 133, 0.45); }
+.tl-aov-page .tl-ac-day.is-selected .tl-ac-mine { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-refresh { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-tab { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-tab b { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-eva-type { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-card { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-tag.is-amber { background-color: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.45); color: #facc15; }
+.tl-aov-page .tl-eva-tag.is-green { background-color: rgba(34, 224, 107, 0.1); border-color: rgba(34, 224, 107, 0.45); color: #4ade80; }
+.tl-aov-page .tl-eva-tag.is-rose { background-color: rgba(251, 113, 133, 0.1); border-color: rgba(251, 113, 133, 0.45); color: #fb7185; }
+.tl-aov-page .tl-eva-tag.is-outline { background-color: rgba(34, 224, 107, 0.1); border-color: rgba(34, 224, 107, 0.45); }
+.tl-aov-page .tl-eva-preview { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-info { background-color: rgba(250, 204, 21, 0.1); }
+.tl-aov-page .tl-eva-wait { background-color: rgba(250, 204, 21, 0.1); color: #facc15; }
+.tl-aov-page .tl-eva-option { background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-option:hover { border-color: rgba(34, 224, 107, 0.45); }
+.tl-aov-page .tl-eva-radio { border-color: rgba(255, 255, 255, 0.14); background-color: rgba(255, 255, 255, 0.04); }
+.tl-aov-page .tl-eva-option.is-on { border-color: rgba(34, 224, 107, 0.45); background-color: rgba(34, 224, 107, 0.1); }
+.tl-aov-page .tl-eva-option.is-danger strong { color: #fb7185; }
+.tl-aov-page .tl-eva-option.is-danger.is-on { border-color: rgba(251, 113, 133, 0.45); background-color: rgba(251, 113, 133, 0.1); }
+.tl-aov-page .tl-eva-textarea[aria-invalid="true"] { border-color: rgba(251, 113, 133, 0.45); }
+.tl-aov-page .tl-eva-empty { background-color: rgba(255, 255, 255, 0.04); }
+
+/* from pages/createEventChoice.css */
+.tl-aov-page .tl-cc-ticket::before,
+.tl-aov-page .tl-cc-ticket::after,
+.tl-aov-page .tl-cc-body::before,
+.tl-aov-page .tl-cc-body::after { background-color: rgba(255, 255, 255, 0.06); }
+.tl-aov-page .tl-cc-text { color: rgba(226, 236, 232, 0.78); }

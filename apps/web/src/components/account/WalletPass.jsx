@@ -70,13 +70,17 @@ export default function WalletPass({
   onDownload, onTransfer, onResale, onHistory, onVerify, onTogglePayload,
 }) {
   const ev = t.event || {};
-  const isActive = t.status === 'ACTIVE';
+  // Valid for entry = unused AND the event has not ended (server: states.entry); moving it needs the event not started
+  const expired = t.states?.entry?.status === 'EXPIRED' || (t.status === 'ACTIVE' && t.states?.entry?.status === 'CANCELLED');
+  const isActive = t.status === 'ACTIVE' && !expired;
+  const canMove = isActive && (t.states?.actions ? t.states.actions.canTransfer : true);
+  const moveBlocked = t.states?.actions?.reason;
   const isScanned = t.status === 'SCANNED';
   const isInvalid = t.status === 'RESOLD' || t.status === 'TRANSFERRED';
   const time = formatEventTime(ev.time);
   const seat = seatParts(t.seat);
   const moreItems = [
-    isActive && { label: 'List for resale (≤110%)', icon: <Tag className="w-4 h-4" aria-hidden="true" />, onClick: onResale },
+    canMove && { label: 'List for resale (≤110%)', icon: <Tag className="w-4 h-4" aria-hidden="true" />, onClick: onResale },
     { label: 'Ownership history', icon: <History className="w-4 h-4" aria-hidden="true" />, onClick: onHistory },
     { label: verifying ? 'Checking…' : 'Check at gate', icon: <ShieldCheck className="w-4 h-4" aria-hidden="true" />, onClick: onVerify, disabled: verifying },
     { label: payloadOpen ? 'Hide signed pass' : 'Show signed pass', icon: <Code2 className="w-4 h-4" aria-hidden="true" />, onClick: onTogglePayload },
@@ -87,7 +91,7 @@ export default function WalletPass({
       <div className="tl-pass-main">
         <div className="tl-pass-top">
           <p className="tl-pass-kicker">{[categoryName(ev.type, ev.categoryLabel), ev.city].filter(Boolean).join(' • ')}</p>
-          <span className={`tl-pass-status is-${t.status?.toLowerCase()}`}>{t.status}</span>
+          <span className={`tl-pass-status is-${expired ? 'expired' : t.status?.toLowerCase()}`}>{expired ? (t.states.entry.status === 'EXPIRED' ? 'EXPIRED' : 'CANCELLED') : t.status}</span>
         </div>
         <h3 className="tl-pass-title">{ev.name}</h3>
 
@@ -145,7 +149,7 @@ export default function WalletPass({
         {t.qr?.manualCode && (
           <p className="tl-pass-code" aria-label={`Manual entry code ${t.qr.manualCode}`}>{t.qr.manualCode}</p>
         )}
-        <p className="tl-pass-scan">{isActive ? 'Scan at entry' : isScanned ? 'Checked in' : 'Not valid for entry'}</p>
+        <p className="tl-pass-scan">{isActive ? 'Scan at entry' : isScanned ? 'Checked in' : expired ? t.states.entry.label : 'Not valid for entry'}</p>
         <div className="tl-pass-badges">
           <p className="tl-pass-refresh">
             <Sun className="w-4 h-4" aria-hidden="true" /> Turn screen brightness up
@@ -160,12 +164,12 @@ export default function WalletPass({
           {downloading ? <RefreshCw className="w-5 h-5 animate-spin" aria-hidden="true" /> : <Download className="w-5 h-5" aria-hidden="true" />}
           {downloading ? 'Preparing…' : 'Download ticket'}
         </button>
-        {isActive ? (
+        {canMove ? (
           <button type="button" className="tl-pass-btn tl-pass-btn--outline" onClick={onTransfer}>
             <Send className="w-5 h-5" aria-hidden="true" /> Transfer<span className="tl-pass-phone-only">&nbsp;ticket</span>
           </button>
         ) : (
-          <span className="tl-pass-locked"><Lock className="w-4 h-4" aria-hidden="true" /> Can’t transfer ({t.status?.toLowerCase()})</span>
+          <span className="tl-pass-locked" title={moveBlocked || undefined}><Lock className="w-4 h-4" aria-hidden="true" /> {expired ? 'Event ended' : isActive && moveBlocked ? 'Event started' : `Can’t transfer (${t.status?.toLowerCase()})`}</span>
         )}
         <MoreMenu items={moreItems} className="tl-pass-more--bar" />
         <p className="tl-pass-note tl-pass-phone-only"><Info className="w-4 h-4" aria-hidden="true" /> Keep this screen open at the gate</p>

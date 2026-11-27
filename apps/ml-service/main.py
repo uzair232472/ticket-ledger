@@ -1,13 +1,19 @@
+import hashlib
+import hmac
+import json
 import os
 import sys
+import threading
 import time
+from dataclasses import replace
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import joblib
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
+import sklearn
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 # Ensure root directory is on python path for script imports
@@ -18,6 +24,24 @@ if BASE_DIR not in sys.path:
 from scripts.train_intent_model import train_intent
 from scripts.train_fraud_model import train_fraud
 from scripts.train_demand_model import train_demand
+from ml.evaluate import crowd_range
+from ml.explain import reasons as explain_reasons
+from ml.models import predict as ml_predict
+from ml.schema import ALL_SPECS, NULLABLE_FEATURES, SPECS
+
+# Legacy formula-trained models and their /train/* endpoints only run in development with
+# ML_ALLOW_SYNTHETIC=1. Otherwise the legacy endpoints answer with their built-in rules, so every
+# active decision in the app comes from rules. New models only run in shadow (/v2/shadow).
+ML_ENV = os.environ.get("ML_ENV", "development")
+# Never in production: a synthetic model must not answer customer- or organizer-facing requests there.
+ALLOW_SYNTHETIC = os.environ.get("ML_ALLOW_SYNTHETIC") == "1" and ML_ENV != "production"
+if os.environ.get("ML_ALLOW_SYNTHETIC") == "1" and ML_ENV == "production":
+    print("ML_ALLOW_SYNTHETIC=1 is ignored because ML_ENV=production: legacy synthetic models stay off.")
+# Every legacy answer says where it came from. Synthetic answers are demonstrations only.
+SYNTHETIC_NOTICE = ("Demonstration only: produced by a model trained on synthetic data. Not validated on real "
+                    "sales and not a real-world prediction.")
+RULES_NOTICE = "Rule-based estimate (no trained model)."
+SERVICE_TOKEN = os.environ.get("ML_SERVICE_TOKEN", "")
 
 app = FastAPI(
     title="TicketLedger ML Service",
@@ -25,20 +49,26 @@ app = FastAPI(
     version="2.2.0"
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Internal service: only the API calls it (no browser, so no CORS). Every route except /health needs
+# the shared token in X-ML-Token. In production the service refuses to work without a token.
+@app.middleware("http")
+async def require_service_token(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+    if not SERVICE_TOKEN:
+        if ML_ENV == "production":
+            return JSONResponse(status_code=503, content={"detail": "ML_SERVICE_TOKEN is not configured"})
+        return await call_next(request)
+    given = request.headers.get("x-ml-token", "")
+    if not hmac.compare_digest(given.encode(), SERVICE_TOKEN.encode()):
+        return JSONResponse(status_code=401, content={"detail": "invalid service token"})
+    return await call_next(request)
 
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 FRAUD_MODEL_PATH = os.path.join(MODELS_DIR, "fraud_model.joblib")
 DEMAND_MODEL_PATH = os.path.join(MODELS_DIR, "demand_model.joblib")
 INTENT_MODEL_PATH = os.path.join(MODELS_DIR, "intent_model.joblib")
-METRICS_PATH = os.path.join(MODELS_DIR, "model_metrics.json")
+REPORTS_DIR = os.environ.get("ML_REPORTS_DIR", os.path.join(BASE_DIR, "reports", "v0"))
 
 fraud_pkg = None
 demand_pkg = None
@@ -46,6 +76,8 @@ intent_pkg = None
 
 def load_models():
     global fraud_pkg, demand_pkg, intent_pkg
+    if not ALLOW_SYNTHETIC:
+        return            # legacy synthetic models never drive decisions outside development
     try:
         if os.path.exists(FRAUD_MODEL_PATH):
             fraud_pkg = joblib.load(FRAUD_MODEL_PATH)
@@ -88,6 +120,9 @@ class FraudScoreResponse(BaseModel):
     action_recommended: str
     anomaly_factors: List[str]
     confidence: float
+    prediction_source: str = "rules"          # always the rules (no model decides checkout blocks)
+    validated: bool = False
+    notice: str = RULES_NOTICE
 
 class DemandForecastRequest(BaseModel):
     # Core features
@@ -112,6 +147,9 @@ class DemandForecastResponse(BaseModel):
     demand_tier: str
     demand_level: str
     pricing_recommendation: str
+    prediction_source: str = "rules"          # "rules" | "synthetic-demo-model"
+    validated: bool = False                    # never a validated real-world model
+    notice: str = RULES_NOTICE
 
 class IntentPredictRequest(BaseModel):
     # Core features
@@ -134,6 +172,9 @@ class IntentPredictResponse(BaseModel):
     intent_score: float
     intent_level: str
     suggested_action: str
+    prediction_source: str = "rules"          # "rules" | "synthetic-demo-model"
+    validated: bool = False
+    notice: str = RULES_NOTICE
 
 class TrainingResponse(BaseModel):
     success: bool
@@ -177,33 +218,15 @@ def execute_fraud_score(req: FraudScoreRequest) -> FraudScoreResponse:
     total_amt = req.total_amount if req.total_amount is not None else float(tickets * 3500.0)
     resale = req.resale_attempts or 0
 
-    if fraud_pkg is not None:
-        pipeline = fraud_pkg["pipeline"]
-        input_df = pd.DataFrame([{
-            "account_age_days": float(account_age),
-            "ticket_count": int(tickets),
-            "total_amount": float(total_amt),
-            "failed_payments": int(failed_pmts),
-            "device_change_count": int(devices),
-            "ip_city_mismatch": int(mismatch),
-            "purchase_speed_seconds": float(speed),
-            "resale_attempts": int(resale)
-        }])
-
-        proba = float(pipeline.predict_proba(input_df)[0][1])
-        if speed < 1.0 or clicks > 300:
-            proba = max(proba, 0.95)
-        elif speed > 30.0 and clicks < 50:
-            proba = min(proba, 0.15)
-        
-        fraud_score = round(proba * 100.0, 1)
-    else:
-        base = 10.0
-        if speed < 3.0: base += 55.0
-        if clicks > 150: base += 25.0
-        if rapid_seats >= 5: base += 20.0
-        fraud_score = min(99.0, base)
-        proba = fraud_score / 100.0
+    # Checkout blocks follow these RULES only. A trained model never decides here, not even the legacy
+    # synthetic model loaded with ML_ALLOW_SYNTHETIC=1 (it used to set this score when that flag was on).
+    # New models run in shadow only (/v2/shadow). Same thresholds as before, so decisions are unchanged.
+    base = 10.0
+    if speed < 3.0: base += 55.0
+    if clicks > 150: base += 25.0
+    if rapid_seats >= 5: base += 20.0
+    fraud_score = min(99.0, base)
+    proba = fraud_score / 100.0
 
     if fraud_score >= 75.0:
         classification = "HIGH_RISK_BOT"
@@ -301,7 +324,10 @@ def execute_demand_forecast(req: DemandForecastRequest) -> DemandForecastRespons
         sellout_probability=sellout_ratio,
         demand_tier=tier,
         demand_level=demand_level,
-        pricing_recommendation=rec
+        pricing_recommendation=rec,
+        prediction_source="synthetic-demo-model" if demand_pkg is not None else "rules",
+        validated=False,
+        notice=SYNTHETIC_NOTICE if demand_pkg is not None else RULES_NOTICE,
     )
 
 def execute_intent_predict(req: IntentPredictRequest) -> IntentPredictResponse:
@@ -352,7 +378,10 @@ def execute_intent_predict(req: IntentPredictRequest) -> IntentPredictResponse:
         purchase_intent_score=score,
         intent_score=score,
         intent_level=level,
-        suggested_action=action
+        suggested_action=action,
+        prediction_source="synthetic-demo-model" if intent_pkg is not None else "rules",
+        validated=False,
+        notice=SYNTHETIC_NOTICE if intent_pkg is not None else RULES_NOTICE,
     )
 
 # -----------------
@@ -394,13 +423,27 @@ def health_check():
         }
     }
 
+def _report(name):
+    path = os.path.join(REPORTS_DIR, f"{name}.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 @app.get("/models/metrics")
 def get_model_metrics():
-    if os.path.exists(METRICS_PATH):
-        import json
-        with open(METRICS_PATH, "r") as f:
-            return json.load(f)
-    return {"message": "Metrics not yet generated. Run scripts/evaluate_models.py."}
+    """The gated evaluation of every model (reports/v0): model vs the current rule on the newest, unseen period,
+    with the 95% interval of the improvement. The old near-perfect legacy scores are no longer served."""
+    models = {}
+    for name in ALL_SPECS:
+        r = _report(name)
+        if r:
+            models[name] = {"title": r.get("title"), "status": r.get("status"), "main_measure": r.get("main_measure"),
+                            "higher_is_better": r.get("higher_is_better"), **(r.get("result") or {}),
+                            "reasons": r.get("reasons", []), "data_source": (r.get("data") or {}).get("source")}
+    return {"source": "gated evaluation (python -m ml.train)", "reports_dir": os.path.basename(os.path.normpath(REPORTS_DIR)),
+            "models": models, "note": "Synthetic data. Every model runs in shadow only; none serves decisions."}
 
 # -----------------
 # Module 15 Endpoints: Inference
@@ -434,6 +477,8 @@ def post_predict_intent_alias(req: IntentPredictRequest):
 # -----------------
 @app.post("/train/intent", response_model=TrainingResponse, summary="Module 15: Retrain Purchase Intent Scoring Model")
 def post_train_intent():
+    if not ALLOW_SYNTHETIC:
+        raise HTTPException(status_code=403, detail="Legacy synthetic training is disabled. Models are trained by the gated pipeline (python -m ml.train).")
     t0 = time.time()
     try:
         train_intent()
@@ -453,6 +498,8 @@ def post_train_intent():
 
 @app.post("/train/fraud", response_model=TrainingResponse, summary="Module 15: Retrain Fraud Detection & Anti-Scalping Model")
 def post_train_fraud():
+    if not ALLOW_SYNTHETIC:
+        raise HTTPException(status_code=403, detail="Legacy synthetic training is disabled. Models are trained by the gated pipeline (python -m ml.train).")
     t0 = time.time()
     try:
         train_fraud()
@@ -472,6 +519,8 @@ def post_train_fraud():
 
 @app.post("/train/demand", response_model=TrainingResponse, summary="Module 15: Retrain Event Demand Forecasting Model")
 def post_train_demand():
+    if not ALLOW_SYNTHETIC:
+        raise HTTPException(status_code=403, detail="Legacy synthetic training is disabled. Models are trained by the gated pipeline (python -m ml.train).")
     t0 = time.time()
     try:
         train_demand()
@@ -488,6 +537,282 @@ def post_train_demand():
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrain demand forecasting model: {str(e)}")
+
+# -----------------
+# v2: shadow scoring with gated-pipeline artifacts (never serves decisions)
+# -----------------
+ARTIFACT_DIR = os.environ.get("ML_ARTIFACT_DIR", os.path.join(BASE_DIR, "models", "v0"))
+MAX_SHADOW_ROWS = 1000
+_artifact_cache = {}
+_artifact_lock = threading.Lock()
+
+
+def _registry():
+    path = os.path.join(ARTIFACT_DIR, "registry.json")
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        return {m["name"]: m for m in json.load(f)["models"]}
+
+
+def _file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _load_artifact(name, sha256):
+    """Loads a registered artifact only if its file matches the fingerprint the API asked for and was
+    built with the same scikit-learn version as this service (otherwise it might load but behave
+    differently). Raises HTTPException with the reason."""
+    key = (name, sha256)
+    with _artifact_lock:
+        if key in _artifact_cache:
+            return _artifact_cache[key]
+        entry = _registry().get(name)
+        if not entry:
+            raise HTTPException(status_code=404, detail=f"model '{name}' is not registered")
+        if entry["sha256"] != sha256:
+            raise HTTPException(status_code=409, detail=f"model '{name}' fingerprint mismatch: registry has {entry['sha256'][:12]}")
+        path = os.path.join(ARTIFACT_DIR, entry["file"])
+        if not os.path.exists(path) or _file_sha256(path) != sha256:
+            raise HTTPException(status_code=409, detail=f"model '{name}' file is missing or does not match its fingerprint")
+        artifact = joblib.load(path)
+        built = artifact["versions"]["sklearn"].split(".")[:2]
+        if built != sklearn.__version__.split(".")[:2]:
+            raise HTTPException(status_code=409, detail=f"model '{name}' was built with scikit-learn {artifact['versions']['sklearn']}, service runs {sklearn.__version__}")
+        _artifact_cache[key] = artifact
+        return artifact
+
+
+class ShadowRequest(BaseModel):
+    sha256: str = Field(..., min_length=64, max_length=64)
+    rows: List[Dict[str, Any]]
+    # Add the top-3 reasons to each prediction (ml/explain.py). Logged with the shadow row; never used to decide.
+    explain: bool = False
+
+
+@app.get("/v2/models")
+def list_shadow_models():
+    return {"artifact_dir": ARTIFACT_DIR, "sklearn": sklearn.__version__,
+            "models": [{k: v for k, v in m.items() if k != "evaluation"} for m in _registry().values()]}
+
+
+@app.post("/v2/shadow/{name}")
+def shadow_predict(name: str, req: ShadowRequest):
+    if name not in ALL_SPECS:   # v0 models and the Step 5 ones (checkout_abandonment, demand_hourly)
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    if not req.rows or len(req.rows) > MAX_SHADOW_ROWS:
+        raise HTTPException(status_code=422, detail=f"send 1 to {MAX_SHADOW_ROWS} rows")
+    artifact = _load_artifact(name, req.sha256)
+    # The inputs are the ones this artifact was trained with (an older registered model may have fewer)
+    spec = replace(ALL_SPECS[name], cat=tuple(artifact["features"]["categorical"]), num=tuple(artifact["features"]["numeric"]))
+    needed = list(artifact["features"]["categorical"]) + list(artifact["features"]["numeric"])
+    if name == "demand":
+        needed = sorted(set(needed) | {"venue_capacity"})
+    missing = sorted({c for r in req.rows for c in needed if c not in r})
+    if missing:
+        raise HTTPException(status_code=422, detail=f"rows are missing features: {missing}")
+    df = pd.DataFrame(req.rows)
+    for c in artifact["features"]["numeric"]:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    nullable = NULLABLE_FEATURES.get(name, set())
+    bad = [c for c in artifact["features"]["numeric"] if c not in nullable and df[c].isna().any()]
+    if bad:
+        raise HTTPException(status_code=422, detail=f"non-numeric or empty values in: {bad}")
+    out = ml_predict(artifact["model"], df, spec)
+    why = None
+    if req.explain and artifact.get("reference"):
+        try:
+            why = explain_reasons(artifact["model"], df, spec, artifact["reference"], base=out)
+        except Exception as e:          # an explanation problem never loses the prediction
+            print(f"[shadow] {name}: reasons failed: {e}")
+    th = artifact.get("thresholds", {})
+    preds = []
+    for i, v in enumerate(out):
+        v = float(v)
+        if spec.kind == "binary":
+            item = {"probability": round(v, 6)}
+            if name == "fraud":
+                item["would_flag"] = bool(v >= th["threshold"])
+        elif name == "demand":
+            cap = float(df["venue_capacity"].iloc[i])
+            q = th["conformal_q"]
+            share = v / cap if cap > 0 else 0.0
+            item = {"sales_48h": round(v, 1), "low": round(max(0.0, share - q) * cap, 1), "high": round(min(1.0, share + q) * cap, 1)}
+        elif name == "demand_hourly":
+            item = {"sales_next_24h": round(v, 1)}
+        else:
+            item = {"scans": round(v, 2)}
+            if th.get("resid_q") and "gate_capacity_per_hour" in df:
+                # 80% range and the chance this gate goes over its capacity in the slot (ml/evaluate.crowd_range)
+                lo, hi, p_over = crowd_range([v], [float(df["gate_capacity_per_hour"].iloc[i]) / 12.0], th["resid_q"], over_cal=th.get("over_cal"))
+                item.update(low=round(float(lo[0]), 2), high=round(float(hi[0]), 2), p_over_capacity=round(float(p_over[0]), 4))
+        if why is not None:
+            item["reasons"] = why[i]
+        preds.append(item)
+    return {"model": name, "sha256": req.sha256, "role": "SHADOW", "may_serve_decisions": False, "predictions": preds}
+
+
+@app.get("/v2/reference/{name}")
+def reference_profile(name: str, sha256: str):
+    """The registered artifact's training distributions (for the API's drift check) and typical values."""
+    if name not in ALL_SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    artifact = _load_artifact(name, sha256)
+    ref = artifact.get("reference")
+    if not ref:
+        raise HTTPException(status_code=404, detail=f"model '{name}' was built before reference profiles existed")
+    return {"model": name, "sha256": sha256, "trained_from": artifact.get("trained_from"), "trained_to": artifact.get("trained_to"),
+            "features": artifact["features"], "reference": ref}
+
+
+PUBLIC_DIR = os.path.join(BASE_DIR, "reports", "public")
+CANDIDATES_DIR = os.environ.get("ML_CANDIDATE_REPORTS_DIR", os.path.join(BASE_DIR, "reports", "candidates"))
+# Which public experiment checks which model's method (ml/public_experiment.py)
+PUBLIC_FOR = {"intent": "online_shoppers", "fraud": "credit_card_fraud"}
+
+
+@app.get("/v2/public-report/{name}")
+def public_report(name: str):
+    """The PUBLIC-data method check for a model (another shop's / bank's recorded data, never TicketLedger data)."""
+    exp = PUBLIC_FOR.get(name)
+    path = exp and os.path.join(PUBLIC_DIR, f"{exp}.json")
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"no public-data experiment for '{name}'")
+    with open(path, encoding="utf-8") as f:
+        return {"model": name, "experiment": exp, "source_class": "PUBLIC", "may_serve_decisions": False, "report": json.load(f)}
+
+
+@app.get("/v2/real-report/{name}")
+def real_report(name: str):
+    """The newest evaluation of `name` on TicketLedger's own exported data (scripts/auto_retrain.py writes
+    reports/candidates/<stamp>/<name>.json). 404 until live data has been exported and evaluated."""
+    if name not in ALL_SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    stamps = sorted((d for d in os.listdir(CANDIDATES_DIR) if os.path.isdir(os.path.join(CANDIDATES_DIR, d))), reverse=True) if os.path.isdir(CANDIDATES_DIR) else []
+    for stamp in stamps:
+        path = os.path.join(CANDIDATES_DIR, stamp, f"{name}.json")
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                r = json.load(f)
+            if (r.get("data") or {}).get("source") == "db-export":
+                return {"model": name, "stamp": stamp, "may_serve_decisions": False,
+                        **{k: r.get(k) for k in ("status", "reasons", "main_measure", "higher_is_better", "result", "test_size", "guards", "recommendation", "deployed_model")},
+                        "data": {k: (r.get("data") or {}).get(k) for k in ("rows", "source", "from", "to")},
+                        "fairness_watch": ((r.get("diagnostics") or {}).get("fairness") or {}).get("watch")}
+    raise HTTPException(status_code=404, detail="no evaluation on exported real data yet")
+
+
+CARD_KEYS = ("model", "title", "kind", "label", "status", "reasons", "main_measure", "higher_is_better", "result", "details",
+             "guards", "segments", "learning_curve", "diagnostics", "complexity_selection", "split", "test_size", "features",
+             "shadow_decision", "recommendation", "duration_seconds")
+
+
+@app.get("/v2/model-card/{name}")
+def model_card(name: str):
+    """The offline evaluation report of a model, for the AI monitor's model card. Read-only."""
+    if name not in ALL_SPECS:
+        raise HTTPException(status_code=404, detail=f"unknown model '{name}'")
+    r = _report(name)
+    if not r:
+        raise HTTPException(status_code=404, detail=f"no evaluation report for '{name}'")
+    data = r.get("data") or {}
+    entry = _registry().get(name) or {}
+    return {**{k: r.get(k) for k in CARD_KEYS}, "data": {k: data.get(k) for k in ("dataset", "rows", "source", "from", "to")},
+            "gates": r.get("gates"), "registry_sha256": entry.get("sha256"), "may_serve_decisions": False}
+
+
+# -----------------
+# v2: health and metrics for the API's AI monitor (Step 6). No predictions, no decisions.
+# -----------------
+_metrics_lock = threading.Lock()
+_metrics = {"started_at": datetime.utcnow().isoformat() + "Z", "routes": {}}
+_fingerprint_cache = {}  # path -> (mtime, size, sha256)
+
+
+def _route_key(path):
+    if path.startswith("/v2/shadow/"):
+        return "/v2/shadow/" + path.rsplit("/", 1)[-1]
+    if path in ("/fraud/score", "/predict/fraud", "/forecast/demand", "/predict/demand", "/intent/predict", "/predict/intent"):
+        return path
+    return None
+
+
+@app.middleware("http")
+async def count_requests(request: Request, call_next):
+    key = _route_key(request.url.path)
+    if key is None:
+        return await call_next(request)
+    t0 = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        ms = (time.perf_counter() - t0) * 1000.0
+        with _metrics_lock:
+            m = _metrics["routes"].setdefault(key, {"requests": 0, "status_2xx": 0, "status_4xx": 0, "status_5xx": 0, "latencies_ms": []})
+            m["requests"] += 1
+            m["status_2xx" if status < 400 else "status_4xx" if status < 500 else "status_5xx"] += 1
+            m["latencies_ms"].append(round(ms, 2))
+            if len(m["latencies_ms"]) > 1000:
+                del m["latencies_ms"][:-1000]   # keep the last 1000 for percentiles
+
+
+def _percentile(xs, q):
+    if not xs:
+        return None
+    ys = sorted(xs)
+    return ys[min(len(ys) - 1, int(round(q * (len(ys) - 1))))]
+
+
+def _fingerprint(path):
+    st = os.stat(path)
+    hit = _fingerprint_cache.get(path)
+    if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
+        return hit[2]
+    digest = _file_sha256(path)
+    _fingerprint_cache[path] = (st.st_mtime, st.st_size, digest)
+    return digest
+
+
+@app.get("/v2/health")
+def v2_health():
+    """Registry and artifact checks for each shadow model: file present, fingerprint matches, scikit-learn
+    major.minor matches. Every model is shadow-only (may_serve_decisions false)."""
+    models = []
+    for name, entry in _registry().items():
+        path = os.path.join(ARTIFACT_DIR, entry["file"])
+        problem = None
+        if not os.path.exists(path):
+            problem = "artifact file missing"
+        elif _fingerprint(path) != entry["sha256"]:
+            problem = "artifact fingerprint does not match registry"
+        elif str(entry.get("sklearn", "")).split(".")[:2] != sklearn.__version__.split(".")[:2]:
+            problem = f"built with scikit-learn {entry.get('sklearn')}, service runs {sklearn.__version__}"
+        models.append({
+            "name": name, "version": entry.get("version"), "sha256": entry["sha256"], "source": entry.get("source"),
+            "evaluation_status": entry.get("evaluation_status"), "fingerprint_ok": problem is None, "problem": problem,
+            "may_serve_decisions": False,
+        })
+    return {"status": "ok", "ml_env": ML_ENV, "sklearn": sklearn.__version__, "artifact_dir_set": bool(os.environ.get("ML_ARTIFACT_DIR")),
+            "legacy_synthetic_models_loaded": any(p is not None for p in (fraud_pkg, demand_pkg, intent_pkg)),
+            "models": models, "may_serve_decisions": False}
+
+
+@app.get("/v2/metrics")
+def v2_metrics():
+    """In-memory request counters since the service started (shadow and legacy scoring routes)."""
+    with _metrics_lock:
+        routes = {k: {"requests": v["requests"], "status_2xx": v["status_2xx"], "status_4xx": v["status_4xx"], "status_5xx": v["status_5xx"],
+                      "p50_ms": _percentile(v["latencies_ms"], 0.5), "p95_ms": _percentile(v["latencies_ms"], 0.95)}
+                  for k, v in _metrics["routes"].items()}
+        return {"started_at": _metrics["started_at"], "routes": routes}
+
 
 if __name__ == "__main__":
     import uvicorn

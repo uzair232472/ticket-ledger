@@ -74,7 +74,7 @@ export async function noticeReviewed(event, company, { approve, comment, reviewe
   if (isPrebook(event)) {
     const visibility = event.isHidden || hiddenUntilReady
       ? hiddenUntilReady
-        ? ' It stays hidden from the public until you add tickets and a seating plan, then you can show it.'
+        ? ' It stays hidden from the public. Add tickets, prices and a seating plan, then send it for final approval; it goes on sale once that is approved.'
         : ' It stays hidden from the public, as you chose. You can show it whenever you’re ready.'
       : ' It is now visible to the public.';
     organizer = approve
@@ -97,4 +97,84 @@ export async function noticeReviewed(event, company, { approve, comment, reviewe
   }
   await db.notification.create({ data: { userId: company.userId, ...organizer } });
   await notifyAdmins(admin, db);
+}
+
+const organizerLink = (event) => `/organizer/events/${event.id}/submit`;
+const adminLink = '/admin/event-approvals';
+const stageName = (event, stage) => (stage === 'LAUNCH' ? 'final approval' : isPrebook(event) ? 'reservation request' : 'approval');
+
+/** An admin asked a question or suggested another slot instead of deciding. `suggested`: { startsAt, endsAt } or null. */
+export async function noticeChangesRequested(event, company, { comment, suggested, stage, reviewerEmail }, db = prisma) {
+  const suggestion = suggested ? ` Suggested instead: ${slotText({ ...event, ...suggested })}. You can accept it in one step.` : '';
+  await db.notification.create({
+    data: {
+      userId: company.userId,
+      type: 'EVENT_CHANGES_REQUESTED',
+      title: `TicketLedger needs a reply: ${event.name}`,
+      message: `An admin reviewed your ${stageName(event, stage)} for "${event.name}" (${slotText(event)}) and asks: ${sentence(comment)}${suggestion} Reply from the Review page; nothing is decided until you do.`,
+      link: organizerLink(event),
+    },
+  });
+  await notifyAdmins(
+    {
+      type: 'ADMIN_EVENT_CHANGES_REQUESTED',
+      title: `Waiting on organizer: ${event.name}`,
+      message: `${reviewerEmail} asked ${company.companyName} about "${event.name}": ${sentence(comment)}${suggested ? ` Suggested: ${slotText({ ...event, ...suggested })}.` : ''}`,
+      link: adminLink,
+    },
+    db,
+  );
+}
+
+/** The organizer replied (and maybe accepted the suggested slot): the request is back with the admins. */
+export async function noticeReplied(event, company, { message, accepted, stage }, db = prisma) {
+  await notifyAdmins(
+    {
+      type: 'EVENT_REVIEW_REPLY',
+      title: `Organizer replied: ${event.name}`,
+      message: `${company.companyName} replied about "${event.name}"${accepted ? ` and accepted the suggested slot (${slotText(event)})` : ''}: ${sentence(message)} It is waiting for your ${stageName(event, stage)} decision again.`,
+      link: adminLink,
+    },
+    db,
+  );
+  await db.notification.create({
+    data: {
+      userId: company.userId,
+      type: 'EVENT_SUBMITTED',
+      title: `Reply sent: ${event.name}`,
+      message: `Your reply was sent to TicketLedger${accepted ? ` and the date was moved to ${slotText(event)}` : ''}. You’ll be notified of the decision.`,
+      link: organizerLink(event),
+    },
+  });
+}
+
+/** A reserved prebooked date sent for final approval with its tickets and seating. */
+export async function noticeLaunchSubmitted(event, company, db = prisma) {
+  await notifyAdmins(
+    {
+      type: 'EVENT_REVIEW_REQUEST',
+      title: `Ready to go live: ${event.name} (${formatPktDate(occupiedInterval(event).start)})`,
+      message: `${company.companyName} finished tickets, prices and seating for the reserved date ${slotText(event)}. Approve it to show it publicly and open sales, or ask for changes.`,
+      link: adminLink,
+    },
+    db,
+  );
+  await db.notification.create({
+    data: {
+      userId: company.userId,
+      type: 'EVENT_SUBMITTED',
+      title: `Sent for final approval: ${event.name}`,
+      message: `Your reserved date (${slotText(event)}) with its tickets and seating plan was sent to TicketLedger. It stays hidden until an admin approves it.`,
+      link: organizerLink(event),
+    },
+  });
+}
+
+/** Final approval of a prebooked date: it is now public and on sale. */
+export async function noticeLaunchApproved(event, company, { comment, reviewerEmail }, db = prisma) {
+  const note = comment ? ` Admin note: ${sentence(comment)}` : '';
+  await db.notification.create({
+    data: { userId: company.userId, type: 'EVENT_APPROVED', title: `“${event.name}” is approved and on sale`, message: `Final approval given: ${slotText(event)} is now public and tickets are on sale.${note}`, link: `/events/${event.id}` },
+  });
+  await notifyAdmins({ type: 'ADMIN_EVENT_APPROVED', title: `Live: ${event.name}`, message: `${reviewerEmail} gave final approval to "${event.name}" by ${company.companyName} (${slotText(event)}). It is now public.${note}`, link: adminLink }, db);
 }

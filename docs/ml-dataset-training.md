@@ -1,5 +1,11 @@
 # Module 14: Machine Learning Dataset Generation & Model Training
 
+> **Outdated: the datasets have been replaced.** This page describes the original formula-generated
+> datasets, now kept in `apps/ml-service/dev/legacy-synthetic/` (see the README there for why they must
+> not train production models). The current v0 datasets have IDs and timestamps, a fifth crowd-flow file
+> and a validation script. They are described in `apps/ml-service/data/README.md`. This page will be
+> rewritten when the new training pipeline lands. Retraining on real client data: `docs/ml-real-data-retraining.md`.
+
 This document details the synthetic data synthesis methodology, model training procedures, feature engineering pipelines, evaluation benchmarks, and FastAPI deployment architecture implemented for **TicketLedger (Phase 2 FYP)**.
 
 ---
@@ -168,7 +174,7 @@ Demand Forecasting           | R² = 0.9956          | Acc = 0.9040 (90.4%) | PA
   - **Demand Tier Classification Accuracy**: **90.40%**
   - **Weighted F1-Score**: **0.8932**
 
-Full benchmark metrics are exported as JSON to `apps/ml-service/models/model_metrics.json`.
+Legacy benchmark metrics are written to `apps/ml-service/dev/legacy-synthetic/legacy_model_metrics.json` (near-perfect because the labels are formulas of the features: not meaningful). The gated evaluation is in `apps/ml-service/reports/v0/`.
 
 ---
 
@@ -209,6 +215,6 @@ The machine learning models are deployed and consumed through a high-performance
    - `GET /health`:
      Validates that all three `.joblib` model binaries are loaded and responding.
    - `GET /models/metrics`:
-     Serves the latest evaluation metrics benchmark report from `model_metrics.json`.
+     Serves a summary of the gated evaluation reports in `reports/v0/`.
 3. **End-to-End Anti-Scalping Protection**:
    When a user initiates booking (`POST /api/bookings/initiate`), Express calls `checkFraudRisk()` in `apps/api/src/services/mlService.js`. If the FastAPI service returns a `fraud_score >= 75.0` (`CRITICAL_BOT`), the Express API immediately responds with an **HTTP 403 Forbidden** security alert and adds the session to the Super Admin **Fraud & Bot Watchlist**.

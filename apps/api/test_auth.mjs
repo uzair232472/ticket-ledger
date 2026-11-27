@@ -26,8 +26,8 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
   let customerToken = '';
   let customerCookie = '';
   let adminToken = '';
-  const testEmail = `newcustomer_${Date.now()}@example.com`;
-  const organizerEmail = `neworganizer_${Date.now()}@example.com`;
+  const testEmail = `newcustomer.${Date.now()}@gmail.com`;
+  const organizerEmail = `neworganizer.${Date.now()}@gmail.com`;
 
   const randomHex = Math.random().toString(16).substring(2, 10).padEnd(40, '0');
   const uniqueWallet = `0x${randomHex}`;
@@ -58,15 +58,15 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
 
   await t.test('1b. Nobody can sign up as GATE_STAFF or SUPER_ADMIN via accountType', async () => {
     const res = await fetch(`${baseUrl}/signup`, json({
-      name: 'Sneaky', email: `sneaky_${Date.now()}@example.com`, password: 'Password@123', accountType: 'super_admin',
+      name: 'Sneaky', email: `sneaky.${Date.now()}@gmail.com`, password: 'Password@123', accountType: 'super_admin',
     }));
     assert.strictEqual(res.status, 400);
   });
 
   await t.test('1c. Password and name rules are enforced', async () => {
-    const weak = await fetch(`${baseUrl}/signup`, json({ name: 'Weak', email: `weak_${Date.now()}@example.com`, password: 'abcdefgh' }));
+    const weak = await fetch(`${baseUrl}/signup`, json({ name: 'Weak', email: `weak.${Date.now()}@gmail.com`, password: 'abcdefgh' }));
     assert.strictEqual(weak.status, 400);
-    const shortName = await fetch(`${baseUrl}/signup`, json({ name: 'A', email: `short_${Date.now()}@example.com`, password: 'Password@123' }));
+    const shortName = await fetch(`${baseUrl}/signup`, json({ name: 'A', email: `short.${Date.now()}@gmail.com`, password: 'Password@123' }));
     assert.strictEqual(shortName.status, 400);
   });
 
@@ -108,7 +108,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
   });
 
   await t.test('5. Five wrong attempts lock the code', async () => {
-    const email = `locked_${Date.now()}@example.com`;
+    const email = `locked.${Date.now()}@gmail.com`;
     await fetch(`${baseUrl}/signup`, json({ name: 'Locked User', email, password: 'Password@123', phone: '03115556677' }));
     const code = getLastSentEmail().otpCode;
     const wrongCode = code === '000000' ? '111111' : '000000';
@@ -147,7 +147,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
 
   await t.test('8. Wrong password and unknown email get the same message', async () => {
     const wrongPw = await fetch(`${baseUrl}/login`, json({ email: 'admin@ticketledger.pk', password: 'WrongPassword1' }));
-    const unknown = await fetch(`${baseUrl}/login`, json({ email: `nobody_${Date.now()}@example.com`, password: 'WrongPassword1' }));
+    const unknown = await fetch(`${baseUrl}/login`, json({ email: `nobody.${Date.now()}@gmail.com`, password: 'WrongPassword1' }));
     assert.strictEqual(wrongPw.status, 401);
     assert.strictEqual(unknown.status, 401);
     assert.strictEqual((await wrongPw.json()).message, 'Invalid email or password.');
@@ -166,7 +166,7 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
 
   await t.test('10. Forgot password answers the same for existing and unknown emails', async () => {
     const known = await (await fetch(`${baseUrl}/forgot-password`, json({ email: testEmail }))).json();
-    const unknown = await (await fetch(`${baseUrl}/forgot-password`, json({ email: `nobody_${Date.now()}@example.com` }))).json();
+    const unknown = await (await fetch(`${baseUrl}/forgot-password`, json({ email: `nobody.${Date.now()}@gmail.com` }))).json();
     assert.strictEqual(known.message, "If an account exists for this email, we've sent a code.");
     assert.strictEqual(unknown.message, known.message);
   });
@@ -218,7 +218,13 @@ test('MODULE 2 - Authentication, sessions & role-based access', async (t) => {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
       body: JSON.stringify({ status: 'BANNED', reason: 'Test' }),
     });
-    assert.strictEqual(ban.status, 200);
+    assert.strictEqual(ban.status, 428, 'a ban needs the typed confirmation');
+    const confirmed = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/users/${user.id}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ status: 'BANNED', reason: 'Test', confirm: user.email }),
+    });
+    assert.strictEqual(confirmed.status, 200);
 
     const me = await fetch(`${baseUrl}/me`, { headers: { Authorization: `Bearer ${customerToken}` } });
     assert.strictEqual(me.status, 403);

@@ -18,7 +18,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(BASE_DIR, "data")
+# Legacy formula-generated data (superseded by data/ v0 datasets; replaced in Step 2)
+DATA_DIR = os.path.join(BASE_DIR, "dev", "legacy-synthetic", "data")
 DATA_PATH = os.path.join(DATA_DIR, "behavior_sequences.csv")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)

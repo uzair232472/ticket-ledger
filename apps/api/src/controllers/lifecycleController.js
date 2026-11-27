@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import prisma from '../config/prisma.js';
-import { canManageEvent } from '../utils/eventAccess.js';
+import { canManageEvent, reviewLocked, REVIEW_LOCK_MESSAGE } from '../utils/eventAccess.js';
 import { ScheduleError } from '../services/eventScheduleService.js';
 import { MAX_REFUND_ATTEMPTS, processRefunds } from '../services/refundService.js';
 import {
@@ -26,13 +26,15 @@ const fail = (res, error, fallback) => {
   return res.status(500).json({ success: false, message: fallback });
 };
 
-async function managedEvent(req, res) {
+async function managedEvent(req, res, permissions = ['event.lifecycle']) {
   const event = await prisma.event.findUnique({ where: { id: req.params.id }, include: { company: true } });
   if (!event) {
     res.status(404).json({ success: false, message: 'Event not found' });
     return null;
   }
-  if (!(await canManageEvent(req.user, event))) {
+  let allowed = true;
+  for (const permission of permissions) allowed = allowed && (await canManageEvent(req.user, event, { permission, req }));
+  if (!allowed) {
     res.status(403).json({ success: false, message: 'You can’t manage this event.' });
     return null;
   }
@@ -60,7 +62,7 @@ const reasonSchema = z.object({ reason: z.string().trim().min(10, 'Give a reason
 /** POST /events/:id/cancel { reason, confirmName } */
 export const cancelEventHandler = async (req, res) => {
   try {
-    const event = await managedEvent(req, res);
+    const event = await managedEvent(req, res, ['event.lifecycle', 'finance.refunds']);
     if (!event) return undefined;
     const { reason } = reasonSchema.parse(req.body);
     if (String(req.body.confirmName || '').trim().toLowerCase() !== event.name.trim().toLowerCase()) {
@@ -82,6 +84,7 @@ export const postponeEventHandler = async (req, res) => {
   try {
     const event = await managedEvent(req, res);
     if (!event) return undefined;
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
     const { reason } = reasonSchema.parse(req.body);
     const result = await postponeEvent({ event, actor: req.user, reason });
     return res.json({ success: true, message: `“${event.name}” is postponed. Sales are paused and ${result.holders} attendee${result.holders === 1 ? ' has' : 's have'} been emailed.`, data: result });
@@ -95,9 +98,10 @@ export const rescheduleEventHandler = async (req, res) => {
   try {
     const event = await managedEvent(req, res);
     if (!event) return undefined;
+    if (reviewLocked(req.user, event)) return res.status(409).json({ success: false, code: 'UNDER_REVIEW', message: REVIEW_LOCK_MESSAGE });
     const result = await requestReschedule({ event, actor: req.user, input: req.body || {} });
     const message = !result.applied
-      ? 'Sent for approval. Attendees are emailed once a TicketLedger admin approves the new date.'
+      ? 'Sent for approval. The event keeps its current date until a TicketLedger admin approves the new one; any ticket holders are emailed then.'
       : result.minor
         ? 'The new time is live and attendees have been emailed.'
         : 'The new date is live.';

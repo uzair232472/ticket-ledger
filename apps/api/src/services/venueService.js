@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { recordCheckoutEnd } from './checkoutOutcome.js';
 import prisma from '../config/prisma.js';
 import { getIO } from '../config/socket.js';
 import { buildTemplate, layoutInventory, suggestTemplate, validateLayout } from '../../../venue-core/src/index.js';
@@ -58,6 +59,8 @@ export async function expireStaleHolds(eventId) {
     await prisma.$transaction(async (tx) => {
       const flipped = await tx.order.updateMany({ where: { id: order.id, status: 'PENDING' }, data: { status: 'FAILED' } });
       if (!flipped.count) return; // confirmed or cancelled meanwhile
+      await recordCheckoutEnd(tx, [order], 'HOLD_EXPIRED');
+      await tx.behaviorEvent.create({ data: { userId: order.userId, eventId: order.eventId, sessionId: 'system:hold-expiry', action: 'checkout_expired', metadata: { orderId: order.id } } });
       await tx.ticket.deleteMany({ where: { orderId: order.id } });
       const tierCounts = {};
       for (const t of order.tickets) tierCounts[t.seat.tierId] = (tierCounts[t.seat.tierId] || 0) + 1;
@@ -363,7 +366,11 @@ export async function autoProvisionVenueLayout(eventId) {
 export async function getAvailability(eventId, userId) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { id: true, name: true, venue: true, city: true, date: true, time: true, status: true, type: true, bannerUrl: true, cardImageUrl: true, tiers: { select: { id: true, name: true, price: true } } },
+    select: {
+      id: true, name: true, venue: true, city: true, date: true, time: true, status: true, type: true, bannerUrl: true, cardImageUrl: true, tiers: { select: { id: true, name: true, price: true } },
+      // Entry gates (name + the ticket types each accepts; empty = all), shown on the 3D seat card
+      gates: { where: { active: true, type: { not: 'EXIT' } }, select: { name: true, allowedTierIds: true }, orderBy: { sortOrder: 'asc' } },
+    },
   });
   if (!event) throw new VenueError(404, 'Event not found');
   const layout = await prisma.venueLayout.findFirst({ where: { eventId, status: 'PUBLISHED' }, orderBy: { version: 'desc' } });

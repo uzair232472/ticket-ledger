@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import prisma from '../config/prisma.js';
-import mlService from './mlService.js';
 
 export const BEHAVIOR_ACTIONS = {
   EVENT_VIEW: 'event_view',
@@ -8,7 +7,15 @@ export const BEHAVIOR_ACTIONS = {
   SEAT_SELECTED: 'seat_selected',
   SEAT_LOCKED: 'seat_locked',
   CHECKOUT_STARTED: 'checkout_started',
-  CHECKOUT_ABANDONED: 'checkout_abandoned',
+  CHECKOUT_ABANDONED: 'checkout_abandoned', // legacy rows; new rows use the specific actions below
+  CHECKOUT_CANCELLED: 'checkout_cancelled', // the customer cancelled the checkout
+  SEAT_HOLD_RELEASED: 'seat_hold_released', // the customer released held seats
+  CHECKOUT_EXPIRED: 'checkout_expired', // the seat hold expired unpaid
+  SEARCH: 'search',
+  WISHLIST_ADDED: 'wishlist_added',
+  WISHLIST_REMOVED: 'wishlist_removed',
+  RECOMMENDATION_IMPRESSION: 'recommendation_impression',
+  RECOMMENDATION_CLICK: 'recommendation_click',
   PAYMENT_COMPLETED: 'payment_completed',
   PAYMENT_FAILED: 'payment_failed',
   TICKET_PURCHASED: 'ticket_purchased',
@@ -85,20 +92,32 @@ export const trackBehavior = async ({
 /**
  * Attach guest session history to authenticated user on login/signup
  */
-export const attachSessionToUser = async ({ sessionId, userId }) => {
+export const GUEST_LINK_WINDOW_DAYS = 30;
+/**
+ * Eligibility (no fingerprinting: only the app's own session id is used):
+ *   - only anonymous activity of this session from the last GUEST_LINK_WINDOW_DAYS days is linked;
+ *   - nothing is linked when the session already holds activity of a DIFFERENT account (a shared device:
+ *     the anonymous part cannot be attributed to either person);
+ *   - every link is audited (GUEST_ACTIVITY_LINKED: how many rows, which time range, pseudonymous session).
+ */
+export const attachSessionToUser = async ({ sessionId, userId, now = new Date() }) => {
   if (!sessionId || !userId) return { count: 0 };
 
   try {
-    const result = await prisma.behaviorEvent.updateMany({
-      where: {
-        sessionId,
-        userId: null,
-      },
-      data: {
-        userId,
-      },
-    });
-
+    const others = await prisma.behaviorEvent.count({ where: { sessionId, userId: { not: null, notIn: [userId] } } });
+    if (others) return { count: 0, skipped: 'shared session: activity of another account' };
+    const since = new Date(now.getTime() - GUEST_LINK_WINDOW_DAYS * 86_400_000);
+    const where = { sessionId, userId: null, createdAt: { gte: since, lte: now } };
+    const range = await prisma.behaviorEvent.aggregate({ where, _min: { createdAt: true }, _max: { createdAt: true } });
+    const result = await prisma.behaviorEvent.updateMany({ where, data: { userId } });
+    if (result.count) {
+      await prisma.auditLog.create({
+        data: {
+          userId, action: 'GUEST_ACTIVITY_LINKED', targetType: 'User', targetId: userId,
+          details: { session: crypto.createHash('sha256').update(`session:${sessionId}`).digest('hex').slice(0, 16), count: result.count, from: range._min.createdAt, to: range._max.createdAt },
+        },
+      });
+    }
     return result;
   } catch (err) {
     console.warn('[BehaviorService] Session-to-user attribution failed:', err.message);
@@ -109,22 +128,18 @@ export const attachSessionToUser = async ({ sessionId, userId }) => {
 /**
  * Aggregate behavioral profile, timeline, and ML scores for a user
  */
-export const getUserBehavioralProfile = async (userId, sessionId = null) => {
+/**
+ * `scope.eventIds`: when given (an organization's view), only behaviour on those events is read and
+ * platform-wide data (account status, wallet, logins, other organizers' events, fraud model) is left out.
+ */
+export const getUserBehavioralProfile = async (userId, sessionId = null, scope = null) => {
+  const scopedIds = Array.isArray(scope?.eventIds) ? scope.eventIds : null;
   if (!userId) {
     throw new Error('User ID is required to fetch behavioral profile');
   }
 
-  // If a session ID is provided, automatically attach any unattached events for this session
-  if (sessionId) {
-    try {
-      await prisma.behaviorEvent.updateMany({
-        where: { sessionId, userId: null },
-        data: { userId },
-      });
-    } catch (e) {
-      // Non-blocking
-    }
-  }
+  // Guest activity is linked only at login / sign-up, under the eligibility rules of attachSessionToUser
+  // (viewing a profile no longer attaches a session's anonymous activity)
 
   // 1. Fetch user profile
   const user = await prisma.user.findUnique({
@@ -140,18 +155,26 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
     },
   });
 
+  if (user && scopedIds) {
+    delete user.role;
+    delete user.status;
+    delete user.walletAddress;
+  }
+
   if (!user) {
     throw new Error('User not found');
   }
 
   // 2. Fetch all user behavior events
   const events = await prisma.behaviorEvent.findMany({
-    where: {
-      OR: [
-        { userId },
-        ...(sessionId ? [{ sessionId }] : []),
-      ],
-    },
+    where: scopedIds
+      ? { userId, eventId: { in: scopedIds } }
+      : {
+          OR: [
+            { userId },
+            ...(sessionId ? [{ sessionId }] : []),
+          ],
+        },
     orderBy: { createdAt: 'desc' },
     include: {
       event: {
@@ -204,7 +227,10 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
         counts.checkoutsStarted++;
         break;
       case BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED:
-        counts.abandonedCheckouts++;
+      case BEHAVIOR_ACTIONS.CHECKOUT_CANCELLED:
+      case BEHAVIOR_ACTIONS.SEAT_HOLD_RELEASED:
+      case BEHAVIOR_ACTIONS.CHECKOUT_EXPIRED:
+        counts.abandonedCheckouts++; // "left checkout" (any reason), as this counter always meant
         break;
       case BEHAVIOR_ACTIONS.PAYMENT_COMPLETED:
         counts.paymentsCompleted++;
@@ -240,32 +266,23 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
 
   // 4. Intent (rules, per event) and fraud scores
   // Purchase intent, per event and overall (rule-based; documented in computeIntentByEvent below)
-  const intentByEvent = await computeIntentByEvent(userId);
+  const intentByEvent = await computeIntentByEvent(userId, scopedIds);
   const overall = overallIntent(intentByEvent, counts);
   const intentScore = overall.score;
   const intentClass = overall.tier;
-  let fraudScore = 12; // Default normal customer
-  let fraudStatus = 'LOW';
+  // No fraud score for a profile. Fraud is assessed only at checkout (by the rules, from that checkout's
+  // real telemetry). This used to call mlService.predictFraud, which does not exist, so it always showed a
+  // fixed 14 "low risk" (and with it, invented telemetry). That could be mistaken for a genuine ML score, so
+  // the profile now says plainly that no score is available.
+  const fraudRisk = {
+    available: false,
+    score: null,
+    level: 'UNAVAILABLE',
+    isBot: false,
+    description: 'Not scored: fraud checks run at checkout only, using that checkout activity',
+  };
 
-  try {
-    const fraudRes = await mlService.predictFraud({
-      checkoutDurationSeconds: 45.0,
-      clicksPerMinute: 24.0,
-      seatLockAttempts: Math.max(1, counts.seatsLocked),
-      deviceSwitches: 1,
-      ticketCount: Math.max(1, counts.ticketsPurchased),
-    });
-
-    if (fraudRes && fraudRes.fraud_score !== undefined) {
-      fraudScore = fraudRes.fraud_score;
-      fraudStatus = fraudRes.risk_level || (fraudScore > 75 ? 'CRITICAL_BOT' : fraudScore > 40 ? 'SUSPICIOUS' : 'LOW');
-    }
-  } catch (fraudErr) {
-    fraudScore = 14;
-    fraudStatus = 'LOW';
-  }
-
-  return {
+  const profile = {
     user,
     stats: counts,
     totalEventsTracked: events.length,
@@ -277,18 +294,13 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
         basis: 'rules',
         eventsConsidered: intentByEvent.length,
       },
-      fraudRisk: {
-        score: Math.round(fraudScore),
-        level: fraudStatus,
-        isBot: fraudStatus === 'CRITICAL_BOT',
-        description: fraudStatus === 'LOW' ? 'Verified Human Behavior' : 'Requires Review',
-      },
+      fraudRisk,
     },
     summary: {
       intentScore: Math.round(intentScore),
       intentLevel: intentClass,
       totalActions: events.length,
-      riskLevel: fraudStatus === 'LOW' ? 'LOW_RISK' : fraudStatus === 'CRITICAL_BOT' ? 'CRITICAL_BOT' : 'SUSPICIOUS',
+      riskLevel: 'UNAVAILABLE',
       // Event categories the user actually interacted with, most active first
       topCategory: categoryAffinity(intentByEvent)[0]?.category || null,
       categoryAffinity: categoryAffinity(intentByEvent),
@@ -306,6 +318,13 @@ export const getUserBehavioralProfile = async (userId, sessionId = null) => {
       createdAt: ev.createdAt,
     })),
   };
+  if (scopedIds) {
+    // Organization view: the platform fraud model sees behaviour outside this organization
+    delete profile.scores.fraudRisk;
+    delete profile.summary.riskLevel;
+    profile.scope = { kind: 'organization', eventCount: scopedIds.length };
+  }
+  return profile;
 };
 
 
@@ -313,7 +332,7 @@ const INTENT_ACTIONS = {
   view: [BEHAVIOR_ACTIONS.EVENT_VIEW],
   seat: [BEHAVIOR_ACTIONS.SEAT_SELECTED, BEHAVIOR_ACTIONS.SEAT_LOCKED],
   checkout: [BEHAVIOR_ACTIONS.CHECKOUT_STARTED],
-  abandon: [BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED],
+  abandon: [BEHAVIOR_ACTIONS.CHECKOUT_ABANDONED, BEHAVIOR_ACTIONS.CHECKOUT_CANCELLED, BEHAVIOR_ACTIONS.SEAT_HOLD_RELEASED, BEHAVIOR_ACTIONS.CHECKOUT_EXPIRED],
   failed: [BEHAVIOR_ACTIONS.PAYMENT_FAILED],
   bought: [BEHAVIOR_ACTIONS.PAYMENT_COMPLETED, BEHAVIOR_ACTIONS.TICKET_PURCHASED],
 };
@@ -327,15 +346,16 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *   over 14 days old. Not-yet-bought events are capped at 95; an event with a paid order scores 100 (PURCHASED).
  * Counts come from all of the user's behaviour rows (not only the latest 100), grouped by event and action.
  */
-export async function computeIntentByEvent(userId) {
+export async function computeIntentByEvent(userId, eventIds = null) {
+  const inScope = eventIds ? { eventId: { in: eventIds } } : {};
   const [grouped, paidOrders] = await Promise.all([
     prisma.behaviorEvent.groupBy({
       by: ['eventId', 'action'],
-      where: { userId, eventId: { not: null } },
+      where: { userId, eventId: { not: null }, ...inScope },
       _count: { _all: true },
       _max: { createdAt: true },
     }),
-    prisma.order.findMany({ where: { userId, status: 'SUCCESSFUL' }, select: { eventId: true } }),
+    prisma.order.findMany({ where: { userId, status: 'SUCCESSFUL', ...inScope }, select: { eventId: true } }),
   ]);
   const paid = new Set(paidOrders.map((o) => o.eventId));
   const perEvent = new Map();

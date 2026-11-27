@@ -5,7 +5,13 @@ import { drawTicketPdf, loadEventPhoto } from './ticketPdf.js';
 import prisma from '../config/prisma.js';
 import { passFor } from './qrPassService.js';
 
-const QR_SECRET = process.env.QR_HMAC_SECRET || process.env.JWT_SECRET || 'ticketledger_qr_master_secret_key_2026_fyp';
+// Legacy HMAC payloads (the gate uses the Ed25519 passes in qrPassService.js). No hardcoded fallback; read per call
+// because ES module imports run before dotenv.config().
+const qrSecret = () => {
+  const secret = process.env.QR_HMAC_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('QR_HMAC_SECRET or JWT_SECRET must be set.');
+  return secret;
+};
 
 /**
  * 1. Generate Cryptographically Signed QR Payload
@@ -22,7 +28,7 @@ export const createSignedQRPayload = (ticket) => {
   // Compute HMAC signature across immutable core fields
   const message = `${ticketId}:${eventId}:${tokenId}:${nonce}:${issuedAt}:${qrVersion}`;
   const signature = crypto
-    .createHmac('sha256', QR_SECRET)
+    .createHmac('sha256', qrSecret())
     .update(message)
     .digest('hex');
 
@@ -80,7 +86,7 @@ export const createDynamicQRPayload = (ticket, timestamp = Date.now()) => {
 
   const message = `${ticketId}:${eventId}:${tokenId}:${nonce}:${timeStep}:${qrVersion}`;
   const signature = crypto
-    .createHmac('sha256', QR_SECRET)
+    .createHmac('sha256', qrSecret())
     .update(message)
     .digest('hex');
 
@@ -123,7 +129,7 @@ export const verifyOfflineHMAC = (payload, currentTimestamp = Date.now()) => {
       }
 
       const expectedMsg = `${ticketId}:${eventId}:${tokenId}:${nonce}:${timeStep}:${qrVersion}`;
-      const expectedSig = crypto.createHmac('sha256', QR_SECRET).update(expectedMsg).digest('hex');
+      const expectedSig = crypto.createHmac('sha256', qrSecret()).update(expectedMsg).digest('hex');
 
       if (signature !== expectedSig) {
         return { valid: false, reason: 'INVALID_SIGNATURE', message: 'Cryptographic signature mismatch! Counterfeit ticket.' };
@@ -131,7 +137,7 @@ export const verifyOfflineHMAC = (payload, currentTimestamp = Date.now()) => {
     } else {
       // v1 payload fallback
       const expectedMsg = `${ticketId}:${eventId}:${tokenId}:${nonce}:${issuedAt}:${qrVersion || '1.0'}`;
-      const expectedSig = crypto.createHmac('sha256', QR_SECRET).update(expectedMsg).digest('hex');
+      const expectedSig = crypto.createHmac('sha256', qrSecret()).update(expectedMsg).digest('hex');
 
       if (signature !== expectedSig) {
         return { valid: false, reason: 'INVALID_SIGNATURE', message: 'Cryptographic signature mismatch! Counterfeit ticket.' };
@@ -200,153 +206,11 @@ export const verifyTicketQR = async (rawPayload) => {
   };
 };
 
-/**
- * Gate Staff Check-In & Turnstile Processing (Updates DB, prevents double-entry, logs GateScan)
+/*
+ * processGateScan (the old /api/gate/scan admission) was removed: it admitted tickets with an unconditional update,
+ * without device authentication, gate rules or re-entry policy. Admissions go through checkinService.scan
+ * (POST /api/checkin/scan) and checkinService.syncOffline (POST /api/checkin/sync) only.
  */
-/**
- * allowedEventIds: events the scanner may admit to (null = any event, used for Super Admins).
- */
-export const processGateScan = async ({ payload, staffId, gateNumber = 'Gate 1', offlineMode = false, allowedEventIds = null }) => {
-  // 1. First run offline HMAC verification
-  const offlineCheck = verifyOfflineHMAC(payload);
-  if (!offlineCheck.valid) {
-    return {
-      valid: false,
-      result: 'INVALID_SCAN',
-      reason: offlineCheck.reason,
-      message: offlineCheck.message,
-    };
-  }
-
-  const { ticketId, nonce } = offlineCheck;
-
-  // 2. Fetch ticket from database
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: ticketId },
-    include: {
-      event: true,
-      seat: { include: { tier: true } },
-      user: { select: { id: true, name: true, email: true, phone: true } },
-      scans: { orderBy: { scanTime: 'desc' }, take: 1, include: { staff: { select: { name: true } } } },
-    },
-  });
-
-  if (!ticket) {
-    return {
-      valid: false,
-      result: 'INVALID_SCAN',
-      reason: 'NOT_FOUND',
-      message: 'Ticket not found in ledger.',
-    };
-  }
-
-  // Gate staff may only admit tickets for events they are assigned to (organizers: their own events)
-  if (allowedEventIds && !allowedEventIds.includes(ticket.eventId)) {
-    return {
-      valid: false,
-      result: 'INVALID_SCAN',
-      reason: 'EVENT_NOT_ASSIGNED',
-      message: 'This ticket is for an event you are not assigned to.',
-    };
-  }
-
-  // 3. Check Nonce (prevents old QR after transfer/resale)
-  if (ticket.qrNonce !== nonce) {
-    return {
-      valid: false,
-      result: 'INVALID_SCAN',
-      reason: 'INVALIDATED_OLD_QR',
-      message: 'Access Denied: Ticket was transferred or resold. Gate pass revoked.',
-      ticket: { id: ticket.id, currentOwner: ticket.user.name },
-    };
-  }
-
-  // 4. Check Double Entry (Already Scanned)
-  if (ticket.status === 'SCANNED') {
-    const prevScan = ticket.scans[0];
-    const prevTime = prevScan ? new Date(prevScan.scanTime).toLocaleTimeString() : 'earlier';
-    const prevGate = prevScan?.gateNumber || 'Turnstile';
-
-    // Log double-entry attempt in audit
-    if (staffId) {
-      await prisma.gateScan.create({
-        data: {
-          ticketId: ticket.id,
-          staffId,
-          result: 'ALREADY_SCANNED',
-          gateNumber,
-          notes: `Double entry attempt at ${gateNumber}. Previously scanned at ${prevGate} (${prevTime}).`,
-        },
-      });
-    }
-
-    return {
-      valid: false,
-      result: 'ALREADY_SCANNED',
-      reason: 'ALREADY_SCANNED',
-      message: `DOUBLE ENTRY REJECTED: This ticket was already scanned at ${prevGate} at ${prevTime}. Entry denied.`,
-      ticket: {
-        id: ticket.id,
-        event: ticket.event.name,
-        seat: `${ticket.seat.tier.name} - Row ${ticket.seat.row} #${ticket.seat.seatNumber}`,
-        attendee: ticket.user.name,
-        previousScanTime: prevScan?.scanTime,
-      },
-    };
-  }
-
-  // 5. Check Non-Active Status
-  if (ticket.status !== 'ACTIVE') {
-    return {
-      valid: false,
-      result: 'INVALID_SCAN',
-      reason: `TICKET_${ticket.status}`,
-      message: `Access Denied: Ticket status is '${ticket.status}'.`,
-      ticket,
-    };
-  }
-
-  // 6. VALID FIRST SCAN: Atomically update ticket status to SCANNED and record GateScan
-  const [updatedTicket, scanRecord] = await prisma.$transaction([
-    prisma.ticket.update({
-      where: { id: ticket.id },
-      data: { status: 'SCANNED' },
-    }),
-    prisma.gateScan.create({
-      data: {
-        ticketId: ticket.id,
-        staffId: staffId || ticket.userId, // fallback if staffId not provided
-        result: 'VALID_FIRST_SCAN',
-        gateNumber,
-        notes: `Verified dynamic QR. Admitted to ${ticket.seat.section} Row ${ticket.seat.row} #${ticket.seat.seatNumber}.`,
-      },
-    }),
-  ]);
-
-  return {
-    valid: true,
-    result: 'VALID_FIRST_SCAN',
-    message: 'ACCESS GRANTED: Turnstile Open! Welcome to event.',
-    ticket: {
-      id: updatedTicket.id,
-      status: updatedTicket.status,
-      event: ticket.event,
-      seat: {
-        section: ticket.seat.section,
-        row: ticket.seat.row,
-        seatNumber: ticket.seat.seatNumber,
-        tierName: ticket.seat.tier.name,
-      },
-      attendee: {
-        name: ticket.user.name,
-        email: ticket.user.email,
-        phone: ticket.user.phone,
-      },
-      scanTime: scanRecord.scanTime,
-      gateNumber: scanRecord.gateNumber,
-    },
-  };
-};
 
 /**
  * 5. Generate the PDF e-ticket (layout in ticketPdf.js)

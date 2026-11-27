@@ -1,4 +1,5 @@
 import adminService from '../services/adminService.js';
+import { recordWatchlistView } from '../services/ml/fraudReview.js';
 import organizerDashboardService from '../services/organizerDashboardService.js';
 
 /**
@@ -34,7 +35,7 @@ export const getUsersList = async (req, res) => {
 export const updateUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, reason } = req.body;
+    const { status, reason, confirm } = req.body;
     if (!status) {
       return res.status(400).json({ success: false, message: 'Status is required (ACTIVE, SUSPENDED, BANNED, DEACTIVATED)' });
     }
@@ -43,10 +44,12 @@ export const updateUserStatus = async (req, res) => {
       userId: id,
       status,
       reason,
+      confirm,
       adminUser: req.user,
     });
     return res.status(200).json(result);
   } catch (error) {
+    if (error.code === 'CONFIRMATION_REQUIRED') return res.status(428).json({ success: false, code: error.code, confirmPhrase: error.phrase, message: error.message });
     console.error('Error in updateUserStatus:', error);
     const status = error.status || 500;
     return res.status(status).json({ success: false, message: error.message });
@@ -102,6 +105,9 @@ export const getFraudAlerts = async (req, res) => {
   try {
     const { page, limit, minScore } = req.query;
     const data = await adminService.getFraudAlerts({ page, limit, minScore });
+    // Lists fraud scores per account: logged so a later blind fraud review by this admin is marked exposed
+    const shown = (Array.isArray(data) ? data : data?.alerts || []).map((a) => a.userId);
+    await recordWatchlistView(req.user?.id, shown, undefined, 'fraud-alerts').catch(() => {});
     return res.status(200).json({ success: true, data });
   } catch (error) {
     console.error('Error in getFraudAlerts:', error);
@@ -146,6 +152,7 @@ export const getOrganizerDashboard = async (req, res) => {
     const data = await organizerDashboardService.getOrganizerDashboardMetrics({
       organizerUser: req.user,
       eventId,
+      orgContext: req.org || null,
     });
     return res.status(200).json({ success: true, data });
   } catch (error) {

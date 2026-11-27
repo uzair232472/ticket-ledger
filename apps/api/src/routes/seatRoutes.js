@@ -5,7 +5,7 @@ import {
   unlockSeat, 
   generateSeatGrid 
 } from '../controllers/seatController.js';
-import { authenticateJWT, requireRole } from '../middlewares/auth.js';
+import { authenticateJWT, orgGuard } from '../middlewares/auth.js';
 
 const router = express.Router();
 
@@ -24,6 +24,6 @@ router.post('/lock', authenticateJWT, lockSeat);
 router.post('/unlock', authenticateJWT, unlockSeat);
 
 // Venue grid generation (Organizer / Super Admin only)
-router.post('/generate-grid', authenticateJWT, requireRole('ORGANIZER', 'SUPER_ADMIN'), generateSeatGrid);
+router.post('/generate-grid', ...orgGuard('event.edit'), generateSeatGrid);
 
 export default router;

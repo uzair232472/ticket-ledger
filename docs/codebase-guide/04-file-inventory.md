@@ -65,7 +65,7 @@ ticket-ledger/
 │   │   ├── main.py              inference + training endpoints
 │   │   ├── scripts/             data generator, 3 trainers, evaluator
 │   │   ├── data/                synthetic CSVs
-│   │   ├── models/              model_metrics.json (+ git-ignored .joblib)
+│   │   ├── models/              v0/ artifacts + registry.json (git-ignored .joblib)
 │   │   └── train_models.py      legacy trainer (incompatible)
 │   └── web/                     React + Vite frontend (port 5173)
 │       ├── index.html, vite.config.js (alias @venue-core), tailwind/postcss configs
@@ -428,9 +428,8 @@ Columns: **Module** = the [module page](02-modules/README.md) the file belongs t
 | `apps/ml-service/data/test_fraud.csv` | behavior-ml | Test split written by a training script | — | — | — |
 | `apps/ml-service/data/test_intent.csv` | behavior-ml | Test split written by a training script | — | — | — |
 | `apps/ml-service/main.py` | behavior-ml | FastAPI app: inference and training endpoints | — | — | — |
-| `apps/ml-service/models/model_metrics.json` | behavior-ml | Recorded evaluation metrics (synthetic test sets) | — | — | — |
 | `apps/ml-service/requirements.txt` | behavior-ml | Python dependencies | — | — | — |
-| `apps/ml-service/scripts/evaluate_models.py` | behavior-ml | Evaluate models, write model_metrics.json | — | — | — |
+| `apps/ml-service/scripts/evaluate_models.py` | behavior-ml | Legacy models only: writes dev/legacy-synthetic/legacy_model_metrics.json | — | — | — |
 | `apps/ml-service/scripts/generate_synthetic_data.py` | behavior-ml | Synthetic dataset generator | — | — | — |
 | `apps/ml-service/scripts/train_demand_model.py` | behavior-ml | Train demand sales regressor + level classifier | — | — | — |
 | `apps/ml-service/scripts/train_fraud_model.py` | behavior-ml | Train calibrated random-forest fraud model | — | — | — |

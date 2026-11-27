@@ -8,8 +8,10 @@ import './basic.css';
 /**
  * Plain (non-animated) page layout for everyday account screens such as Notifications and Profile:
  * the homepage header, menu and footer around the Explore Events paper background and editorial heading.
+ * theme="dark": navy page with green glows (Notifications).
  */
-export default function BasicShell({ eyebrow, title, intro, actions, children }) {
+export default function BasicShell({ eyebrow, title, intro, actions, children, theme = 'light' }) {
+  const dark = theme === 'dark';
   const navigate = useNavigate();
   const navigationType = useNavigationType();
   const pageRef = useRef(null);
@@ -37,8 +39,8 @@ export default function BasicShell({ eyebrow, title, intro, actions, children })
   }, []);
 
   return (
-    <div className="tl-home tl-basic">
-      <HomeHeader pageRef={pageRef} onCategories={() => navigate('/events')} tone="light" />
+    <div className={`tl-home tl-basic${dark ? ' tl-basic--dark' : ''}`}>
+      <HomeHeader pageRef={pageRef} onCategories={() => navigate('/events')} tone={dark ? 'dark' : 'light'} />
       <div ref={pageRef}>
         <main className="tl-basic-main">
           <header className="tl-basic-head">
