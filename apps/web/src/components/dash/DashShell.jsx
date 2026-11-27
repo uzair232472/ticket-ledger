@@ -27,8 +27,8 @@ const CONSOLES = {
     label: 'Admin console',
     links: [
       { to: '/admin/dashboard', label: 'Overview', adminPermission: 'admin.view' },
-      { to: '/admin/companies', label: 'Approvals', badge: 'companies', adminPermission: 'admin.approvals' },
-      { to: '/admin/event-approvals', label: 'Event approvals', badge: 'eventApprovals', adminPermission: 'admin.approvals' },
+      { to: '/admin/companies', label: 'Approvals', badge: 'eventApprovals', adminPermission: 'admin.approvals' },
+      { to: '/admin/organizer-approvals', label: 'Organizer approvals', badge: 'companies', adminPermission: 'admin.approvals' },
       { to: '/admin/finance', label: 'Finance', adminPermission: 'admin.finance' },
       { to: '/admin/fraud-watchlist', label: 'Fraud watchlist', adminPermission: 'admin.fraud' },
       { to: '/admin/fraud-review', label: 'Fraud review', adminPermission: 'admin.fraud' },
@@ -152,7 +152,7 @@ function NavGroup({ group, current }) {
 }
 
 // Screens on the organizer studio theme. The rest of the consoles follow once it is signed off.
-const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor', '/admin/ai-models', '/admin/ai-readiness', '/organizer/purchase-intent', '/organizer/demand-forecast', '/organizer/abandoned-intents'];
+const STUDIO_ROUTES = ['/admin/finance', '/admin/platform', '/admin/investigations', '/organizer/checkout-settings', '/admin/payouts', '/organizer/support', '/support/desk', '/organizer/gates', '/scanner', '/organizer/team', '/organizer/organization', '/organizer/discounts', '/admin/dashboard', '/admin/companies', '/admin/organizer-approvals', '/admin/event-approvals', '/admin/fraud-watchlist', '/admin/fraud-review', '/admin/behavior-profile', '/organizer/dashboard', '/admin/purchase-intent', '/analytics/intent', '/admin/demand-forecast', '/demand-forecast', '/admin/abandoned-intents', '/admin/ai-monitor', '/admin/ai-models', '/admin/ai-readiness', '/organizer/purchase-intent', '/organizer/demand-forecast', '/organizer/abandoned-intents'];
 
 // Admin nav badges (like unread counts): what is waiting for a decision. Re-read on every page change, every
 // 30 seconds, and when a review page fires `tl:pending-changed` after a decision.
@@ -197,6 +197,7 @@ const PAGE_ICONS = {
   ...SIDEBAR_ICONS,
   '/admin/dashboard': LayoutGrid,
   '/admin/companies': BadgeCheck,
+  '/admin/organizer-approvals': SIDEBAR_ICONS['/admin/organizer-approvals'],
   '/admin/event-approvals': CalendarCheck,
   '/admin/finance': Wallet,
   '/admin/fraud-watchlist': ShieldAlert,

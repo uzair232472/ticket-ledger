@@ -287,6 +287,7 @@ export default function App() {
               {/* Protected Super Admin Governance */}
               <Route path="/admin/dashboard" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminDashboard /></ProtectedRoute></DashShell>} />
               <Route path="/admin/companies" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies /></ProtectedRoute></DashShell>} />
+              <Route path="/admin/organizer-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminCompanies scope="organizers" /></ProtectedRoute></DashShell>} />
               <Route path="/admin/event-approvals" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminEventApprovals /></ProtectedRoute></DashShell>} />
               <Route path="/admin/finance" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminFinance /></ProtectedRoute></DashShell>} />
               <Route path="/admin/platform" element={<DashShell><ProtectedRoute allowedRoles={['SUPER_ADMIN']}><AdminPlatform /></ProtectedRoute></DashShell>} />

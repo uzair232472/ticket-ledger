@@ -358,7 +358,7 @@ export default function SuperAdminDashboard() {
               <button type="button" className="tl-aov-iconbtn" onClick={refreshAll} aria-label="Refresh data" title="Refresh data">
                 <RefreshCw className={`w-4 h-4 ${loadingMetrics || loadingTab ? 'tl-dash-spin' : ''}`} />
               </button>
-              <Link to="/admin/companies" className="tl-aov-cta">
+              <Link to="/admin/organizer-approvals" className="tl-aov-cta">
                 Review approvals{m.companies?.pendingApproval ? ` (${m.companies.pendingApproval})` : ''} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </Link>
             </>

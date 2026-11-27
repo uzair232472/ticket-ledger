@@ -57,7 +57,7 @@ function useMenuGroups(onCategories) {
       title: 'Admin',
       items: [
         { label: 'Admin Dashboard', to: '/admin/dashboard' },
-        { label: 'Organizer Approvals', to: '/admin/companies' },
+        { label: 'Organizer Approvals', to: '/admin/organizer-approvals' },
         { label: 'Event Approvals', to: '/admin/event-approvals' },
         { label: 'Fraud Watchlist', to: '/admin/fraud-watchlist' },
         { label: 'Demand Forecast', to: '/admin/demand-forecast' },

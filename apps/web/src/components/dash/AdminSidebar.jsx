@@ -5,6 +5,7 @@ import {
   Menu,
   X,
   BadgeCheck,
+  UserCheck,
   Banknote,
   Brain,
   Building2,
@@ -42,6 +43,7 @@ const PAGE_LINKS = [
 // Icons for the admin console links (DashShell CONSOLES.SUPER_ADMIN)
 export const ICONS = {
   '/admin/companies': BadgeCheck,
+  '/admin/organizer-approvals': UserCheck,
   '/admin/event-approvals': CalendarCheck,
   '/admin/finance': Banknote,
   '/admin/fraud-watchlist': AlertTriangle,

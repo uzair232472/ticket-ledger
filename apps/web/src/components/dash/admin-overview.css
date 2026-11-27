@@ -76,8 +76,12 @@
   /* Scrolls without a visible scrollbar */
   scrollbar-width: none;
   -ms-overflow-style: none;
-  padding-bottom: 12px;
+  /* The scroll box clips sideways too: room on both sides so the active pill's border and glow aren't cut */
+  margin: 0 -12px;
+  padding: 0 12px 12px;
 }
+.tl-aov-side-link { min-width: 0; }
+.tl-aov-side-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-aov-side-nav::-webkit-scrollbar { display: none; }
 
 /* Header logo follows the sidebar: ticket mark only while collapsed, full logo when open */

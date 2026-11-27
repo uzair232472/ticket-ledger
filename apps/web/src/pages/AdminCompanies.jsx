@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Search,
   User,
+  UserCheck,
   X,
   XCircle,
 } from 'lucide-react';
@@ -72,10 +73,10 @@ const STATUS_FILTERS = [
   { value: 'REJECTED', label: 'Rejected' },
   { value: 'SUSPENDED', label: 'Suspended' },
 ];
+// Approvals holds event requests; organizer registrations have their own page (Organizer approvals)
 const GROUPS = [
   { value: 'ALL', label: 'All requests' },
   { value: 'EVENT', label: 'Events' },
-  { value: 'ORG', label: 'Organizers' },
   { value: 'OTHER', label: 'Others' },
 ];
 
@@ -180,7 +181,8 @@ function StatusMenu({ value, onChange, counts }) {
  * and other event requests (promotions, date changes). Organizers are decided here; events and other
  * requests open their full review screen.
  */
-export default function AdminCompanies() {
+export default function AdminCompanies({ scope = 'requests' }) {
+  const orgs = scope === 'organizers';
   const dialog = useDialog();
   const { token } = useAuth();
 
@@ -278,7 +280,7 @@ export default function AdminCompanies() {
   };
 
   // ----- List, counts, filters, pages -----
-  const all = useMemo(() => toRequests(data), [data]);
+  const all = useMemo(() => toRequests(data).filter((r) => (orgs ? r.group === 'ORG' : r.group !== 'ORG')), [data, orgs]);
   const groupCounts = useMemo(() => ({
     ALL: all.length,
     EVENT: all.filter((r) => r.group === 'EVENT').length,
@@ -344,9 +346,9 @@ export default function AdminCompanies() {
   return (
     <div className="tl-aov tl-aov-sec tl-apv">
       <PageHero
-        icon={BadgeCheck}
-        title="Approvals"
-        intro="Review and manage pending requests from organizers."
+        icon={orgs ? UserCheck : BadgeCheck}
+        title={orgs ? 'Organizer approvals' : 'Approvals'}
+        intro={orgs ? 'Review organizer registrations: approve, reject or suspend companies.' : 'Review events, promotions and date changes sent in by organizers.'}
         aside={(
         <div className="tl-apv-summary" role="group" aria-label="Approval summary">
           <div><Clock className="is-warn" aria-hidden="true" /><strong>{summary.pending}</strong><span>Pending</span></div>
@@ -364,11 +366,11 @@ export default function AdminCompanies() {
       )}
 
       {/* New or changed payout accounts waiting for a check */}
-      <PayoutReviews />
+      {!orgs && <PayoutReviews />}
 
       <div className="tl-apv-bar">
         <div className="tl-apv-filters" role="group" aria-label="Request type">
-          {GROUPS.map((t) => (
+          {(orgs ? [{ value: 'ALL', label: 'Organizers' }] : GROUPS).map((t) => (
             <button key={t.value} type="button" className={`tl-apv-filter${group === t.value ? ' is-active' : ''}`} aria-pressed={group === t.value} onClick={() => setGroup(t.value)}>
               {t.label} <span>{groupCounts[t.value]}</span>
             </button>
@@ -378,7 +380,7 @@ export default function AdminCompanies() {
           <label className="tl-apv-search">
             <Search className="w-4 h-4" aria-hidden="true" />
             <span className="sr-only">Search requests</span>
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search requests…" />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={orgs ? 'Search organizers…' : 'Search requests…'} />
           </label>
           <StatusMenu value={status} onChange={setStatus} counts={statusCounts} />
         </div>

@@ -8,8 +8,8 @@ const FRONTEND = () => process.env.FRONTEND_URL || 'http://localhost:5173';
 const ACTIONS = [
   [/^EVENT_REVIEW_REQUEST/, 'Review event', '/admin/event-approvals'],
   [/^ADMIN_EVENT/, 'Open event approvals', '/admin/event-approvals'],
-  [/^ADMIN_COMPANY_REVIEW_REQUEST/, 'Review organizer', '/admin/companies'],
-  [/^ADMIN_COMPANY/, 'Open organizer approvals', '/admin/companies'],
+  [/^ADMIN_COMPANY_REVIEW_REQUEST/, 'Review organizer', '/admin/organizer-approvals'],
+  [/^ADMIN_COMPANY/, 'Open organizer approvals', '/admin/organizer-approvals'],
   [/^EVENT_(SUBMITTED|APPROVED|REJECTED|CREATED|UPDATED|SEATING|PRICES)/, 'Open organizer dashboard', '/organizer/dashboard'],
   [/^(ORGANIZER|COMPANY)/, 'Open organizer dashboard', '/organizer/dashboard'],
   [/^(PASSWORD|PROFILE|WALLET|ACCOUNT)/, 'Open your profile', '/profile'],
