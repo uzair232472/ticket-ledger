@@ -38,6 +38,7 @@ import { getRecommendations, postRecommendationClick, postRecommendationRendered
 import { recBeaconRateLimiter } from '../middlewares/rateLimit.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
 
+import { requireCompleteProfile } from '../services/profileCompleteness.js';
 import { getSubmissionStatus, submitEventForReview, replyToReview, withdrawFromReview } from '../controllers/eventReviewController.js';
 
 const router = express.Router();
@@ -138,9 +139,9 @@ router.get(
 
 // Review & submit: readiness check, and sending the event to admins for approval
 router.get('/:id/submission', ...orgGuard('event.view'), getSubmissionStatus);
-router.post('/:id/submit', ...orgGuard('event.submit'), submitEventForReview);
+router.post('/:id/submit', ...orgGuard('event.submit'), requireCompleteProfile, submitEventForReview);
 // Answer an admin's question (and optionally accept the date they suggested)
-router.post('/:id/review-reply', ...orgGuard('event.submit', { allowPlatformAdmin: false }), replyToReview);
+router.post('/:id/review-reply', ...orgGuard('event.submit', { allowPlatformAdmin: false }), requireCompleteProfile, replyToReview);
 // Take it back from review to change it (editing is locked while an admin reviews it)
 router.post('/:id/review-withdraw', ...orgGuard('event.submit', { allowPlatformAdmin: false }), withdrawFromReview);
 

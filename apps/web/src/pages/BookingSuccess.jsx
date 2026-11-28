@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { ArrowRight, Calendar, Check, Clock, MapPin, QrCode, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Calendar, Check, Clock, CreditCard, Hash, Info, MapPin, QrCode, RefreshCw, Ticket } from 'lucide-react';
+import { getEventVisual } from '../utils/eventMedia';
 import api from '../utils/api';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
@@ -86,7 +87,7 @@ export default function BookingSuccess() {
 
   if (status === 'loading' && !order) {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {head('Checking your order')}
         <section className="tl-bk-panel tl-co-status is-pending" aria-busy="true">
           <span className="tl-co-status-icon" aria-hidden="true"><Clock className="w-6 h-6" /></span>
@@ -99,7 +100,7 @@ export default function BookingSuccess() {
 
   if (status === 'error' && !order) {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {head('Order unavailable')}
         <section className="tl-bk-panel tl-co-status is-error" role="alert">
           <p>{error}</p>
@@ -115,16 +116,11 @@ export default function BookingSuccess() {
   const { event, tickets = [] } = order;
   const nftPending = tickets.filter(isNftPending).length;
   const time = formatEventTime(event?.time);
-  const eventMeta = event && (
-    <p className="tl-bk-meta">
-      <span><MapPin className="w-4 h-4" aria-hidden="true" /> {event.venue}, {event.city}</span>
-      {event.date && <span><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</span>}
-    </p>
-  );
+
 
   if (order.status === 'PENDING') {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {head('Payment pending', 'checkout')}
         <section className="tl-bk-panel tl-co-status is-pending" aria-labelledby="pending-title">
           <span className="tl-co-status-icon" aria-hidden="true"><Clock className="w-6 h-6" /></span>
@@ -149,7 +145,7 @@ export default function BookingSuccess() {
 
   if (order.status !== 'SUCCESSFUL') {
     return (
-      <BookingShell>
+      <BookingShell dark>
         {head('Order not completed', 'checkout')}
         <section className="tl-bk-panel tl-co-status is-error" aria-labelledby="failed-title">
           <h2 id="failed-title" className="tl-co-status-title">No tickets were issued</h2>
@@ -165,56 +161,86 @@ export default function BookingSuccess() {
     );
   }
 
+  const paidAt = new Date(order.createdAt).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' });
   return (
-    <BookingShell>
+    <BookingShell dark>
       {!popupClosed && <OrderConfirmedModal order={order} receipt={receipt} onClose={() => setPopupClosed(true)} />}
       {head('You’re going')}
 
-      <section className="tl-bk-panel tl-co-status is-ok tl-bk-rise" aria-labelledby="ok-title">
-        <span className="tl-co-status-icon" aria-hidden="true"><Check className="w-6 h-6" /></span>
-        <h2 id="ok-title" className="tl-co-status-title">{event?.name}</h2>
-        {eventMeta}
-        <p>Payment confirmed and {tickets.length} ticket{tickets.length === 1 ? '' : 's'} issued to your account. Show the rotating QR code from your ticket wallet at the gate.</p>
-        {nftPending > 0 && (
-          <p className="tl-co-note" role="status">
-            NFT issuance pending for {nftPending} ticket{nftPending === 1 ? '' : 's'}. Nothing is lost: your payment and tickets are confirmed and the QR pass works at the gate. We retry automatically and you’ll get a notification when it’s done.
-          </p>
-        )}
-        <div className="tl-co-actions">
-          <Link to="/wallet" className="tl-bk-btn"><QrCode className="w-4 h-4" aria-hidden="true" /> Open ticket wallet</Link>
-          <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost">My orders <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
+      <div className="tl-co-grid">
+        <div className="tl-bk-rise">
+          {/* Event, with the confirmed status */}
+          <section className="tl-bk-panel tl-bs-event" aria-labelledby="ok-title">
+            {event && <img className="tl-bs-event-img" src={getEventVisual(event).imageUrl} alt="" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />}
+            <div className="tl-bs-event-body">
+              <span className="tl-bs-chip"><Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" /> Booking confirmed</span>
+              <h2 id="ok-title" className="tl-bs-event-name">{event?.name}</h2>
+              {event?.date && <p className="tl-bs-meta"><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</p>}
+              {event?.venue && <p className="tl-bs-meta"><MapPin className="w-4 h-4" aria-hidden="true" /> {event.venue}{event.city ? `, ${event.city}` : ''}</p>}
+              <p className="tl-bs-lead">Payment confirmed and {tickets.length} ticket{tickets.length === 1 ? '' : 's'} issued to your account. Show the rotating QR code from your ticket wallet at the gate.</p>
+            </div>
+          </section>
+
+          {/* Issued tickets */}
+          <section className="tl-bk-panel" aria-labelledby="tickets-title">
+            <h2 id="tickets-title" className="tl-bk-h2">Issued tickets <small>{tickets.length}</small></h2>
+            <ul className="tl-bs-tickets">
+              {tickets.map((t, i) => (
+                <li key={t.id} className="tl-bs-ticket" style={{ '--tc': t.seat?.tier?.color || '#22e06b' }}>
+                  <div className="tl-bs-ticket-head">
+                    <span className="tl-bs-ticket-tier"><Ticket className="w-4 h-4" aria-hidden="true" /> {t.seat?.tier?.name || 'Ticket'}</span>
+                    <b>{formatPkr(t.price)}</b>
+                  </div>
+                  <dl className="tl-bs-ticket-facts">
+                    {seatFacts(t.seat).map(([k, v]) => (
+                      <div key={k}><dt>{k}</dt><dd>{v ?? '—'}</dd></div>
+                    ))}
+                  </dl>
+                  <div className="tl-bs-ticket-foot">
+                    <span>Ticket {i + 1} of {tickets.length}</span>
+                    {t.states ? (
+                      <span className="tl-bs-ticket-states">
+                        <i className={t.states.entry.valid ? 'is-ok' : ''}>{t.states.entry.label}</i>
+                        <i className={t.states.nft.status === 'VERIFIED' ? 'is-ok' : isNftPending(t) ? 'is-wait' : ''}>{t.states.nft.label}{t.states.nft.status === 'VERIFIED' && t.tokenId != null ? ` #${t.tokenId}` : ''}</i>
+                      </span>
+                    ) : <span className="tl-bs-ticket-states"><i>{t.status}</i></span>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
-      </section>
 
-      <section className="tl-bk-panel tl-bk-rise" aria-labelledby="tickets-title">
-        <h2 id="tickets-title" className="tl-bk-h2">Issued tickets <small>{tickets.length}</small></h2>
-        <ul className="tl-co-tickets">
-          {tickets.map((t, i) => (
-            <li key={t.id} className="tl-co-ticket">
-              <p className="tl-vb-group-name">{t.seat?.tier?.name || 'Ticket'} <span>{formatPkr(t.price)}</span></p>
-              <dl className="tl-co-ticket-facts">
-                {seatFacts(t.seat).map(([k, v]) => (
-                  <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
-                ))}
-              </dl>
-              <p className="tl-co-ticket-foot">
-                <span>Ticket {i + 1} of {tickets.length}</span>
-                <span>{t.states ? `${t.states.entry.label} · ${t.states.nft.label}${t.states.nft.status === 'VERIFIED' && t.tokenId != null ? ` #${t.tokenId}` : ''}` : t.status}</span>
+        {/* Receipt and next steps */}
+        <aside className="tl-co-aside tl-bk-rise" aria-labelledby="receipt-title">
+          <section className="tl-bk-panel">
+            <h2 id="receipt-title" className="tl-bk-h2">Receipt</h2>
+            <div className="tl-bs-total">
+              <span>Total paid</span>
+              <strong>{formatPkr(order.totalAmount)}</strong>
+              <span className="tl-bs-paid"><Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" /> Paid</span>
+            </div>
+            <dl className="tl-bs-receipt">
+              <div><dt><Ticket className="w-4 h-4" aria-hidden="true" /> Tickets</dt><dd>{tickets.length}</dd></div>
+              <div><dt><CreditCard className="w-4 h-4" aria-hidden="true" /> Payment</dt><dd>{order.paymentMethod}</dd></div>
+              <div><dt><Hash className="w-4 h-4" aria-hidden="true" /> Transaction</dt><dd className="tl-co-mono">{order.paymentTxId || receipt?.transactionId || '—'}</dd></div>
+              <div><dt><Clock className="w-4 h-4" aria-hidden="true" /> Ordered</dt><dd>{paidAt}</dd></div>
+            </dl>
+            {nftPending > 0 && (
+              <p className="tl-bs-note" role="status">
+                <Info className="w-4 h-4" aria-hidden="true" />
+                <span>NFT issuance pending for {nftPending} ticket{nftPending === 1 ? '' : 's'}. Your payment and tickets are confirmed and the QR pass works at the gate; we retry automatically and notify you when it’s done.</span>
               </p>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="tl-bk-panel tl-bk-rise" aria-labelledby="receipt-title">
-        <h2 id="receipt-title" className="tl-bk-h2">Receipt</h2>
-        <dl className="tl-co-meta">
-          <div><dt>Total paid</dt><dd>{formatPkr(order.totalAmount)}</dd></div>
-          <div><dt>Payment</dt><dd>{order.paymentMethod}</dd></div>
-          <div><dt>Transaction</dt><dd className="tl-co-mono">{order.paymentTxId || receipt?.transactionId || '—'}</dd></div>
-          <div><dt>Ordered</dt><dd>{new Date(order.createdAt).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' })}</dd></div>
-        </dl>
-      </section>
+            )}
+            <div className="tl-bs-actions">
+              <Link to="/wallet" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg"><QrCode className="w-5 h-5" aria-hidden="true" /> Open ticket wallet</Link>
+              <Link to="/my-bookings" className="tl-bk-btn tl-bk-btn--ghost tl-bk-btn--block">My orders <ArrowRight className="w-4 h-4" aria-hidden="true" /></Link>
+              <Link to="/events" className="tl-bs-back"><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to events</Link>
+            </div>
+            <p className="tl-bs-foot"><Info className="w-4 h-4" aria-hidden="true" /> Show your ticket QR code at the entrance.</p>
+          </section>
+        </aside>
+      </div>
     </BookingShell>
   );
 }

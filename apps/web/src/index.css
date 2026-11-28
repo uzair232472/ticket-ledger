@@ -18,6 +18,14 @@ body {
   overflow-x: hidden;
 }
 
+/* No sideways scrolling anywhere: decorations that reach past the edge (page loader cells, hero art, maps) are
+   clipped. `clip` (unlike `hidden`) also stops trackpad / touch panning and keeps position: sticky working. */
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 .font-display {
   font-family: 'Plus Jakarta Sans', 'Space Grotesk', -apple-system, sans-serif;
 }

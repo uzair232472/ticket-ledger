@@ -144,6 +144,8 @@ export default function CompanyRegistration() {
       });
 
       const data = await res.json();
+      // Incomplete profile: the app-wide prompt leads to the profile form
+      if (data.code === 'PROFILE_INCOMPLETE') window.dispatchEvent(new CustomEvent('tl:profile-incomplete', { detail: data }));
       if (!res.ok) throw new Error(data.message || 'Failed to submit registration');
 
       setMessage({ text: data.message, type: 'success' });

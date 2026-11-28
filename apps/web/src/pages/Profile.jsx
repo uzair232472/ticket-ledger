@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import BasicShell from '../components/basic/BasicShell';
 import { useDialog } from '../components/ui/DialogProvider';
@@ -77,7 +77,13 @@ export default function Profile() {
   const { token, user: authUser } = useAuth();
 
   // Navigation tabs matching Eventfrog structure
-  const [activeTab, setActiveTab] = useState('overview');
+  const location = useLocation();
+  // ?tab=my-data opens a tab directly (the "Complete profile" prompts link here)
+  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(location.search).get('tab') || 'overview');
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab');
+    if (t) setActiveTab(t);
+  }, [location.search]);
   // 'my-data' | 'security' | 'notifications' | 'intent' | 'preferred-website' | 'api-keys' | 'privacy' | 'overview'
 
   // Phones start with the navigation groups collapsed, so the overview is visible first
@@ -412,6 +418,16 @@ export default function Profile() {
     setActiveTab(tab);
     setMessage({ text: '', type: '' });
   };
+  // Same rule as the server (services/profileCompleteness.js), from what is saved
+  const strictProfile = ['ORGANIZER', 'GATE_STAFF'].includes(profile?.role);
+  const profileChecks = profile ? [
+    ['Profile picture', Boolean(profile.avatarUrl)],
+    ['Salutation', Boolean(profile.salutation)],
+    ['First and last name', (profile.name || '').trim().split(/\s+/).filter(Boolean).length >= 2],
+    ['Phone number', (profile.phone || '').replace(/\D/g, '').length >= 10],
+    ['City', Boolean(profile.city)],
+  ] : [];
+  const profileDone = profileChecks.filter(([, ok]) => ok).length;
   const roleLabel = { CUSTOMER: 'Customer', ORGANIZER: 'Organizer', SUPER_ADMIN: 'Admin', GATE_STAFF: 'Gate staff' }[profile?.role] || 'Member';
   const initials = (profile?.name || profile?.email || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
   const SETTINGS_TABS = [
@@ -536,13 +552,39 @@ export default function Profile() {
                 </p>
               </div>
 
+              {/* Completeness: required for organizers and gate staff before any approval request */}
+              {profile && (
+                <div className={`rounded-3xl border p-5 sm:p-6 ${profileDone === profileChecks.length ? 'bg-emerald-50 border-emerald-200' : strictProfile ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200/90'}`}>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm font-extrabold text-[#212b36]">
+                      {profileDone === profileChecks.length ? 'Your profile is complete' : strictProfile ? 'Complete your profile to request approvals' : 'Complete your profile (optional)'}
+                    </p>
+                    <span className="text-xs font-bold text-slate-600">{profileDone} of {profileChecks.length}</span>
+                  </div>
+                  <div className="mt-3 h-2 rounded-full bg-slate-200 overflow-hidden" aria-hidden="true">
+                    <div className="h-full rounded-full bg-[#008459] transition-all" style={{ width: `${(profileDone / Math.max(1, profileChecks.length)) * 100}%` }} />
+                  </div>
+                  {strictProfile && profileDone < profileChecks.length && (
+                    <p className="text-xs text-amber-900 mt-3">Organizers and gate staff need every field below, including a profile picture, before requesting event or organization approval.</p>
+                  )}
+                  <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                    {profileChecks.map(([label, ok]) => (
+                      <li key={label} className={`flex items-center gap-2 ${ok ? 'text-emerald-800' : 'text-slate-700 font-semibold'}`}>
+                        <span className={`w-4 h-4 rounded-full grid place-items-center shrink-0 ${ok ? 'bg-[#008459] text-white' : 'border-2 border-slate-300'}`}>{ok && <Check className="w-3 h-3" />}</span>
+                        {label}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Form Container */}
               <div className="bg-white rounded-3xl border border-slate-200/90 p-6 sm:p-8 shadow-sm space-y-6">
 
                 {/* Profile picture dropzone */}
                 <div className="space-y-3">
                   <label className="block text-xs font-bold text-slate-800">
-                    Profile picture
+                    Profile picture{strictProfile ? '*' : ''}
                   </label>
 
                   <div

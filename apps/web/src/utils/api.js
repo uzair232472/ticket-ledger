@@ -39,6 +39,17 @@ installAxiosInterceptor(api);
 // Destructive admin actions: ask the admin to type the confirmation phrase, then retry
 installTypedConfirm(api);
 
+// Organizers and gate staff with an incomplete profile can't request approvals: ProfileGate shows what is missing
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error.response?.data?.code === 'PROFILE_INCOMPLETE') {
+      window.dispatchEvent(new CustomEvent('tl:profile-incomplete', { detail: error.response.data }));
+    }
+    return Promise.reject(error);
+  },
+);
+
 // Client-side telemetry helper
 export const trackClientBehavior = async (action, eventId = null, metadata = {}) => {
   try {

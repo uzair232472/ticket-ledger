@@ -8,6 +8,7 @@ import '../components/lifecycle/lifecycle.css';
 import '../components/account/bookingTools.css';
 import api from '../utils/api';
 import BookingTools from '../components/account/BookingTools';
+import AccountSearch, { haystack, matchesQuery } from '../components/account/AccountSearch';
 import {
   Ticket,
   Calendar,
@@ -32,6 +33,7 @@ export default function MyBookings() {
     return () => window.removeEventListener('tl:bookings-changed', again);
   }, []);
   const [orders, setOrders] = useState([]);
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Events of mine that were cancelled, postponed or moved (with refunds open), and refunds paid to me
@@ -72,6 +74,9 @@ export default function MyBookings() {
 
   const ticketCount = orders.reduce((n, o) => n + (o.tickets?.length || 0), 0);
 
+  const orderText = (o) => haystack(o.event?.name, o.event?.venue, o.event?.city, o.event?.type, o.id, o.id?.slice(0, 8), o.paymentMethod, o.status, ...(o.tickets || []).map((t) => [t.seat?.section, t.seat?.row && `row ${t.seat.row}`, t.seat?.seatNumber && `seat ${t.seat.seatNumber}`, t.seat?.tier?.name].filter(Boolean).join(' ')));
+  const shownOrders = query.trim() ? orders.filter((o) => matchesQuery(orderText(o), query)) : orders;
+
   return (
     <AccountShell
       eyebrow="My account · Orders"
@@ -87,7 +92,7 @@ export default function MyBookings() {
           <Ticket className="w-4 h-4" aria-hidden="true" /> Browse more events
         </Link>
       }
-      contentKey={`${loading}-${orders.length}-${Boolean(error)}`}
+      contentKey={`${loading}-${query}-${orders.length}-${Boolean(error)}`}
     >
       <AccountSection id="tl-orders" kicker="Booking history" title="Purchases" aside="Orders are listed newest first, with their payment status and the seats in each booking.">
       {loading ? (
@@ -175,8 +180,10 @@ export default function MyBookings() {
           </Link>
         </div>
       ) : (
-        <div className="space-y-4">
-          {orders.map((order) => {
+        <div className="space-y-4 tl-orders">
+          <AccountSearch id="orders-search" value={query} onChange={setQuery} placeholder="Search by event, venue, city, order ref or seat" shown={shownOrders.length} total={orders.length} noun="orders" />
+          {shownOrders.length === 0 && <p className="tl-asearch-empty">No order matches “{query.trim()}”.<button type="button" onClick={() => setQuery('')}>Clear search</button></p>}
+          {shownOrders.map((order) => {
             const { event, tickets = [] } = order;
             const isConfirmed = order.status === 'SUCCESSFUL';
 
@@ -184,9 +191,9 @@ export default function MyBookings() {
               <div
                 key={order.id}
                 data-reveal
-                className="p-6 rounded-3xl bg-white border border-slate-200/90 hover:shadow-md transition space-y-4 shadow-sm"
+                className="tl-order-card p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 hover:shadow-md transition space-y-3 shadow-sm"
               >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
@@ -196,7 +203,7 @@ export default function MyBookings() {
                         Ref #{order.id.substring(0, 8).toUpperCase()}
                       </span>
                     </div>
-                    <h3 className="text-lg font-bold text-slate-900">{event?.name}</h3>
+                    <h3 className="text-base font-bold text-slate-900">{event?.name}</h3>
                     <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
                       <span className="flex items-center gap-1">
                         <MapPin className="w-3.5 h-3.5 text-emerald-600" /> {event?.venue}, {event?.city}
@@ -210,7 +217,7 @@ export default function MyBookings() {
 
                   <div className="text-left md:text-right">
                     <div className="text-[11px] text-slate-500">Paid Amount</div>
-                    <div className="text-xl font-black text-slate-900 font-mono">
+                    <div className="text-lg font-black text-slate-900 font-mono">
                       Rs. {Number(order.totalAmount).toLocaleString()}
                     </div>
                     <span
@@ -233,7 +240,7 @@ export default function MyBookings() {
                     {tickets.map((t, idx) => (
                       <div
                         key={t.id}
-                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
+                        className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs"
                       >
                         <div>
                           <div className="font-bold text-slate-900">

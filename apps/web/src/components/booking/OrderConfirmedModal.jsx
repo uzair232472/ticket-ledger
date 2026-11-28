@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { Bell, Calendar, Check, Info, MapPin, X } from 'lucide-react';
-import markUrl from '../../assets/ticketledger-mark.svg';
+import { ArrowLeft, Armchair, Bell, Calendar, Check, ChevronRight, Info, Layers, MapPin, Ticket, Wallet, X } from 'lucide-react';
 import { formatPkr } from '../venue/venueTheme';
 import { getEventVisual } from '../../utils/eventMedia';
 import { formatEventDate, formatEventTime } from '../../utils/eventTime';
@@ -17,8 +16,8 @@ const seatLabel = (s) => {
 const unique = (list) => [...new Set(list.filter(Boolean))];
 
 /**
- * "You're going!" pop-up shown over the page once an order is SUCCESSFUL: brand mark, a ticket-shaped
- * summary (event, sections, seats, order number, total paid) and links to the wallet and events.
+ * "You're going!" pop-up shown over the page once an order is SUCCESSFUL: a glowing check, the event card
+ * (date, venue, section, seats, ticket count), total paid and links to the wallet and events.
  */
 export default function OrderConfirmedModal({ order, receipt, onClose }) {
   const closeRef = useRef(null);
@@ -60,11 +59,11 @@ export default function OrderConfirmedModal({ order, receipt, onClose }) {
           <X className="w-5 h-5" aria-hidden="true" />
         </button>
 
+        <div className="tl-ok-confetti" aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <i key={i} />)}</div>
         <div className="tl-ok-mark" aria-hidden="true">
-          <img src={markUrl} alt="" />
-          <span className="tl-ok-mark-check"><Check className="w-3.5 h-3.5" strokeWidth={3} /></span>
+          <Check className="w-10 h-10" strokeWidth={3} />
         </div>
-        <h2 id="tl-ok-title" className="tl-ok-title">You’re going!</h2>
+        <h2 id="tl-ok-title" className="tl-ok-title">You’re <em>going!</em></h2>
         <p id="tl-ok-sub" className="tl-ok-sub">
           {nftPending
             ? 'Payment successful and your booking is confirmed. Your tickets work at the gate now; their NFT is still being issued and will finish automatically.'
@@ -77,38 +76,38 @@ export default function OrderConfirmedModal({ order, receipt, onClose }) {
             <div>
               <p className="tl-ok-name">{event?.name}</p>
               {event?.date && (
-                <p className="tl-ok-meta"><Calendar className="w-4 h-4" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</p>
+                <p className="tl-ok-meta"><Calendar className="w-5 h-5" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</p>
               )}
               {event?.venue && (
-                <p className="tl-ok-meta"><MapPin className="w-4 h-4" aria-hidden="true" /> {event.venue}{event.city ? `, ${event.city}` : ''}</p>
+                <p className="tl-ok-meta"><MapPin className="w-5 h-5" aria-hidden="true" /> {event.venue}{event.city ? `, ${event.city}` : ''}</p>
               )}
             </div>
           </div>
 
-          <div className="tl-ok-tear" aria-hidden="true" />
-
           <dl className="tl-ok-facts">
-            <div><dt>Section</dt><dd>{facts.section}</dd></div>
-            <div><dt>Tickets</dt><dd>{tickets.length}</dd></div>
-            <div><dt>Seats</dt><dd>{facts.seats}</dd></div>
-            <div><dt>Order ID</dt><dd className="tl-ok-mono">{orderNo}</dd></div>
+            <div><dt><Layers className="w-5 h-5" aria-hidden="true" /> Section</dt><dd>{facts.section}</dd></div>
+            <div><dt><Armchair className="w-5 h-5" aria-hidden="true" /> Seats</dt><dd>{facts.seats}</dd></div>
+            <div><dt><Ticket className="w-5 h-5" aria-hidden="true" /> Tickets</dt><dd>{tickets.length}</dd></div>
           </dl>
+        </div>
 
-          <div className="tl-ok-total">
-            <span>Total paid</span>
-            <strong>{formatPkr(order.totalAmount ?? receipt?.amountPaid)}</strong>
-            <span className="tl-ok-paid"><Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" /> Paid</span>
-          </div>
+        <div className="tl-ok-total">
+          <Wallet className="tl-ok-total-ico" aria-hidden="true" />
+          <span>Total paid</span>
+          <strong>{formatPkr(order.totalAmount ?? receipt?.amountPaid)}</strong>
+          <span className="tl-ok-paid"><Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" /> Paid</span>
         </div>
 
         <p className="tl-ok-note"><Bell className="w-4 h-4" aria-hidden="true" /> A confirmation was added to your notifications.</p>
 
         <Link to="/wallet" className="tl-ok-primary">
-          <span className="tl-ok-primary-icon" aria-hidden="true" /> View my tickets
+          <span className="tl-ok-primary-icon" aria-hidden="true" /> View my tickets <ChevronRight className="w-5 h-5" aria-hidden="true" />
         </Link>
-        <Link to="/events" className="tl-ok-secondary">Back to events</Link>
+        <div className="tl-ok-secondary-row">
+          <Link to="/events" className="tl-ok-secondary"><ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to events</Link>
+        </div>
 
-        <p className="tl-ok-foot"><Info className="w-4 h-4" aria-hidden="true" /> Show your ticket QR code at the entrance.</p>
+        <p className="tl-ok-foot"><Info className="w-4 h-4" aria-hidden="true" /> Order <span className="tl-ok-mono">{orderNo}</span> · Show your ticket QR code at the entrance.</p>
       </div>
     </div>,
     document.body

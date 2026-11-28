@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BOX_SEATS, DEG, bounds, polygonCentroid, rotate, rowsOf, sectionView3d, shapePolygon, view3dOf, widestChord } from '@venue-core';
-import { ArrowUpRight, ChevronDown, ChevronLeft, Eye, Info, Lightbulb, Maximize2, Moon, ShoppingBag, Sparkles, Sun, Trash2, Plus } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, ChevronLeft, ChevronRight, Coins, Crown, Eye, Info, Lightbulb, MapPin, Maximize2, Moon, Sparkles, Sun, TicketCheck, Trash2, Plus, X } from 'lucide-react';
 import { SeatTicketCard } from './BookingSummary';
 import { formatPkr, generated } from './venueTheme';
 import { canvasTex, gradientTex, quad, toGeo } from './scene3dUtils';
@@ -1104,17 +1104,19 @@ export default function Venue3D({
           closeLabel="Close: the seat stays in My Tickets"
         >
           <div className="tl-v3-actions">
-            <button type="button" className="tl-v3-btn is-primary" onClick={addNext} disabled={!nextSeat() || mineCount >= maxTickets || busy}><Plus className="w-4 h-4" aria-hidden="true" /> Add next seat</button>
-            <button type="button" className="tl-v3-btn" onClick={back}><Eye className="w-4 h-4" aria-hidden="true" /> See another seat</button>
+            <button type="button" className="tl-v3-btn is-primary" onClick={addNext} disabled={!nextSeat() || mineCount >= maxTickets || busy}><Plus className="w-5 h-5" aria-hidden="true" /> Add next seat</button>
+            <button type="button" className="tl-v3-btn" onClick={back}><Eye className="w-5 h-5" aria-hidden="true" /> See another seat</button>
           </div>
           <div className="tl-v3-actions">
-            <button type="button" className="tl-v3-btn is-dark" onClick={onGetTickets}><ShoppingBag className="w-4 h-4" aria-hidden="true" /> Get tickets ({mineCount})</button>
+            <button type="button" className="tl-v3-btn is-dark" onClick={onGetTickets}><TicketCheck className="w-5 h-5" aria-hidden="true" /> Get tickets ({mineCount})</button>
             <button type="button" className="tl-v3-btn is-ghost" onClick={() => onRemoveSeat(seatEntry.seat.key)} disabled={busy}><Trash2 className="w-4 h-4" aria-hidden="true" /> Remove</button>
           </div>
           {boxOffer && boxTier && (
             <div className="tl-v3-actions">
               <button type="button" className="tl-v3-btn is-gold" onClick={() => ctxRef.current?.goSeat(boxOffer.seat.key, { from: seatEntry.seat.key })} disabled={busy}>
-                <ArrowUpRight className="w-4 h-4" aria-hidden="true" /> {diff > 0 ? `Upgrade to a box · ${diffText}` : diff === 0 ? 'See a hospitality box · same price' : `See a hospitality box · ${diffText}`}
+                <Crown className="w-5 h-5 tl-v3-gold-ico" aria-hidden="true" />
+                <span className="tl-v3-gold-txt">{diff > 0 ? 'Upgrade to a box' : 'See a hospitality box'} <span aria-hidden="true">·</span> <b>{diff === 0 ? 'same price' : diffText}</b></span>
+                <ChevronRight className="w-5 h-5 tl-v3-gold-chev" aria-hidden="true" />
               </button>
             </div>
           )}
@@ -1123,23 +1125,31 @@ export default function Venue3D({
 
       {/* Hospitality box offer: its own card (no ticket or QR preview is shown before payment) */}
       {inBox && (
-        <section className="tl-v3-card tl-v3-boxcard" aria-label="Hospitality box upgrade">
+        <section className="tl-v3-card tl-seatcard tl-v3-boxcard" aria-label="Hospitality box upgrade">
           <div className="tl-v3-card-head">
-            <div><small>{boxEntry.sec.name}</small><b>Box {boxOf(boxEntry.seat)} · Row {boxEntry.seat.row} · Seat {boxEntry.seat.number}</b></div>
-            <span className="tl-v3-badge is-gold">Hospitality</span>
+            <span className="tl-seatcard-section"><MapPin className="w-4 h-4" aria-hidden="true" /> <span>{boxEntry.sec.name}</span></span>
+            <div className="tl-seatcard-tools">
+              <span className="tl-v3-badge is-gold"><Crown className="w-4 h-4" aria-hidden="true" /> Hospitality</span>
+              <button type="button" className="tl-seatcard-x" onClick={back} aria-label="Close: back to my seat" title="Back to my seat"><X className="w-4 h-4" aria-hidden="true" /></button>
+            </div>
           </div>
+          <h3 className="tl-seatcard-title">Box {boxOf(boxEntry.seat)} · Row {boxEntry.seat.row} <span className="tl-seatcard-dot" aria-hidden="true">•</span> <em>Seat {boxEntry.seat.number}</em></h3>
           <ul className="tl-v3-perks"><li>Glass-fronted box with leather seats</li><li>This is the view from this box seat</li></ul>
-          <div className="tl-v3-facts is-3">
-            <div><small>Box seat</small><b>{formatPkr(boxTier?.price)}</b></div>
-            <div><small>Your seat</small><b>{formatPkr(tier?.price)}</b></div>
-            <div><small>Difference</small><b>{diff === 0 ? 'Same price' : diffText}</b></div>
+          <div className="tl-v3-facts">
+            <div><Crown className="tl-v3-fact-ico" aria-hidden="true" /><div><small>Box seat</small><b>{formatPkr(boxTier?.price)}</b></div></div>
+            <div><Coins className="tl-v3-fact-ico" aria-hidden="true" /><div><small>Your seat</small><b>{formatPkr(tier?.price)}</b></div></div>
+            <div><ArrowLeftRight className="tl-v3-fact-ico" aria-hidden="true" /><div><small>Difference</small><b>{diff === 0 ? 'Same price' : diffText}</b></div></div>
           </div>
-          <p className="tl-v3-note">Switching reserves this box seat for 10 minutes and then releases your current seat.</p>
+          <p className="tl-v3-note"><Info className="w-5 h-5" aria-hidden="true" /> <span>Switching reserves this box seat for 10 minutes and then releases your current seat.</span></p>
           <div className="tl-v3-actions">
-            <button type="button" className="tl-v3-btn is-gold" onClick={reserveBox} disabled={busy || boxState !== 'available'}>Switch to this box seat</button>
+            <button type="button" className="tl-v3-btn is-gold" onClick={reserveBox} disabled={busy || boxState !== 'available'}>
+              <Crown className="w-5 h-5 tl-v3-gold-ico" aria-hidden="true" />
+              <span className="tl-v3-gold-txt">Switch to this box seat</span>
+              <ChevronRight className="w-5 h-5 tl-v3-gold-chev" aria-hidden="true" />
+            </button>
           </div>
           <div className="tl-v3-actions">
-            <button type="button" className="tl-v3-btn" onClick={back}><ChevronLeft className="w-4 h-4" aria-hidden="true" /> Back to my seat</button>
+            <button type="button" className="tl-v3-btn" onClick={back}><ChevronLeft className="w-5 h-5" aria-hidden="true" /> Back to my seat</button>
           </div>
         </section>
       )}

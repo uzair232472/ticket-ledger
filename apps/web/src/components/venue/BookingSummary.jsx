@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Clock, Eye, ShoppingBag, Ticket, Trash2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Coins, Eye, Info, MapPin, ShoppingBag, Ticket, Tickets, Trash2, X } from 'lucide-react';
 import { formatPkr } from './venueTheme';
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -69,17 +69,23 @@ export function HoldTimer({ secondsLeft, label = 'Reserved for' }) {
  * ticket looks the same everywhere. No ticket, NFT or QR preview is shown before payment.
  */
 export function SeatTicketCard({ section, title, tierName, tierColor, price, gates = [], secondsLeft = null, extra = null, note = null, onClose, closeLabel = 'Close', className = '', label = 'Your seat', nav = null, children }) {
+  // "Row G · Seat 29": the last part (the seat) is the highlighted one
+  const cut = typeof title === 'string' ? title.lastIndexOf(' · ') : -1;
+  const head = cut > 0 ? title.slice(0, cut) : title;
+  const tail = cut > 0 ? title.slice(cut + 3) : null;
+  const urgent = secondsLeft != null && secondsLeft < 60;
   return (
     <section className={`tl-v3-card tl-seatcard${className ? ` ${className}` : ''}`} aria-label={label}>
       <div className="tl-v3-card-head">
-        <div><small>{section}</small><b>{title}</b></div>
+        <span className="tl-seatcard-section"><MapPin className="w-4 h-4" aria-hidden="true" /> <span>{section}</span></span>
         <div className="tl-seatcard-tools">
-          {secondsLeft != null && <span className="tl-v3-timer"><Clock className="w-3.5 h-3.5" aria-hidden="true" /> {formatClock(secondsLeft)}</span>}
+          {secondsLeft != null && <span className={`tl-v3-timer${urgent ? ' is-urgent' : ''}`} role="timer"><Clock className="w-4 h-4" aria-hidden="true" /> {formatClock(secondsLeft)}</span>}
           {onClose && (
             <button type="button" className="tl-seatcard-x" onClick={onClose} aria-label={closeLabel} title={closeLabel}><X className="w-4 h-4" aria-hidden="true" /></button>
           )}
         </div>
       </div>
+      <h3 className="tl-seatcard-title">{head}{tail && <> <span className="tl-seatcard-dot" aria-hidden="true">•</span> <em>{tail}</em></>}</h3>
       {nav && (
         <div className="tl-seatcard-nav" role="group" aria-label="Your held tickets">
           <button type="button" onClick={nav.prev} aria-label="Previous held ticket"><ChevronLeft className="w-4 h-4" aria-hidden="true" /></button>
@@ -88,14 +94,25 @@ export function SeatTicketCard({ section, title, tierName, tierColor, price, gat
         </div>
       )}
       <div className="tl-v3-facts">
-        <div><small>Ticket type</small><b><i style={{ background: tierColor || '#c7ccd1' }} />{tierName || '—'}</b></div>
-        <div><small>Price</small><b>{price}</b></div>
-        {extra && <div><small>{extra.label}</small><b>{extra.value}</b></div>}
+        <div>
+          <Ticket className="tl-v3-fact-ico" aria-hidden="true" />
+          <div><small>Ticket type</small><b><i style={{ background: tierColor || '#c7ccd1' }} />{tierName || '—'}</b></div>
+        </div>
+        <div>
+          <Coins className="tl-v3-fact-ico" aria-hidden="true" />
+          <div><small>Price</small><b>{price}</b></div>
+        </div>
+        {extra && (
+          <div>
+            <Tickets className="tl-v3-fact-ico" aria-hidden="true" />
+            <div><small>{extra.label}</small><b>{extra.value}</b></div>
+          </div>
+        )}
       </div>
       {gates.length > 0 && (
         <p className="tl-v3-gate">Entry: <b>{gates.slice(0, 3).join(' or ')}</b>{gates.length > 3 ? ' or another gate for this ticket type' : ''}</p>
       )}
-      {note && <p className="tl-v3-note">{note}</p>}
+      {note && <p className="tl-v3-note"><Info className="w-5 h-5" aria-hidden="true" /> <span>{note}</span></p>}
       {children}
     </section>
   );

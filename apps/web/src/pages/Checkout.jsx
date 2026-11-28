@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Clock, Lock, MapPin, RefreshCw, Tag, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, ChevronRight, Clock, Lock, MapPin, RefreshCw, ShieldCheck, Tag, Trash2, X } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useDialog } from '../components/ui/DialogProvider';
@@ -9,7 +9,7 @@ import usePaymentMethods, { firstAvailable } from '../hooks/usePaymentMethods';
 import { useAuth } from '../context/AuthContext';
 import BookingShell, { BookingSteps } from '../components/booking/BookingShell';
 import OrderConfirmedModal from '../components/booking/OrderConfirmedModal';
-import { formatClock, groupByTier, lineTitle, summaryLines } from '../components/venue/BookingSummary';
+import { formatClock, lineTitle, summaryLines } from '../components/venue/BookingSummary';
 import { formatPkr } from '../components/venue/venueTheme';
 import { getEventVisual } from '../utils/eventMedia';
 import { useEventExtras } from '../components/event-detail/EventExtras';
@@ -70,6 +70,10 @@ const saveCode = (eventId, code) => {
     /* storage unavailable */
   }
 };
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Payment processing stages, coloured in one by one as each is confirmed
+const PROC_STEPS = ['Payment', 'Verify with gateway', 'Issue tickets & QR codes'];
+
 const newAttemptKey = () => (globalThis.crypto?.randomUUID ? crypto.randomUUID() : `co-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 function paymentDetailsFor(method, params, form) {
@@ -92,6 +96,10 @@ function validate(method, form) {
   }
   return errors;
 }
+
+// Row and seat columns of the review table, and the short seat list on the payment step
+const seatPos = (l) => (l.type === 'ga' ? { row: '—', seat: 'General admission' } : l.type === 'table' ? { row: l.table, seat: 'Whole table' } : { row: l.row, seat: l.seat });
+const seatShort = (l) => (l.type === 'ga' ? `${l.section} × ${l.qty}` : l.type === 'table' ? `${l.table} (whole table)` : l.type === 'tableSeat' ? `${l.row} · ${l.seat}` : `${l.row}${l.seat}`);
 
 function Field({ id, label, error, hint, wide, ...input }) {
   return (
@@ -157,6 +165,8 @@ function CheckoutContent() {
   });
   const [fieldErrors, setFieldErrors] = useState({});
   const [phase, setPhase] = useState('idle'); // idle | reserving | paying
+  const [step, setStep] = useState('review');
+  const [procStage, setProcStage] = useState(0); // 0 paying · 1 verifying · 2 issuing · 3 all confirmed // review (seats, prices, total) → payment (method, pay)
   const [problem, setProblem] = useState(null); // { tone, kind, text }
   const [serverTotal, setServerTotal] = useState(null);
   const [confirmed, setConfirmed] = useState(null); // { order, receipt } once the payment is confirmed
@@ -203,7 +213,6 @@ function CheckoutContent() {
 
   const mine = useMemo(() => snap?.mine || [], [snap]);
   const lines = useMemo(() => summaryLines(mine), [mine]);
-  const groups = useMemo(() => groupByTier(lines), [lines]);
   const subtotal = lines.reduce((n, l) => n + l.total, 0);
   // The server's price for these seats: discount (code or group), service fee, tax, total
   const [pricing, setPricing] = useState(null);
@@ -412,6 +421,7 @@ function CheckoutContent() {
       }
 
       stage = 'confirm';
+      setProcStage(0);
       setPhase('paying');
 
       let paymentDetails = paymentDetailsFor(method, order.params, form);
@@ -451,6 +461,9 @@ function CheckoutContent() {
         }
       }
 
+      // Paid at the gateway: the server now verifies it
+      await wait(450);
+      setProcStage(1);
       let res;
       try {
         res = await api.post('/bookings/confirm', { orderId: order.id, paymentDetails }, { timeout: 45000 });
@@ -464,7 +477,11 @@ function CheckoutContent() {
       }
       const d = res.data.data;
       if (d.order?.status === 'SUCCESSFUL') {
-        // Confirmed: show the "You're going" pop-up over this page; the held seats are now sold
+        // Verified: tickets and QR codes issued; each stage shows Confirmed, then the "You're going" pop-up
+        setProcStage(2);
+        await wait(650);
+        setProcStage(3);
+        await wait(750);
         setConfirmed({ order: d.order, receipt: d.paymentReceipt });
         window.dispatchEvent(new Event('tl:holds-changed'));
       } else {
@@ -526,10 +543,10 @@ function CheckoutContent() {
       </Link>
       <header className="tl-bk-head tl-bk-rise">
         <div>
-          <p className="tl-bk-kicker">Review &amp; pay</p>
-          <h1 className="tl-bk-title">Checkout</h1>
+          <p className="tl-bk-kicker">{step === 'review' ? 'Step 1 · Review booking' : 'Step 2 · Payment'}</p>
+          <h1 className="tl-bk-title">{step === 'review' ? 'Review' : 'Payment'}</h1>
         </div>
-        <BookingSteps current="checkout" />
+        <BookingSteps current={step} />
       </header>
     </>
   );
@@ -564,40 +581,153 @@ function CheckoutContent() {
     );
   }
 
+  const reviewing = step === 'review';
+  const methodLabel = METHODS.find((m) => m.value === method)?.label;
+  const goToPayment = (e) => {
+    e?.preventDefault();
+    if (expired) return setProblem({ tone: 'error', kind: 'expired', text: 'Your reservation has expired, so these seats were released.' });
+    setProblem(null);
+    setStep('payment');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const backToReview = () => {
+    if (busy) return;
+    setProblem(null);
+    setStep('review');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const eventPanel = (
+    <section className="tl-bk-panel" aria-labelledby="co-event">
+      <h2 id="co-event" className="tl-bk-h2">Event</h2>
+      <div className="tl-co-event">
+        <img src={getEventVisual(event).imageUrl} alt="" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+        <div>
+          <p className="tl-co-event-name">{event?.name}</p>
+          <div className="tl-co-event-meta">
+            {event?.date && <span><Calendar className="w-3.5 h-3.5 inline -mt-0.5" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</span>}
+            <span><MapPin className="w-3.5 h-3.5 inline -mt-0.5" aria-hidden="true" /> {event?.venue}{event?.city ? `, ${event.city}` : ''}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+
+  const timer = (
+    <div className={`tl-co-reserve${expired ? ' is-expired' : urgent ? ' is-urgent' : ''}`} role="timer" aria-live={urgent || expired ? 'polite' : 'off'}>
+      <span><Clock className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> {expired ? 'Reservation expired' : 'Seats reserved for'}</span>
+      {!expired && <strong className="tl-co-mono">{formatClock(secondsLeft)}</strong>}
+    </div>
+  );
+
+  // Price breakdown, discount code and total payable: the same on both steps
+  const priceBlock = (
+    <>
+      <dl className="tl-co-sum">
+        <div><dt>Tickets ({mine.length})</dt><dd>{formatPkr(subtotal)}</dd></div>
+        {discount && discount.applied && <div><dt>Discount ({discount.code} · {discount.label})</dt><dd>−{formatPkr(discount.discount)}</dd></div>}
+        {pricing?.groupDiscount > 0 && <div><dt>Group discount ({pricing.group?.percent}% for {pricing.group?.minTickets}+ tickets)</dt><dd>−{formatPkr(pricing.groupDiscount)}</dd></div>}
+        <div><dt>Service fee</dt><dd>{formatPkr(pricing?.serviceFee || 0)}</dd></div>
+        {pricing?.tax > 0 && <div><dt>{pricing.taxLabel} ({pricing.taxPercent}%)</dt><dd>{formatPkr(pricing.tax)}</dd></div>}
+        <div><dt>NFT minting &amp; network gas</dt><dd>Included</dd></div>
+        {serverTotal != null && serverTotal !== expectedTotal && <div><dt>Price adjustment (server)</dt><dd>{formatPkr(serverTotal - expectedTotal)}</dd></div>}
+      </dl>
+      <div className="tl-co-code">
+        {discount ? (
+          <p className="tl-co-code-applied">
+            <span><Tag className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> <b>{discount.code}</b> {discount.applied ? <>applied · you save {formatPkr(discount.discount)}</> : <>not used: your group discount saves more</>}</span>
+            <button type="button" className="tl-bk-link" onClick={removeCode} disabled={busy}>Remove</button>
+          </p>
+        ) : (
+          <div className="tl-co-code-row">
+            <label className="tl-sr" htmlFor="co-code">Discount code</label>
+            <input
+              id="co-code"
+              placeholder="Discount code"
+              autoComplete="off"
+              value={codeInput}
+              onChange={(e) => { setCodeInput(e.target.value.toUpperCase()); setCodeError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCode(codeInput); } }}
+              aria-invalid={codeError ? 'true' : undefined}
+              aria-describedby={codeError ? 'co-code-err' : undefined}
+              disabled={busy}
+            />
+            <button type="button" className="tl-bk-btn tl-bk-btn--ghost" onClick={() => applyCode(codeInput)} disabled={busy || applying || !codeInput.trim()}>
+              {applying ? 'Checking…' : 'Apply'}
+            </button>
+          </div>
+        )}
+        {codeError && <p id="co-code-err" className="tl-co-field-error">{codeError}</p>}
+      </div>
+      <p className="tl-co-total"><span>Total payable</span><strong>{formatPkr(total)}</strong></p>
+    </>
+  );
+
+  const notices = (
+    <>
+      {problem && (
+        <div
+          ref={problemRef}
+          tabIndex={-1}
+          className={`tl-bk-notice is-${problem.tone}`}
+          role="alert"
+          style={problem.kind === 'blocked' ? {
+            background: '#fef2f2',
+            border: '1.5px solid #ef4444',
+            color: '#991b1b',
+            padding: '14px',
+            borderRadius: '8px',
+            fontWeight: 500,
+            fontSize: '13px',
+            lineHeight: '1.5',
+          } : {}}
+        >
+          {problem.text}
+          {(problem.kind === 'expired' || problem.kind === 'reservation') && (
+            <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
+          )}
+        </div>
+      )}
+      {expired && !problem && (
+        <div className="tl-bk-notice is-error" role="alert">
+          Your reservation ended and the seats were released. <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <BookingShell dark>
       {header}
-      <form ref={formRef} onSubmit={submit} noValidate className="tl-co-grid">
-        <div className="tl-bk-rise">
-          {/* Event */}
-          <section className="tl-bk-panel" aria-labelledby="co-event">
-            <h2 id="co-event" className="tl-bk-h2">Event</h2>
-            <div className="tl-co-event">
-              <img src={getEventVisual(event).imageUrl} alt="" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
-              <div>
-                <p className="tl-co-event-name">{event?.name}</p>
-                <div className="tl-co-event-meta">
-                  <span><MapPin className="w-3.5 h-3.5 inline -mt-0.5" aria-hidden="true" /> {event?.venue}, {event?.city}</span>
-                  {event?.date && <span><Calendar className="w-3.5 h-3.5 inline -mt-0.5" aria-hidden="true" /> {formatEventDate(event.date)}{time && ` · ${time}`}</span>}
-                </div>
-              </div>
-            </div>
-          </section>
+      <form ref={formRef} onSubmit={reviewing ? goToPayment : submit} noValidate className="tl-co-grid">
+        {reviewing ? (
+          <div className="tl-bk-rise" key="review">
+            {eventPanel}
 
-          {/* Tickets */}
-          <section className="tl-bk-panel" aria-labelledby="co-tickets">
-            <h2 id="co-tickets" className="tl-bk-h2">
-              Your tickets <small>{mine.length} ticket{mine.length === 1 ? '' : 's'}</small>
-            </h2>
-            <div className="tl-co-lines">
-              {groups.map((g) => (
-                <div key={g.key} className="tl-co-group">
-                  <p className="tl-vb-group-name">{g.name} <span>{g.qty} × {formatPkr(g.unit)}</span></p>
-                  {g.lines.map((l) => (
-                    <p key={l.id} className={`tl-co-line${removing === l.id || removing === 'all' ? ' is-removing' : ''}`}>
-                      <span><b>{lineTitle(l)}</b>{l.qty > 1 && <span className="tl-co-qty"> · {l.qty} × {formatPkr(l.unit)}</span>}</span>
-                      <span className="tl-co-line-end">
-                        {formatPkr(l.total)}
+            {/* Seats: section, row, seat number, quantity and price per line */}
+            <section className="tl-bk-panel" aria-labelledby="co-tickets">
+              <h2 id="co-tickets" className="tl-bk-h2">
+                Your seats <small>{mine.length} ticket{mine.length === 1 ? '' : 's'}</small>
+              </h2>
+              <div className="tl-co-seats" role="table" aria-label="Your seats">
+                <div className="tl-co-seats-row is-head" role="row">
+                  <span role="columnheader">Section</span>
+                  <span role="columnheader">Row</span>
+                  <span role="columnheader">Seat</span>
+                  <span role="columnheader">Qty</span>
+                  <span role="columnheader" className="is-end">Price</span>
+                  <span aria-hidden="true" />
+                </div>
+                {lines.map((l) => {
+                  const pos = seatPos(l);
+                  return (
+                    <div key={l.id} role="row" className={`tl-co-seats-row${removing === l.id || removing === 'all' ? ' is-removing' : ''}`}>
+                      <span role="cell" data-label="Section"><i style={{ background: l.tier.color || '#22e06b' }} aria-hidden="true" /><b>{l.section}</b><small>{l.tier.name}</small></span>
+                      <span role="cell" data-label="Row">{pos.row}</span>
+                      <span role="cell" data-label="Seat">{pos.seat}</span>
+                      <span role="cell" data-label="Qty">{l.qty}{l.qty > 1 && <small> × {formatPkr(l.unit)}</small>}</span>
+                      <span role="cell" data-label="Price" className="is-end"><b>{formatPkr(l.total)}</b></span>
+                      <span role="cell" className="is-end">
                         <button
                           type="button"
                           className="tl-co-remove"
@@ -609,210 +739,199 @@ function CheckoutContent() {
                           <X className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </span>
-                    </p>
-                  ))}
-                </div>
-              ))}
-            </div>
-            <div className="tl-co-ticket-actions">
-              <Link to={seatsHref} className="tl-bk-link">Change seats</Link>
-              <button type="button" className="tl-co-discard" onClick={discardAll} disabled={Boolean(removing) || busy}>
-                <Trash2 className="w-4 h-4" aria-hidden="true" /> {removing === 'all' ? 'Discarding…' : 'Discard all'}
-              </button>
-            </div>
-          </section>
-
-          {/* Attendee */}
-          <fieldset className="tl-bk-panel" disabled={busy} aria-labelledby="co-attendee">
-            <h2 id="co-attendee" className="tl-bk-h2">Attendee details</h2>
-            <div className="tl-co-fields">
-              <Field id="co-name" label="Name" value={user?.name || ''} readOnly />
-              <Field id="co-email" label="Email" value={user?.email || ''} readOnly hint="Tickets and the receipt are sent here." />
-              <Field
-                id="co-phone"
-                label={WALLETS.has(method) ? 'Mobile wallet number' : 'Mobile number (optional)'}
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="03001234567"
-                value={form.phone}
-                onChange={setField('phone')}
-                error={fieldErrors.phone}
-                wide
-              />
-            </div>
-            <p className="tl-bk-muted" style={{ marginTop: 12 }}>All tickets in this order are issued to your TicketLedger account{user?.name ? ` (${user.name})` : ''}.</p>
-          </fieldset>
-
-          {/* Payment */}
-          <fieldset className="tl-bk-panel" disabled={busy}>
-            <legend className="tl-sr">Payment method</legend>
-            <h2 className="tl-bk-h2" aria-hidden="true">Payment</h2>
-            <div className="tl-co-methods" role="radiogroup" aria-label="Payment method">
-              {METHODS.filter((m) => m.value !== 'MOCK' || available?.MOCK?.available).map((m) => {
-                const off = !available?.[m.value]?.available;
-                return (
-                  <label key={m.value} className="tl-co-method" aria-disabled={off || undefined} style={off ? { opacity: 0.55 } : undefined}>
-                    <input type="radio" name="method" value={m.value} disabled={off} checked={method === m.value} onChange={() => { setMethod(m.value); setFieldErrors({}); setProblem(null); }} />
-                    <span className="tl-co-radio" aria-hidden="true" />
-                    <span><strong>{m.label}</strong><small>{off ? (available ? (m.value === 'JAZZCASH' || m.value === 'EASYPAISA' ? 'Coming soon' : available[m.value]?.reason || 'Not available') : 'Checking…') : m.note}</small></span>
-                  </label>
-                );
-              })}
-            </div>
-            {available && !method && <p className="tl-co-gateway" role="alert">No payment method is available right now. Please try again later.</p>}
-            {WALLETS.has(method) && (
-              <div className="tl-co-gateway">
-                <p className="tl-bk-muted">{method === 'JAZZCASH' ? 'JazzCash' : 'EasyPaisa'} sends an authorisation request to the number above. Sandbox code: 123456.</p>
-                <Field id="co-otp" label={method === 'JAZZCASH' ? 'MPIN / SMS code' : 'Authorisation code'} type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="tl-co-mono" value={form.otp} onChange={setField('otp')} error={fieldErrors.otp} />
+                    </div>
+                  );
+                })}
               </div>
-            )}
-            {method === 'STRIPE' && (
-              <div className="tl-co-gateway">
+              <div className="tl-co-ticket-actions">
+                <Link to={seatsHref} className="tl-bk-link">Change seats</Link>
+                <button type="button" className="tl-co-discard" onClick={discardAll} disabled={Boolean(removing) || busy}>
+                  <Trash2 className="w-4 h-4" aria-hidden="true" /> {removing === 'all' ? 'Discarding…' : 'Discard all'}
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : (
+          <div className="tl-bk-rise" key="payment">
+            {/* What is being paid for, with a way back to the review */}
+            <section className="tl-bk-panel tl-co-recap" aria-label="Your booking">
+              <div>
+                <p className="tl-co-event-name">{event?.name}</p>
+                <p className="tl-bk-muted">
+                  {event?.date ? `${formatEventDate(event.date)}${time ? ` · ${time}` : ''} · ` : ''}
+                  {mine.length} ticket{mine.length === 1 ? '' : 's'} · {lines.map(seatShort).join(', ')}
+                </p>
+              </div>
+              <button type="button" className="tl-bk-btn tl-bk-btn--ghost" onClick={backToReview} disabled={busy}>
+                <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Edit booking
+              </button>
+            </section>
+
+            {/* Attendee */}
+            <fieldset className="tl-bk-panel" disabled={busy} aria-labelledby="co-attendee">
+              <h2 id="co-attendee" className="tl-bk-h2">Attendee details</h2>
+              <div className="tl-co-fields">
+                <Field id="co-name" label="Name" value={user?.name || ''} readOnly />
+                <Field id="co-email" label="Email" value={user?.email || ''} readOnly hint="Tickets and the receipt are sent here." />
                 <Field
-                  id="co-cardName"
-                  label="Name on card"
-                  autoComplete="cc-name"
-                  value={form.cardName}
-                  onChange={setField('cardName')}
-                  error={fieldErrors.cardName}
+                  id="co-phone"
+                  label={WALLETS.has(method) ? 'Mobile wallet number' : 'Mobile number (optional)'}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="03001234567"
+                  value={form.phone}
+                  onChange={setField('phone')}
+                  error={fieldErrors.phone}
                   wide
                 />
-                <label className="tl-co-field tl-co-field--wide" htmlFor="co-stripe-card">
-                  <span className="tl-bk-label">Card details (Stripe Sandbox)</span>
-                  <div className={`tl-stripe-element-wrapper${stripeFocused ? ' is-focused' : ''}`}>
-                    <CardElement
-                      id="co-stripe-card"
-                      onFocus={() => setStripeFocused(true)}
-                      onBlur={() => setStripeFocused(false)}
-                      options={{
-                        hidePostalCode: true,
-                        style: {
-                          base: {
-                            fontSize: '15px',
-                            color: '#f2f6f4',
-                            iconColor: '#22e06b',
-                            fontFamily: 'Plus Jakarta Sans, Inter, system-ui, sans-serif',
-                            '::placeholder': { color: 'rgba(226, 236, 232, 0.45)' },
-                          },
-                          invalid: { color: '#fb7185', iconColor: '#fb7185' },
-                        },
-                      }}
-                    />
-                  </div>
-                  <span className="tl-stripe-badge">
-                    ⚡ Sandbox Card: <strong>4242 4242 4242 4242</strong> · Any future MM/YY · CVC 123
-                  </span>
-                </label>
               </div>
-            )}
-            {method === 'MOCK' && <p className="tl-co-gateway tl-bk-muted">Sandbox payment for testing: the order is confirmed immediately without charging anything.</p>}
-          </fieldset>
-        </div>
+              <p className="tl-bk-muted" style={{ marginTop: 12 }}>All tickets in this order are issued to your TicketLedger account{user?.name ? ` (${user.name})` : ''}.</p>
+            </fieldset>
 
-        {/* Order summary */}
-        <aside className="tl-co-aside tl-bk-rise" aria-labelledby="co-summary">
-          <section className="tl-bk-panel">
-            <h2 id="co-summary" className="tl-bk-h2">Order summary</h2>
-            <div className={`tl-co-reserve${expired ? ' is-expired' : urgent ? ' is-urgent' : ''}`} role="timer" aria-live={urgent || expired ? 'polite' : 'off'}>
-              <span><Clock className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> {expired ? 'Reservation expired' : 'Seats reserved for'}</span>
-              {!expired && <strong className="tl-co-mono">{formatClock(secondsLeft)}</strong>}
-            </div>
-            <dl className="tl-co-sum">
-              <div><dt>Tickets ({mine.length})</dt><dd>{formatPkr(subtotal)}</dd></div>
-              {discount && discount.applied && <div><dt>Discount ({discount.code} · {discount.label})</dt><dd>−{formatPkr(discount.discount)}</dd></div>}
-              {pricing?.groupDiscount > 0 && <div><dt>Group discount ({pricing.group?.percent}% for {pricing.group?.minTickets}+ tickets)</dt><dd>−{formatPkr(pricing.groupDiscount)}</dd></div>}
-              <div><dt>Service fee</dt><dd>{formatPkr(pricing?.serviceFee || 0)}</dd></div>
-              {pricing?.tax > 0 && <div><dt>{pricing.taxLabel} ({pricing.taxPercent}%)</dt><dd>{formatPkr(pricing.tax)}</dd></div>}
-              <div><dt>NFT minting &amp; network gas</dt><dd>Included</dd></div>
-              {serverTotal != null && serverTotal !== expectedTotal && <div><dt>Price adjustment (server)</dt><dd>{formatPkr(serverTotal - expectedTotal)}</dd></div>}
-            </dl>
-            <div className="tl-co-code">
-              {discount ? (
-                <p className="tl-co-code-applied">
-                  <span><Tag className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> <b>{discount.code}</b> {discount.applied ? <>applied · you save {formatPkr(discount.discount)}</> : <>not used: your group discount saves more</>}</span>
-                  <button type="button" className="tl-bk-link" onClick={removeCode} disabled={busy}>Remove</button>
-                </p>
-              ) : (
-                <div className="tl-co-code-row">
-                  <label className="tl-sr" htmlFor="co-code">Discount code</label>
-                  <input
-                    id="co-code"
-                    placeholder="Discount code"
-                    autoComplete="off"
-                    value={codeInput}
-                    onChange={(e) => { setCodeInput(e.target.value.toUpperCase()); setCodeError(''); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyCode(codeInput); } }}
-                    aria-invalid={codeError ? 'true' : undefined}
-                    aria-describedby={codeError ? 'co-code-err' : undefined}
-                    disabled={busy}
-                  />
-                  <button type="button" className="tl-bk-btn tl-bk-btn--ghost" onClick={() => applyCode(codeInput)} disabled={busy || applying || !codeInput.trim()}>
-                    {applying ? 'Checking…' : 'Apply'}
-                  </button>
+            {/* Payment */}
+            <fieldset className="tl-bk-panel" disabled={busy}>
+              <legend className="tl-sr">Payment method</legend>
+              <h2 className="tl-bk-h2" aria-hidden="true">Payment method</h2>
+              <div className="tl-co-methods" role="radiogroup" aria-label="Payment method">
+                {METHODS.filter((m) => m.value !== 'MOCK' || available?.MOCK?.available).map((m) => {
+                  const off = !available?.[m.value]?.available;
+                  return (
+                    <label key={m.value} className="tl-co-method" aria-disabled={off || undefined} style={off ? { opacity: 0.55 } : undefined}>
+                      <input type="radio" name="method" value={m.value} disabled={off} checked={method === m.value} onChange={() => { setMethod(m.value); setFieldErrors({}); setProblem(null); }} />
+                      <span className="tl-co-radio" aria-hidden="true" />
+                      <span><strong>{m.label}</strong><small>{off ? (available ? (m.value === 'JAZZCASH' || m.value === 'EASYPAISA' ? 'Coming soon' : available[m.value]?.reason || 'Not available') : 'Checking…') : m.note}</small></span>
+                    </label>
+                  );
+                })}
+              </div>
+              {available && !method && <p className="tl-co-gateway" role="alert">No payment method is available right now. Please try again later.</p>}
+              {WALLETS.has(method) && (
+                <div className="tl-co-gateway">
+                  <p className="tl-bk-muted">{method === 'JAZZCASH' ? 'JazzCash' : 'EasyPaisa'} sends an authorisation request to the number above. Sandbox code: 123456.</p>
+                  <Field id="co-otp" label={method === 'JAZZCASH' ? 'MPIN / SMS code' : 'Authorisation code'} type="password" inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="tl-co-mono" value={form.otp} onChange={setField('otp')} error={fieldErrors.otp} />
                 </div>
               )}
-              {codeError && <p id="co-code-err" className="tl-co-field-error">{codeError}</p>}
-            </div>
-            <p className="tl-co-total"><span>Total</span><strong>{formatPkr(total)}</strong></p>
+              {method === 'STRIPE' && (
+                <div className="tl-co-gateway">
+                  <Field
+                    id="co-cardName"
+                    label="Name on card"
+                    autoComplete="cc-name"
+                    value={form.cardName}
+                    onChange={setField('cardName')}
+                    error={fieldErrors.cardName}
+                    wide
+                  />
+                  <label className="tl-co-field tl-co-field--wide" htmlFor="co-stripe-card">
+                    <span className="tl-bk-label">Card details (Stripe Sandbox)</span>
+                    <div className={`tl-stripe-element-wrapper${stripeFocused ? ' is-focused' : ''}`}>
+                      <CardElement
+                        id="co-stripe-card"
+                        onFocus={() => setStripeFocused(true)}
+                        onBlur={() => setStripeFocused(false)}
+                        options={{
+                          hidePostalCode: true,
+                          style: {
+                            base: {
+                              fontSize: '15px',
+                              color: '#f2f6f4',
+                              iconColor: '#22e06b',
+                              fontFamily: 'Plus Jakarta Sans, Inter, system-ui, sans-serif',
+                              '::placeholder': { color: 'rgba(226, 236, 232, 0.45)' },
+                            },
+                            invalid: { color: '#fb7185', iconColor: '#fb7185' },
+                          },
+                        }}
+                      />
+                    </div>
+                    <span className="tl-stripe-badge">
+                      ⚡ Sandbox Card: <strong>4242 4242 4242 4242</strong> · Any future MM/YY · CVC 123
+                    </span>
+                  </label>
+                </div>
+              )}
+              {method === 'MOCK' && <p className="tl-co-gateway tl-bk-muted">Sandbox payment for testing: the order is confirmed immediately without charging anything.</p>}
+            </fieldset>
+          </div>
+        )}
 
-            {problem && (
-              <div
-                ref={problemRef}
-                tabIndex={-1}
-                className={`tl-bk-notice is-${problem.tone}`}
-                role="alert"
-                style={problem.kind === 'blocked' ? {
-                  background: '#fef2f2',
-                  border: '1.5px solid #ef4444',
-                  color: '#991b1b',
-                  padding: '14px',
-                  borderRadius: '8px',
-                  fontWeight: 500,
-                  fontSize: '13px',
-                  lineHeight: '1.5',
-                } : {}}
-              >
-                {problem.text}
-                {(problem.kind === 'expired' || problem.kind === 'reservation') && (
-                  <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
-                )}
-              </div>
-            )}
-            {expired && !problem && (
-              <div className="tl-bk-notice is-error" role="alert">
-                Your reservation ended and the seats were released. <div><Link to={seatsHref} className="tl-bk-link">Choose seats again</Link></div>
-              </div>
-            )}
+        {/* Booking summary: price breakdown and total payable, then the step's action */}
+        <aside className="tl-co-aside tl-bk-rise" aria-labelledby="co-summary">
+          <section className="tl-bk-panel">
+            <h2 id="co-summary" className="tl-bk-h2">{reviewing ? 'Price breakdown' : 'Order summary'}</h2>
+            {timer}
+            {priceBlock}
+            {notices}
 
-            {terms && (
-              <label className="tl-co-terms">
-                <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} disabled={busy} />
-                <span>I accept the <details><summary>event terms</summary><span style={{ whiteSpace: 'pre-wrap', display: 'block', marginTop: 6 }}>{terms}</span></details>{extras?.policies?.ageRestriction ? ` (${extras.policies.ageRestriction}+ only)` : ''}</span>
-              </label>
-            )}
-            <div className="tl-co-confirm">
-              <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired || !method} aria-busy={busy}>
-                {busy ? (
-                  <>
-                    <span>{phase === 'reserving' ? 'Creating your order…' : 'Confirming payment…'}</span>
-                    <span className="tl-bk-spin" aria-hidden="true" />
-                  </>
-                ) : (
-                  <>
-                    <span>Confirm order</span>
-                    <span><Lock className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> {formatPkr(total)}</span>
-                  </>
+            {reviewing ? (
+              <div className="tl-co-confirm">
+                <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={expired || Boolean(removing)}>
+                  <span>Proceed to payment</span>
+                  <ChevronRight className="w-5 h-5" aria-hidden="true" />
+                </button>
+                <p className="tl-co-fine">Nothing is charged yet. You choose how to pay on the next step.</p>
+              </div>
+            ) : (
+              <>
+                {terms && (
+                  <label className="tl-co-terms">
+                    <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} disabled={busy} />
+                    <span>I accept the <details><summary>event terms</summary><span style={{ whiteSpace: 'pre-wrap', display: 'block', marginTop: 6 }}>{terms}</span></details>{extras?.policies?.ageRestriction ? ` (${extras.policies.ageRestriction}+ only)` : ''}</span>
+                  </label>
                 )}
-              </button>
-              <p className="tl-sr" role="status" aria-live="polite">{busy ? (phase === 'reserving' ? 'Creating your order' : 'Confirming payment. Please keep this page open.') : ''}</p>
-              <p className="tl-co-fine">
-                Pressing Confirm order pays {formatPkr(total)} with {METHODS.find((m) => m.value === method)?.label}. Tickets are issued only after the payment is confirmed. Resale is capped at 110% of face value.
-              </p>
-            </div>
+                <div className="tl-co-confirm">
+                  <button type="submit" className="tl-bk-btn tl-bk-btn--block tl-bk-btn--lg" disabled={busy || expired || !method} aria-busy={busy}>
+                    {busy ? (
+                      <>
+                        <span>{phase === 'reserving' ? 'Creating your order…' : 'Processing payment…'}</span>
+                        <span className="tl-bk-spin" aria-hidden="true" />
+                      </>
+                    ) : (
+                      <>
+                        <span>Pay now</span>
+                        <span><Lock className="w-4 h-4 inline -mt-0.5" aria-hidden="true" /> {formatPkr(total)}</span>
+                      </>
+                    )}
+                  </button>
+                  <button type="button" className="tl-co-back" onClick={backToReview} disabled={busy}>
+                    <ArrowLeft className="w-4 h-4" aria-hidden="true" /> Back to review
+                  </button>
+                  <p className="tl-sr" role="status" aria-live="polite">{busy ? (phase === 'reserving' ? 'Creating your order' : 'Processing payment. Please keep this page open.') : ''}</p>
+                  <p className="tl-co-fine">
+                    Pressing Pay now pays {formatPkr(total)}{methodLabel ? ` with ${methodLabel}` : ''}. Tickets with unique QR codes are issued only after the payment gateway confirms the payment. Resale is capped at 110% of face value.
+                  </p>
+                </div>
+              </>
+            )}
           </section>
         </aside>
       </form>
+
+      {/* Payment processing: each stage turns green and shows Confirmed as it completes */}
+      {phase === 'paying' && !confirmed && (
+        <div className="tl-co-processing" role="status" aria-live="polite">
+          <div className={`tl-co-processing-card${procStage >= 3 ? ' is-done' : ''}`}>
+            <span className="tl-co-processing-ring" aria-hidden="true">{procStage >= 3 ? <Check className="w-8 h-8" strokeWidth={3} /> : <ShieldCheck className="w-7 h-7" />}</span>
+            <h2>{procStage >= 3 ? 'Payment confirmed' : 'Processing payment'}</h2>
+            <p>{procStage >= 3 ? 'Your tickets are ready.' : `Paying ${formatPkr(total)} through the payment gateway. Please keep this page open.`}</p>
+            <div className="tl-co-processing-bar" aria-hidden="true"><span style={{ width: `${(Math.min(procStage, 3) / 3) * 100}%` }} /></div>
+            <ol className="tl-co-processing-steps">
+              {PROC_STEPS.map((label, i) => {
+                const state = i < procStage ? 'is-done' : i === procStage ? 'is-active' : '';
+                return (
+                  <li key={label} className={state}>
+                    <span className="tl-co-processing-dot" aria-hidden="true">{i < procStage ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : i + 1}</span>
+                    <span className="tl-co-processing-label">{label}</span>
+                    <span className="tl-co-processing-state">{i < procStage ? 'Confirmed' : i === procStage ? 'In progress…' : 'Waiting'}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
+      )}
+
       {confirmed && (
         <OrderConfirmedModal order={confirmed.order} receipt={confirmed.receipt} onClose={() => navigate(`/events/${eventId}`, { replace: true })} />
       )}

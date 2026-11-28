@@ -1,4 +1,5 @@
 import express from 'express';
+import { loadProfileStatus } from '../services/profileCompleteness.js';
 import multer from 'multer';
 import { 
   getProfile, 
@@ -31,6 +32,8 @@ const avatarUpload = (req, res, next) =>
 router.use(authenticateJWT);
 
 router.get('/profile', getProfile);
+// Which profile fields are still missing (organizers and gate staff need all of them to request approvals)
+router.get('/profile-status', async (req, res) => res.json({ success: true, data: await loadProfileStatus(req.user.id) }));
 router.put('/profile', updateProfile);
 router.put('/avatar', avatarUpload, updateAvatar);
 router.delete('/avatar', removeAvatar);

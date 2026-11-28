@@ -1,0 +1,42 @@
+/* Search bar on the account pages (AccountSearch) */
+.tl-asearch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0 0 18px;
+}
+.tl-asearch-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 320px;
+  max-width: 560px;
+  min-height: 46px;
+  padding: 0 8px 0 42px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(34, 197, 94, 0.35);
+  background: rgba(8, 22, 14, 0.85);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.tl-asearch-field:hover { border-color: rgba(74, 222, 128, 0.7); }
+.tl-asearch-field:focus-within { border-color: #4ade80; box-shadow: 0 0 0 1px #4ade80, 0 0 18px rgba(34, 197, 94, 0.3); }
+.tl-asearch-ico { position: absolute; left: 14px; width: 18px; height: 18px; color: #4ade80; pointer-events: none; }
+.tl-asearch-field input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #f3f7f4;
+  font: 500 14px/1 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+.tl-asearch-field input::placeholder { color: rgba(243, 247, 244, 0.5); }
+.tl-asearch-field input::-webkit-search-cancel-button { display: none; }
+.tl-asearch-clear { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 9px; background: rgba(255, 255, 255, 0.08); color: #fff; cursor: pointer; transition: background 0.15s; }
+.tl-asearch-clear:hover { background: #dc2626; }
+.tl-asearch-count { margin: 0; font: 600 12px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; color: #86efac; }
+.tl-asearch-empty { padding: 28px 16px; border: 1px dashed rgba(74, 222, 128, 0.35); border-radius: 16px; text-align: center; color: rgba(243, 247, 244, 0.75); font-size: 14px; }
+.tl-asearch-empty button { margin-left: 6px; border: 0; background: none; color: #4ade80; font: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.tl-asearch .tl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

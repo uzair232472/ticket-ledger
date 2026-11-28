@@ -11,7 +11,7 @@ const updateProfileSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').optional(),
   phone: z.string().optional(),
   city: z.string().optional(),
-  salutation: z.enum(['Mr', 'Ms', 'Mrs', 'Dr', 'Prof', '']).optional(),
+  salutation: z.enum(['Mr', 'Ms', 'Mx', 'Mrs', 'Dr', 'Prof', '']).optional(),
   organisation: z.string().trim().max(120, 'Organisation must be 120 characters or fewer').optional(),
 });
 

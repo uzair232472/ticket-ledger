@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
+import ProfileGate from './components/profile/ProfileGate';
 import CompanyRegistration from './pages/CompanyRegistration';
 import AdminCompanies from './pages/AdminCompanies';
 import Events from './pages/Events';
@@ -209,6 +210,7 @@ export default function App() {
         <ScrollToTop />
         <DiscountCodeCatcher />
         <RouteLoader />
+        <ProfileGate />
         <div className="min-h-screen flex flex-col bg-[#f8fafc] text-[#212b36]">
           <SiteBanner />
           {/* Pages without their own chrome get the site header (logo, cart, notifications, profile, menu) */}

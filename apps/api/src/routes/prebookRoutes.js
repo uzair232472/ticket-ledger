@@ -3,6 +3,7 @@ import multer from 'multer';
 import { LARGEST_IMAGE_BYTES } from '../config/eventMedia.js';
 import { authenticateJWT, loadOrgContext } from '../middlewares/auth.js';
 import { requireApprovedOrganizer } from '../controllers/companyController.js';
+import { requireCompleteProfile } from '../services/profileCompleteness.js';
 import {
   availabilityCalendar,
   checkAvailability,
@@ -34,7 +35,7 @@ router.post('/drafts', createDraft);
 router.get('/drafts/:id', getDraft);
 router.put('/drafts/:id', saveDraft);
 router.delete('/drafts/:id', deleteDraft);
-router.post('/drafts/:id/submit', submitDraft);
+router.post('/drafts/:id/submit', requireCompleteProfile, submitDraft);
 router.post('/check', checkAvailability);
 router.get('/availability', availabilityCalendar);
 router.post('/images', singleImage, uploadImage);

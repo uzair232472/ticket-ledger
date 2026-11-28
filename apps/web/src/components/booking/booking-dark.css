@@ -135,3 +135,110 @@
 .tl-book--dark .tl-vb-remove:hover:not(:disabled) { background-color: rgba(251, 113, 133, 0.1); }
 .tl-book--dark .tl-vb-panel .tl-vb-panel-foot { border-top-color: rgba(96, 165, 250, 0.45); }
 .tl-book--dark .tl-vb-panel .tl-vb-muted { color: rgba(226, 236, 232, 0.78); }
+
+/* ---------- Checkout steps: Review booking → Payment → (processing) → confirmation ---------- */
+/* Review: one row per seat line with section, row, seat, quantity and price */
+.tl-co-seats { display: grid; margin-top: 14px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; overflow: hidden; }
+.tl-co-seats-row { display: grid; grid-template-columns: minmax(0, 2.2fr) 0.8fr 1fr 0.9fr 1.1fr 40px; align-items: center; gap: 10px; padding: 12px 14px; font-size: 14px; }
+.tl-co-seats-row + .tl-co-seats-row { border-top: 1px solid rgba(255, 255, 255, 0.07); }
+.tl-co-seats-row.is-head { padding: 10px 14px; background: rgba(34, 224, 107, 0.07); color: rgba(226, 236, 232, 0.62); font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.tl-co-seats-row.is-removing { opacity: 0.45; }
+.tl-co-seats-row > span:first-child { display: grid; grid-template-columns: 10px 1fr; column-gap: 9px; align-items: center; min-width: 0; }
+.tl-co-seats-row > span:first-child i { width: 10px; height: 10px; border-radius: 3px; }
+.tl-co-seats-row > span:first-child b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-co-seats-row > span:first-child small { grid-column: 2; color: rgba(226, 236, 232, 0.6); font-size: 12px; }
+.tl-co-seats-row small { color: rgba(226, 236, 232, 0.6); font-size: 12px; }
+.tl-co-seats-row .is-end { text-align: right; justify-self: end; white-space: nowrap; }
+.tl-co-seats-row b { color: #fff; }
+.tl-co-seats-row:not(.is-head) > span:nth-child(3) { color: #22e06b; font-weight: 700; }
+@media (max-width: 640px) {
+  .tl-co-seats-row.is-head { display: none; }
+  .tl-co-seats-row { grid-template-columns: 1fr 1fr 40px; row-gap: 6px; }
+  .tl-co-seats-row > span:first-child { grid-column: 1 / 3; }
+  .tl-co-seats-row > span:nth-child(6) { grid-column: 3; grid-row: 1; }
+  .tl-co-seats-row > span[data-label]:not(:first-child)::before { content: attr(data-label) ' '; color: rgba(226, 236, 232, 0.55); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 6px; }
+  .tl-co-seats-row .is-end { text-align: left; justify-self: start; }
+}
+
+/* Payment: what is being paid for, with Edit booking */
+.tl-co-recap { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.tl-co-recap > div { min-width: 0; flex: 1 1 260px; }
+.tl-co-recap .tl-co-event-name { margin-bottom: 4px; }
+.tl-co-back { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px; margin-top: 8px; border: 0; border-radius: 999px; background: none; color: #22e06b; font: 700 14px/1 'Plus Jakarta Sans', sans-serif; cursor: pointer; }
+.tl-co-back:hover:not(:disabled) { background: rgba(34, 224, 107, 0.08); }
+.tl-co-back:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Payment processing overlay */
+.tl-co-processing { position: fixed; inset: 0; z-index: 85; display: grid; place-items: center; padding: 16px; background: rgba(2, 8, 14, 0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: tl-co-fade 0.2s ease; }
+.tl-co-processing-card { width: min(400px, 100%); padding: 28px 24px 22px; border: 1px solid rgba(34, 224, 107, 0.55); border-radius: 22px; background: linear-gradient(160deg, rgba(14, 40, 38, 0.96), rgba(5, 16, 22, 0.98)); box-shadow: 0 0 40px rgba(34, 224, 107, 0.25), 0 30px 80px rgba(0, 0, 0, 0.55); color: #f2f6f4; text-align: center; }
+.tl-co-processing-ring { position: relative; display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto 14px; border-radius: 50%; color: #22e06b; background: rgba(34, 224, 107, 0.1); }
+.tl-co-processing-ring::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 3px solid transparent; border-top-color: #22e06b; border-right-color: rgba(34, 224, 107, 0.4); animation: tl-co-spin 0.9s linear infinite; }
+.tl-co-processing-card h2 { font: 800 22px/1.2 'Plus Jakarta Sans', sans-serif; color: #fff; }
+.tl-co-processing-card p { margin-top: 6px; color: rgba(226, 236, 232, 0.75); font-size: 14px; }
+.tl-co-processing-card.is-done .tl-co-processing-ring { background: rgba(34, 224, 107, 0.22); box-shadow: 0 0 30px rgba(34, 224, 107, 0.55); }
+.tl-co-processing-card.is-done .tl-co-processing-ring::after { border-color: #22e06b; animation: none; }
+/* Progress bar: fills a third per confirmed stage */
+.tl-co-processing-bar { height: 6px; margin-top: 18px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.tl-co-processing-bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #16a34a, #22e06b, #86efac); box-shadow: 0 0 12px rgba(34, 224, 107, 0.7); transition: width 0.55s cubic-bezier(0.3, 0.8, 0.3, 1); }
+.tl-co-processing-steps { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; text-align: left; font-size: 13px; }
+.tl-co-processing-steps li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; color: rgba(226, 236, 232, 0.55); transition: background 0.35s, border-color 0.35s, color 0.35s, box-shadow 0.35s; }
+.tl-co-processing-dot { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.25); font-size: 11px; font-weight: 800; transition: background 0.35s, border-color 0.35s, color 0.35s; }
+.tl-co-processing-label { flex: 1; }
+.tl-co-processing-state { font-size: 11.5px; font-weight: 700; }
+.tl-co-processing-steps li.is-active { border-color: rgba(34, 224, 107, 0.5); color: #fff; }
+.tl-co-processing-steps li.is-active .tl-co-processing-dot { border-color: #22e06b; color: #22e06b; animation: tl-co-pulse 0.8s ease-in-out infinite alternate; }
+.tl-co-processing-steps li.is-active .tl-co-processing-state { color: #86efac; }
+.tl-co-processing-steps li.is-done { border-color: #22e06b; background: rgba(34, 224, 107, 0.14); color: #fff; box-shadow: 0 0 14px rgba(34, 224, 107, 0.2); }
+.tl-co-processing-steps li.is-done .tl-co-processing-dot { border-color: #22e06b; background: #22e06b; color: #04210f; }
+.tl-co-processing-steps li.is-done .tl-co-processing-state { color: #22e06b; }
+@keyframes tl-co-spin { to { transform: rotate(360deg); } }
+@keyframes tl-co-pulse { to { opacity: 0.35; } }
+@keyframes tl-co-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tl-co-processing, .tl-co-processing-ring::after, .tl-co-processing-dot { animation: none; } .tl-co-processing-bar span { transition: none; } }
+
+/* ---------- Booking confirmation page (BookingSuccess) ---------- */
+.tl-bs-event { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 20px; align-items: center; }
+.tl-bs-event-img { width: 100%; height: 100%; min-height: 170px; max-height: 220px; border-radius: 14px; border: 1.5px solid rgba(34, 224, 107, 0.6); object-fit: cover; box-shadow: 0 0 18px rgba(34, 224, 107, 0.2); }
+.tl-bs-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(34, 224, 107, 0.6); background: rgba(34, 224, 107, 0.12); color: #86efac; font-size: 12px; font-weight: 700; }
+.tl-bs-event-name { margin: 10px 0 8px; font: 800 clamp(22px, 2.4vw, 30px)/1.15 'Plus Jakarta Sans', sans-serif; color: #fff; }
+.tl-bs-meta { display: flex; align-items: center; gap: 8px; color: rgba(236, 244, 240, 0.85); font-size: 14px; line-height: 1.8; }
+.tl-bs-meta svg { color: #22e06b; flex: none; }
+.tl-bs-lead { margin-top: 10px; color: rgba(226, 236, 232, 0.72); font-size: 13.5px; line-height: 1.55; }
+
+.tl-bs-tickets { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin: 14px 0 0; padding: 0; list-style: none; }
+.tl-bs-ticket { position: relative; padding: 14px 14px 12px 18px; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; background: rgba(255, 255, 255, 0.03); box-shadow: inset 4px 0 0 var(--tc); transition: border-color 0.2s, background-color 0.2s; }
+.tl-bs-ticket:hover { border-color: rgba(34, 224, 107, 0.55); background: rgba(34, 224, 107, 0.06); }
+.tl-bs-ticket-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tl-bs-ticket-tier { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-weight: 700; font-size: 14px; }
+.tl-bs-ticket-tier svg { color: var(--tc); }
+.tl-bs-ticket-head b { color: #22e06b; font-size: 14px; white-space: nowrap; }
+.tl-bs-ticket-facts { display: grid; grid-template-columns: 1.4fr 0.8fr 0.8fr; gap: 8px; margin: 12px 0; }
+.tl-bs-ticket-facts dt { color: rgba(226, 236, 232, 0.55); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.tl-bs-ticket-facts dd { margin-top: 3px; color: #fff; font-size: 16px; font-weight: 800; overflow-wrap: anywhere; }
+.tl-bs-ticket-facts div:last-child dd { color: #22e06b; }
+.tl-bs-ticket-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding-top: 10px; border-top: 1px dashed rgba(255, 255, 255, 0.14); color: rgba(226, 236, 232, 0.6); font-size: 11.5px; }
+.tl-bs-ticket-states { display: inline-flex; flex-wrap: wrap; gap: 5px; }
+.tl-bs-ticket-states i { padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.18); font-style: normal; font-weight: 700; color: rgba(226, 236, 232, 0.8); }
+.tl-bs-ticket-states i.is-ok { border-color: rgba(34, 224, 107, 0.55); background: rgba(34, 224, 107, 0.1); color: #86efac; }
+.tl-bs-ticket-states i.is-wait { border-color: rgba(250, 204, 21, 0.55); background: rgba(250, 204, 21, 0.08); color: #fde68a; }
+
+.tl-bs-total { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 14px 16px; border: 1px solid rgba(34, 224, 107, 0.32); border-radius: 16px; background: rgba(255, 255, 255, 0.03); }
+.tl-bs-total > span:first-child { margin-right: auto; color: rgba(236, 244, 240, 0.9); font-size: 14px; }
+.tl-bs-total strong { color: #22e06b; font-size: 22px; font-weight: 800; white-space: nowrap; }
+.tl-bs-paid { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(34, 224, 107, 0.6); background: rgba(34, 224, 107, 0.1); color: #86efac; font-size: 12px; font-weight: 700; }
+.tl-bs-receipt { display: grid; gap: 10px; margin: 16px 0 0; }
+.tl-bs-receipt > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.tl-bs-receipt dt { display: inline-flex; align-items: center; gap: 8px; color: rgba(226, 236, 232, 0.7); }
+.tl-bs-receipt dt svg { color: #22e06b; }
+.tl-bs-receipt dd { color: #fff; font-weight: 700; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.tl-bs-note { display: flex; gap: 10px; margin-top: 14px; padding: 12px; border: 1px solid rgba(250, 204, 21, 0.4); border-radius: 12px; background: rgba(250, 204, 21, 0.07); color: #fde68a; font-size: 12.5px; line-height: 1.5; }
+.tl-bs-note svg { flex: none; margin-top: 1px; }
+.tl-bs-actions { display: grid; gap: 10px; margin-top: 18px; }
+.tl-bs-actions .tl-bk-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.tl-bs-back { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 999px; color: #22e06b; font-weight: 700; font-size: 14px; transition: background-color 0.2s; }
+.tl-bs-back:hover { background: rgba(34, 224, 107, 0.1); }
+.tl-bs-foot { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); color: rgba(226, 236, 232, 0.7); font-size: 12.5px; }
+@media (max-width: 640px) {
+  .tl-bs-event { grid-template-columns: 1fr; }
+  .tl-bs-event-img { min-height: 150px; max-height: 180px; }
+}

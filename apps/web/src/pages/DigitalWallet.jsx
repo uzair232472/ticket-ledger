@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
 import { HERO_IMAGE } from '../components/home/homeData';
 import WalletPass from '../components/account/WalletPass';
+import AccountSearch, { haystack, matchesQuery } from '../components/account/AccountSearch';
 import '../components/account/passes.css';
 import { useDialog } from '../components/ui/DialogProvider';
 import {
@@ -55,6 +56,7 @@ export default function DigitalWallet() {
 
   // Active Tab Filter (defaults to 'ACTIVE' so users see transferable tickets immediately)
   const [filterTab, setFilterTab] = useState('ACTIVE');
+  const [query, setQuery] = useState('');
 
   // Transfer Modal State
   const [transferModalTicket, setTransferModalTicket] = useState(null);
@@ -319,11 +321,13 @@ export default function DigitalWallet() {
   const activeTicketsCount = tickets.filter((t) => t.status === 'ACTIVE').length;
   const scannedTicketsCount = tickets.filter((t) => t.status === 'SCANNED').length;
 
-  const displayedTickets = tickets.filter((t) => {
+  const ticketText = (t) => haystack(t.event?.name, t.event?.venue, t.event?.city, t.event?.type, t.seat?.section, t.seat?.row && `row ${t.seat.row}`, t.seat?.seatNumber && `seat ${t.seat.seatNumber}`, t.seat?.tier?.name, t.id, t.status);
+  const tabTickets = tickets.filter((t) => {
     if (filterTab === 'ACTIVE') return t.status === 'ACTIVE';
     if (filterTab === 'SCANNED') return t.status === 'SCANNED' || t.status === 'RESOLD' || t.status === 'TRANSFERRED';
     return true; // 'ALL'
   });
+  const displayedTickets = query.trim() ? tabTickets.filter((t) => matchesQuery(ticketText(t), query)) : tabTickets;
 
   return (
     <AccountShell
@@ -357,7 +361,7 @@ export default function DigitalWallet() {
           </div>
         </>
       }
-      contentKey={`${loading}-${filterTab}-${displayedTickets.length}-${Boolean(error)}-${Boolean(successMessage)}-${expandedPayloadId}-${qrVerifyResult?.ticketId || ''}`}
+      contentKey={`${loading}-${filterTab}-${query}-${displayedTickets.length}-${Boolean(error)}-${Boolean(successMessage)}-${expandedPayloadId}-${qrVerifyResult?.ticketId || ''}`}
     >
     <AccountSection
       id="tl-passes"
@@ -387,6 +391,8 @@ export default function DigitalWallet() {
             <div>{error}</div>
           </div>
         )}
+
+        <AccountSearch id="wallet-search" value={query} onChange={setQuery} placeholder="Search by event, venue, city, section or seat" shown={displayedTickets.length} total={tabTickets.length} noun="passes" />
 
         {/* Filter Navigation Tabs */}
         <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
@@ -446,7 +452,7 @@ export default function DigitalWallet() {
             </div>
             <h2 className="text-lg font-bold text-slate-900">No Tickets Found in this Tab</h2>
             <p className="text-xs text-slate-500 leading-relaxed">
-              {filterTab === 'ACTIVE'
+              {query.trim() ? `Nothing in this tab matches “${query.trim()}”. Try another word or clear the search.` : filterTab === 'ACTIVE'
                 ? 'You do not have any active unscanned passes. Click "All Tickets" to view previously used passes or browse events to buy new tickets.'
                 : 'No tickets matching the selected filter.'}
             </p>

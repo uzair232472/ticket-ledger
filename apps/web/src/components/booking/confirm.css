@@ -1,4 +1,4 @@
-/* "You're going!" order confirmation pop-up (OrderConfirmedModal) */
+/* "You're going!" order confirmation pop-up (OrderConfirmedModal): dark glass with a neon-green edge */
 .tl-ok-overlay {
   position: fixed;
   inset: 0;
@@ -7,191 +7,217 @@
   place-items: center;
   padding: 16px;
   overflow-y: auto;
-  background: rgba(11, 18, 13, 0.45);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
+  background: rgba(2, 8, 14, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   animation: tl-ok-fade 0.25s ease;
 }
 
 .tl-ok {
+  --ok-green: #22e06b;
+  --ok-neon: #00ed72;
+  --ok-line: rgba(34, 224, 107, 0.32);
   position: relative;
-  width: min(440px, 100%);
-  padding: 28px 24px 18px;
-  border-radius: 16px;
-  background: #fff;
-  color: #0b1a10;
+  width: min(480px, 100%);
+  padding: 30px 26px 18px;
+  border-radius: 26px;
+  border: 1.5px solid rgba(34, 224, 107, 0.85);
+  background: radial-gradient(120% 60% at 50% 0%, rgba(22, 90, 60, 0.55), transparent 70%),
+    linear-gradient(165deg, rgba(10, 40, 34, 0.97), rgba(4, 14, 22, 0.98) 65%, rgba(6, 28, 24, 0.97));
+  color: #f2f6f4;
+  font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
   text-align: center;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px rgba(34, 224, 107, 0.18), 0 0 44px rgba(34, 224, 107, 0.32), 0 30px 80px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
   animation: tl-ok-rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .tl-ok-close {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
   display: grid;
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: #3f4a43;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
   cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
 }
 
 .tl-ok-close:hover {
-  background: #f1f4f0;
-  color: #0b1a10;
+  border-color: #fca5a5;
+  background: linear-gradient(180deg, #ef4444, #b91c1c);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.55);
 }
 
 .tl-ok-close:focus-visible,
 .tl-ok-primary:focus-visible,
 .tl-ok-secondary:focus-visible {
-  outline: 2px solid #16a34a;
+  outline: 2px solid #86efac;
   outline-offset: 2px;
 }
 
-/* Brand mark with a small green check */
+/* Confetti flecks around the check */
+.tl-ok-confetti {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 150px;
+  pointer-events: none;
+}
+
+.tl-ok-confetti i {
+  position: absolute;
+  width: 12px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--ok-green);
+  box-shadow: 0 0 8px rgba(34, 224, 107, 0.6);
+  animation: tl-ok-fleck 0.9s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.tl-ok-confetti i:nth-child(1) { left: 14%; top: 36%; transform: rotate(35deg); }
+.tl-ok-confetti i:nth-child(2) { left: 22%; top: 56%; transform: rotate(-30deg); width: 8px; }
+.tl-ok-confetti i:nth-child(3) { left: 30%; top: 22%; transform: rotate(-20deg); }
+.tl-ok-confetti i:nth-child(4) { left: 10%; top: 72%; transform: rotate(60deg); width: 9px; }
+.tl-ok-confetti i:nth-child(5) { left: 64%; top: 18%; transform: rotate(50deg); width: 8px; }
+.tl-ok-confetti i:nth-child(6) { left: 72%; top: 44%; transform: rotate(-40deg); }
+.tl-ok-confetti i:nth-child(7) { left: 80%; top: 24%; transform: rotate(20deg); width: 7px; }
+.tl-ok-confetti i:nth-child(8) { left: 86%; top: 62%; transform: rotate(-55deg); }
+.tl-ok-confetti i:nth-child(9) { left: 38%; top: 70%; transform: rotate(15deg); width: 7px; opacity: 0.7; }
+.tl-ok-confetti i:nth-child(10) { left: 58%; top: 66%; transform: rotate(-15deg); width: 7px; opacity: 0.7; }
+
+/* Glowing check */
 .tl-ok-mark {
   position: relative;
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 10px;
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 14px;
   display: grid;
   place-items: center;
-  border-radius: 18px;
-  background: #f0fdf4;
+  border-radius: 50%;
+  border: 3px solid var(--ok-green);
+  background: radial-gradient(circle, rgba(34, 224, 107, 0.22), rgba(4, 20, 18, 0.9) 70%);
+  color: var(--ok-neon);
+  box-shadow: 0 0 28px rgba(34, 224, 107, 0.55), inset 0 0 18px rgba(34, 224, 107, 0.35);
   animation: tl-ok-pop 0.5s 0.15s cubic-bezier(0.3, 1.5, 0.5, 1) both;
 }
 
-.tl-ok-mark img {
-  width: 40px;
-  height: auto;
-}
-
-.tl-ok-mark-check {
-  position: absolute;
-  right: -4px;
-  bottom: -4px;
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #16a34a;
-  color: #fff;
-  box-shadow: 0 0 0 3px #fff;
+.tl-ok-mark svg {
+  filter: drop-shadow(0 0 8px rgba(0, 237, 114, 0.7));
 }
 
 .tl-ok-title {
-  font-size: clamp(26px, 6vw, 32px);
+  position: relative;
+  font-size: clamp(32px, 8vw, 44px);
   font-weight: 800;
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  line-height: 1.05;
+  color: #fff;
+}
+
+.tl-ok-title em {
+  font-style: normal;
+  color: var(--ok-neon);
+  text-shadow: 0 0 22px rgba(0, 237, 114, 0.4);
 }
 
 .tl-ok-sub {
-  margin-top: 6px;
-  color: #4b5a51;
-  font-size: 14px;
+  margin-top: 8px;
+  color: rgba(236, 244, 240, 0.85);
+  font-size: 15px;
 }
 
-/* Ticket-shaped summary with side notches and a dashed tear line */
+/* Event card with the section / seats / tickets row */
 .tl-ok-ticket {
-  position: relative;
-  margin-top: 20px;
-  border: 1px solid #dfe8e1;
-  border-radius: 12px;
-  background: #f6f9f5;
+  margin-top: 22px;
+  border: 1px solid var(--ok-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
   text-align: left;
+  overflow: hidden;
 }
 
 .tl-ok-event {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   align-items: center;
-  padding: 14px;
+  padding: 16px;
 }
 
 .tl-ok-thumb {
   flex: 0 0 auto;
-  width: 104px;
-  height: 70px;
-  border-radius: 8px;
+  width: 128px;
+  height: 84px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(34, 224, 107, 0.7);
   object-fit: cover;
-  background: #dfe8e1;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 14px rgba(34, 224, 107, 0.25);
 }
 
 .tl-ok-name {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 800;
   line-height: 1.25;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  color: #fff;
 }
 
 .tl-ok-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #3f4a43;
-  font-size: 13px;
-  line-height: 1.6;
+  gap: 8px;
+  color: rgba(236, 244, 240, 0.85);
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .tl-ok-meta svg {
   flex: 0 0 auto;
-  color: #5b6b61;
-}
-
-.tl-ok-tear {
-  position: relative;
-  border-top: 1px dashed #c9d6cc;
-  margin: 0 14px;
-}
-
-.tl-ok-tear::before,
-.tl-ok-tear::after {
-  content: '';
-  position: absolute;
-  top: -9px;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1px solid #dfe8e1;
-}
-
-.tl-ok-tear::before {
-  left: -24px;
-  clip-path: inset(0 0 0 50%);
-}
-
-.tl-ok-tear::after {
-  right: -24px;
-  clip-path: inset(0 50% 0 0);
+  color: var(--ok-green);
 }
 
 .tl-ok-facts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 16px;
-  padding: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--ok-line);
 }
 
 .tl-ok-facts > div {
-  display: grid;
-  grid-template-columns: 64px 1fr;
-  gap: 8px;
-  font-size: 13px;
+  padding: 14px 10px;
+  text-align: center;
+}
+
+.tl-ok-facts > div + div {
+  border-left: 1px solid var(--ok-line);
 }
 
 .tl-ok-facts dt {
-  color: #5b6b61;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(226, 236, 232, 0.78);
+  font-size: 14px;
+}
+
+.tl-ok-facts dt svg {
+  width: 20px;
+  height: 20px;
+  color: var(--ok-green);
 }
 
 .tl-ok-facts dd {
-  font-weight: 600;
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
   overflow-wrap: anywhere;
 }
 
@@ -204,29 +230,43 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-top: 1px solid #dfe8e1;
-  font-size: 14px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--ok-line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 15px;
+  text-align: left;
 }
 
-.tl-ok-total span:first-child {
-  color: #3f4a43;
+.tl-ok-total-ico {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--ok-green);
+}
+
+.tl-ok-total > span:nth-of-type(1) {
+  color: rgba(236, 244, 240, 0.9);
   margin-right: auto;
 }
 
 .tl-ok-total strong {
-  font-size: 17px;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ok-neon);
 }
 
 .tl-ok-paid {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 4px 11px;
   border-radius: 999px;
-  background: #dcfce7;
-  color: #15803d;
-  font-size: 12px;
+  border: 1px solid rgba(34, 224, 107, 0.6);
+  background: rgba(34, 224, 107, 0.1);
+  color: #86efac;
+  font-size: 12.5px;
   font-weight: 700;
 }
 
@@ -236,8 +276,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #4b5a51;
-  font-size: 13px;
+  color: rgba(226, 236, 232, 0.78);
+  font-size: 13.5px;
 }
 
 .tl-ok-note {
@@ -248,24 +288,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  min-height: 48px;
-  border-radius: 10px;
-  background: #14532d;
+  gap: 12px;
+  min-height: 54px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(134, 239, 172, 0.8);
+  background: linear-gradient(180deg, #2ee07a, #12a84a);
   color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  transition: background-color 0.2s ease;
+  font-size: 17px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 26px rgba(34, 224, 107, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transition: background 0.18s, box-shadow 0.18s, transform 0.12s;
 }
 
 .tl-ok-primary:hover {
-  background: #166534;
+  background: linear-gradient(180deg, #34e882, #16a34a);
+  box-shadow: 0 0 0 1px rgba(134, 239, 172, 0.5), 0 0 30px rgba(34, 224, 107, 0.65);
+}
+
+.tl-ok-primary:active {
+  transform: scale(0.99);
 }
 
 /* Small ticket glyph, drawn in CSS so it inherits the button colour */
 .tl-ok-primary-icon {
-  width: 22px;
-  height: 14px;
+  width: 24px;
+  height: 15px;
   border: 2px solid currentColor;
   border-radius: 3px;
   -webkit-mask: radial-gradient(circle at 0 50%, transparent 3.5px, #000 4px) left / 51% 100% no-repeat,
@@ -275,27 +323,50 @@
   transform: rotate(-12deg);
 }
 
+/* "Back to events" between two hairlines */
+.tl-ok-secondary-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.tl-ok-secondary-row::before,
+.tl-ok-secondary-row::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .tl-ok-secondary {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   min-height: 44px;
-  margin-top: 4px;
-  padding: 0 12px;
-  color: #15803d;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 0 14px;
+  border-radius: 12px;
+  color: var(--ok-green);
+  font-size: 14.5px;
+  font-weight: 700;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
 }
 
 .tl-ok-secondary:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  background: linear-gradient(180deg, #34e882, #16a34a);
+  color: #fff;
+  box-shadow: 0 0 20px rgba(34, 224, 107, 0.5);
 }
 
 .tl-ok-foot {
   margin-top: 6px;
   padding-top: 14px;
-  border-top: 1px solid #edf1ee;
-  font-size: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+}
+
+.tl-ok-foot .tl-ok-mono {
+  color: #fff;
 }
 
 @keyframes tl-ok-fade {
@@ -310,9 +381,14 @@
   from { opacity: 0; transform: scale(0.6); }
 }
 
+@keyframes tl-ok-fleck {
+  from { opacity: 0; translate: 0 18px; }
+}
+
 @media (max-width: 479px) {
   .tl-ok {
-    padding: 24px 16px 14px;
+    padding: 26px 16px 14px;
+    border-radius: 22px;
   }
 
   .tl-ok-event {
@@ -322,18 +398,28 @@
 
   .tl-ok-thumb {
     width: 100%;
-    height: 120px;
+    height: 130px;
   }
 
-  .tl-ok-facts {
-    grid-template-columns: 1fr;
+  .tl-ok-facts dt {
+    font-size: 12.5px;
+    gap: 5px;
+  }
+
+  .tl-ok-facts dd {
+    font-size: 14px;
+  }
+
+  .tl-ok-total {
+    flex-wrap: wrap;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .tl-ok-overlay,
   .tl-ok,
-  .tl-ok-mark {
+  .tl-ok-mark,
+  .tl-ok-confetti i {
     animation: none;
   }
 }

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
 import { COLLAGE_IMAGES } from '../components/home/homeData';
 import NftTicketCard from '../components/account/NftTicketCard';
+import AccountSearch, { haystack, matchesQuery } from '../components/account/AccountSearch';
 import '../components/account/passes.css';
 import { useDialog } from '../components/ui/DialogProvider';
 import {
@@ -161,6 +162,9 @@ export default function MyNFTTickets() {
     }
   };
 
+  const [query, setQuery] = useState('');
+  const nftText = (t) => haystack(t.event?.name, t.event?.venue, t.event?.city, t.seat?.section, t.seat?.row && `row ${t.seat.row}`, t.seat?.seatNumber && `seat ${t.seat.seatNumber}`, t.seat?.tier?.name, t.blockchain?.tokenId != null && `#${t.blockchain.tokenId} tlt ${t.blockchain.tokenId}`, t.activeResaleListing?.status === 'ACTIVE' && 'listed resale', t.status);
+  const shownNfts = query.trim() ? tickets.filter((t) => matchesQuery(nftText(t), query)) : tickets;
   const listedCount = tickets.filter((t) => t.activeResaleListing?.status === 'ACTIVE').length;
 
   return (
@@ -188,7 +192,7 @@ export default function MyNFTTickets() {
           </Link>
         </>
       }
-      contentKey={`${loading}-${tickets.length}-${listedCount}-${Boolean(error)}`}
+      contentKey={`${loading}-${query}-${tickets.length}-${listedCount}-${Boolean(error)}`}
     >
     <AccountSection
       id="tl-nfts"
@@ -228,8 +232,11 @@ export default function MyNFTTickets() {
           </Link>
         </div>
       ) : (
+        <>
+        <AccountSearch id="nft-search" value={query} onChange={setQuery} placeholder="Search by event, venue, seat or token #" shown={shownNfts.length} total={tickets.length} noun="NFT tickets" />
+        {shownNfts.length === 0 && <p className="tl-asearch-empty">No NFT ticket matches “{query.trim()}”.<button type="button" onClick={() => setQuery('')}>Clear search</button></p>}
         <div className="tl-nfts">
-          {tickets.map((t) => (
+          {shownNfts.map((t) => (
             <NftTicketCard
               key={t.id}
               ticket={t}
@@ -241,6 +248,7 @@ export default function MyNFTTickets() {
             />
           ))}
         </div>
+        </>
       )}
 
       </div>

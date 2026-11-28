@@ -12,6 +12,7 @@ import { pendingFinanceReviews, reviewFinance } from '../services/orgProfileServ
 import { adminPayouts, decide as decidePayout } from '../services/payoutService.js';
 import { AccessError } from '../services/orgAccess.js';
 import { requireAdmin } from '../services/adminAccess.js';
+import { requireCompleteProfile } from '../services/profileCompleteness.js';
 
 const router = express.Router();
 
@@ -47,6 +48,7 @@ router.use(authenticateJWT);
 router.post(
   '/register', 
   requireRole('ORGANIZER', 'SUPER_ADMIN'), 
+  requireCompleteProfile,
   documentUpload,
   registerCompany
 );

@@ -9,13 +9,14 @@ import './booking-dark.css';
 
 const STEPS = [
   { key: 'seats', label: 'Seats' },
-  { key: 'checkout', label: 'Checkout' },
+  { key: 'review', label: 'Review' },
+  { key: 'payment', label: 'Payment' },
   { key: 'confirmation', label: 'Confirmation' },
 ];
 
-/** Seats / Checkout / Confirmation progress, shown on every page of the booking flow. */
+/** Seats / Review / Payment / Confirmation progress, shown on every page of the booking flow. */
 export function BookingSteps({ current }) {
-  const at = STEPS.findIndex((s) => s.key === current);
+  const at = STEPS.findIndex((s) => s.key === (current === 'checkout' ? 'payment' : current));
   return (
     <ol className="tl-bk-steps" aria-label="Booking progress">
       {STEPS.map((s, i) => (
