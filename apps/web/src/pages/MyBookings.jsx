@@ -8,6 +8,7 @@ import '../components/lifecycle/lifecycle.css';
 import '../components/account/bookingTools.css';
 import api from '../utils/api';
 import BookingTools from '../components/account/BookingTools';
+import Pager, { pageOf } from '../components/dash/Pager';
 import AccountSearch, { haystack, matchesQuery } from '../components/account/AccountSearch';
 import {
   Ticket,
@@ -34,6 +35,8 @@ export default function MyBookings() {
   }, []);
   const [orders, setOrders] = useState([]);
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [query]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // Events of mine that were cancelled, postponed or moved (with refunds open), and refunds paid to me
@@ -76,6 +79,7 @@ export default function MyBookings() {
 
   const orderText = (o) => haystack(o.event?.name, o.event?.venue, o.event?.city, o.event?.type, o.id, o.id?.slice(0, 8), o.paymentMethod, o.status, ...(o.tickets || []).map((t) => [t.seat?.section, t.seat?.row && `row ${t.seat.row}`, t.seat?.seatNumber && `seat ${t.seat.seatNumber}`, t.seat?.tier?.name].filter(Boolean).join(' ')));
   const shownOrders = query.trim() ? orders.filter((o) => matchesQuery(orderText(o), query)) : orders;
+  const paged = pageOf(shownOrders, page, 5);
 
   return (
     <AccountShell
@@ -92,7 +96,7 @@ export default function MyBookings() {
           <Ticket className="w-4 h-4" aria-hidden="true" /> Browse more events
         </Link>
       }
-      contentKey={`${loading}-${query}-${orders.length}-${Boolean(error)}`}
+      contentKey={`${loading}-${query}-${paged.page}-${orders.length}-${Boolean(error)}`}
     >
       <AccountSection id="tl-orders" kicker="Booking history" title="Purchases" aside="Orders are listed newest first, with their payment status and the seats in each booking.">
       {loading ? (
@@ -101,7 +105,7 @@ export default function MyBookings() {
           <p>Loading your ticket ledger bookings...</p>
         </div>
       ) : (
-      <div className="max-w-7xl mx-auto space-y-8 text-slate-800 pb-32">
+      <div className="w-full space-y-8 text-slate-800 pb-32">
       {error && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
@@ -183,7 +187,7 @@ export default function MyBookings() {
         <div className="space-y-4 tl-orders">
           <AccountSearch id="orders-search" value={query} onChange={setQuery} placeholder="Search by event, venue, city, order ref or seat" shown={shownOrders.length} total={orders.length} noun="orders" />
           {shownOrders.length === 0 && <p className="tl-asearch-empty">No order matches “{query.trim()}”.<button type="button" onClick={() => setQuery('')}>Clear search</button></p>}
-          {shownOrders.map((order) => {
+          {paged.rows.map((order) => {
             const { event, tickets = [] } = order;
             const isConfirmed = order.status === 'SUCCESSFUL';
 
@@ -271,6 +275,7 @@ export default function MyBookings() {
               </div>
             );
           })}
+          <Pager page={paged.page} total={shownOrders.length} onPage={(p) => { setPage(p); document.getElementById('orders-search')?.scrollIntoView({ block: 'center' }); }} label="Orders" size={5} />
         </div>
       )}
       </div>

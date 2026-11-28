@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import AccountShell, { AccountSection, AccountPortal } from '../components/account/AccountShell';
 import { HERO_IMAGE } from '../components/home/homeData';
 import WalletPass from '../components/account/WalletPass';
+import Pager, { pageOf } from '../components/dash/Pager';
 import AccountSearch, { haystack, matchesQuery } from '../components/account/AccountSearch';
 import '../components/account/passes.css';
 import { useDialog } from '../components/ui/DialogProvider';
@@ -57,6 +58,8 @@ export default function DigitalWallet() {
   // Active Tab Filter (defaults to 'ACTIVE' so users see transferable tickets immediately)
   const [filterTab, setFilterTab] = useState('ACTIVE');
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [query, filterTab]);
 
   // Transfer Modal State
   const [transferModalTicket, setTransferModalTicket] = useState(null);
@@ -328,6 +331,8 @@ export default function DigitalWallet() {
     return true; // 'ALL'
   });
   const displayedTickets = query.trim() ? tabTickets.filter((t) => matchesQuery(ticketText(t), query)) : tabTickets;
+  // Five passes per page
+  const paged = pageOf(displayedTickets, page, 5);
 
   return (
     <AccountShell
@@ -361,7 +366,7 @@ export default function DigitalWallet() {
           </div>
         </>
       }
-      contentKey={`${loading}-${filterTab}-${query}-${displayedTickets.length}-${Boolean(error)}-${Boolean(successMessage)}-${expandedPayloadId}-${qrVerifyResult?.ticketId || ''}`}
+      contentKey={`${loading}-${filterTab}-${query}-${paged.page}-${displayedTickets.length}-${Boolean(error)}-${Boolean(successMessage)}-${expandedPayloadId}-${qrVerifyResult?.ticketId || ''}`}
     >
     <AccountSection
       id="tl-passes"
@@ -481,7 +486,7 @@ export default function DigitalWallet() {
             </div>
 
             <div className="tl-passes">
-              {displayedTickets.map((t) => (
+              {paged.rows.map((t) => (
                 <WalletPass
                   key={t.id}
                   ticket={t}
@@ -506,6 +511,7 @@ export default function DigitalWallet() {
                 />
               ))}
             </div>
+            <Pager page={paged.page} total={displayedTickets.length} onPage={(p) => { setPage(p); document.getElementById('wallet-search')?.scrollIntoView({ block: 'center' }); }} label="Passes" size={5} />
           </div>
         )}
 

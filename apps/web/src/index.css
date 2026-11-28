@@ -26,6 +26,52 @@ body {
   max-width: 100%;
 }
 
+/* Nothing inside a page scrolls sideways either. Tab strips wrap onto a second row; wide tables wrap their
+   cells to fit, and on phones each row becomes a stacked card whose cells show their column name
+   (data-label, set by components/ui/TableLabels.jsx). */
+:is(.tl-aov-tabs, .tl-eva-tabs, .tl-dk-seg, .tl-ul-tabs, .tl-apv-filters) {
+  flex-wrap: wrap !important;
+  overflow-x: visible !important;
+}
+:is(.tl-aov-tabs, .tl-ul-tabs)[class] { border-radius: 22px; }
+:is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) {
+  max-width: 100%;
+  overflow-x: visible !important;
+}
+:is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) table {
+  width: 100%;
+  min-width: 0 !important;
+}
+:is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) :is(th, td) {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+@media screen and (max-width: 720px) {
+  :is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) :is(table, tbody, tr) { display: block; width: 100%; }
+  :is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  :is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) tr { padding: 10px 0; border-bottom: 1px solid rgba(148, 163, 184, 0.22); }
+  :is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) tr:last-child { border-bottom: 0; }
+  :is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    width: 100%;
+    padding: 4px 0 !important;
+    border: 0 !important;
+    text-align: left !important;
+  }
+  :is(.tl-stb-wrap, .tl-oev-table-wrap, .tl-dash-table-wrap, .tl-ml-scroll, .tl-gv-report section) td[data-label]:not([data-label=''])::before {
+    content: attr(data-label);
+    flex: 0 0 38%;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+}
+
 .font-display {
   font-family: 'Plus Jakarta Sans', 'Space Grotesk', -apple-system, sans-serif;
 }
