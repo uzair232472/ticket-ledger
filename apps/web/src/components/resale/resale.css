@@ -544,3 +544,14 @@
   .tl-rs-modal, .tl-rs-dialog { animation: none; }
   .tl-rs-faq-a, .tl-rs-faq-icon { transition: none; }
 }
+
+/* Account menu on the resale page (same as Ticket wallet, NFT tickets, Orders) */
+.tl-rs-acct-nav { --ac-gutter: var(--rs-gutter); }
+
+/* "Fan resale." heading: one line, green like the other account page headings */
+.tl-rs-cta-title--green { flex-direction: row; font-size: clamp(48px, 8.6vw, 150px); color: #22e06b; text-shadow: 0 0 30px rgba(34, 224, 107, 0.35); font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.tl-rs-cta-title--green .tl-rs-cta-line { white-space: nowrap; }
+@media (max-width: 760px) {
+  .tl-rs-hero-stage .tl-rs-acct-nav { position: absolute; top: calc(var(--tl-header-h, 72px) + 10px); left: var(--rs-gutter); right: var(--rs-gutter); gap: 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.18); }
+  .tl-rs-hero-stage .tl-rs-acct-nav .tl-acct-nav-link { min-height: 34px; padding: 0 10px; font-size: 11px; }
+}

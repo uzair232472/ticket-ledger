@@ -19,7 +19,7 @@ export function AccountPortal({ children }) {
 const hideBroken = (e) => e.currentTarget.classList.add('is-broken');
 
 // Account areas a customer can open (same routes and roles as App.jsx)
-const ACCOUNT_LINKS = [
+export const ACCOUNT_LINKS = [
   { to: '/wallet', label: 'Ticket wallet' },
   { to: '/my-nfts', label: 'NFT tickets' },
   { to: '/my-bookings', label: 'Orders' },

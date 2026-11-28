@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import usePaymentMethods from '../hooks/usePaymentMethods';
-import { Link, useNavigate, useNavigationType } from 'react-router-dom';
+import { Link, NavLink, useNavigate, useNavigationType } from 'react-router-dom';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -23,6 +23,8 @@ import {
   X,
 } from 'lucide-react';
 import HomeHeader from '../components/home/HomeHeader';
+import { ACCOUNT_LINKS } from '../components/account/AccountShell';
+import '../components/account/account.css';
 import SiteFooter from '../components/home/SiteFooter';
 import { HERO_IMAGE, categoryName } from '../components/home/homeData';
 import { getEventVisual } from '../utils/eventMedia';
@@ -230,12 +232,22 @@ export default function ResaleMarketplace() {
 
             <span className="tl-rs-cta-ghost" aria-hidden="true">Resell</span>
 
+            {/* Same account menu as Ticket wallet, NFT tickets and Orders (those pages are for customers) */}
+            {['CUSTOMER', 'SUPER_ADMIN'].includes(user?.role) && (
+              <nav className="tl-acct-nav tl-rs-acct-nav" aria-label="Your account">
+                {ACCOUNT_LINKS.map((l) => (
+                  <NavLink key={l.to} to={l.to} className={({ isActive }) => `tl-acct-nav-link${isActive ? ' is-active' : ''}`}>
+                    {l.label}
+                  </NavLink>
+                ))}
+              </nav>
+            )}
+
             <div className="tl-rs-hero-content">
               <div className="tl-rs-hero-title">
-                <p className="tl-eyebrow">Fan resale · Can’t make it?</p>
-                <h1 id="tl-rs-title" className="tl-rs-cta-title">
-                  <span className="tl-rs-cta-line">List your ticket</span>
-                  <span className="tl-rs-cta-line">at a fair price<span className="tl-rs-accent">.</span></span>
+                <p className="tl-eyebrow">My account · Can’t make it? Resell at a fair price</p>
+                <h1 id="tl-rs-title" className="tl-rs-cta-title tl-rs-cta-title--green">
+                  <span className="tl-rs-cta-line">Fan resale<span className="tl-rs-accent">.</span></span>
                 </h1>
                 <p className="tl-rs-hero-sub">Fan-to-fan tickets, capped at 110% of face value.</p>
                 <div className="tl-hero-actions tl-rs-hero-actions">
